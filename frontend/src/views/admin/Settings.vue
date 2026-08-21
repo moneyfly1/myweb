@@ -1475,7 +1475,7 @@ export default {
     }
 
     const repoSyncBaseUrl = computed(() => `${window.location.origin}/repo-sync/`)
-    const repoSyncFileUrl = (f) => `${window.location.origin}${f.url}`
+    const repoSyncFileUrl = (f) => `${window.location.origin}/repo-sync/${String(f.name || '').split('/').map(encodeURIComponent).join('/')}`
     const repoSyncStatusType = computed(() => {
       const s = repoSyncStatus.value?.last_status
       if (s === 'success') return 'success'

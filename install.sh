@@ -654,6 +654,59 @@ HOOK
     fi
 }
 
+# 确保 Nginx 站点配置包含 /repo-sync/ 文件转发（幂等；选项11升级不会重写站点配置，需要此函数修复）
+ensure_repo_sync_nginx() {
+    local bt_path="/www/server/panel/vhost/nginx/${DOMAIN}.conf"
+    [ -f "$bt_path" ] || { warn "未找到 Nginx 站点配置: $bt_path"; return 0; }
+
+    if grep -q "location /repo-sync/" "$bt_path"; then
+        return 0
+    fi
+
+    log "检测到 Nginx 配置缺少 /repo-sync/ 转发，正在自动修复..."
+    cp "$bt_path" "${bt_path}.backup.$(date +%Y%m%d_%H%M%S)"
+    python3 - "$bt_path" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+if 'location /repo-sync/' in text:
+    sys.exit(0)
+
+repo_block = '''    location /repo-sync/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+'''
+
+lines = text.split('\n')
+out = []
+inserted = False
+for line in lines:
+    stripped = line.strip()
+    if stripped.startswith('location / '):
+        out.append(repo_block.rstrip('\n'))
+        out.append(line)
+        inserted = True
+    else:
+        out.append(line)
+
+if not inserted:
+    sys.exit(1)
+path.write_text('\n'.join(out))
+PY
+    if [ $? -eq 0 ]; then
+        log "✅ /repo-sync/ 转发已添加"
+        reload_nginx_force
+    else
+        warn "自动修改失败，请手动在站点配置中 location / 之前添加 /repo-sync/ 反向代理到 127.0.0.1:8000"
+    fi
+}
+
 renew_cert() {
     log "证书续期（Let's Encrypt）..."
     if ! command -v certbot &>/dev/null; then
@@ -879,6 +932,7 @@ sync_from_github() {
         if systemctl start cboard; then
             sleep 2
             if systemctl is-active --quiet cboard; then
+                ensure_repo_sync_nginx
                 log "✅ 服务已成功重启，同步完成！"
             else
                 error "服务重启后未运行，请查看日志: journalctl -u cboard -n 50"
