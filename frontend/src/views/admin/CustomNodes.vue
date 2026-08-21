@@ -1075,28 +1075,29 @@ export default {
       if (!selectedNodes.value.length) return
       try {
         batchDeleting.value = true
-        // 检查受影响用户
+        // 检查受影响用户：一次批量请求拿全部节点的用户，避免逐个串行请求导致确认框延迟弹出
         let warningMsg = `确认删除选中的 ${selectedNodes.value.length} 个节点?`
         try {
-          let totalUsers = 0
-          const specialOnlyUsers = []
-          for (const node of selectedNodes.value) {
-            const usersRes = await adminAPI.getCustomNodeUsers(node.id)
-            if (usersRes?.data?.success) {
-              const users = usersRes.data.data || []
+          const usersRes = await adminAPI.batchGetCustomNodeUsers(selectedNodes.value.map(n => n.id))
+          if (usersRes?.data?.success) {
+            const nodeUsers = usersRes.data.data || {}
+            let totalUsers = 0
+            const specialOnlyUsers = []
+            for (const node of selectedNodes.value) {
+              const users = nodeUsers[node.id] || []
               totalUsers += users.length
               users.filter(u => u.special_node_subscription_type === 'special_only').forEach(u => {
                 if (!specialOnlyUsers.find(s => s.id === u.id)) specialOnlyUsers.push(u)
               })
             }
-          }
-          if (totalUsers > 0) {
-            if (specialOnlyUsers.length > 0) {
-              const names = specialOnlyUsers.slice(0, 5).map(u => u.username).join('、')
-              const more = specialOnlyUsers.length > 5 ? `等${specialOnlyUsers.length}人` : ''
-              warningMsg = `选中节点共有 ${totalUsers} 个用户，其中 ${specialOnlyUsers.length} 个开启了「仅专线显示」：${names}${more}。\n\n删除后系统将自动恢复其普通线路访问。\n\n确认删除 ${selectedNodes.value.length} 个节点?`
-            } else {
-              warningMsg = `选中节点共有 ${totalUsers} 个用户正在使用。\n\n删除后若用户无其他专线节点，系统将自动恢复其普通线路访问。\n\n确认删除 ${selectedNodes.value.length} 个节点?`
+            if (totalUsers > 0) {
+              if (specialOnlyUsers.length > 0) {
+                const names = specialOnlyUsers.slice(0, 5).map(u => u.username).join('、')
+                const more = specialOnlyUsers.length > 5 ? `等${specialOnlyUsers.length}人` : ''
+                warningMsg = `选中节点共有 ${totalUsers} 个用户，其中 ${specialOnlyUsers.length} 个开启了「仅专线显示」：${names}${more}。\n\n删除后系统将自动恢复其普通线路访问。\n\n确认删除 ${selectedNodes.value.length} 个节点?`
+              } else {
+                warningMsg = `选中节点共有 ${totalUsers} 个用户正在使用。\n\n删除后若用户无其他专线节点，系统将自动恢复其普通线路访问。\n\n确认删除 ${selectedNodes.value.length} 个节点?`
+              }
             }
           }
         } catch (e) { /* 获取用户列表失败，使用默认提示 */ }
@@ -1123,10 +1124,12 @@ export default {
       try {
         let totalUsers = 0
         const affectedUsers = []
-        for (const node of selectedNodes.value) {
-          const usersRes = await adminAPI.getCustomNodeUsers(node.id)
-          if (usersRes?.data?.success) {
-            const users = usersRes.data.data || []
+        // 一次批量请求拿全部节点的用户，避免逐个串行请求导致确认框延迟弹出
+        const usersRes = await adminAPI.batchGetCustomNodeUsers(selectedNodes.value.map(n => n.id))
+        if (usersRes?.data?.success) {
+          const nodeUsers = usersRes.data.data || {}
+          for (const node of selectedNodes.value) {
+            const users = nodeUsers[node.id] || []
             totalUsers += users.length
             users.forEach(u => {
               if (!affectedUsers.find(item => item.id === u.id)) affectedUsers.push(u)
