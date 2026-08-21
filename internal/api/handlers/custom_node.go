@@ -301,8 +301,8 @@ func CreateCustomNode(c *gin.Context) {
 		}
 
 		customNode := models.CustomNode{
-			Name:             name,
-			DisplayName:      req.DisplayName,
+			Name:             truncateNodeName(name),
+			DisplayName:      truncateNodeName(req.DisplayName),
 			Protocol:         parsed.Type,
 			Domain:           parsed.Server,
 			Port:             parsed.Port,
@@ -342,8 +342,8 @@ func CreateCustomNode(c *gin.Context) {
 	configStr, protocol, domain, port := normalizeCustomNodeConfig(req.Config, req.Protocol, req.Domain, req.Port)
 
 	customNode := models.CustomNode{
-		Name:             req.Name,
-		DisplayName:      req.DisplayName,
+		Name:             truncateNodeName(req.Name),
+		DisplayName:      truncateNodeName(req.DisplayName),
 		Protocol:         protocol,
 		Domain:           domain,
 		Port:             port,
@@ -482,7 +482,7 @@ func importCustomNodesFromLinks(db *gorm.DB, links []string, source string) (imp
 		}
 
 		customNode := models.CustomNode{
-			Name:     name,
+			Name:     truncateNodeName(name),
 			Protocol: parsed.Type,
 			Domain:   parsed.Server,
 			Port:     parsed.Port,
