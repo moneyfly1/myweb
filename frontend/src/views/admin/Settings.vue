@@ -951,6 +951,21 @@
                 </div>
               </div>
               <div class="form-tip">仅把仓库文件下载到以上目录，不会改动"节点管理"中的任何数据。</div>
+
+              <template v-if="repoSyncStatus?.files?.length">
+                <div class="settings-section-title text-sm">已下载文件（共 {{ repoSyncStatus.files.length }} 个）</div>
+                <div v-for="f in repoSyncStatus.files" :key="f.name" class="repo-sync-file-item">
+                  <div class="file-info">
+                    <span class="file-name">{{ f.name }}</span>
+                    <span class="file-size">{{ formatFileSize(f.size) }}</span>
+                  </div>
+                  <div class="file-url-row">
+                    <el-input :model-value="repoSyncFileUrl(f)" readonly size="small" class="file-url-input" />
+                    <el-button size="small" @click="copyText(repoSyncFileUrl(f))">复制</el-button>
+                    <el-button size="small" tag="a" :href="repoSyncFileUrl(f)" target="_blank" rel="noopener">打开</el-button>
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
         </el-tab-pane>
@@ -1460,6 +1475,7 @@ export default {
     }
 
     const repoSyncBaseUrl = computed(() => `${window.location.origin}/repo-sync/`)
+    const repoSyncFileUrl = (f) => `${window.location.origin}${f.url}`
     const repoSyncStatusType = computed(() => {
       const s = repoSyncStatus.value?.last_status
       if (s === 'success') return 'success'
@@ -1471,6 +1487,14 @@ export default {
       const s = repoSyncStatus.value?.last_status
       return s === 'success' ? '成功' : s === 'failed' ? '失败' : s === 'partial' ? '部分成功' : s || '等待中'
     })
+    const copyText = async (text) => {
+      try {
+        await navigator.clipboard.writeText(text)
+        ElMessage.success('已复制到剪贴板')
+      } catch {
+        ElMessage.error('复制失败，请手动复制')
+      }
+    }
     const loadRepoSyncStatus = async () => {
       repoSyncLoading.status = true
       try {
@@ -1684,8 +1708,8 @@ export default {
       restoreLocal, restoreRemote, loadLocalBackups, doRestoreLocal, loadRemoteYears, onRemoteYearChange, onRemoteMonthChange, doRestoreRemote,
       saveGeneralSettings, saveRegistrationSettings, saveInviteSettings, saveNotificationSettings, saveSecuritySettings, saveThemeSettings, saveAnnouncementSettings,
       saveNodeHealthSettings, saveAdminNotificationSettings, saveBackupSettings, saveProtocolFilterSettings, saveCurrentTab, refreshSettings, protocolFilterSettings, allProtocols: ALL_PROTOCOLS,
-      repoSyncSettings, repoSyncStatus, repoSyncLoading, repoSyncBaseUrl, repoSyncStatusType, repoSyncStatusLabel,
-      saveRepoSyncSettings, testRepoSyncConnection, runRepoSyncNow, loadRepoSyncStatus,
+      repoSyncSettings, repoSyncStatus, repoSyncLoading, repoSyncBaseUrl, repoSyncFileUrl, repoSyncStatusType, repoSyncStatusLabel,
+      saveRepoSyncSettings, testRepoSyncConnection, runRepoSyncNow, loadRepoSyncStatus, copyText,
       testNotification, testGiteeConnection, testGitHubConnection, createManualBackup, updateGeoIPDatabase, switchDatabase, flushCache, handleLogoSuccess, beforeLogoUpload, formatFileSize
     }
   }
@@ -2140,5 +2164,39 @@ export default {
   font-size: 12px;
   color: var(--el-color-primary);
   word-break: break-all;
+}
+.repo-sync-file-item {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.file-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.file-name {
+  font-weight: 500;
+  font-size: 13px;
+  word-break: break-all;
+}
+.file-size {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+.file-url-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.file-url-input {
+  flex: 1;
+}
+.file-url-input :deep(.el-input__inner) {
+  font-size: 12px;
 }
 </style>
