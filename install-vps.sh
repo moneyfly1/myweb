@@ -669,6 +669,7 @@ sync_from_github() {
         if systemctl start cboard; then
             sleep 2
             if systemctl is-active --quiet cboard; then
+                ensure_repo_sync_nginx
                 log "✅ 服务已成功重启，同步完成！"
             else
                 error "服务重启后未运行，请查看日志: journalctl -u cboard -n 50"
@@ -706,6 +707,59 @@ show_menu() {
     echo ""
     echo "说明: 选 16 可手动续期；自动续期由 certbot 定时任务完成，续期后会自动重载 Nginx。"
     read -p "请选择: " choice
+}
+
+# 确保 Nginx 配置包含 /repo-sync/ 文件转发（幂等；升级选项不会重写 nginx 配置，需要此函数修复）
+ensure_repo_sync_nginx() {
+    local conf="/etc/nginx/sites-enabled/cboard"
+    [ -d "/etc/nginx/conf.d" ] && conf="/etc/nginx/conf.d/cboard.conf"
+    [ -f "$conf" ] || { warn "未找到 Nginx 配置: $conf"; return 0; }
+
+    if grep -q "location /repo-sync/" "$conf"; then
+        return 0
+    fi
+
+    log "检测到 Nginx 配置缺少 /repo-sync/ 转发，正在自动修复..."
+    cp "$conf" "${conf}.backup.$(date +%Y%m%d_%H%M%S)"
+    python3 - "$conf" "$BACKEND_PORT" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+port = sys.argv[2]
+text = path.read_text()
+if 'location /repo-sync/' in text:
+    sys.exit(0)
+
+repo_block = f'''    location /repo-sync/ {{
+        proxy_pass http://127.0.0.1:{port};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }}
+'''
+
+lines = text.split('\n')
+out = []
+inserted = False
+for line in lines:
+    stripped = line.strip()
+    if stripped.startswith('location / '):
+        out.append(repo_block.rstrip('\n'))
+        out.append(line)
+        inserted = True
+    else:
+        out.append(line)
+
+if not inserted:
+    sys.exit(1)
+path.write_text('\n'.join(out))
+PY
+    if [ $? -eq 0 ]; then
+        log "✅ /repo-sync/ 转发已添加"
+        nginx -t 2>/dev/null && systemctl reload nginx
+    else
+        warn "自动修改失败，请手动在 nginx 配置中 location / 之前添加 /repo-sync/ 反向代理到 127.0.0.1:$BACKEND_PORT"
+    fi
 }
 
 main() {
