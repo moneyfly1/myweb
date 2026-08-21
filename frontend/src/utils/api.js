@@ -628,6 +628,7 @@ export const adminAPI = {
   batchUnassignCustomNodes: (nodeIds, userIds = []) => api.post('/admin/custom-nodes/batch-unassign', { node_ids: nodeIds, user_ids: userIds }),
   migrateCustomNodeAssignments: (fromNodeId, toNodeId, options = {}) => api.post('/admin/custom-nodes/migrate-assignments', { from_node_id: fromNodeId, to_node_id: toNodeId, ...options }),
   getCustomNodeUsers: (id) => api.get(`/admin/custom-nodes/${id}/users`),
+  batchGetCustomNodeUsers: (nodeIds) => api.post('/admin/custom-nodes/batch-users', { node_ids: nodeIds }),
   testCustomNode: (id) => api.post(`/admin/custom-nodes/${id}/test`),
   batchTestCustomNodes: (nodeIds) => api.post('/admin/custom-nodes/batch-test', { node_ids: nodeIds }),
   getCustomNodeLink: (id) => api.get(`/admin/custom-nodes/${id}/link`),
