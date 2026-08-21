@@ -902,11 +902,31 @@ func BatchDeleteNodes(c *gin.Context) {
 	var normalNodeIDs []uint
 	var customNodeIDs []uint
 
+	// 虚拟 ID 约定：>1000000 的 ID 表示专线节点 ID + 1000000（见 GetUserNodes 合并列表）。
+	// 先验证这些 ID 在 custom_nodes 中确实存在；不存在的按普通节点 ID 处理，
+	// 避免普通节点 ID 超过 1000000 时被误判为专线节点，导致批量删除 0 行。
+	var maybeCustomIDs []uint
 	for _, nodeID := range req.NodeIDs {
 		if nodeID > 1000000 {
-			customNodeIDs = append(customNodeIDs, nodeID-1000000)
+			maybeCustomIDs = append(maybeCustomIDs, nodeID-1000000)
 		} else {
 			normalNodeIDs = append(normalNodeIDs, nodeID)
+		}
+	}
+	if len(maybeCustomIDs) > 0 {
+		var existingCustomIDs []uint
+		db.Model(&models.CustomNode{}).Where("id IN ?", maybeCustomIDs).Pluck("id", &existingCustomIDs)
+		existingSet := make(map[uint]bool, len(existingCustomIDs))
+		for _, id := range existingCustomIDs {
+			existingSet[id] = true
+		}
+		for _, baseID := range maybeCustomIDs {
+			if existingSet[baseID] {
+				customNodeIDs = append(customNodeIDs, baseID)
+			} else {
+				// custom_nodes 中不存在 → 实际是 ID 超过 1000000 的普通节点
+				normalNodeIDs = append(normalNodeIDs, baseID+1000000)
+			}
 		}
 	}
 
@@ -940,7 +960,8 @@ func BatchDeleteNodes(c *gin.Context) {
 			return
 		}
 		if len(equivalentIDs) == 0 {
-			utils.ErrorResponse(c, http.StatusNotFound, "节点不存在", nil)
+			// 所选节点已不存在（如页面展示旧数据时重复删除），返回成功并提示刷新
+			utils.SuccessResponse(c, http.StatusOK, "未删除任何节点：所选节点已不存在，请刷新列表", gin.H{"deleted_count": 0})
 			return
 		}
 		result := db.Where("id IN ?", equivalentIDs).Delete(&models.Node{})
@@ -952,16 +973,29 @@ func BatchDeleteNodes(c *gin.Context) {
 	}
 
 	if len(customNodeIDs) > 0 {
+		// 先记录关联用户，删除分配关系后同步清理其缓存，避免用户订阅残留已删除专线节点
+		var affectedUserIDs []uint
+		db.Model(&models.UserCustomNode{}).Where("custom_node_id IN ?", customNodeIDs).Distinct("user_id").Pluck("user_id", &affectedUserIDs)
+
+		db.Where("custom_node_id IN ?", customNodeIDs).Delete(&models.UserCustomNode{})
+
 		result := db.Where("id IN ?", customNodeIDs).Delete(&models.CustomNode{})
 		if result.Error != nil {
 			utils.ErrorResponse(c, http.StatusInternalServerError, "删除专线节点失败", result.Error)
 			return
 		}
 		deletedCount += int(result.RowsAffected)
+
+		for _, uid := range affectedUserIDs {
+			clearUserCustomNodeCache(uid)
+			resetSpecialNodeFieldsIfNoCustomNodes(db, uid)
+		}
 	}
 
 	if deletedCount == 0 {
-		utils.ErrorResponse(c, http.StatusNotFound, "未删除任何节点，请刷新列表后重试", nil)
+		// 所选节点已不存在（如页面展示旧数据时重复删除），返回成功并提示刷新，
+		// 避免前端把"无节点可删"当成删除失败
+		utils.SuccessResponse(c, http.StatusOK, "未删除任何节点：所选节点已不存在，请刷新列表", gin.H{"deleted_count": 0})
 		return
 	}
 
