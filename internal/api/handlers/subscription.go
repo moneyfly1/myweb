@@ -1670,6 +1670,10 @@ func validateSubscription(subscription *models.Subscription, user *models.User, 
 }
 
 func GetSubscriptionConfig(c *gin.Context) {
+	// 订阅内容必须实时反映节点增删，禁止任何客户端/代理缓存
+	c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+	c.Header("Pragma", "no-cache")
+
 	if shouldBlockBrowserSubscriptionAccess(c) {
 		respondEmptySubscriptionForBrowser(c)
 		return
@@ -1937,6 +1941,10 @@ func generateErrorConfigBase64(title, message string, baseURL string) string {
 }
 
 func GetUniversalSubscription(c *gin.Context) {
+	// 订阅内容必须实时反映节点增删，禁止任何客户端/代理缓存
+	c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+	c.Header("Pragma", "no-cache")
+
 	if shouldBlockBrowserSubscriptionAccess(c) {
 		respondEmptySubscriptionForBrowser(c)
 		return

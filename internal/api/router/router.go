@@ -345,6 +345,7 @@ func SetupRouter() *gin.Engine {
 		admin := api.Group("/admin")
 		admin.Use(middleware.AuthMiddleware())
 		admin.Use(middleware.AdminMiddleware())
+		admin.Use(middleware.NoStoreMiddleware())
 		{
 			admin.GET("/dashboard", handlers.GetDashboard)
 			admin.GET("/stats", handlers.GetDashboard)

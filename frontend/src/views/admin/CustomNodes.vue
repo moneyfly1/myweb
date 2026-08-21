@@ -896,7 +896,8 @@ export default {
       try {
         const params = {
           page: pagination.page, size: pagination.size,
-          ...filters, search: searchKeyword.value
+          ...filters, search: searchKeyword.value,
+          _t: Date.now() // 缓存穿透参数，避免浏览器/代理返回旧列表
         }
         for (const key in params) { if (!params[key]) delete params[key] }
         const res = await adminAPI.getCustomNodes(params)
@@ -1033,6 +1034,9 @@ export default {
         })
         await adminAPI.deleteCustomNode(node.id)
         ElMessage.success('已删除')
+        // 先从本地列表立即移除，再向服务端重新拉取校准，保证页面马上不显示已删除节点
+        customNodes.value = customNodes.value.filter(n => n.id !== node.id)
+        if (pagination.total > 0) pagination.total -= 1
         selectedNodes.value = selectedNodes.value.filter(n => n.id !== node.id)
         tableRef.value?.clearSelection()
         loadCustomNodes()
@@ -1100,8 +1104,13 @@ export default {
           message: warningMsg,
           title: '批量删除专线节点'
         })
-        await adminAPI.batchDeleteCustomNodes(selectedNodes.value.map(n => n.id))
+        const deletedIds = selectedNodes.value.map(n => n.id)
+        await adminAPI.batchDeleteCustomNodes(deletedIds)
         ElMessage.success('批量删除成功')
+        // 先从本地列表立即移除已删除节点，再向服务端重新拉取校准，
+        // 避免因浏览器/代理缓存导致重新加载后仍显示旧节点
+        customNodes.value = customNodes.value.filter(n => !deletedIds.includes(n.id))
+        pagination.total = Math.max(0, pagination.total - deletedIds.length)
         selectedNodes.value = []
         tableRef.value?.clearSelection()
         loadCustomNodes()
