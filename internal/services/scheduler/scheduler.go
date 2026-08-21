@@ -20,6 +20,7 @@ import (
 	"cboard-go/internal/services/git"
 	"cboard-go/internal/services/node_health"
 	"cboard-go/internal/services/notification"
+	"cboard-go/internal/services/repo_sync"
 	"cboard-go/internal/utils"
 
 	"gorm.io/gorm"
@@ -60,6 +61,7 @@ func (s *Scheduler) Start() {
 	go s.checkNodeHealth()
 	go s.autoUpdateNodes()
 	go s.autoBackup()
+	go s.syncRepoFiles()
 }
 
 func (s *Scheduler) Stop() {
@@ -549,6 +551,25 @@ func (s *Scheduler) shouldRunAutoBackup(intervalHours int) bool {
 	interval := time.Duration(intervalHours) * time.Hour
 
 	return elapsed >= interval
+}
+
+// syncRepoFiles GitHub 仓库文件定时同步：每分钟检查配置，按间隔执行
+func (s *Scheduler) syncRepoFiles() {
+	// 初始检查
+	repo_sync.NewService().Tick()
+
+	// 每分钟检查一次配置变化，按配置的间隔（默认10分钟）执行同步
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.stopChan:
+			return
+		case <-ticker.C:
+			repo_sync.NewService().Tick()
+		}
+	}
 }
 
 func (s *Scheduler) runAutoBackup() error {

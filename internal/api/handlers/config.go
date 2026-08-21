@@ -310,6 +310,11 @@ func GetAdminSettings(c *gin.Context) {
 			"backup_github_repo":  githubDefaults.Repo,
 			"backup_auto_enabled": "false", "backup_auto_interval": "24",
 		},
+		"repo_sync": {
+			"repo_sync_enabled": "false", "repo_sync_token": "",
+			"repo_sync_owner": "", "repo_sync_repo": "", "repo_sync_path": "",
+			"repo_sync_interval_minutes": "10",
+		},
 		"invite": {
 			"inviter_reward": 0.0, "invitee_reward": 0.0, "min_order_amount": 0.0, "new_user_only": true,
 		},
@@ -327,6 +332,7 @@ func GetAdminSettings(c *gin.Context) {
 		"admin_telegram_chat_id": true, "admin_telegram_bot_token": true,
 		"admin_bark_device_key": true, "admin_notification_email": true,
 		"admin_bark_server_url": true, "support_qq": true, "support_email": true, "domain_name": true,
+		"repo_sync_token": true, "repo_sync_owner": true, "repo_sync_repo": true, "repo_sync_path": true,
 	}
 
 	// Optimized merge logic
