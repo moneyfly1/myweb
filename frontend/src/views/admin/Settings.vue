@@ -866,6 +866,94 @@
             <el-button type="primary" @click="saveProtocolFilterSettings" :class="{ 'full-width': isMobile }">保存协议过滤规则</el-button>
           </div>
         </el-tab-pane>
+
+        <!-- ==================== 仓库文件同步 ==================== -->
+        <el-tab-pane label="仓库文件同步" name="repo-sync">
+          <div class="notification-layout">
+            <!-- 左列：GitHub 仓库配置 -->
+            <div class="notification-panel">
+              <div class="panel-header">
+                <h3>GitHub 仓库配置</h3>
+                <el-tag type="info" size="small" effect="plain">私有仓库需 Token</el-tag>
+              </div>
+
+              <el-form :model="repoSyncSettings" label-position="top" class="compact-form">
+                <div class="switch-card mb-3">
+                  <div class="switch-card-content">
+                    <span class="title">启用自动下载</span>
+                    <span class="desc">开启后每隔指定分钟自动把仓库文件下载到服务器目录。</span>
+                  </div>
+                  <el-switch v-model="repoSyncSettings.repo_sync_enabled" />
+                </div>
+
+                <el-form-item label="Personal Token">
+                  <el-input v-model="repoSyncSettings.repo_sync_token" type="password" show-password placeholder="需具备 repo 读取权限" autocomplete="new-password" />
+                  <div class="form-tip">私有仓库必填，前往 <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">GitHub Token 设置</a> 创建。</div>
+                </el-form-item>
+
+                <div class="backup-fields-row">
+                  <el-form-item label="仓库所有者">
+                    <el-input v-model="repoSyncSettings.repo_sync_owner" placeholder="例如 moneyfly006" />
+                  </el-form-item>
+                  <el-form-item label="仓库名称">
+                    <el-input v-model="repoSyncSettings.repo_sync_repo" placeholder="例如 nodes" />
+                  </el-form-item>
+                </div>
+
+                <div class="backup-fields-row">
+                  <el-form-item label="仓库目录">
+                    <el-input v-model="repoSyncSettings.repo_sync_path" placeholder="例如 nodes，留空为仓库根目录" />
+                  </el-form-item>
+                  <el-form-item label="下载间隔">
+                    <div class="inline-control-row">
+                      <el-input-number v-model="repoSyncSettings.repo_sync_interval_minutes" :min="1" :max="1440" size="small" class="interval-input" />
+                      <span class="unit-text">分钟</span>
+                    </div>
+                  </el-form-item>
+                </div>
+
+                <div class="mt-3">
+                  <el-button type="primary" @click="saveRepoSyncSettings" :class="{ 'full-width': isMobile }">保存配置</el-button>
+                </div>
+              </el-form>
+            </div>
+
+            <!-- 右列：同步状态与文件存放目录 -->
+            <div class="notification-panel">
+              <div class="panel-header">
+                <h3>下载状态</h3>
+              </div>
+
+              <div class="sync-status-box">
+                <div class="sync-status-item">
+                  <span class="sync-status-label">上次下载</span>
+                  <span class="sync-status-value">{{ repoSyncStatus?.last_time ? repoSyncStatus.last_time.replace('T', ' ') : '从未下载' }}</span>
+                  <el-tag v-if="repoSyncStatus?.last_status" :type="repoSyncStatusType" size="small">{{ repoSyncStatusLabel }}</el-tag>
+                </div>
+                <div v-if="repoSyncStatus?.last_message" class="sync-status-message">{{ repoSyncStatus.last_message }}</div>
+              </div>
+
+              <div class="mt-3">
+                <el-button type="success" plain @click="testRepoSyncConnection" :loading="repoSyncLoading.test" :disabled="!repoSyncSettings.repo_sync_token" size="small">测试连接</el-button>
+                <el-button type="primary" plain @click="runRepoSyncNow" :loading="repoSyncLoading.run" size="small">立即下载</el-button>
+                <el-button size="small" @click="loadRepoSyncStatus" :loading="repoSyncLoading.status">刷新状态</el-button>
+              </div>
+
+              <div class="settings-section-title text-sm">文件存放位置</div>
+              <div class="sync-dir-box">
+                <div class="sync-dir-item">
+                  <span class="sync-status-label">服务器目录</span>
+                  <code class="sync-dir-code">uploads/repo_sync/</code>
+                </div>
+                <div class="sync-dir-item">
+                  <span class="sync-status-label">外链前缀</span>
+                  <code class="sync-dir-code">{{ repoSyncBaseUrl }}</code>
+                </div>
+              </div>
+              <div class="form-tip">仅把仓库文件下载到以上目录，不会改动"节点管理"中的任何数据。</div>
+            </div>
+          </div>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
   </div>
@@ -1072,6 +1160,13 @@ export default {
     const protocolFilterSettings = reactive({
       clash_protocols: [...ALL_PROTOCOLS], universal_protocols: [...ALL_PROTOCOLS]
     })
+    const repoSyncSettings = reactive({
+      repo_sync_enabled: false, repo_sync_token: '',
+      repo_sync_owner: '', repo_sync_repo: '', repo_sync_path: '',
+      repo_sync_interval_minutes: 10
+    })
+    const repoSyncStatus = ref(null)
+    const repoSyncLoading = reactive({ test: false, run: false, status: false })
     
     const generalRules = { site_name: [{ required: true, message: '请输入网站名称', trigger: 'blur' }] }
 
@@ -1180,6 +1275,11 @@ export default {
             catch { protocolFilterSettings.universal_protocols = [...ALL_PROTOCOLS] }
           }
         }
+        if (data.repo_sync) {
+          Object.assign(repoSyncSettings, data.repo_sync)
+          repoSyncSettings.repo_sync_enabled = toBool(repoSyncSettings.repo_sync_enabled)
+          repoSyncSettings.repo_sync_interval_minutes = parseInt(repoSyncSettings.repo_sync_interval_minutes) || 10
+        }
       } catch (error) {
         ElMessage.error('加载设置失败: ' + (error.response?.data?.message || error.message))
       } finally {
@@ -1254,6 +1354,7 @@ export default {
     const saveAnnouncementSettings = () => handleSave(() => api.put('/admin/settings/announcement', announcementSettings), '公告设置保存成功')
     const saveBackupSettings = () => handleSave(() => api.put('/admin/settings/backup', backupSettings), '备份设置保存成功')
     const saveProtocolFilterSettings = () => handleSave(() => api.put('/admin/settings/protocol-filter', protocolFilterSettings), '协议过滤设置保存成功')
+    const saveRepoSyncSettings = () => handleSave(() => api.put('/admin/settings/repo-sync', repoSyncSettings), '仓库文件同步设置保存成功')
     const saveThemeSettings = async () => {
       const success = await handleSave(() => api.put('/admin/settings/theme', themeSettings), '主题设置保存成功')
       if (success && themeSettings.default_theme) await themeStore.setTheme(themeSettings.default_theme)
@@ -1276,7 +1377,8 @@ export default {
       general: saveGeneralSettings, registration: saveRegistrationSettings, invite: saveInviteSettings,
       notification: async () => (await saveNotificationSettings() && await saveAdminNotificationSettings()),
       announcement: saveAnnouncementSettings, theme: saveThemeSettings, 'node-health': saveNodeHealthSettings,
-      security: saveSecuritySettings, backup: saveBackupSettings, 'protocol-filter': saveProtocolFilterSettings
+      security: saveSecuritySettings, backup: saveBackupSettings, 'protocol-filter': saveProtocolFilterSettings,
+      'repo-sync': saveRepoSyncSettings
     }
 
     const saveCurrentTab = async () => {
@@ -1355,6 +1457,58 @@ export default {
         else ElMessage.error(res.data?.message || '测试失败')
       } catch (e) { ElMessage.error('测试失败: ' + (e.response?.data?.message || e.message)) }
       finally { testingStates.github = false }
+    }
+
+    const repoSyncBaseUrl = computed(() => `${window.location.origin}/repo-sync/`)
+    const repoSyncStatusType = computed(() => {
+      const s = repoSyncStatus.value?.last_status
+      if (s === 'success') return 'success'
+      if (s === 'failed') return 'danger'
+      if (s === 'partial') return 'warning'
+      return 'info'
+    })
+    const repoSyncStatusLabel = computed(() => {
+      const s = repoSyncStatus.value?.last_status
+      return s === 'success' ? '成功' : s === 'failed' ? '失败' : s === 'partial' ? '部分成功' : s || '等待中'
+    })
+    const loadRepoSyncStatus = async () => {
+      repoSyncLoading.status = true
+      try {
+        const res = await api.get('/admin/repo-sync/status')
+        repoSyncStatus.value = res.data?.data || res.data || null
+      } catch (error) {
+        ElMessage.error('加载同步状态失败: ' + (error.response?.data?.message || error.message))
+      } finally {
+        repoSyncLoading.status = false
+      }
+    }
+    const testRepoSyncConnection = async () => {
+      const { repo_sync_token: token, repo_sync_owner: owner, repo_sync_repo: repo, repo_sync_path: path } = repoSyncSettings
+      if (!token || !owner || !repo) return ElMessage.error('请填写完整的 GitHub 配置')
+      repoSyncLoading.test = true
+      try {
+        await api.put('/admin/settings/repo-sync', repoSyncSettings)
+        const res = await api.post('/admin/repo-sync/test', { token, owner, repo, path }, { timeout: 60000 })
+        if (res.data?.success !== false) ElMessage.success(res.data?.message || 'GitHub 连接成功！')
+        else ElMessage.error(res.data?.message || '测试失败')
+      } catch (e) {
+        ElMessage.error('测试失败: ' + (e.response?.data?.message || e.message))
+      } finally {
+        repoSyncLoading.test = false
+      }
+    }
+    const runRepoSyncNow = async () => {
+      repoSyncLoading.run = true
+      try {
+        const res = await api.post('/admin/repo-sync/run', {}, { timeout: 300000 })
+        if (res.data?.success !== false) ElMessage.success(res.data?.message || '同步完成')
+        else ElMessage.error(res.data?.message || '同步失败')
+        await loadRepoSyncStatus()
+      } catch (e) {
+        ElMessage.error('同步失败: ' + (e.response?.data?.message || e.message))
+      } finally {
+        repoSyncLoading.run = false
+      }
     }
 
     const checkUploadStatus = async (taskId, target) => {
@@ -1516,7 +1670,7 @@ export default {
       return true
     }
 
-    onMounted(() => Promise.all([loadSettings(), loadGeoIPStatus()]))
+    onMounted(() => Promise.all([loadSettings(), loadGeoIPStatus(), loadRepoSyncStatus()]))
     onBeforeUnmount(() => stopStatusPolling())
 
     return {
@@ -1530,6 +1684,8 @@ export default {
       restoreLocal, restoreRemote, loadLocalBackups, doRestoreLocal, loadRemoteYears, onRemoteYearChange, onRemoteMonthChange, doRestoreRemote,
       saveGeneralSettings, saveRegistrationSettings, saveInviteSettings, saveNotificationSettings, saveSecuritySettings, saveThemeSettings, saveAnnouncementSettings,
       saveNodeHealthSettings, saveAdminNotificationSettings, saveBackupSettings, saveProtocolFilterSettings, saveCurrentTab, refreshSettings, protocolFilterSettings, allProtocols: ALL_PROTOCOLS,
+      repoSyncSettings, repoSyncStatus, repoSyncLoading, repoSyncBaseUrl, repoSyncStatusType, repoSyncStatusLabel,
+      saveRepoSyncSettings, testRepoSyncConnection, runRepoSyncNow, loadRepoSyncStatus,
       testNotification, testGiteeConnection, testGitHubConnection, createManualBackup, updateGeoIPDatabase, switchDatabase, flushCache, handleLogoSuccess, beforeLogoUpload, formatFileSize
     }
   }
@@ -1935,5 +2091,54 @@ export default {
   .settings-section-title { font-size: 15px; margin: 24px 0 16px; }
   .platform-config-block .block-header { padding: 14px 12px; }
   .platform-config-block .block-body { padding: 16px 12px; }
+}
+
+/* ========== 仓库文件同步 ========== */
+.sync-status-box {
+  padding: 12px;
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
+}
+.sync-status-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sync-status-label {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.sync-status-value {
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  word-break: break-all;
+}
+.sync-status-message {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  word-break: break-all;
+}
+.sync-dir-box {
+  padding: 10px 12px;
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
+}
+.sync-dir-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.sync-dir-item:last-child {
+  margin-bottom: 0;
+}
+.sync-dir-code {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--el-color-primary);
+  word-break: break-all;
 }
 </style>

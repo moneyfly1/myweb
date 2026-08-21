@@ -34,6 +34,9 @@ func SetupRouter() *gin.Engine {
 	r.StaticFile("/favicon.ico", "./frontend/dist/favicon.ico")
 	r.StaticFile("/vite.svg", "./frontend/dist/vite.svg")
 
+	// GitHub 仓库同步的节点文件公开访问（维护模式下仍可用）
+	r.GET("/repo-sync/*filepath", handlers.ServeRepoSyncFile)
+
 	r.GET("/health", func(c *gin.Context) {
 		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 			"status":  "healthy",
@@ -437,6 +440,10 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/settings/admin-notification/test/bark", handlers.TestAdminBarkNotification)
 			admin.PUT("/settings/node_health", handlers.UpdateNodeHealthSettings)
 			admin.PUT("/settings/backup", handlers.UpdateBackupSettings)
+			admin.PUT("/settings/repo-sync", handlers.UpdateRepoSyncSettings)
+			admin.GET("/repo-sync/status", handlers.GetRepoSyncStatus)
+			admin.POST("/repo-sync/test", handlers.TestRepoSyncConnection)
+			admin.POST("/repo-sync/run", handlers.RunRepoSync)
 			admin.PUT("/settings/protocol-filter", handlers.UpdateProtocolFilterSettings)
 			admin.GET("/settings/geoip/status", handlers.GetGeoIPStatus)
 			admin.POST("/settings/geoip/update", handlers.UpdateGeoIPDatabase)
