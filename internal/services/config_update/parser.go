@@ -318,10 +318,36 @@ func (s *ConfigUpdateService) buildVLESSLink(proxy map[string]interface{}, name,
 	params.Set("security", "none")
 
 	if tls, _ := proxy["tls"].(bool); tls {
-		params.Set("security", "tls")
+		// Reality 配置优先
+		if realityOpts, ok := proxy["reality-opts"].(map[string]interface{}); ok {
+			params.Set("security", "reality")
+			if pbk, ok := realityOpts["public-key"].(string); ok && pbk != "" {
+				params.Set("pbk", pbk)
+			}
+			if sid, ok := realityOpts["short-id"].(string); ok && sid != "" {
+				params.Set("sid", sid)
+			}
+		} else {
+			params.Set("security", "tls")
+		}
 		if sni, ok := proxy["servername"].(string); ok {
 			params.Set("sni", sni)
 		}
+	}
+
+	// flow（如 xtls-rprx-vision）
+	if flow, ok := proxy["flow"].(string); ok && flow != "" {
+		params.Set("flow", flow)
+	}
+
+	// client-fingerprint（如 chrome）
+	if fp, ok := proxy["client-fingerprint"].(string); ok && fp != "" {
+		params.Set("fp", fp)
+	}
+
+	// skip-cert-verify
+	if skip, ok := proxy["skip-cert-verify"].(bool); ok && skip {
+		params.Set("allowInsecure", "1")
 	}
 
 	// 处理传输层配置
