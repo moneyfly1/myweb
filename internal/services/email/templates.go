@@ -148,6 +148,7 @@ func (b *EmailTemplateBuilder) GetBaseTemplate(title, content, footerText string
 }
 
 func (b *EmailTemplateBuilder) GetVerificationCodeTemplate(username, verificationCode string) string {
+	username = escapeHTML(username)
 	title := "注册验证码"
 	content := fmt.Sprintf(`<h2>📧 您的注册验证码</h2>
             <p>亲爱的用户 <strong>%s</strong>，</p>
@@ -171,6 +172,7 @@ func (b *EmailTemplateBuilder) GetVerificationCodeTemplate(username, verificatio
 }
 
 func (b *EmailTemplateBuilder) GetPasswordResetTemplate(username, resetLink string) string {
+	username = escapeHTML(username)
 	title := "密码重置"
 	content := fmt.Sprintf(`<h2>您的密码重置请求</h2>
             <p>亲爱的 %s，</p>
@@ -211,6 +213,7 @@ func (b *EmailTemplateBuilder) GetPasswordResetTemplate(username, resetLink stri
 }
 
 func (b *EmailTemplateBuilder) GetPasswordResetVerificationCodeTemplate(username, verificationCode string) string {
+	username = escapeHTML(username)
 	title := "密码重置验证码"
 	content := fmt.Sprintf(`<h2>🔐 您的密码重置验证码</h2>
             <p>亲爱的用户 <strong>%s</strong>，</p>
@@ -234,6 +237,7 @@ func (b *EmailTemplateBuilder) GetPasswordResetVerificationCodeTemplate(username
 }
 
 func (b *EmailTemplateBuilder) GetSubscriptionTemplate(username, universalURL, clashURL, expireTime string, remainingDays, deviceLimit, currentDevices int) string {
+	username = escapeHTML(username)
 	title := "服务配置信息"
 
 	urlList := buildConfigURLItem("⚡ Clash 订阅地址：", "适用于 Clash、ClashX、Clash for Windows 等 Clash 类型软件", clashURL)
@@ -273,6 +277,11 @@ func (b *EmailTemplateBuilder) GetSubscriptionTemplate(username, universalURL, c
 }
 
 func (b *EmailTemplateBuilder) GetOrderConfirmationTemplate(username, orderNo, packageName string, amount float64, paymentMethod, orderTime string) string {
+	username = escapeHTML(username)
+	orderNo = escapeHTML(orderNo)
+	packageName = escapeHTML(packageName)
+	paymentMethod = escapeHTML(paymentMethod)
+	orderTime = escapeHTML(orderTime)
 	title := "订单确认"
 	content := fmt.Sprintf(`<h2>✅ 订单确认</h2>
             <p>亲爱的用户 <strong>%s</strong>，</p>
@@ -303,6 +312,11 @@ func (b *EmailTemplateBuilder) GetOrderConfirmationTemplate(username, orderNo, p
 }
 
 func (b *EmailTemplateBuilder) GetPaymentSuccessTemplate(username, orderNo, packageName string, amount float64, paymentMethod, paymentTime string) string {
+	username = escapeHTML(username)
+	orderNo = escapeHTML(orderNo)
+	packageName = escapeHTML(packageName)
+	paymentMethod = escapeHTML(paymentMethod)
+	paymentTime = escapeHTML(paymentTime)
 	title := "支付成功通知"
 	content := fmt.Sprintf(`<h2>🎉 支付成功！</h2>
             <p>亲爱的 %s，</p>
@@ -333,6 +347,12 @@ func (b *EmailTemplateBuilder) GetPaymentSuccessTemplate(username, orderNo, pack
 }
 
 func (b *EmailTemplateBuilder) GetDeviceUpgradePaymentSuccessTemplate(username, orderNo string, amount float64, paymentMethod, paymentTime string, oldDeviceLimit, newDeviceLimit, additionalDevices, additionalDays int, oldExpireTime, newExpireTime string) string {
+	username = escapeHTML(username)
+	orderNo = escapeHTML(orderNo)
+	paymentMethod = escapeHTML(paymentMethod)
+	paymentTime = escapeHTML(paymentTime)
+	oldExpireTime = escapeHTML(oldExpireTime)
+	newExpireTime = escapeHTML(newExpireTime)
 	title := "支付成功通知"
 
 	upgradeRows := ""
@@ -379,6 +399,10 @@ func (b *EmailTemplateBuilder) GetDeviceUpgradePaymentSuccessTemplate(username, 
 
 // GetAbnormalLoginAlertTemplate 异常登录/新设备/异地登录告警邮件
 func (b *EmailTemplateBuilder) GetAbnormalLoginAlertTemplate(username, loginTime, ipAddress, locationStr string, isNewDevice, isNewLocation bool) string {
+	username = escapeHTML(username)
+	loginTime = escapeHTML(loginTime)
+	ipAddress = escapeHTML(ipAddress)
+	locationStr = escapeHTML(locationStr)
 	title := "账户登录安全提醒"
 	reasons := make([]string, 0, 2)
 	if isNewDevice {
@@ -412,6 +436,9 @@ func (b *EmailTemplateBuilder) GetAbnormalLoginAlertTemplate(username, loginTime
 }
 
 func (b *EmailTemplateBuilder) GetWelcomeTemplate(username, email, loginURL string, hasPassword bool, password string) string {
+	username = escapeHTML(username)
+	email = escapeHTML(email)
+	password = escapeHTML(password)
 	title := "欢迎加入我们！"
 
 	passwordRow := ""
@@ -493,6 +520,8 @@ func (b *EmailTemplateBuilder) GetUserCreatedTemplate(username, email, password,
 }
 
 func (b *EmailTemplateBuilder) GetPasswordChangedTemplate(username, changeTime, loginURL string) string {
+	username = escapeHTML(username)
+	changeTime = escapeHTML(changeTime)
 	title := "密码修改成功"
 	content := fmt.Sprintf(`<h2>您的密码已修改</h2>
             <p>亲爱的 %s，</p>
@@ -529,6 +558,10 @@ func (b *EmailTemplateBuilder) GetPasswordChangedTemplate(username, changeTime, 
 }
 
 func (b *EmailTemplateBuilder) GetSubscriptionResetTemplate(username, universalURL, clashURL, expireTime, resetTime, resetReason string) string {
+	username = escapeHTML(username)
+	expireTime = escapeHTML(expireTime)
+	resetTime = escapeHTML(resetTime)
+	resetReason = escapeHTML(resetReason)
 	title := "订阅重置通知"
 
 	urlList := buildConfigURLItem("⚡ Clash 订阅地址：", "专为移动设备优化，支持规则分流", clashURL)
@@ -577,6 +610,10 @@ func (b *EmailTemplateBuilder) GetSubscriptionResetTemplate(username, universalU
 }
 
 func (b *EmailTemplateBuilder) GetAccountDeletionTemplate(username, deletionDate, reason, dataRetentionPeriod string) string {
+	username = escapeHTML(username)
+	deletionDate = escapeHTML(deletionDate)
+	reason = escapeHTML(reason)
+	dataRetentionPeriod = escapeHTML(dataRetentionPeriod)
 	title := "账号删除确认"
 	content := fmt.Sprintf(`<h2>账号删除确认</h2>
             <p>亲爱的用户 <strong>%s</strong>，</p>
@@ -602,6 +639,9 @@ func (b *EmailTemplateBuilder) GetAccountDeletionTemplate(username, deletionDate
 }
 
 func (b *EmailTemplateBuilder) GetExpirationReminderTemplate(username, packageName, expireDate string, remainingDays, deviceLimit, currentDevices int, isExpired bool) string {
+	username = escapeHTML(username)
+	packageName = escapeHTML(packageName)
+	expireDate = escapeHTML(expireDate)
 	title := "订阅已到期"
 	if !isExpired {
 		title = "订阅即将到期"
@@ -686,6 +726,11 @@ func (b *EmailTemplateBuilder) GetExpirationReminderTemplate(username, packageNa
 }
 
 func (b *EmailTemplateBuilder) GetRenewalConfirmationTemplate(username, packageName, oldExpiryDate, newExpiryDate, renewalDate string, amount float64) string {
+	username = escapeHTML(username)
+	packageName = escapeHTML(packageName)
+	oldExpiryDate = escapeHTML(oldExpiryDate)
+	newExpiryDate = escapeHTML(newExpiryDate)
+	renewalDate = escapeHTML(renewalDate)
 	title := "续费成功"
 	baseURL := b.GetBaseURL()
 
@@ -718,6 +763,8 @@ func (b *EmailTemplateBuilder) GetRenewalConfirmationTemplate(username, packageN
 }
 
 func (b *EmailTemplateBuilder) GetMarketingEmailTemplate(title, content string) string {
+	title = escapeHTML(title)
+	content = escapeHTML(content)
 	baseURL := b.GetBaseURL()
 
 	emailContent := fmt.Sprintf(`<h2>%s</h2>
@@ -731,6 +778,8 @@ func (b *EmailTemplateBuilder) GetMarketingEmailTemplate(title, content string) 
 }
 
 func (b *EmailTemplateBuilder) GetBroadcastNotificationTemplate(title, content string) string {
+	title = escapeHTML(title)
+	content = escapeHTML(content)
 	emailContent := fmt.Sprintf(`<div class="content">
                 <h2>%s</h2>
                 <div style="line-height: 1.8; color: #555;">%s</div>
@@ -1095,6 +1144,12 @@ func formatEmailMultilineText(text string) string {
 	return strings.ReplaceAll(template.HTMLEscapeString(text), "\n", "<br>")
 }
 
+// escapeHTML 转义用户可控字符串，防止恶意用户名/邮箱/备注等注入邮件 HTML（存储型 XSS）。
+// 所有把用户输入拼进邮件模板的 builder 必须用它包一层。
+func escapeHTML(s string) string {
+	return html.EscapeString(s)
+}
+
 func (b *EmailTemplateBuilder) GetAdminReplyNotificationTemplate(ticketNo, title, ticketContent, replyContent string, replyHistory []TicketReplyHistoryItem) string {
 	historyContent := `<p style="line-height:1.8; color:#777;">暂无历史回复记录</p>`
 	if len(replyHistory) > 0 {
@@ -1154,13 +1209,19 @@ func (b *EmailTemplateBuilder) GetAdminReplyNotificationTemplate(ticketNo, title
 }
 
 func getStringFromData(data map[string]interface{}, key string, defaultValue string) string {
+	var s string
 	if val, ok := data[key]; ok {
 		if str, ok := val.(string); ok {
-			return str
+			s = str
+		} else {
+			s = fmt.Sprintf("%v", val)
 		}
-		return fmt.Sprintf("%v", val)
+	} else {
+		s = defaultValue
 	}
-	return defaultValue
+	// 该辅助函数仅用于把 data 中的用户可控字段拼进邮件 HTML，
+	// 在这里统一转义，防止恶意用户名/邮箱等注入（存储型 XSS）
+	return escapeHTML(s)
 }
 
 func getFloatFromData(data map[string]interface{}, key string, defaultValue float64) float64 {

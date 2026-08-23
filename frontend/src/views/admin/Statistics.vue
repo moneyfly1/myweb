@@ -322,7 +322,7 @@
 </div>
 </template>
 <script>
-import { ref, reactive, onMounted, nextTick, watch } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { Refresh, User, Connection, ShoppingCart, Money } from '@element-plus/icons-vue'
 import { statisticsAPI } from '@/utils/api'
@@ -393,6 +393,11 @@ export default {
 				console.error(error)
 			}
 		}
+		// 图表实例缓存：重复初始化前销毁旧实例，组件卸载时全部销毁，防止内存泄漏
+		let userChartInstance = null
+		let revenueChartInstance = null
+		let regionChartInstance = null
+
 		const initUserChart = async () => {
 			try {
 				const response = await statisticsAPI.getUserTrend()
@@ -403,7 +408,11 @@ export default {
 				const labels = chartData.labels || []
 				const data = chartData.data || []
 				const ctx = userChart.value.getContext('2d')
-				new Chart(ctx, {
+				if (userChartInstance) {
+					userChartInstance.destroy()
+					userChartInstance = null
+				}
+				userChartInstance = new Chart(ctx, {
 					type: 'line',
 					data: {
 						labels: labels,
@@ -444,7 +453,11 @@ export default {
 				const labels = chartData.labels || []
 				const data = chartData.data || []
 				const ctx = revenueChart.value.getContext('2d')
-				new Chart(ctx, {
+				if (revenueChartInstance) {
+					revenueChartInstance.destroy()
+					revenueChartInstance = null
+				}
+				revenueChartInstance = new Chart(ctx, {
 					type: 'bar',
 					data: {
 						labels: labels,
@@ -508,7 +521,6 @@ export default {
 				loadingRegions.value = false
 			}
 		}
-		let regionChartInstance = null
 		const initRegionChart = () => {
 			if (!regionChart.value || regionStats.value.length === 0) return
 			try {
@@ -589,6 +601,21 @@ export default {
 			initRevenueChart()
 			if (activeTab.value === 'regions') {
 				loadRegionStats()
+			}
+		})
+		onBeforeUnmount(() => {
+			// 组件卸载时销毁全部图表实例，防止 Chart.js 内存泄漏
+			if (userChartInstance) {
+				userChartInstance.destroy()
+				userChartInstance = null
+			}
+			if (revenueChartInstance) {
+				revenueChartInstance.destroy()
+				revenueChartInstance = null
+			}
+			if (regionChartInstance) {
+				regionChartInstance.destroy()
+				regionChartInstance = null
 			}
 		})
 		return {

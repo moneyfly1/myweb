@@ -148,11 +148,22 @@ func collectEquivalentNodeIDs(db *gorm.DB, selectedIDs []uint) ([]uint, error) {
 		return nil, err
 	}
 
+	// 一次性加载全部节点并建立 key -> ids 映射，
+	// 避免对每个选中节点都 findNodeIDsByKey 全表扫描（原实现为 O(选中数 × 全表)）
+	var allNodes []models.Node
+	if err := db.Find(&allNodes).Error; err != nil {
+		return nil, err
+	}
+	keyToIDs := make(map[string][]uint, len(allNodes))
+	for _, n := range allNodes {
+		k := generateNodeKey(n.Type, n.Name, n.Config)
+		keyToIDs[k] = append(keyToIDs[k], n.ID)
+	}
+
 	idSet := make(map[uint]bool)
 	for _, node := range selected {
 		idSet[node.ID] = true
-		key := generateNodeKey(node.Type, node.Name, node.Config)
-		for _, id := range findNodeIDsByKey(db, key) {
+		for _, id := range keyToIDs[generateNodeKey(node.Type, node.Name, node.Config)] {
 			idSet[id] = true
 		}
 	}

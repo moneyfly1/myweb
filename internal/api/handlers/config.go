@@ -112,6 +112,9 @@ func updateSettingsCommon(c *gin.Context, category string) {
 		utils.InvalidateSessionTimeoutCache()
 	}
 
+	// 使短 TTL 配置缓存（GetCachedSetting）失效，避免更新后脏读
+	utils.InvalidateAllSettingCache()
+
 	// 清除系统配置缓存
 	go func() {
 		cs := cache_service.NewCacheService()

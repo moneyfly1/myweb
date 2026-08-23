@@ -455,9 +455,11 @@ export default {
       const now = new Date()
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      // 用本地时间拼接 YYYY-MM-DD；toISOString 是 UTC 转换，在东八区凌晨会把日期往前偏一天
+      const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
       return [
-        firstDay.toISOString().split('T')[0],
-        today.toISOString().split('T')[0]
+        fmt(firstDay),
+        fmt(today)
       ]
     }
     const filters = reactive({
@@ -573,7 +575,11 @@ export default {
     }
     const formatDate = (dateStr) => {
       if (!dateStr) return '-'
-      return new Date(dateStr).toLocaleString('zh-CN', {
+      // 后端返回 "YYYY-MM-DD HH:mm:ss"，new Date 直接解析在 Safari 为 Invalid Date，
+      // 先替换为 '/' 分隔按本地时间解析，避免 UTC 偏移
+      const date = new Date(String(dateStr).replace(/-/g, '/'))
+      if (isNaN(date.getTime())) return '-'
+      return date.toLocaleString('zh-CN', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
