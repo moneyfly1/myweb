@@ -883,9 +883,40 @@ func BatchTestNodes(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "未选择节点", nil)
 		return
 	}
+	db := database.GetDB()
 	svc := node_health.NewNodeHealthService()
-	results, _ := svc.BatchTestNodes(req.NodeIDs)
+
+	// 分离专线虚拟 ID（>1000000）：service 的 BatchTestNodes 只查普通节点表，
+	// 专线节点逐个走 TestNode（其内部已处理虚拟 ID 分支，见 TestNode 实现）
+	var normalIDs, customIDs []uint
+	for _, id := range req.NodeIDs {
+		if id > 1000000 {
+			customIDs = append(customIDs, id)
+		} else {
+			normalIDs = append(normalIDs, id)
+		}
+	}
+
+	results := make([]*node_health.TestResult, 0, len(req.NodeIDs))
+	if len(normalIDs) > 0 {
+		normalResults, err := svc.BatchTestNodes(normalIDs)
+		if err != nil {
+			utils.LogError("BatchTestNodes: batch test normal nodes failed", err, nil)
+		} else {
+			results = append(results, normalResults...)
+		}
+	}
+	for _, virtualID := range customIDs {
+		res := testNodeByVirtualID(c, db, virtualID)
+		if res != nil {
+			results = append(results, res)
+		}
+	}
+
 	for _, res := range results {
+		if res == nil {
+			continue
+		}
 		if err := svc.UpdateNodeStatus(res); err != nil {
 			log.Printf("failed to update node status: %v", err)
 		}
@@ -899,6 +930,54 @@ func BatchTestNodes(c *gin.Context) {
 	}
 	utils.CreateAuditLogSimple(c, "batch_test_nodes", "node", 0, fmt.Sprintf("管理员操作: 批量测试节点 %d 个 在线 %d 个", len(req.NodeIDs), successCount))
 	utils.SuccessResponse(c, http.StatusOK, "", results)
+}
+
+// testNodeByVirtualID 测试单个专线虚拟 ID（>1000000）对应的专线节点，返回测试结果
+func testNodeByVirtualID(c *gin.Context, db *gorm.DB, virtualID uint) *node_health.TestResult {
+	customNodeID := virtualID - 1000000
+	var customNode models.CustomNode
+	if err := db.First(&customNode, customNodeID).Error; err != nil {
+		return nil
+	}
+	var nc models.NodeConfig
+	if err := json.Unmarshal([]byte(customNode.Config), &nc); err != nil {
+		return nil
+	}
+	cfgJSON, _ := json.Marshal(config_update.ProxyNode{
+		Type:     nc.Type,
+		Server:   nc.Server,
+		Port:     nc.Port,
+		UUID:     nc.UUID,
+		Password: nc.Password,
+		Network:  nc.Network,
+		Cipher:   nc.Encryption,
+		TLS:      nc.Security == "tls",
+	})
+	cfgStr := string(cfgJSON)
+	tempNode := models.Node{ID: customNode.ID, Config: &cfgStr}
+
+	svc := node_health.NewNodeHealthService()
+	res, err := svc.TestNode(&tempNode)
+	if err != nil {
+		return &node_health.TestResult{
+			NodeID:   virtualID,
+			Status:   "offline",
+			Error:    err.Error(),
+			TestedAt: utils.GetBeijingTime(),
+		}
+	}
+	res.NodeID = virtualID
+	// 同步更新专线节点状态
+	now := utils.GetBeijingTime()
+	customNode.Status = res.Status
+	customNode.Latency = res.Latency
+	customNode.LastTest = &now
+	if saveErr := db.Save(&customNode).Error; saveErr != nil {
+		utils.LogError("testNodeByVirtualID: save custom node failed", saveErr, map[string]interface{}{
+			"custom_node_id": customNode.ID,
+		})
+	}
+	return res
 }
 
 func BatchDeleteNodes(c *gin.Context) {

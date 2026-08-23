@@ -12,6 +12,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/config_update"
+	"cboard-go/internal/services/node_health"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -496,6 +497,18 @@ func ImportCustomNodeSubscription(c *gin.Context) {
 // importCustomNodesFromLinks 解析节点链接并创建专线节点，返回成功数、失败数与错误明细。
 // source 标识节点来源: manual / link / subscription
 func importCustomNodesFromLinks(db *gorm.DB, links []string, source string) (imported, errorCount int, errors []string) {
+	// 基于 (protocol, domain, port) 预加载现有专线节点用于去重，
+	// 避免重复导入同一链接创建重复节点
+	var existing []models.CustomNode
+	db.Select("protocol", "domain", "port").Find(&existing)
+	existingKeys := make(map[string]bool, len(existing))
+	for _, cn := range existing {
+		existingKeys[fmt.Sprintf("%s:%s:%d", cn.Protocol, cn.Domain, cn.Port)] = true
+	}
+
+	seen := make(map[string]bool)
+	var newNodes []models.CustomNode
+
 	for _, link := range links {
 		link = strings.TrimSpace(link)
 		if link == "" {
@@ -509,6 +522,13 @@ func importCustomNodesFromLinks(db *gorm.DB, links []string, source string) (imp
 			continue
 		}
 
+		// 去重键：本批次内 + 数据库中
+		dupKey := fmt.Sprintf("%s:%s:%d", parsed.Type, parsed.Server, parsed.Port)
+		if seen[dupKey] || existingKeys[dupKey] {
+			continue
+		}
+		seen[dupKey] = true
+
 		// #nosec G117 - Password field is proxy node password, not user credential
 		configJSON, _ := json.Marshal(parsed) // #nosec G117
 		configStr := string(configJSON)
@@ -518,7 +538,7 @@ func importCustomNodesFromLinks(db *gorm.DB, links []string, source string) (imp
 			name = fmt.Sprintf("%s-%s", parsed.Type, parsed.Server)
 		}
 
-		customNode := models.CustomNode{
+		newNodes = append(newNodes, models.CustomNode{
 			Name:     truncateNodeName(name),
 			Protocol: parsed.Type,
 			Domain:   parsed.Server,
@@ -527,15 +547,17 @@ func importCustomNodesFromLinks(db *gorm.DB, links []string, source string) (imp
 			Status:   "inactive",
 			IsActive: true,
 			Source:   source,
-		}
+		})
+	}
 
-		if err := db.Create(&customNode).Error; err != nil {
-			errorCount++
-			errors = append(errors, fmt.Sprintf("创建节点失败: %s", err.Error()))
-			continue
+	if len(newNodes) > 0 {
+		// 批量写入，替代逐条 Create（N+1 写入）
+		if err := db.CreateInBatches(newNodes, 100).Error; err != nil {
+			errorCount += len(newNodes)
+			errors = append(errors, fmt.Sprintf("批量写入节点失败: %s", err.Error()))
+			return imported, errorCount, errors
 		}
-
-		imported++
+		imported = len(newNodes)
 	}
 	return imported, errorCount, errors
 }
@@ -728,24 +750,22 @@ func BatchAssignCustomNodes(c *gin.Context) {
 		userMap[users[i].ID] = &users[i]
 	}
 
-	assignedCount := 0
+	// 事务内批量创建分配关系 + 更新用户专线配置，保证原子性
+	var toCreate []models.UserCustomNode
+	var usersToSave []*models.User
+
 	for _, userID := range req.UserIDs {
 		for _, nodeID := range req.NodeIDs {
 			key := fmt.Sprintf("%d-%d", userID, nodeID)
 			if existingSet[key] {
 				continue
 			}
-
-			userNode := models.UserCustomNode{
+			toCreate = append(toCreate, models.UserCustomNode{
 				UserID:       userID,
 				CustomNodeID: nodeID,
-			}
-			if err := db.Create(&userNode).Error; err == nil {
-				assignedCount++
-			}
+			})
 		}
 
-		// 更新用户专线配置
 		if u, ok := userMap[userID]; ok {
 			needSave := false
 			if req.SubscriptionType != "" {
@@ -761,10 +781,33 @@ func BatchAssignCustomNodes(c *gin.Context) {
 				needSave = true
 			}
 			if needSave {
-				db.Save(u)
+				usersToSave = append(usersToSave, u)
 			}
 		}
 	}
+
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if len(toCreate) > 0 {
+			// 批量写入分配关系（替代逐条 Create）
+			if err := tx.CreateInBatches(toCreate, 200).Error; err != nil {
+				return err
+			}
+		}
+		for _, u := range usersToSave {
+			if err := tx.Save(u).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		utils.LogError("BatchAssignCustomNodes: transaction failed", err, map[string]interface{}{
+			"node_ids": req.NodeIDs, "user_ids": req.UserIDs,
+		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "批量分配失败", err)
+		return
+	}
+	assignedCount := len(toCreate)
 	// 记录详细操作日志：节点名称与用户信息
 	var assignedNodes []models.CustomNode
 	db.Where("id IN ?", req.NodeIDs).Find(&assignedNodes)
@@ -957,16 +1000,40 @@ func TestCustomNode(c *gin.Context) {
 		return
 	}
 
-	node.Status = "active"
-	db.Save(&node)
+	// 真实连通性测试：走 node_health 的 TCP 握手/延迟探测，
+	// 不再伪造 active + 100ms（此前是假测试）
+	svc := node_health.NewNodeHealthService()
+	cfgJSON, _ := json.Marshal(config_update.ProxyNode{
+		Type:     config.Type,
+		Server:   config.Server,
+		Port:     config.Port,
+		UUID:     config.UUID,
+		Password: config.Password,
+		Network:  config.Network,
+		Cipher:   config.Encryption,
+		TLS:      config.Security == "tls",
+	})
+	cfgStr := string(cfgJSON)
+	tempNode := models.Node{ID: node.ID, Config: &cfgStr}
+
+	res, err := svc.TestNode(&tempNode)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "测试节点失败", err)
+		return
+	}
+
+	now := utils.GetBeijingTime()
+	node.Status = res.Status
+	node.Latency = res.Latency
+	node.LastTest = &now
+	if err := db.Save(&node).Error; err != nil {
+		utils.LogError("TestCustomNode: save node failed", err, nil)
+	}
 	clearNodeCaches()
 
-	utils.CreateAuditLogSimple(c, "test_custom_node", "custom_node", node.ID, fmt.Sprintf("管理员操作: 测试专线节点 %s 结果 %s", node.Name, node.Status))
+	utils.CreateAuditLogSimple(c, "test_custom_node", "custom_node", node.ID, fmt.Sprintf("管理员操作: 测试专线节点 %s 结果 %s 延迟 %dms", node.Name, res.Status, res.Latency))
 
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"status":  "active",
-		"latency": 100, // 模拟延迟
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", res)
 }
 
 func BatchTestCustomNodes(c *gin.Context) {
@@ -1031,10 +1098,42 @@ func BatchTestCustomNodes(c *gin.Context) {
 		node.Status = "active"
 		db.Save(node)
 
+		// 真实连通性测试：逐节点 TCP 探测
+		svc := node_health.NewNodeHealthService()
+		cfgJSON, _ := json.Marshal(config_update.ProxyNode{
+			Type:     config.Type,
+			Server:   config.Server,
+			Port:     config.Port,
+			UUID:     config.UUID,
+			Password: config.Password,
+			Network:  config.Network,
+			Cipher:   config.Encryption,
+			TLS:      config.Security == "tls",
+		})
+		cfgStr := string(cfgJSON)
+		tempNode := models.Node{ID: node.ID, Config: &cfgStr}
+		res, err := svc.TestNode(&tempNode)
+		if err != nil {
+			results = append(results, gin.H{
+				"node_id": nodeID,
+				"status":  "error",
+				"latency": 0,
+				"message": err.Error(),
+			})
+			continue
+		}
+
+		now := utils.GetBeijingTime()
+		node.Status = res.Status
+		node.Latency = res.Latency
+		node.LastTest = &now
+		db.Save(node)
+
 		results = append(results, gin.H{
 			"node_id": nodeID,
-			"status":  "active",
-			"latency": 100, // 模拟延迟
+			"status":  res.Status,
+			"latency": res.Latency,
+			"message": res.Error,
 		})
 	}
 

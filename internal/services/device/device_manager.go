@@ -18,6 +18,24 @@ import (
 
 const clashMetaAndroidAliasWindow = 30 * time.Second
 
+// 预编译常用正则，避免每次 UA 解析在热路径上重新编译
+var (
+	reIPhoneID       = regexp.MustCompile(`iPhone\d+,\d+`)
+	reOpenWrt        = regexp.MustCompile(`OpenWrt[/\s]+(\d+[.\d]*)`)
+	reRouterOS       = regexp.MustCompile(`RouterOS[/\s]+(\d+[.\d]*)`)
+	reAndroidVersion = regexp.MustCompile(`Android\s+(\d+[.\d]*)`)
+	reWindowsNT      = regexp.MustCompile(`Windows\s+NT\s+(\d+\.\d+)`)
+	reMacOSX         = regexp.MustCompile(`Mac OS X\s+(\d+[._]\d+)`)
+	reIPhoneModel    = regexp.MustCompile(`iPhone(\d+,\d+)`)
+	reIPhoneProMax   = regexp.MustCompile(`iPhone\s+(\d+)\s+Pro\s+Max`)
+	reIPhonePro      = regexp.MustCompile(`iPhone\s+(\d+)\s+Pro`)
+	reIPhoneMini     = regexp.MustCompile(`iPhone\s+(\d+)\s+mini`)
+	reIPhonePlain    = regexp.MustCompile(`iPhone\s+(\d+)`)
+	reIPadModel      = regexp.MustCompile(`iPad(\d+,\d+)`)
+	reIPadPlain      = regexp.MustCompile(`iPad`)
+	reAndroidBuild   = regexp.MustCompile(`(?i);\s*([^;]+)\s*build`)
+)
+
 type DeviceManager struct {
 	db *gorm.DB
 }
@@ -250,7 +268,7 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 	}
 
 	// iOS 设备特征识别
-	hasIPhoneID := regexp.MustCompile(`iPhone\d+,\d+`).MatchString(userAgent)
+	hasIPhoneID := reIPhoneID.MatchString(userAgent)
 	if hasIPhoneID && (strings.Contains(uaLower, "cfnetwork") || strings.Contains(uaLower, "darwin")) {
 		if strings.Contains(uaLower, "quantumult") {
 			return "Quantumult"
@@ -347,14 +365,14 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 	// 路由器系统识别（优先级最高）
 	if strings.Contains(uaLower, "openwrt") {
 		result["os_name"] = "OpenWrt"
-		if match := regexp.MustCompile(`OpenWrt[/\s]+(\d+[.\d]*)`).FindStringSubmatch(userAgent); len(match) > 1 {
+		if match := reOpenWrt.FindStringSubmatch(userAgent); len(match) > 1 {
 			result["os_version"] = match[1]
 		}
 		return result
 	}
 	if strings.Contains(uaLower, "routeros") {
 		result["os_name"] = "RouterOS"
-		if match := regexp.MustCompile(`RouterOS[/\s]+(\d+[.\d]*)`).FindStringSubmatch(userAgent); len(match) > 1 {
+		if match := reRouterOS.FindStringSubmatch(userAgent); len(match) > 1 {
 			result["os_version"] = match[1]
 		}
 		return result
@@ -397,7 +415,7 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 	// Android 识别
 	if strings.Contains(uaLower, "android") {
 		result["os_name"] = "Android"
-		if match := regexp.MustCompile(`Android\s+(\d+[.\d]*)`).FindStringSubmatch(userAgent); len(match) > 1 {
+		if match := reAndroidVersion.FindStringSubmatch(userAgent); len(match) > 1 {
 			result["os_version"] = match[1]
 		}
 		return result
@@ -406,7 +424,7 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 	// Windows 识别
 	if strings.Contains(uaLower, "windows") {
 		result["os_name"] = "Windows"
-		if match := regexp.MustCompile(`Windows\s+NT\s+(\d+\.\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
+		if match := reWindowsNT.FindStringSubmatch(userAgent); len(match) > 1 {
 			result["os_version"] = match[1]
 		}
 		return result
@@ -415,7 +433,7 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 	// macOS 识别
 	if strings.Contains(uaLower, "macintosh") || strings.Contains(uaLower, "mac os") {
 		result["os_name"] = "macOS"
-		if match := regexp.MustCompile(`Mac OS X\s+(\d+[._]\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
+		if match := reMacOSX.FindStringSubmatch(userAgent); len(match) > 1 {
 			result["os_version"] = strings.Replace(match[1], "_", ".", -1)
 		}
 		return result
@@ -513,24 +531,24 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 			"iPhone16,4": "iPhone 15 Plus",
 		}
 
-		if match := regexp.MustCompile(`iPhone(\d+,\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
+		if match := reIPhoneModel.FindStringSubmatch(userAgent); len(match) > 1 {
 			modelID := "iPhone" + match[1]
 			if modelName, exists := iphoneModelMap[modelID]; exists {
 				result["device_model"] = modelName
 			} else {
 				result["device_model"] = fmt.Sprintf("iPhone %s", strings.Replace(match[1], ",", ".", -1))
 			}
-		} else if match := regexp.MustCompile(`iPhone\s+(\d+)\s+Pro\s+Max`).FindStringSubmatch(userAgent); len(match) > 1 {
+		} else if match := reIPhoneProMax.FindStringSubmatch(userAgent); len(match) > 1 {
 			result["device_model"] = fmt.Sprintf("iPhone %s Pro Max", match[1])
-		} else if match := regexp.MustCompile(`iPhone\s+(\d+)\s+Pro`).FindStringSubmatch(userAgent); len(match) > 1 {
+		} else if match := reIPhonePro.FindStringSubmatch(userAgent); len(match) > 1 {
 			result["device_model"] = fmt.Sprintf("iPhone %s Pro", match[1])
-		} else if match := regexp.MustCompile(`iPhone\s+(\d+)\s+mini`).FindStringSubmatch(userAgent); len(match) > 1 {
+		} else if match := reIPhoneMini.FindStringSubmatch(userAgent); len(match) > 1 {
 			result["device_model"] = fmt.Sprintf("iPhone %s mini", match[1])
-		} else if match := regexp.MustCompile(`iPhone\s+(\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
+		} else if match := reIPhonePlain.FindStringSubmatch(userAgent); len(match) > 1 {
 			result["device_model"] = fmt.Sprintf("iPhone %s", match[1])
 		}
 
-		if match := regexp.MustCompile(`iPad(\d+,\d+)`).FindStringSubmatch(userAgent); len(match) > 1 {
+		if match := reIPadModel.FindStringSubmatch(userAgent); len(match) > 1 {
 			modelID := "iPad" + match[1]
 			// iPad 型号映射表
 			iPadModelMap := map[string]string{
@@ -572,7 +590,7 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 			result["device_model"] = "iPad Air"
 		} else if strings.Contains(userAgent, "iPad mini") {
 			result["device_model"] = "iPad mini"
-		} else if match := regexp.MustCompile(`iPad`).FindStringSubmatch(userAgent); len(match) > 0 {
+		} else if match := reIPadPlain.FindStringSubmatch(userAgent); len(match) > 0 {
 			result["device_model"] = "iPad"
 		}
 
@@ -580,7 +598,7 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 	}
 
 	if strings.Contains(uaLower, "android") {
-		if match := regexp.MustCompile(`(?i);\s*([^;]+)\s*build`).FindStringSubmatch(userAgent); len(match) > 1 {
+		if match := reAndroidBuild.FindStringSubmatch(userAgent); len(match) > 1 {
 			name := strings.TrimSpace(match[1])
 			result["device_model"] = name
 			brands := map[string][]string{

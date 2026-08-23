@@ -22,19 +22,9 @@ func NormalizePrivateKey(privateKey string) string {
 	cleanKey = strings.ReplaceAll(cleanKey, " ", "")
 	cleanKey = strings.ReplaceAll(cleanKey, "\t", "")
 
-	if strings.HasPrefix(cleanKey, "MII") || strings.HasPrefix(cleanKey, "MIIC") {
-		privateKey = cleanKey
-		if !strings.HasPrefix(privateKey, "-----BEGIN RSA PRIVATE KEY-----") {
-			privateKey = "-----BEGIN RSA PRIVATE KEY-----\n" + privateKey
-		}
-		if !strings.HasSuffix(strings.TrimSpace(privateKey), "-----END RSA PRIVATE KEY-----") {
-			privateKey = privateKey + "\n-----END RSA PRIVATE KEY-----"
-		}
-		privateKey = FormatPEMKey(privateKey, "RSA PRIVATE KEY")
-		return privateKey
-	}
-
-	if strings.HasPrefix(cleanKey, "MIIE") || strings.HasPrefix(cleanKey, "MIIEv") {
+	// 注意顺序：PKCS#8 私钥 base64 以 "MIIEv" 开头，也以 "MII" 开头，
+	// 必须先判更具体的 MIIEv，否则 PKCS#8 会被误包成 RSA 标签
+	if strings.HasPrefix(cleanKey, "MIIEv") {
 		privateKey = cleanKey
 		if !strings.HasPrefix(privateKey, "-----BEGIN PRIVATE KEY-----") {
 			privateKey = "-----BEGIN PRIVATE KEY-----\n" + privateKey
@@ -43,6 +33,18 @@ func NormalizePrivateKey(privateKey string) string {
 			privateKey = privateKey + "\n-----END PRIVATE KEY-----"
 		}
 		privateKey = FormatPEMKey(privateKey, "PRIVATE KEY")
+		return privateKey
+	}
+
+	if strings.HasPrefix(cleanKey, "MII") {
+		privateKey = cleanKey
+		if !strings.HasPrefix(privateKey, "-----BEGIN RSA PRIVATE KEY-----") {
+			privateKey = "-----BEGIN RSA PRIVATE KEY-----\n" + privateKey
+		}
+		if !strings.HasSuffix(strings.TrimSpace(privateKey), "-----END RSA PRIVATE KEY-----") {
+			privateKey = privateKey + "\n-----END RSA PRIVATE KEY-----"
+		}
+		privateKey = FormatPEMKey(privateKey, "RSA PRIVATE KEY")
 		return privateKey
 	}
 
@@ -81,48 +83,16 @@ func NormalizePublicKey(publicKey string) string {
 		if !strings.HasSuffix(strings.TrimSpace(publicKey), "-----END PUBLIC KEY-----") {
 			publicKey = publicKey + "\n-----END PUBLIC KEY-----"
 		}
-		return FormatPEMPublicKey(publicKey)
+		return FormatPEMKey(publicKey, "PUBLIC KEY")
 	}
 
 	if len(cleanKey) > 50 {
 		publicKey = cleanKey
 		publicKey = "-----BEGIN PUBLIC KEY-----\n" + publicKey + "\n-----END PUBLIC KEY-----"
-		return FormatPEMPublicKey(publicKey)
+		return FormatPEMKey(publicKey, "PUBLIC KEY")
 	}
 
 	return ""
-}
-
-func FormatPEMPublicKey(key string) string {
-	beginMarker := "-----BEGIN PUBLIC KEY-----"
-	endMarker := "-----END PUBLIC KEY-----"
-
-	key = strings.TrimPrefix(key, beginMarker)
-	key = strings.TrimSuffix(key, endMarker)
-	key = strings.TrimSpace(key)
-
-	key = strings.ReplaceAll(key, "\n", "")
-	key = strings.ReplaceAll(key, "\r", "")
-	key = strings.ReplaceAll(key, " ", "")
-	key = strings.ReplaceAll(key, "\t", "")
-
-	var formatted strings.Builder
-	formatted.WriteString(beginMarker)
-	formatted.WriteString("\n")
-	for i := 0; i < len(key); i += 64 {
-		end := i + 64
-		if end > len(key) {
-			end = len(key)
-		}
-		formatted.WriteString(key[i:end])
-		if end < len(key) {
-			formatted.WriteString("\n")
-		}
-	}
-	formatted.WriteString("\n")
-	formatted.WriteString(endMarker)
-
-	return formatted.String()
 }
 
 func FormatPEMKey(key, keyType string) string {

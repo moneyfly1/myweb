@@ -277,8 +277,14 @@ func parseSSR(link string) (*ProxyNode, error) {
 		return nil, fmt.Errorf("SSR 格式错误")
 	}
 
-	port, _ := strconv.Atoi(mainParts[l-5])
-	password, _ := DecodeBase64(mainParts[l-1])
+	port, err := strconv.Atoi(mainParts[l-5])
+	if err != nil || port <= 0 || port > 65535 {
+		return nil, fmt.Errorf("SSR 端口无效: %q", mainParts[l-5])
+	}
+	password, err := DecodeBase64(mainParts[l-1])
+	if err != nil {
+		return nil, fmt.Errorf("SSR 密码解码失败: %v", err)
+	}
 	host := strings.Join(mainParts[:l-5], ":") // 如果是 IPv6，组合回原来的样子
 
 	node := &ProxyNode{
@@ -289,13 +295,13 @@ func parseSSR(link string) (*ProxyNode, error) {
 
 	if len(parts) > 1 {
 		if params, err := url.ParseQuery(strings.SplitN(parts[1], "#", 2)[0]); err == nil {
-			if d, _ := DecodeBase64(params.Get("remarks")); d != "" {
+			if d, err := DecodeBase64(params.Get("remarks")); err == nil && d != "" {
 				node.Name = d
 			}
-			if d, _ := DecodeBase64(params.Get("protoparam")); d != "" {
+			if d, err := DecodeBase64(params.Get("protoparam")); err == nil && d != "" {
 				node.Options["protocol-param"] = d
 			}
-			if d, _ := DecodeBase64(params.Get("obfsparam")); d != "" {
+			if d, err := DecodeBase64(params.Get("obfsparam")); err == nil && d != "" {
 				node.Options["obfs-param"] = d
 			}
 		}
@@ -902,8 +908,10 @@ func getFragment(p *url.URL, def string) string {
 
 func getPort(p *url.URL) int {
 	if port := p.Port(); port != "" {
-		i, _ := strconv.Atoi(port)
-		return i
+		i, err := strconv.Atoi(port)
+		if err == nil && i > 0 && i <= 65535 {
+			return i
+		}
 	}
 	if p.Scheme == "ss" || p.Scheme == "ssr" {
 		return 8388

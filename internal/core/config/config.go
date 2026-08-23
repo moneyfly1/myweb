@@ -204,12 +204,12 @@ func getStringSlice(key string, defaultValue []string) []string {
 
 func getSecretKey() string {
 	key := strings.TrimSpace(viper.GetString("SECRET_KEY"))
-	
+
 	// 首先检查环境变量（优先级最高）
 	if envKey := os.Getenv("JWT_SECRET_KEY"); envKey != "" {
 		key = envKey
 	}
-	
+
 	// 验证密钥强度
 	if isWeakSecretKey(key) {
 		env := strings.ToLower(strings.TrimSpace(os.Getenv("ENV")))
@@ -217,7 +217,7 @@ func getSecretKey() string {
 			// 生产环境必须使用强密钥
 			log.Fatal("生产环境必须设置强密钥 (JWT_SECRET_KEY 或 SECRET_KEY，长度至少32字节且不是弱口令)")
 		}
-		
+
 		// 开发/测试环境可以自动生成，但会警告
 		log.Println("警告: SECRET_KEY 未设置或使用弱口令，建议设置强密钥")
 		if key == "" {
@@ -230,7 +230,7 @@ func getSecretKey() string {
 			log.Println("已生成临时开发密钥（注意：重启后所有JWT令牌将失效）")
 		}
 	}
-	
+
 	return key
 }
 

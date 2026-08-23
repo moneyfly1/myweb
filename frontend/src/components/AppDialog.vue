@@ -9,6 +9,9 @@
     :before-close="handleBeforeClose"
     destroy-on-close
     append-to-body
+    @open="$emit('open')"
+    @opened="$emit('opened')"
+    @closed="$emit('closed')"
   >
     <div class="app-dialog__body">
       <slot></slot>
@@ -50,7 +53,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['update:modelValue', 'close-blocked'])
+const emit = defineEmits(['update:modelValue', 'close-blocked', 'open', 'opened', 'closed'])
 const isMobile = useMobile()
 
 const visible = computed({

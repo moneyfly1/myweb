@@ -1,18 +1,18 @@
 <template>
   <div class="mobile-card-list" role="list" :aria-busy="loading ? 'true' : 'false'">
-    <LoadingState v-if="loading" :text="loadingText" :size="28" />
+    <SkeletonLoader v-if="loading" variant="list" :rows="4" :show-title="false" />
     <ErrorState
       v-else-if="error"
       :message="errorMessage"
       @retry="$emit('retry')"
     />
-    <div 
-      v-else
-      v-for="(item, index) in normalizedData" 
-      :key="item[idField] || index" 
-      class="mobile-card"
-      role="listitem"
-    >
+    <div v-else class="mobile-card-list__items">
+      <div
+        v-for="(item, index) in normalizedData" 
+        :key="item[idField] || index" 
+        class="mobile-card"
+        role="listitem"
+      >
       <div class="mobile-card-header" v-if="$slots.header || hasTitleField">
         <slot name="header" :item="item" :index="index">
           <div class="card-title" :title="getTitle(item)">{{ getTitle(item) }}</div>
@@ -61,6 +61,7 @@
       <div class="mobile-card-actions" v-if="$slots.actions">
         <slot name="actions" :item="item" :index="index"></slot>
       </div>
+      </div>
     </div>
     
     <div v-if="!loading && !error && normalizedData.length === 0" class="mobile-card-empty">
@@ -74,7 +75,7 @@
 <script setup>
 import { computed } from 'vue'
 import dayjs from 'dayjs'
-import LoadingState from './LoadingState.vue'
+import SkeletonLoader from './SkeletonLoader.vue'
 import ErrorState from './ErrorState.vue'
 import EmptyState from './EmptyState.vue'
 import CopyableField from './CopyableField.vue'

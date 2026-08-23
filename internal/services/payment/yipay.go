@@ -606,7 +606,7 @@ func (s *YipayService) signRSASign(content string) (string, error) {
 		utils.LogError("易支付RSA签名: 商户私钥为空", nil, nil)
 		return "", fmt.Errorf("商户私钥未配置")
 	}
-	utils.LogInfo("易支付RSA签名: 私钥长度=%d, 内容前50字符=%s", len(s.MerchantPrivateKey), s.MerchantPrivateKey[:min(50, len(s.MerchantPrivateKey))])
+	utils.LogInfo("易支付RSA签名: 私钥长度=%d, PEM类型=%s", len(s.MerchantPrivateKey), detectPrivateKeyType(s.MerchantPrivateKey))
 
 	var privKeyBytes []byte
 	var err error
@@ -1018,4 +1018,23 @@ func (s *YipayService) buildNewFormatRefundParams(orderNo, tradeNo string, refun
 	params["sign"] = sign
 
 	return params
+}
+
+// detectPrivateKeyType 仅返回私钥的类型描述（PEM 头或编码形式），绝不输出密钥内容。
+func detectPrivateKeyType(key string) string {
+	trimmed := strings.TrimSpace(key)
+	switch {
+	case strings.Contains(trimmed, "BEGIN PRIVATE KEY"):
+		return "PKCS8-PEM"
+	case strings.Contains(trimmed, "BEGIN RSA PRIVATE KEY"):
+		return "PKCS1-PEM"
+	case strings.Contains(trimmed, "BEGIN EC PRIVATE KEY"):
+		return "EC-PEM"
+	case strings.Contains(trimmed, "BEGIN"):
+		return "PEM"
+	case trimmed == "":
+		return "empty"
+	default:
+		return "base64"
+	}
 }

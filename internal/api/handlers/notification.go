@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	notifTypeAnnouncement = "announcement"
-	notifStatusPublished  = "published"
-	notifStatusDraft      = "draft"
+	notifTypeAnnouncement  = "announcement"
+	notifStatusPublished   = "published"
+	notifStatusDraft       = "draft"
 	emailCategoryMarketing = "marketing"
 )
 

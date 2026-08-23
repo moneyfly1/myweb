@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="CBoard Modern - 现代化订阅管理系统" />
     <meta name="keywords" content="订阅管理,代理服务,用户管理" />
     <meta name="author" content="CBoard Team" />
@@ -40,7 +40,7 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background: #0a0a0a;
+        background: #ffffff;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -49,13 +49,13 @@
       }
       .loading-content {
         text-align: center;
-        color: white;
+        color: #303133;
       }
       .loading-spinner {
         width: 50px;
         height: 50px;
-        border: 4px solid rgba(212, 175, 55, 0.2);
-        border-top: 4px solid #D4AF37;
+        border: 4px solid rgba(64, 158, 255, 0.2);
+        border-top: 4px solid #409EFF;
         border-radius: 50%;
         animation: spin 1s linear infinite;
         margin: 0 auto 20px;
@@ -88,22 +88,28 @@
     <script>
       (function() {
         try {
-          const adminToken = localStorage.getItem('cboard_secure_admin_token');
-          const userToken = sessionStorage.getItem('cboard_secure_user_token');
-          if (adminToken) {
-            try {
-              const data = JSON.parse(adminToken);
-              if (data.expiry && Date.now() > data.expiry) {
-                const keys = ['admin_token', 'admin_user', 'admin_refresh_token', 'admin_remember'];
-                keys.forEach(key => {
-                  localStorage.removeItem('cboard_secure_' + key);
-                  sessionStorage.removeItem('cboard_secure_' + key);
-                });
+          // 清理已过期的令牌（admin + user 双角色）
+          const roles = ['admin', 'user'];
+          const storageTypes = [localStorage, sessionStorage];
+          roles.forEach(role => {
+            const tokenKey = 'cboard_secure_' + role + '_token';
+            storageTypes.forEach(storage => {
+              const raw = storage.getItem(tokenKey);
+              if (!raw) return;
+              try {
+                const data = JSON.parse(raw);
+                if (data.expiry && Date.now() > data.expiry) {
+                  const keys = [role + '_token', role + '_user', role + '_refresh_token', role + '_remember'];
+                  keys.forEach(key => {
+                    localStorage.removeItem('cboard_secure_' + key);
+                    sessionStorage.removeItem('cboard_secure_' + key);
+                  });
+                }
+              } catch (e) {
+                storage.removeItem(tokenKey);
               }
-            } catch (e) {
-              localStorage.removeItem('cboard_secure_admin_token');
-            }
-          }
+            });
+          });
         } catch (e) {
         }
       })();

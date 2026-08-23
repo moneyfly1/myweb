@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // 用户端 - 获取知识库分类列表
@@ -48,12 +49,12 @@ func GetKnowledgeArticle(c *gin.Context) {
 	id := c.Param("id")
 
 	var article models.KnowledgeArticle
-	if err := db.Preload("Category").First(&article, id).Error; err != nil {
+	if err := db.Preload("Category").Where("id = ? AND is_active = ?", id, true).First(&article).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusNotFound, "文章不存在", nil)
 		return
 	}
 
-	db.Model(&article).Update("view_count", article.ViewCount+1)
+	db.Model(&article).Update("view_count", gorm.Expr("view_count + 1"))
 	utils.SuccessResponse(c, http.StatusOK, "", article)
 }
 

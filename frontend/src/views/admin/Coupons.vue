@@ -2,7 +2,7 @@
   <div class="list-container admin-coupons">
     <div class="page-header">
       <h1>优惠券管理</h1>
-      <el-button type="primary" @click="showCreateDialog = true" class="create-btn">
+      <el-button type="primary" @click="openCreateDialog" class="create-btn">
         <el-icon><Plus /></el-icon>
         <span class="desktop-only">创建优惠券</span>
       </el-button>
@@ -596,6 +596,11 @@ const resetForm = () => {
     max_uses_per_user: 1,
     applicable_packages: []
   })
+}
+// 创建入口：重置表单与编辑态，避免编辑后残留旧券数据
+const openCreateDialog = () => {
+  resetForm()
+  showCreateDialog.value = true
 }
 const formatDiscountValue = (row) => {
   if (row.type === 'discount') {

@@ -177,9 +177,8 @@ func ParsePagination(c *gin.Context) PaginationParams {
 		if _, err := fmt.Sscanf(limitStr, "%d", &limit); err != nil {
 			limit = 10
 		}
-		if size == 20 {
-			size = limit
-		}
+		// limit 是 size 的别名，无论当前 size 是多少都生效
+		size = limit
 	}
 
 	if page < 1 {

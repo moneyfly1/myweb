@@ -17,8 +17,8 @@ import (
 var authUserCache sync.Map
 
 type cachedUser struct {
-	user      models.User
-	expireAt  time.Time
+	user     models.User
+	expireAt time.Time
 }
 
 const authCacheTTL = 2 * time.Minute

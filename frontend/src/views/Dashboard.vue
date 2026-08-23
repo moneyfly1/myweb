@@ -67,8 +67,7 @@
         立即购买套餐
       </el-button>
     </div>
-    <LoadingState v-if="dashboardLoading" text="正在加载仪表盘..." />
-    <div v-else class="stats-grid">
+    <SkeletonLoader v-if="dashboardLoading" variant="dashboard" :rows="4" />    <div v-else class="stats-grid">
       <div class="stat-card balance-card">
         <div class="stat-icon">
           <el-icon><Wallet /></el-icon>
@@ -130,11 +129,11 @@
                 'device-warning-count': isDeviceWarning
               }"
             >
-              {{ userInfo.online_devices || subscriptionInfo.currentDevices || 0 }}
+              {{ userInfo.online_devices ?? subscriptionInfo.currentDevices ?? 0 }}
             </span>
             <span class="device-separator">/</span>
             <span class="device-limit">
-              {{ userInfo.total_devices || subscriptionInfo.maxDevices || 0 }}
+              {{ userInfo.total_devices ?? subscriptionInfo.maxDevices ?? 0 }}
             </span>
           </div>
           <p class="stat-label">当前设备 / 可用设备</p>
@@ -368,8 +367,8 @@
               </div>
               <div>
                 <div class="device-summary-value">
-                  {{ userInfo.online_devices || subscriptionInfo.currentDevices || 0 }}
-                  <span>/ {{ userInfo.total_devices || subscriptionInfo.maxDevices || 0 }}</span>
+                  {{ userInfo.online_devices ?? subscriptionInfo.currentDevices ?? 0 }}
+                  <span>/ {{ userInfo.total_devices ?? subscriptionInfo.maxDevices ?? 0 }}</span>
                 </div>
                 <div class="device-summary-label">在线设备 / 可用设备</div>
               </div>
@@ -390,7 +389,7 @@
               <el-button
                 type="success"
                 @click="showUpgradeDrawer = true"
-                :disabled="!(userInfo.total_devices || subscriptionInfo.maxDevices)"
+                :disabled="!(userInfo.total_devices ?? subscriptionInfo.maxDevices)"
               >
                 <el-icon><Top /></el-icon>
                 升级设备数量
@@ -611,7 +610,7 @@ import {
 import { useRouter } from 'vue-router'
 import AppDialog from '@/components/AppDialog.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
-import LoadingState from '@/components/LoadingState.vue'
+import SkeletonLoader from '@/components/SkeletonLoader.vue'
 import UpgradeDevicesDrawer from '@/components/UpgradeDevicesDrawer.vue'
 import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, checkinAPI, useApi, cachedAPI, pendingPaymentStorage, orderAPI } from '@/utils/api'
 import { formatDate as formatDateUtil, getRemainingDays, isExpired as isExpiredUtil } from '@/utils/date'
@@ -859,13 +858,13 @@ async function generateSubQRCode() {
   }
 }
 const isDeviceOverlimit = computed(() => {
-  const onlineDevices = userInfo.value.online_devices || subscriptionInfo.value.currentDevices || 0
-  const deviceLimit = userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0
+  const onlineDevices = userInfo.value.online_devices ?? subscriptionInfo.value.currentDevices ?? 0
+  const deviceLimit = userInfo.value.total_devices ?? subscriptionInfo.value.maxDevices ?? 0
   return deviceLimit > 0 && onlineDevices > deviceLimit
 })
 const isDeviceWarning = computed(() => {
-  const onlineDevices = userInfo.value.online_devices || subscriptionInfo.value.currentDevices || 0
-  const deviceLimit = userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0
+  const onlineDevices = userInfo.value.online_devices ?? subscriptionInfo.value.currentDevices ?? 0
+  const deviceLimit = userInfo.value.total_devices ?? subscriptionInfo.value.maxDevices ?? 0
   if (deviceLimit <= 0 || onlineDevices > deviceLimit) return false
   return onlineDevices >= Math.ceil(deviceLimit * 0.8)
 })
@@ -912,8 +911,8 @@ const upgradeProgressStyle = computed(() => {
   }
 })
 const dashboardUpgradeSubscription = computed(() => ({
-  device_limit: userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0,
-  maxDevices: userInfo.value.total_devices || subscriptionInfo.value.maxDevices || 0,
+  device_limit: userInfo.value.total_devices ?? subscriptionInfo.value.maxDevices ?? 0,
+  maxDevices: userInfo.value.total_devices ?? subscriptionInfo.value.maxDevices ?? 0,
   expire_time: subscriptionInfo.value.expiryDate || userInfo.value.expire_time,
   expiryDate: subscriptionInfo.value.expiryDate || userInfo.value.expire_time
 }))

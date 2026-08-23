@@ -112,10 +112,9 @@
   </div>
 </template>
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import { debounce } from '@/composables/useDebounce'
+import { ref } from 'vue'
 import { adminAPI } from '@/utils/api'
-import { useMobile } from '@/composables/useMobile'
+import { useLogListPage } from '@/composables/useLogListPage'
 import { formatLocation } from '@/utils/date'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
@@ -127,20 +126,15 @@ const displayLocation = (loc) => {
   return result || loc
 }
 
-const loading = ref(false)
-const list = ref([])
-const total = ref(0)
-const page = ref(1)
-const pageSize = ref(10)
 const reasonColWidth = ref(160)
-const filter = ref({
-  keyword: '',
-  status: '',
-  timeRange: null
+const {
+  loading, list, total, page, pageSize, filter, isMobile, paginationLayout,
+  fetchLogs: fetch, debouncedFetchLogs: debouncedFetch, resetFilter, onSizeChange
+} = useLogListPage({
+  fetcher: (params) => adminAPI.getRegistrationLogs(params),
+  defaultFilter: () => ({ keyword: '', status: '', timeRange: null }),
+  extraFilterKeys: ['status']
 })
-
-const isMobile = useMobile()
-const paginationLayout = computed(() => (isMobile.value ? 'total, prev, pager, next' : 'total, prev, pager, next, sizes'))
 
 function startResize(e, col) {
   const startX = e.clientX
@@ -161,46 +155,6 @@ function startResize(e, col) {
   document.addEventListener('mousemove', onMove)
   document.addEventListener('mouseup', onUp)
 }
-
-async function fetch() {
-  loading.value = true
-  try {
-    const params = { page: page.value, page_size: pageSize.value }
-    if (filter.value.keyword) params.keyword = filter.value.keyword
-    if (filter.value.status) params.status = filter.value.status
-    if (filter.value.timeRange && filter.value.timeRange.length === 2) {
-      params.start_time = filter.value.timeRange[0]
-      params.end_time = filter.value.timeRange[1]
-    }
-    const res = await adminAPI.getRegistrationLogs(params)
-    const data = res?.data?.data ?? res?.data ?? {}
-    list.value = data.logs ?? []
-    total.value = data.total ?? 0
-  } catch (e) {
-    list.value = []
-  } finally {
-    loading.value = false
-  }
-}
-
-// 搜索输入实时生效，无需再次点击搜索按钮（500ms 防抖）
-const debouncedFetch = debounce(fetch, 500)
-
-function resetFilter() {
-  filter.value = { keyword: '', status: '', timeRange: null }
-  page.value = 1
-  fetch()
-}
-
-function onSizeChange(size) {
-  pageSize.value = size
-  page.value = 1
-  fetch()
-}
-
-onMounted(() => {
-  fetch()
-})
 </script>
 <style scoped>
 .filter-keyword,

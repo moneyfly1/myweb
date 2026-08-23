@@ -89,6 +89,12 @@ func ServeRepoSyncFile(c *gin.Context) {
 		return
 	}
 
+	// 拒绝公开点开头的隐藏/敏感文件（.env、.git 等），防止误同步的密钥文件被公开读取
+	if strings.HasPrefix(filepath.Base(dirPath), ".") {
+		c.Status(http.StatusNotFound)
+		return
+	}
+
 	c.File(dirPath)
 }
 

@@ -115,7 +115,8 @@ func GetUserDashboard(c *gin.Context) {
 	var announcementEnabled bool
 	var announcementContent string
 	var announcementConfigs []models.SystemConfig
-	if err := db.Where("category = ? AND key IN ?", "system", []string{"announcement_enabled", "announcement_content"}).
+	// 公告配置实际存储于 category="announcement"（见 config.go CatAnnouncement）
+	if err := db.Where("category = ? AND key IN ?", "announcement", []string{"announcement_enabled", "announcement_content"}).
 		Find(&announcementConfigs).Error; err == nil {
 		for _, cfg := range announcementConfigs {
 			switch cfg.Key {

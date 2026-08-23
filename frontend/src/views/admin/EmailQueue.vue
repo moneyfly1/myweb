@@ -446,23 +446,17 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { Refresh, Search, View, Delete } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
-import { formatDateTime } from '@/utils/date'
+import { formatDateTime, formatDateTimeSafe } from '@/utils/date'
 import { sanitizeEmailHtml } from '@/utils/sanitizeHtml'
 import { confirmDelete, confirmWarning, confirmClear } from '@/utils/confirmAction'
-import { EMAIL_TYPE_MAP, getEmailTypeText } from '@/utils/statusMaps'
+import { EMAIL_TYPE_MAP, getEmailTypeText, EMAIL_STATUS_MAP } from '@/utils/statusMaps'
 import AppDrawer from '@/components/AppDrawer.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import { debounce } from '@/composables/useDebounce'
-const STATUS_MAP = {
-  pending: { tag: 'warning', text: '待发送' },
-  sending: { tag: 'info', text: '发送中' },
-  sent: { tag: 'success', text: '已发送' },
-  failed: { tag: 'danger', text: '发送失败' },
-  cancelled: { tag: 'info', text: '已取消' }
-}
+
 const handleResponse = (response, defaultErrorMsg) => {
   if (!response) {
     return { success: false, message: defaultErrorMsg || '请求失败' }
@@ -808,10 +802,10 @@ export default {
       fetchEmailQueue()
     }
     const getStatusTagType = (status) => {
-      return STATUS_MAP[status]?.tag || 'info'
+      return EMAIL_STATUS_MAP[status]?.type || 'info'
     }
     const getStatusText = (status) => {
-      return STATUS_MAP[status]?.text || status
+      return EMAIL_STATUS_MAP[status]?.text || status
     }
     // 处理 Go sql.NullString JSON 序列化格式 {"String":"...","Valid":true}
     const getErrorMessage = (val) => {
@@ -822,16 +816,7 @@ export default {
       }
       return val
     }
-    const formatDate = (dateString) => {
-      if (!dateString) return '-'
-      // 处理 Go sql.NullTime JSON 序列化格式 {"Time":"...","Valid":true}
-      if (typeof dateString === 'object' && dateString !== null) {
-        if (dateString.Valid === false) return '-'
-        if (dateString.Time) return formatDateTime(dateString.Time, 'YYYY-MM-DD HH:mm:ss')
-        return '-'
-      }
-      return formatDateTime(dateString, 'YYYY-MM-DD HH:mm:ss')
-    }
+    const formatDate = (dateString) => formatDateTimeSafe(dateString, 'YYYY-MM-DD HH:mm:ss', '-')
     onMounted(() => {
       refreshQueue()
     })

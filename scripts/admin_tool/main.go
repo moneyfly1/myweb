@@ -116,7 +116,16 @@ func createOrUpdateAdmin(db *gorm.DB) {
 	}
 
 	var user models.User
-	result := db.Where("username = ? OR email = ?", username, email).First(&user)
+	// 先按用户名精确匹配；未命中再按邮箱匹配。
+	// 不要用 username = ? OR email = ? 的单查询——用户名命中 A、邮箱命中 B 时
+	// 会误提升/重置错误用户的密码（OR 查询 + First 只取主键靠前的一行）。
+	result := db.Where("username = ?", username).First(&user)
+	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		log.Fatalf("查询用户失败: %v", result.Error)
+	}
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		result = db.Where("email = ?", email).First(&user)
+	}
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			var existingAdmin models.User

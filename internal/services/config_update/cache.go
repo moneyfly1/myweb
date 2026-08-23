@@ -125,8 +125,9 @@ func (cs *CacheService) ClearSystemNodesCache() error {
 }
 
 // ClearCustomNodesCache 清除用户自定义节点缓存
+// 注意：专线节点在订阅生成时直接查 DB（appendCustomNodes），不依赖本缓存；
+// 因此不需要递增全局 cacheGen（那会使所有用户订阅缓存无意义失效）。
 func (cs *CacheService) ClearCustomNodesCache(userID uint) error {
-	cacheGen.Add(1) // 先递增代际，使并发写回的旧数据立即失效
 	if !cache.IsRedisEnabled() {
 		return nil
 	}

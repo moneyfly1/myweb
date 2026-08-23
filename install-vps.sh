@@ -295,7 +295,7 @@ create_admin() {
     step "初始化管理员..."
     export ADMIN_USERNAME="$1" ADMIN_EMAIL="$2" ADMIN_PASSWORD="$3"
     cd "$PROJECT_DIR"
-    go run scripts/admin_tool.go || warn "管理员创建失败，请手动运行 scripts/admin_tool.go"
+    go run ./scripts/admin_tool || warn "管理员创建失败，请手动运行 ./scripts/admin_tool"
 }
 
 setup_service() {
@@ -437,13 +437,13 @@ menu_manage_admin() {
     [ ! -d "$pd" ] && { error "未安装"; return; }
     read -p "新用户名: " u; read -p "新邮箱: " e; read -sp "新密码: " p; echo
     export ADMIN_USERNAME=${u:-admin} ADMIN_EMAIL=$e ADMIN_PASSWORD=$p
-    cd "$pd" && go run scripts/admin_tool.go
+    cd "$pd" && go run ./scripts/admin_tool
 }
 
 menu_unlock() {
     local pd=$(get_dir)
     read -p "用户名或邮箱: " target
-    cd "$pd" && go run scripts/unlock_user.go "$target"
+    cd "$pd" && go run ./scripts/unlock_user "$target"
 }
 
 menu_clean() {

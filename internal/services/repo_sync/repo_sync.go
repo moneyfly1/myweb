@@ -175,7 +175,7 @@ func (s *Service) Tick() {
 	if len(result.Errors) > 0 {
 		msg += fmt.Sprintf(", %d 个文件失败", len(result.Errors))
 	}
-	utils.LogInfo(msg)
+	utils.LogInfo("%s", msg)
 	if err := utils.CreateSchedulerLog("repo_sync", "success", msg, map[string]interface{}{
 		"files_downloaded": result.FilesDownloaded,
 		"files_removed":    result.FilesRemoved,

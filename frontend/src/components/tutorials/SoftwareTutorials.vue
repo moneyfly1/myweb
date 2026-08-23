@@ -32,6 +32,25 @@
           <WindowsTutorials />
         </el-tab-pane>
         <el-tab-pane label="macOS" name="macos">
+          <div class="client-grid tutorial-client-grid">
+            <div class="client-row">
+              <div>
+                <div class="client-title">Clash 系列</div>
+                <div class="item-meta">下载软件 → 安装 → 复制 Clash 订阅 → 导入配置</div>
+              </div>
+              <div class="button-row">
+                <el-button
+                  type="primary"
+                  size="small"
+                  :loading="downloadingKey === 'clash_verge_macos_url'"
+                  @click="downloadClient('clash_verge_macos_url', 'clash-verge')"
+                >
+                  下载
+                </el-button>
+                <el-button size="small" @click="copySubscription('clash')">复制订阅</el-button>
+              </div>
+            </div>
+          </div>
           <MacOSTutorials />
         </el-tab-pane>
         <el-tab-pane label="iOS" name="ios">
@@ -57,6 +76,25 @@
           <iOSTutorials />
         </el-tab-pane>
         <el-tab-pane label="Android" name="android">
+          <div class="client-grid tutorial-client-grid">
+            <div class="client-row">
+              <div>
+                <div class="client-title">Clash Meta / V2rayNG</div>
+                <div class="item-meta">下载 APK → 安装 → 复制订阅 → 导入配置</div>
+              </div>
+              <div class="button-row">
+                <el-button
+                  type="primary"
+                  size="small"
+                  :loading="downloadingKey === 'clash_meta_android_url'"
+                  @click="downloadClient('clash_meta_android_url', 'clash-verge')"
+                >
+                  下载
+                </el-button>
+                <el-button size="small" @click="copySubscription('clash')">复制订阅</el-button>
+              </div>
+            </div>
+          </div>
           <AndroidTutorials />
         </el-tab-pane>
       </el-tabs>

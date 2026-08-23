@@ -238,7 +238,7 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { Plus } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import { adminAPI } from '@/utils/api'
-import { formatLocation } from '@/utils/date'
+import { formatLocation, formatDateTimeSafe } from '@/utils/date'
 import router from '@/router'
 import { secureStorage } from '@/utils/api'
 import EmptyState from '@/components/EmptyState.vue'
@@ -610,18 +610,7 @@ export default {
       } catch (error) {
         }
     }
-    const formatDate = (dateString) => {
-      if (!dateString) return ''
-      const date = new Date(dateString)
-      return date.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      })
-    }
+    const formatDate = (dateString) => formatDateTimeSafe(dateString, 'YYYY-MM-DD HH:mm:ss', '')
     const getLocationText = (location, ipAddress) => {
       if (location) {
         return formatLocation(location)

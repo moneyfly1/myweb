@@ -509,8 +509,8 @@ manage_admin() {
     fi
     
     # 检查脚本文件是否存在
-    if [[ ! -f "scripts/admin_tool.go" ]]; then
-        error "脚本文件不存在: scripts/admin_tool.go"
+    if [[ ! -f "./scripts/admin_tool/main.go" ]]; then
+        error "脚本文件不存在: ./scripts/admin_tool/main.go"
         return 1
     fi
     
@@ -553,7 +553,7 @@ manage_admin() {
     export ADMIN_PASSWORD="$admin_pass"
     
     log "正在执行创建管理员账户脚本..."
-    if go run scripts/admin_tool.go 2>&1; then
+    if go run ./scripts/admin_tool 2>&1; then
         log "✅ 管理员账户已创建/重置"
         log "用户名: $admin_username"
         log "邮箱: $admin_email"
@@ -789,8 +789,8 @@ unlock_user() {
     fi
     
     # 检查脚本文件是否存在
-    if [[ ! -f "scripts/unlock_user.go" ]]; then
-        error "脚本文件不存在: scripts/unlock_user.go"
+    if [[ ! -f "./scripts/unlock_user/main.go" ]]; then
+        error "脚本文件不存在: ./scripts/unlock_user/main.go"
         return 1
     fi
     
@@ -801,7 +801,7 @@ unlock_user() {
     fi
     
     log "正在解锁账户: $identifier"
-    if go run scripts/unlock_user.go "$identifier" 2>&1; then
+    if go run ./scripts/unlock_user "$identifier" 2>&1; then
         log "✅ 账户 $identifier 已解锁"
     else
         error "解锁失败，请检查："

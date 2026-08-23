@@ -1090,7 +1090,10 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrderTx(db *gorm.DB, node
 	}
 
 	if len(newNodes) > 0 {
-		if err := db.CreateInBatches(newNodes, 100).Error; err == nil {
+		if err := db.CreateInBatches(newNodes, 100).Error; err != nil {
+			// 不再静默吞错：写入失败必须记录，否则采集节点"看起来成功"实际未入库
+			s.warnf("批量写入采集节点失败: %v (本批次 %d 个节点未入库)", err, len(newNodes))
+		} else {
 			stats.Created = len(newNodes)
 		}
 	}
@@ -1371,7 +1374,17 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *Subsc
 	var realProxyNames []string
 	used := make(map[string]bool)
 
-	for _, p := range proxies {
+	// 深拷贝入参节点：这些指针可能来自共享缓存（GetSystemNodesCache/ParseCache），
+	// 就地修改 Name/Type 会污染缓存并造成跨请求输出漂移与数据竞争
+	for _, src := range proxies {
+		if src == nil {
+			continue
+		}
+		p := *src
+		if p.Options != nil {
+			p.Options = deepCopyOptions(src.Options)
+		}
+
 		if (p.Type == "socks" || p.Type == "socks5") && p.Network == "ws" {
 			continue
 		}
@@ -1387,9 +1400,9 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *Subsc
 			}
 			p.Name = name
 			used[name] = true
-			filtered = append(filtered, p)
+			filtered = append(filtered, &p)
 			proxyNames = append(proxyNames, name)
-			if !isClashInfoNode(p) {
+			if !isClashInfoNode(&p) {
 				realProxyNames = append(realProxyNames, name)
 			}
 		}
@@ -1442,6 +1455,38 @@ func (s *ConfigUpdateService) generateClashYAML(proxies []*ProxyNode, ctx *Subsc
 
 func isClashInfoNode(p *ProxyNode) bool {
 	return p != nil && p.Type == "ss" && p.Server == "baidu.com" && p.Port == 1234 && p.Password == "info"
+}
+
+// deepCopyOptions 深拷贝 Options map（含嵌套 map/slice），
+// 防止 generateClashYAML 等处修改共享缓存节点时污染缓存。
+func deepCopyOptions(src map[string]any) map[string]any {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string]any, len(src))
+	for k, v := range src {
+		switch tv := v.(type) {
+		case map[string]any:
+			dst[k] = deepCopyOptions(tv)
+		case map[string]string:
+			m := make(map[string]string, len(tv))
+			for mk, mv := range tv {
+				m[mk] = mv
+			}
+			dst[k] = m
+		case []any:
+			sl := make([]any, len(tv))
+			copy(sl, tv)
+			dst[k] = sl
+		case []string:
+			sl := make([]string, len(tv))
+			copy(sl, tv)
+			dst[k] = sl
+		default:
+			dst[k] = v
+		}
+	}
+	return dst
 }
 
 func (s *ConfigUpdateService) nodeToYAMLFlowNode(p *ProxyNode) (yaml.Node, error) {

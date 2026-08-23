@@ -112,19 +112,12 @@
   </div>
 </template>
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { debounce } from '@/composables/useDebounce'
+import { ref } from 'vue'
 import { adminAPI } from '@/utils/api'
-import { useMobile } from '@/composables/useMobile'
+import { useLogListPage } from '@/composables/useLogListPage'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import MobileLogFields from '@/components/MobileLogFields.vue'
-
-const loading = ref(false)
-const list = ref([])
-const total = ref(0)
-const page = ref(1)
-const pageSize = ref(20)
 
 const CHANGE_TYPE_MAP = {
   recharge: '充值', consume: '消费', refund: '退款',
@@ -136,52 +129,14 @@ const getChangeTypeColor = (type) => {
   return map[type] || 'info'
 }
 
-const filter = ref({
-  keyword: '',
-  change_type: '',
-  timeRange: null
+const {
+  loading, list, total, page, pageSize, filter, isMobile, paginationLayout,
+  fetchLogs: fetch, debouncedFetchLogs: debouncedFetch, resetFilter, onSizeChange
+} = useLogListPage({
+  fetcher: (params) => adminAPI.getBalanceLogs(params),
+  defaultFilter: () => ({ keyword: '', change_type: '', timeRange: null }),
+  extraFilterKeys: ['change_type']
 })
-const isMobile = useMobile()
-const paginationLayout = computed(() => (isMobile.value ? 'total, prev, pager, next' : 'total, prev, pager, next, sizes'))
-
-async function fetch() {
-  loading.value = true
-  try {
-    const params = { page: page.value, page_size: pageSize.value }
-    if (filter.value.keyword) params.keyword = filter.value.keyword
-    if (filter.value.change_type) params.change_type = filter.value.change_type
-    if (filter.value.timeRange && filter.value.timeRange.length === 2) {
-      params.start_time = filter.value.timeRange[0]
-      params.end_time = filter.value.timeRange[1]
-    }
-    const res = await adminAPI.getBalanceLogs(params)
-    const data = res?.data?.data ?? res?.data ?? {}
-    list.value = data.logs ?? []
-    total.value = data.total ?? 0
-  } catch (e) {
-    list.value = []
-  } finally {
-    loading.value = false
-  }
-}
-
-// 搜索输入实时生效，无需再次点击搜索按钮（500ms 防抖）
-const debouncedFetch = debounce(fetch, 500)
-
-function resetFilter() {
-  filter.value = { keyword: '', change_type: '', timeRange: null }
-  page.value = 1
-  fetch()
-}
-
-function onSizeChange(size) {
-  pageSize.value = size
-  page.value = 1
-  fetch()
-}
-
-onMounted(() => { fetch() })
-onUnmounted(() => {})
 </script>
 <style scoped>
 .filter-keyword,

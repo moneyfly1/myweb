@@ -150,6 +150,10 @@ func AutoMigrate() error {
 	if DB == nil {
 		return fmt.Errorf("数据库未初始化")
 	}
+
+	// 历史数据去重：invite_relations 新增 InviteeID 唯一索引前，清理重复关系（保留最早一条）
+	deduplicateInviteRelations()
+
 	fulfilledAtExisted := DB.Migrator().HasColumn(&models.Order{}, "FulfilledAt")
 	fulfilledAtAdded := false
 	if strings.Contains(DB.Dialector.Name(), "sqlite") {
@@ -435,6 +439,45 @@ func CloseDatabase() error {
 
 func ReopenDatabase() error {
 	return InitDatabase()
+}
+
+// deduplicateInviteRelations 在 AutoMigrate 前清理 invite_relations 中重复的 InviteeID，
+// 保留最早一条记录，否则新增唯一索引会因历史脏数据失败。
+func deduplicateInviteRelations() {
+	if DB == nil {
+		return
+	}
+	if !DB.Migrator().HasTable(&models.InviteRelation{}) {
+		return
+	}
+	// 找出重复的 invitee_id（出现次数 > 1）
+	var dupInvitees []struct {
+		InviteeID uint
+		Cnt       int64
+	}
+	if err := DB.Table("invite_relations").
+		Select("invitee_id, COUNT(*) as cnt").
+		Group("invitee_id").
+		Having("COUNT(*) > 1").
+		Scan(&dupInvitees).Error; err != nil {
+		log.Printf("警告: 检查 invite_relations 重复数据失败: %v", err)
+		return
+	}
+	removed := int64(0)
+	for _, dup := range dupInvitees {
+		// 保留最早一条（id 最小），删除其余
+		res := DB.Table("invite_relations").
+			Where("invitee_id = ? AND id NOT IN (SELECT MIN(id) FROM invite_relations WHERE invitee_id = ?)", dup.InviteeID, dup.InviteeID).
+			Delete(&models.InviteRelation{})
+		if res.Error != nil {
+			log.Printf("警告: 清理 invite_relations 重复数据失败 (invitee_id=%d): %v", dup.InviteeID, res.Error)
+			continue
+		}
+		removed += res.RowsAffected
+	}
+	if removed > 0 {
+		log.Printf("invite_relations 历史重复数据已清理: %d 条 (为唯一索引做准备)", removed)
+	}
 }
 
 // ==========================================

@@ -19,7 +19,7 @@
       </div>
     </div>
     <!-- 加载状态 -->
-    <LoadingState v-if="isLoading" text="正在加载套餐列表..." />
+    <SkeletonLoader v-if="isLoading" variant="card" :rows="3" :show-title="false" />
 
     <!-- 错误状态 -->
     <ErrorState
@@ -407,6 +407,7 @@
       mobile-width="92%"
       :loading="isCheckingPayment"
       class="payment-qr-dialog"
+      @close="handlePaymentQRClose"
     >
       <div class="payment-qr-container">
         <div class="payment-summary-card">
@@ -434,7 +435,7 @@
         <div class="qr-panel">
           <div class="qr-panel-header">
             <h4 v-if="isPaymentPageUrl && paymentUrl">请在页面中完成支付</h4>
-            <h4 v-else>请使用支付宝扫码</h4>
+            <h4 v-else>请使用{{ getPaymentMethodDisplayName(currentOrder?.payment_method || paymentMethod) }}扫码</h4>
             <p>支付完成后会自动刷新购买结果</p>
           </div>
           <div class="qr-code-wrapper" :class="{ 'iframe-mode': isPaymentPageUrl && paymentUrl }">
@@ -463,7 +464,7 @@
             </div>
           </div>
           <div class="payment-tips" v-if="!isPaymentPageUrl">
-            <p class="tip-text"><el-icon><InfoFilled /></el-icon><span>请使用支付宝扫码支付</span></p>
+            <p class="tip-text"><el-icon><InfoFilled /></el-icon><span>请使用{{ getPaymentMethodDisplayName(currentOrder?.payment_method || paymentMethod) }}扫码支付</span></p>
           </div>
           <div class="payment-actions-container" v-if="isMobile && paymentUrl && (currentOrder?.payment_method === 'alipay' || paymentUrl.includes('alipay'))">
             <el-button
@@ -649,7 +650,7 @@ import { safeNavigate } from '@/utils/safeOpen'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
 import { createQRCodeDataURL } from '@/utils/qrcode'
 import EmptyState from '@/components/EmptyState.vue'
-import LoadingState from '@/components/LoadingState.vue'
+import SkeletonLoader from '@/components/SkeletonLoader.vue'
 import ErrorState from '@/components/ErrorState.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
@@ -667,10 +668,10 @@ export default {
     QuestionFilled,
     InfoFilled,
     EmptyState,
-    LoadingState,
     ErrorState,
     AppDialog,
-    FormActionBar
+    FormActionBar,
+    SkeletonLoader
   },
   setup() {
     const router = useRouter()
@@ -1599,6 +1600,17 @@ export default {
         loadPackages()
       }, 3000)
     }
+    // 用户主动关闭扫码对话框：停止轮询、清理挂起的支付状态与定时器
+    const handlePaymentQRClose = () => {
+      closePaymentStatusWatchers()
+      isCheckingPayment.value = false
+      if (paymentStatusTimeoutId) {
+        clearTimeout(paymentStatusTimeoutId)
+        paymentStatusTimeoutId = null
+      }
+      // 保留 currentOrder 供再次打开时继续查询，但清除 pendingPaymentStorage 防止刷新后空轮询
+      pendingPaymentStorage.clear()
+    }
     const checkPaymentStatus = async () => {
       if (!currentOrder.value || !currentOrder.value.order_no) {
         return
@@ -1904,6 +1916,7 @@ export default {
       isProcessing,
       purchaseDialogVisible,
       paymentQRVisible,
+      handlePaymentQRClose,
       successDialogVisible,
       paymentQRCode,
       paymentUrl,

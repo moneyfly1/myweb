@@ -124,6 +124,12 @@ func CSRFMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		// 显式豁免的路由（如公开订阅端点）直接放行
+		if c.GetBool("csrf_exempt") {
+			c.Next()
+			return
+		}
+
 		if c.Request.Method == "GET" || c.Request.Method == "HEAD" || c.Request.Method == "OPTIONS" {
 			sessionID := getSessionID(c)
 			token, err := manager.GenerateToken(sessionID)

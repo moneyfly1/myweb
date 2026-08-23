@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"cboard-go/internal/core/database"
@@ -13,6 +15,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// sensitiveQueryParam 判断查询参数名是否包含敏感信息（验证码、令牌、密码、签名、密钥等）。
+// 命中时审计日志中该参数值一律以 *** 代替，防止凭据明文落库。
+func sensitiveQueryParam(name string) bool {
+	lower := strings.ToLower(name)
+	for _, kw := range []string{"password", "pwd", "token", "code", "secret", "key", "sign", "private", "auth", "captcha"} {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
 
 func buildRequestParams(c *gin.Context) sql.NullString {
 	if c == nil || c.Request == nil {
@@ -31,7 +45,17 @@ func buildRequestParams(c *gin.Context) sql.NullString {
 
 	queryParams := c.Request.URL.Query()
 	if len(queryParams) > 0 {
-		params["query"] = queryParams
+		sanitized := make(url.Values, len(queryParams))
+		for k, vs := range queryParams {
+			if sensitiveQueryParam(k) {
+				for range vs {
+					sanitized[k] = append(sanitized[k], "***")
+				}
+			} else {
+				sanitized[k] = vs
+			}
+		}
+		params["query"] = sanitized
 	}
 
 	if len(params) == 0 {
@@ -253,147 +277,27 @@ func CreateSecurityLog(c *gin.Context, eventType, severity, description string, 
 // CreateBusinessLog 记录业务/操作类日志（支付回调失败、订阅拒绝、Token 无效等），便于在系统日志中排查问题
 // c 可为 nil（如定时任务内调用），此时不记录 IP/Path
 func CreateBusinessLog(c *gin.Context, actionType, description, level string, data map[string]interface{}) {
-	db := database.GetDB()
-	if db == nil {
-		if AppLogger != nil {
-			AppLogger.Warn("[业务日志] %s: %s", actionType, description)
-		}
-		return
-	}
-
-	var ipAddress, userAgent, method, path string
-	var location sql.NullString
-	var userID sql.NullInt64
-	requestParams := sql.NullString{Valid: false}
-	if c != nil {
-		ipAddress = GetRealClientIP(c)
-		if ipAddress == "" {
-			ipAddress = c.ClientIP()
-		}
-		userAgent = c.GetHeader("User-Agent")
-		method = c.Request.Method
-		path = c.Request.URL.Path
-		if ipAddress != "" {
-			location = geoip.GetLocationWithCache(ipAddress)
-		}
-		if uid, exists := c.Get("user_id"); exists {
-			if u, ok := uid.(uint); ok {
-				userID = sql.NullInt64{Int64: MustSafeUintToInt64(u), Valid: true}
-			}
-		}
-		requestParams = buildRequestParams(c)
-	}
-
-	var dataJSON sql.NullString
-	if data != nil && len(data) > 0 {
-		if b, err := json.Marshal(data); err == nil {
-			dataJSON = sql.NullString{String: string(b), Valid: true}
-		}
-	}
-
-	var responseStatus sql.NullInt64
-	switch level {
-	case "error":
-		responseStatus = sql.NullInt64{Int64: http.StatusInternalServerError, Valid: true}
-	case "warning":
-		responseStatus = sql.NullInt64{Int64: http.StatusBadRequest, Valid: true}
-	default:
-		responseStatus = sql.NullInt64{Int64: http.StatusOK, Valid: true}
-	}
-
-	auditLog := models.AuditLog{
-		UserID:            userID,
-		ActionType:        "business_" + actionType,
-		ResourceType:      sql.NullString{String: "system", Valid: true},
-		ResourceID:        sql.NullInt64{Valid: false},
-		ActionDescription: sql.NullString{String: description, Valid: true},
-		IPAddress:         sql.NullString{String: ipAddress, Valid: ipAddress != ""},
-		UserAgent:         sql.NullString{String: userAgent, Valid: userAgent != ""},
-		Location:          location,
-		RequestMethod:     sql.NullString{String: method, Valid: method != ""},
-		RequestPath:       sql.NullString{String: path, Valid: path != ""},
-		RequestParams:     requestParams,
-		ResponseStatus:    responseStatus,
-		BeforeData:        dataJSON,
-		AfterData:         sql.NullString{Valid: false},
-	}
-
-	if err := db.Create(&auditLog).Error; err != nil && AppLogger != nil {
-		AppLogger.Error("[业务日志保存失败] %s: %s, 错误: %v", actionType, description, err)
-	}
+	createBusinessLogInternal(c, actionType, description, level, data, businessLogOptions{withGeoIP: true, async: false})
 }
 
 // CreateBusinessLogFast 快速记录业务日志，跳过 GeoIP 查询（用于高频操作如签到）
 func CreateBusinessLogFast(c *gin.Context, actionType, description, level string, data map[string]interface{}) {
-	db := database.GetDB()
-	if db == nil {
-		if AppLogger != nil {
-			AppLogger.Warn("[业务日志] %s: %s", actionType, description)
-		}
-		return
-	}
-
-	var ipAddress, userAgent, method, path string
-	var userID sql.NullInt64
-	requestParams := sql.NullString{Valid: false}
-	if c != nil {
-		ipAddress = GetRealClientIP(c)
-		if ipAddress == "" {
-			ipAddress = c.ClientIP()
-		}
-		userAgent = c.GetHeader("User-Agent")
-		method = c.Request.Method
-		path = c.Request.URL.Path
-		if uid, exists := c.Get("user_id"); exists {
-			if u, ok := uid.(uint); ok {
-				userID = sql.NullInt64{Int64: MustSafeUintToInt64(u), Valid: true}
-			}
-		}
-		requestParams = buildRequestParams(c)
-	}
-
-	var dataJSON sql.NullString
-	if data != nil && len(data) > 0 {
-		if b, err := json.Marshal(data); err == nil {
-			dataJSON = sql.NullString{String: string(b), Valid: true}
-		}
-	}
-
-	var responseStatus sql.NullInt64
-	switch level {
-	case "error":
-		responseStatus = sql.NullInt64{Int64: http.StatusInternalServerError, Valid: true}
-	case "warning":
-		responseStatus = sql.NullInt64{Int64: http.StatusBadRequest, Valid: true}
-	default:
-		responseStatus = sql.NullInt64{Int64: http.StatusOK, Valid: true}
-	}
-
-	auditLog := models.AuditLog{
-		UserID:            userID,
-		ActionType:        "business_" + actionType,
-		ResourceType:      sql.NullString{String: "system", Valid: true},
-		ResourceID:        sql.NullInt64{Valid: false},
-		ActionDescription: sql.NullString{String: description, Valid: true},
-		IPAddress:         sql.NullString{String: ipAddress, Valid: ipAddress != ""},
-		UserAgent:         sql.NullString{String: userAgent, Valid: userAgent != ""},
-		Location:          sql.NullString{Valid: false}, // 跳过 GeoIP 查询
-		RequestMethod:     sql.NullString{String: method, Valid: method != ""},
-		RequestPath:       sql.NullString{String: path, Valid: path != ""},
-		RequestParams:     requestParams,
-		ResponseStatus:    responseStatus,
-		BeforeData:        dataJSON,
-		AfterData:         sql.NullString{Valid: false},
-	}
-
-	if err := db.Create(&auditLog).Error; err != nil && AppLogger != nil {
-		AppLogger.Error("[业务日志保存失败] %s: %s, 错误: %v", actionType, description, err)
-	}
+	createBusinessLogInternal(c, actionType, description, level, data, businessLogOptions{withGeoIP: false, async: false})
 }
 
 // CreateBusinessLogAsync 异步记录业务日志（用于超高频操作如订阅拉取）
 func CreateBusinessLogAsync(c *gin.Context, actionType, description, level string, data map[string]interface{}) {
-	// 复制必要的上下文信息
+	createBusinessLogInternal(c, actionType, description, level, data, businessLogOptions{withGeoIP: false, async: true})
+}
+
+type businessLogOptions struct {
+	withGeoIP bool
+	async     bool
+}
+
+// createBusinessLogInternal 统一的业务日志实现，替代此前四份复制粘贴
+func createBusinessLogInternal(c *gin.Context, actionType, description, level string, data map[string]interface{}, opts businessLogOptions) {
+	// 先在调用线程复制上下文信息（c 在请求结束后不可用）
 	var ipAddress, userAgent, method, path string
 	var userID sql.NullInt64
 	if c != nil {
@@ -411,8 +315,15 @@ func CreateBusinessLogAsync(c *gin.Context, actionType, description, level strin
 		}
 	}
 
-	// 异步执行
-	go func() {
+	// 异步模式：requestParams 在调用线程读取后丢弃（GeoIP 查询在写入线程完成）
+	var requestParams sql.NullString
+	if !opts.async {
+		if c != nil {
+			requestParams = buildRequestParams(c)
+		}
+	}
+
+	writeLog := func() {
 		db := database.GetDB()
 		if db == nil {
 			if AppLogger != nil {
@@ -438,6 +349,11 @@ func CreateBusinessLogAsync(c *gin.Context, actionType, description, level strin
 			responseStatus = sql.NullInt64{Int64: http.StatusOK, Valid: true}
 		}
 
+		var location sql.NullString
+		if opts.withGeoIP && ipAddress != "" {
+			location = geoip.GetLocationWithCache(ipAddress)
+		}
+
 		auditLog := models.AuditLog{
 			UserID:            userID,
 			ActionType:        "business_" + actionType,
@@ -446,10 +362,10 @@ func CreateBusinessLogAsync(c *gin.Context, actionType, description, level strin
 			ActionDescription: sql.NullString{String: description, Valid: true},
 			IPAddress:         sql.NullString{String: ipAddress, Valid: ipAddress != ""},
 			UserAgent:         sql.NullString{String: userAgent, Valid: userAgent != ""},
-			Location:          sql.NullString{Valid: false}, // 跳过 GeoIP 查询
+			Location:          location,
 			RequestMethod:     sql.NullString{String: method, Valid: method != ""},
 			RequestPath:       sql.NullString{String: path, Valid: path != ""},
-			RequestParams:     sql.NullString{Valid: false},
+			RequestParams:     requestParams,
 			ResponseStatus:    responseStatus,
 			BeforeData:        dataJSON,
 			AfterData:         sql.NullString{Valid: false},
@@ -458,7 +374,22 @@ func CreateBusinessLogAsync(c *gin.Context, actionType, description, level strin
 		if err := db.Create(&auditLog).Error; err != nil && AppLogger != nil {
 			AppLogger.Error("[业务日志保存失败] %s: %s, 错误: %v", actionType, description, err)
 		}
-	}()
+	}
+
+	if opts.async {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					if AppLogger != nil {
+						AppLogger.Error("[业务日志异步写入 panic] %s: %v", actionType, r)
+					}
+				}
+			}()
+			writeLog()
+		}()
+	} else {
+		writeLog()
+	}
 }
 
 // CreateAuditLogSimpleFast 快速创建简单审计日志，跳过 GeoIP 查询
@@ -536,9 +467,10 @@ func CheckBruteForcePattern(c *gin.Context, username string) (isSuspicious bool,
 
 	if username != "" {
 		var uniqueIPs int64
+		escapedUsername := EscapeLikePattern(username)
 		db.Model(&models.AuditLog{}).
 			Where("action_type LIKE ? AND before_data LIKE ? AND created_at > ?",
-				"security_login_attempt%", "%"+username+"%", now.Add(-10*time.Minute)).
+				"security_login_attempt%", "%"+escapedUsername+"%", now.Add(-10*time.Minute)).
 			Group("ip_address").
 			Count(&uniqueIPs)
 

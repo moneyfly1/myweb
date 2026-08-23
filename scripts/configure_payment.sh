@@ -6,12 +6,45 @@
 echo "=== 码支付和易支付配置工具 ==="
 echo ""
 
-# 从截图中获取的信息
-YIPAY_PID="REDACTED_PID"
-YIPAY_KEY="REDACTED_MERCHANT_KEY"
-YIPAY_GATEWAY="https://REDACTED_GATEWAY/xpay/epay/"
-YIPAY_SUBMIT_URL="https://REDACTED_GATEWAY/xpay/epay/submit.php"
-YIPAY_MAPI_URL="https://REDACTED_GATEWAY/xpay/epay/mapi.php"
+# 商户凭据不再硬编码进脚本/仓库。
+# 优先级：环境变量 > 交互输入（YIPAY_PID / YIPAY_KEY 必填）。
+YIPAY_PID="${YIPAY_PID:-}"
+if [ -z "$YIPAY_PID" ]; then
+    read -p "请输入商户ID (PID): " YIPAY_PID
+fi
+if [ -z "$YIPAY_PID" ]; then
+    echo "错误: 商户ID不能为空（可设置环境变量 YIPAY_PID 传入）"
+    exit 1
+fi
+
+YIPAY_KEY="${YIPAY_KEY:-}"
+if [ -z "$YIPAY_KEY" ]; then
+    read -sp "请输入商户密钥（输入不回显）: " YIPAY_KEY
+    echo ""
+fi
+if [ -z "$YIPAY_KEY" ]; then
+    echo "错误: 商户密钥不能为空（可设置环境变量 YIPAY_KEY 传入）"
+    exit 1
+fi
+
+# 网关地址同样支持环境变量覆盖；如未设置则要求输入
+# （不同支付平台/商户的网关地址不同，请勿使用他人截图中的地址）
+YIPAY_GATEWAY="${YIPAY_GATEWAY:-}"
+if [ -z "$YIPAY_GATEWAY" ]; then
+    read -p "请输入支付网关地址（例如: https://pay.example.com/）: " YIPAY_GATEWAY
+fi
+if [ -z "$YIPAY_GATEWAY" ]; then
+    echo "错误: 网关地址不能为空（可设置环境变量 YIPAY_GATEWAY 传入）"
+    exit 1
+fi
+YIPAY_SUBMIT_URL="${YIPAY_SUBMIT_URL:-}"
+if [ -z "$YIPAY_SUBMIT_URL" ]; then
+    YIPAY_SUBMIT_URL="${YIPAY_GATEWAY%/}/submit.php"
+fi
+YIPAY_MAPI_URL="${YIPAY_MAPI_URL:-}"
+if [ -z "$YIPAY_MAPI_URL" ]; then
+    YIPAY_MAPI_URL="${YIPAY_GATEWAY%/}/mapi.php"
+fi
 
 # 获取当前域名（需要用户确认）
 echo "请输入您的网站域名（例如: example.com 或 localhost:8080）:"
