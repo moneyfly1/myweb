@@ -82,6 +82,21 @@ func (s *WechatService) CreatePayment(order *models.Order, amount float64) (stri
 		return "", fmt.Errorf("微信下单失败: %s (%s)", respMap["err_code_des"], respMap["err_code"])
 	}
 
+	// 校验统一下单响应的微信签名，防止中间人篡改 code_url 等字段
+	respSign, hasSign := respMap["sign"]
+	if !hasSign || respSign == "" {
+		return "", fmt.Errorf("微信下单响应缺少签名")
+	}
+	verifyMap := make(map[string]string, len(respMap))
+	for k, v := range respMap {
+		if k != "sign" {
+			verifyMap[k] = v
+		}
+	}
+	if !strings.EqualFold(respSign, s.Sign(verifyMap)) {
+		return "", fmt.Errorf("微信下单响应签名校验失败")
+	}
+
 	codeURL := respMap["code_url"]
 	if codeURL == "" {
 		return "", fmt.Errorf("微信返回的 code_url 为空")

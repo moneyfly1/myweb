@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"math"
 	"net/http"
 	"time"
 
@@ -125,13 +124,12 @@ func CreateRecharge(c *gin.Context) {
 
 	var paymentURL string
 	if paymentConfig.Status == 1 {
-		// 创建支付交易记录
-		amt := int(math.Round(recharge.Amount * 100)) // 转换为分
+		// 创建支付交易记录（金额统一以元存储，与 Order.Amount 一致）
 		paymentTx := models.PaymentTransaction{
 			OrderID:         0, // 充值订单没有 order_id，使用 0
 			UserID:          user.ID,
 			PaymentMethodID: paymentConfig.ID,
-			Amount:          amt,
+			Amount:          recharge.Amount,
 			Currency:        "CNY",
 			TransactionID:   database.NullString(recharge.OrderNo),
 			Status:          "pending",
