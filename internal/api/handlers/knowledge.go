@@ -20,7 +20,7 @@ func GetKnowledgeCategories(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", categories)
 }
 
-// 用户端 - 获取分类下的文章列表
+// 用户端 - 获取分类下的文章列表（分页）
 func GetKnowledgeArticles(c *gin.Context) {
 	db := database.GetDB()
 	categoryID := c.Query("category_id")
@@ -38,9 +38,34 @@ func GetKnowledgeArticles(c *gin.Context) {
 		}
 	}
 
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取文章列表失败", err)
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "12"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 12
+	}
+
 	var articles []models.KnowledgeArticle
-	query.Preload("Category").Order("sort_order ASC, id DESC").Limit(200).Find(&articles)
-	utils.SuccessResponse(c, http.StatusOK, "", articles)
+	if err := query.Preload("Category").Order("sort_order ASC, id DESC").
+		Offset((page - 1) * pageSize).Limit(pageSize).Find(&articles).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取文章列表失败", err)
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"items":     articles,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
 }
 
 // 用户端 - 获取文章详情

@@ -28,37 +28,24 @@ func getDefaultSubscriptionSettings(db *gorm.DB) (deviceLimit int, durationMonth
 	deviceLimit = 0
 	durationMonths = 0
 
-	var deviceLimitConfig models.SystemConfig
-	if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "registration").First(&deviceLimitConfig).Error; err != nil {
-		if err := db.Where("key = ? AND category = ?", "default_subscription_device_limit", "general").First(&deviceLimitConfig).Error; err == nil {
-			if deviceLimitConfig.Value != "" {
-				if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit >= 0 {
-					deviceLimit = limit
-				}
-			}
+	// 走短 TTL 配置缓存，避免每次创建用户/订阅重复查库（最多 4 次查询/调用）
+	if v, err := utils.GetCachedSetting(db, "default_subscription_device_limit", "registration"); err == nil && v != "" {
+		if limit, err := strconv.Atoi(v); err == nil && limit >= 0 {
+			deviceLimit = limit
 		}
-	} else {
-		if deviceLimitConfig.Value != "" {
-			if limit, err := strconv.Atoi(deviceLimitConfig.Value); err == nil && limit >= 0 {
-				deviceLimit = limit
-			}
+	} else if v, err := utils.GetCachedSetting(db, "default_subscription_device_limit", "general"); err == nil && v != "" {
+		if limit, err := strconv.Atoi(v); err == nil && limit >= 0 {
+			deviceLimit = limit
 		}
 	}
 
-	var durationConfig models.SystemConfig
-	if err := db.Where("key = ? AND category = ?", "default_subscription_duration_months", "registration").First(&durationConfig).Error; err != nil {
-		if err := db.Where("key = ? AND category = ?", "default_subscription_duration_months", "general").First(&durationConfig).Error; err == nil {
-			if durationConfig.Value != "" {
-				if months, err := strconv.Atoi(durationConfig.Value); err == nil && months >= 0 {
-					durationMonths = months
-				}
-			}
+	if v, err := utils.GetCachedSetting(db, "default_subscription_duration_months", "registration"); err == nil && v != "" {
+		if months, err := strconv.Atoi(v); err == nil && months >= 0 {
+			durationMonths = months
 		}
-	} else {
-		if durationConfig.Value != "" {
-			if months, err := strconv.Atoi(durationConfig.Value); err == nil && months >= 0 {
-				durationMonths = months
-			}
+	} else if v, err := utils.GetCachedSetting(db, "default_subscription_duration_months", "general"); err == nil && v != "" {
+		if months, err := strconv.Atoi(v); err == nil && months >= 0 {
+			durationMonths = months
 		}
 	}
 

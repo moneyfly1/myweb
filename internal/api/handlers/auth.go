@@ -45,10 +45,10 @@ type LoginJSONRequest struct {
 }
 
 func getMinPasswordLength(db *gorm.DB) int {
-	var config models.SystemConfig
-	if err := db.Where("key = ? AND category = ?", "min_password_length", "registration").First(&config).Error; err == nil {
-		if v, err := strconv.Atoi(config.Value); err == nil && v > 0 {
-			return v
+	// 走短 TTL 配置缓存，避免注册/改密等热路径每次请求查库
+	if v, err := utils.GetCachedSetting(db, "min_password_length", "registration"); err == nil {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
 		}
 	}
 	return 8
