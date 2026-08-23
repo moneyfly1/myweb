@@ -10,7 +10,9 @@ type PaymentTransaction struct {
 	OrderID               uint           `gorm:"index;not null;index:idx_payment_status_order,priority:2" json:"order_id"`
 	UserID                uint           `gorm:"index;not null" json:"user_id"`
 	PaymentMethodID       uint           `gorm:"index;not null;index:idx_payment_status_method,priority:2" json:"payment_method_id"`
-	Amount                int            `gorm:"not null" json:"amount"` // 金额（分）
+	// 金额统一为「元」（与 Order.Amount / RechargeRecord.Amount 一致）。
+	// 历史版本曾以「分」存储（int），由 database.AutoMigrate 前的数据迁移统一 ÷100。
+	Amount                float64        `gorm:"type:decimal(10,2);not null" json:"amount"` // 金额（元）
 	Currency              string         `gorm:"type:varchar(10);default:CNY" json:"currency"`
 	TransactionID         sql.NullString `gorm:"type:varchar(100);uniqueIndex;index:idx_payment_status_transaction,priority:2" json:"transaction_id,omitempty"`
 	ExternalTransactionID sql.NullString `gorm:"type:varchar(100);index" json:"external_transaction_id,omitempty"`

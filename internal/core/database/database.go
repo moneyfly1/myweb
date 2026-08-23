@@ -236,6 +236,11 @@ func AutoMigrate() error {
 			return err
 		}
 	}
+	// 历史数据迁移：PaymentTransaction.Amount 曾以「分」存储（int），现统一为「元」。
+	// 检测到旧整型列时先 ÷100 转换存量数据，再由下方 AutoMigrate 完成列类型变更（幂等，不会重复执行）。
+	if err := migratePaymentTransactionAmountToYuan(); err != nil {
+		return err
+	}
 	err := DB.AutoMigrate(
 		&models.User{},
 		&models.UserLevel{},
@@ -439,6 +444,42 @@ func CloseDatabase() error {
 
 func ReopenDatabase() error {
 	return InitDatabase()
+}
+
+// migratePaymentTransactionAmountToYuan 历史数据迁移：
+// PaymentTransaction.Amount 曾以「分」（int 列）存储，现统一为「元」。
+// 检测旧整型列时把存量数据 ÷100；随后 AutoMigrate 将列改为 decimal(10,2)。
+// 幂等：列已是非整型（decimal/numeric/real）时跳过，不会二次换算。
+func migratePaymentTransactionAmountToYuan() error {
+	if DB == nil || !DB.Migrator().HasTable(&models.PaymentTransaction{}) {
+		return nil
+	}
+
+	dialect := strings.ToLower(DB.Dialector.Name())
+	var colType string
+	switch {
+	case strings.Contains(dialect, "sqlite"):
+		DB.Raw("SELECT type FROM pragma_table_info('payment_transactions') WHERE name='amount'").Scan(&colType)
+	case strings.Contains(dialect, "mysql"):
+		DB.Raw("SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_transactions' AND COLUMN_NAME = 'amount'").Scan(&colType)
+	case strings.Contains(dialect, "postgres"):
+		DB.Raw("SELECT data_type FROM information_schema.columns WHERE table_name = 'payment_transactions' AND column_name = 'amount'").Scan(&colType)
+	default:
+		return nil
+	}
+
+	colType = strings.ToUpper(strings.TrimSpace(colType))
+	if !strings.Contains(colType, "INT") {
+		// 非整型（新结构或已迁移）→ 无需转换
+		return nil
+	}
+
+	log.Printf("检测到 payment_transactions.amount 为整型（历史「分」存储），正在转换为「元」...")
+	if err := DB.Exec("UPDATE payment_transactions SET amount = amount / 100.0 WHERE amount IS NOT NULL").Error; err != nil {
+		return fmt.Errorf("迁移 payment_transactions.amount 分→元失败: %w", err)
+	}
+	log.Println("payment_transactions.amount 分→元 迁移完成（随后 AutoMigrate 变更列类型）")
+	return nil
 }
 
 // deduplicateInviteRelations 在 AutoMigrate 前清理 invite_relations 中重复的 InviteeID，

@@ -714,12 +714,6 @@ export default {
 </script>
 <style scoped lang="scss">
 .help-container {
-  @media (max-width: 768px) {
-    padding-top: 0 !important;
-    margin-top: 0 !important;
-  }
-}
-.help-container {
   padding: 0;
   max-width: none;
   margin: 0;
@@ -770,50 +764,17 @@ export default {
 .help-content {
   display: grid;
   gap: 14px;
+  min-width: 0;
   @media (max-width: 768px) {
     gap: 0.75rem;
   }
 }
-.quick-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-.quick-item {
-  min-height: 112px;
-  padding: 16px;
-  border: 1px solid #dcdfe6;
-  border-radius: 8px;
-  background: #fff;
-  cursor: pointer;
-  transition: background-color 0.16s ease, border-color 0.16s ease;
-}
-.quick-item:hover {
-  border-color: #c6e2ff;
-  background: #fbfdff;
-}
-.quick-icon {
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  margin-bottom: 10px;
-  border-radius: 8px;
-  background: #ecf5ff;
-  color: #409eff;
-  font-weight: 800;
-}
-.quick-name {
-  color: #303133;
-  font-size: 15px;
-  font-weight: 700;
-}
-.quick-desc {
-  margin-top: 6px;
-  color: #909399;
-  font-size: 12px;
-  line-height: 1.45;
-}
+
+
+
+
+
+
 .guide-card,
 .faq-card,
 .clients-card,
@@ -840,43 +801,7 @@ export default {
     }
   }
 }
-.nav-links {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  @media (max-width: 768px) {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 6px;
-  }
-  @media (max-width: 480px) {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 6px;
-  }
-  :deep(.el-button) {
-    width: 100%;
-    padding: 10px 16px;
-    border-radius: 8px;
-    font-weight: 600;
-    font-size: 0.875rem;
-    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
-    white-space: nowrap;
-    overflow: clip;
-    text-overflow: ellipsis;
-    @media (max-width: 768px) {
-      padding: 10px 12px;
-      font-size: 0.8125rem;
-      border-radius: 8px;
-      &:active {
-        background: var(--el-color-primary-light-9, #ecf5ff);
-      }
-    }
-    @media (max-width: 480px) {
-      padding: 8px 10px;
-      font-size: 0.75rem;
-      border-radius: 6px;
-    }
-  }
-}
+
 .guide-content,
 .faq-content {
   color: #333;
@@ -984,34 +909,10 @@ export default {
   font-size: 0.875rem;
   line-height: 1.5;
 }
-.clients-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0;
-  @media (max-width: 768px) {
-    gap: 0;
-  }
-}
-.client-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 0;
-  background: #fff;
-  border-bottom: 1px solid #ebeef5;
-  border-radius: 0;
-  transition: background-color 0.2s ease, border-color 0.2s ease;
-  @media (max-width: 768px) {
-    padding: 12px 0;
-    gap: 10px;
-  }
-}
-.client-item:last-child {
-  border-bottom: 0;
-}
-.client-item:hover {
-  background: #fbfdff;
-}
+
+
+
+
 .client-icon {
   width: 42px;
   height: 42px;
@@ -1028,41 +929,18 @@ export default {
   }
 }
 
-.client-icon-symbol,
-.contact-icon,
-.card-header-icon {
+.contact-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-.client-icon-symbol {
-  font-size: 1.5rem;
-}
-.client-info {
-  flex: 1;
-}
-.client-info h4 {
-  margin: 0 0 0.25rem 0;
-  color: #303133;
-  font-weight: 700;
-  font-size: 0.9375rem;
-  @media (max-width: 768px) {
-    font-size: 0.875rem;
-  }
-}
-.client-info :is(p) {
-  margin: 0 0 0.25rem 0;
-  color: #909399;
-  font-size: 0.8125rem;
-  @media (max-width: 768px) {
-    font-size: 0.75rem;
-  }
-}
-.client-platforms {
-  margin-top: 0.25rem;
-}
+
+
+
+
+
 .client-actions {
   display: flex;
   flex-direction: row;
@@ -1166,30 +1044,8 @@ export default {
     font-size: 0.9375rem;
     font-weight: 600;
   }
-  .card-header-icon {
-    font-size: 1.1rem;
-  }
-  .nav-links {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
-    @media (max-width: 480px) {
-      grid-template-columns: 1fr; /* 极小屏幕单列 */
-    }
-    :deep(.el-button) {
-      width: 100%;
-      padding: 12px 16px;
-      font-size: 0.875rem;
-      border-radius: 8px;
-      font-weight: 500;
-      white-space: nowrap;
-      overflow: clip;
-      text-overflow: ellipsis;
-      margin: 0; /* 移除按钮默认边距 */
-      &:active {
-        background: var(--el-color-primary-light-9, #ecf5ff);
-      }
-    }
-  }
+
+
   .guide-content,
   .faq-content {
     font-size: 0.875rem;
@@ -1237,23 +1093,8 @@ export default {
       font-family: monospace;
     }
   }
-  .clients-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-  .client-item {
-    flex-direction: row; /* 改回行布局，图标在左侧 */
-    align-items: flex-start;
-    text-align: left;
-    padding: 16px;
-    border-radius: 8px;
-    background: #ffffff;
-    border: 1px solid #dcdfe6;
-    &:active {
-      background: #f8fafc;
-      border-color: #dbeafe;
-    }
-  }
+
+
   .client-icon {
     width: 44px;
     margin-bottom: 0;
@@ -1264,44 +1105,8 @@ export default {
     align-items: center;
     height: 44px; /* 保持图标区域正方形 */
   }
-  .client-icon-symbol {
-    font-size: 1.75rem;
-  }
-  .client-info {
-    width: auto;
-    flex: 1;
-    margin-bottom: 0;
-    :is(h4) {
-      font-size: 1rem;
-      margin-bottom: 4px;
-      font-weight: 600;
-    }
-    :is(p) {
-      font-size: 0.8125rem;
-      line-height: 1.4;
-      margin-bottom: 6px;
-      color: #666;
-      display: -webkit-box;
-      -webkit-line-clamp: 2; /* 限制描述行数 */
-      line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: clip;
-    }
-  }
-  .client-platforms {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-start; /* 左对齐 */
-    gap: 6px;
-    margin-top: 4px;
-    :deep(.el-tag) {
-      font-size: 0.75rem;
-      padding: 0 6px;
-      height: 22px;
-      line-height: 20px;
-      border-radius: 4px;
-    }
-  }
+
+
   .client-actions {
     flex-direction: column; /* 按钮垂直排列 */
     justify-content: center;
@@ -1652,11 +1457,7 @@ export default {
   border-color: #ebeef5;
   color: #409eff;
 }
-.help-content {
-  display: grid;
-  gap: 14px;
-  min-width: 0;
-}
+
 .help-section-card {
   scroll-margin-top: 86px;
 }

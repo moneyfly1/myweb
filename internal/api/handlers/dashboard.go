@@ -365,13 +365,28 @@ func GetAbnormalUsers(c *gin.Context) {
 	var total int64
 	query.Count(&total)
 
-	var users []models.User
-	query.Order("created_at DESC").Find(&users)
-
-	userList := buildAbnormalUserDataWithDateRange(db, users, startTime, endTime, minSub, minReset)
-	userList = filterAbnormalUserData(userList, riskLevelFilter, abnormalTypeFilter)
-	total = int64(len(userList))
-	userList = paginateAbnormalUserData(userList, pagination.GetOffset(), pagination.Size)
+	var userList []gin.H
+	if riskLevelFilter == "" && abnormalTypeFilter == "" {
+		// 无风险过滤（常见情况）：SQL 侧直接分页，只处理当前页用户，
+		// 避免把全部候选用户装载进内存再分页（候选可能成千上万）
+		var users []models.User
+		if err := query.Order("created_at DESC").Offset(pagination.GetOffset()).Limit(pagination.Size).Find(&users).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取异常用户失败", err)
+			return
+		}
+		userList = buildAbnormalUserDataWithDateRange(db, users, startTime, endTime, minSub, minReset)
+	} else {
+		// 有风险等级/类型过滤时必须扫描全部候选再过滤，保持内存分页
+		var users []models.User
+		if err := query.Order("created_at DESC").Find(&users).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "获取异常用户失败", err)
+			return
+		}
+		userList = buildAbnormalUserDataWithDateRange(db, users, startTime, endTime, minSub, minReset)
+		userList = filterAbnormalUserData(userList, riskLevelFilter, abnormalTypeFilter)
+		total = int64(len(userList))
+		userList = paginateAbnormalUserData(userList, pagination.GetOffset(), pagination.Size)
+	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"users": userList, "total": total, "page": page, "size": size})
 }

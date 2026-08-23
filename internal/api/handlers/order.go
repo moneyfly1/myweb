@@ -988,7 +988,8 @@ func GetOrder(c *gin.Context) {
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "", order)
+	// 与列表接口 GetOrders 统一返回 formatOrderData 形状，避免同一资源两种契约
+	utils.SuccessResponse(c, http.StatusOK, "", formatOrderData(order))
 }
 
 func CancelOrderByNo(c *gin.Context) {
@@ -1827,13 +1828,13 @@ func UpgradeDevices(c *gin.Context) {
 			}
 		}
 
-		// 创建支付交易记录（外部支付）
+		// 创建支付交易记录（外部支付，金额统一以元存储）
 		if finalAmount > 0.01 && req.PaymentMethod != "" && req.PaymentMethod != "balance" {
 			transaction := models.PaymentTransaction{
 				OrderID:         order.ID,
 				UserID:          user.ID,
 				PaymentMethodID: paymentConfig.ID,
-				Amount:          int(math.Round(finalAmount * 100)),
+				Amount:          finalAmount,
 				Currency:        "CNY",
 				Status:          "pending",
 			}
@@ -2037,7 +2038,7 @@ func PayOrder(c *gin.Context) {
 		OrderID:         order.ID,
 		UserID:          user.ID,
 		PaymentMethodID: paymentConfig.ID,
-		Amount:          int(math.Round(amount * 100)),
+		Amount:          amount, // 金额统一以元存储
 		Currency:        "CNY",
 		Status:          "pending",
 	}
