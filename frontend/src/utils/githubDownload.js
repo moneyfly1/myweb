@@ -130,16 +130,16 @@ export function detectSystem() {
   const platform = navigator.platform.toLowerCase()
   let os = 'unknown'
   let arch = 'unknown'
-  if (userAgent.includes('win') || platform.includes('win')) {
+  if (userAgent.includes('android')) {
+    os = 'android'
+  } else if (userAgent.includes('iphone') || userAgent.includes('ipad') || userAgent.includes('ios')) {
+    os = 'ios'
+  } else if (userAgent.includes('win') || platform.includes('win')) {
     os = 'windows'
   } else if (userAgent.includes('mac') || platform.includes('mac')) {
     os = 'macos'
   } else if (userAgent.includes('linux') || platform.includes('linux')) {
     os = 'linux'
-  } else if (userAgent.includes('android')) {
-    os = 'android'
-  } else if (userAgent.includes('iphone') || userAgent.includes('ipad')) {
-    os = 'ios'
   }
   if (os === 'windows') {
     if (navigator.userAgent.includes('ARM64') || navigator.userAgent.includes('arm64')) {
@@ -333,15 +333,9 @@ export async function getGitHubDownloadUrl(repo, os, arch, configKey = null, sof
 }
 export async function getClientDownloadUrl(clientKey, softwareConfig = {}) {
   const { os, arch } = detectSystem()
-  const clientMap = {
-    'clash-party': { repo: 'mihomo-party-org/clash-party', name: 'Clash Part', configKey: 'clash-party' },
-    'clash-verge': { repo: 'clash-verge-rev/clash-verge-rev', name: 'Clash Verge', configKey: 'clash-verge' },
-    'hiddify': { repo: 'hiddify/hiddify-app', name: 'Hiddify', configKey: 'hiddify-app' },
-    'flclash': { repo: 'chen08209/FlClash', name: 'FlClash', configKey: 'FlClash' },
-    'v2rayng': { repo: '2dust/v2rayNG', name: 'V2rayNG', configKey: 'v2rayNG' },
-    'v2rayn': { repo: '2dust/v2rayN', name: 'V2rayN', configKey: 'v2rayN' }
-  }
-  const client = clientMap[clientKey]
+  // 统一使用 CLIENT_CONFIGS 作为唯一真相源（此前同表在此与 getClientReleasesUrl 各复制一份）
+  // 键名大小写不敏感：Help.vue 传入 'flclash'/'v2rayng' 而表内为 'FlClash'/'v2rayNG'
+  const client = resolveClientConfig(clientKey)
   if (!client) {
     throw new Error(`未知的客户端: ${clientKey}`)
   }
@@ -364,20 +358,26 @@ export async function getClientDownloadUrl(clientKey, softwareConfig = {}) {
     }
     return toResolverURL(`https://github.com/${client.repo}/releases/latest`)
   }
-  return await getGitHubDownloadUrl(client.repo, os, arch, client.configKey, softwareConfig)
+  return await getGitHubDownloadUrl(client.repo, os, arch, client.name, softwareConfig)
 }
-export function getClientReleasesUrl(clientKey) {
-  const clientMap = {
-    'clash-party': 'mihomo-party-org/clash-party',
-    'clash-verge': 'clash-verge-rev/clash-verge-rev',
-    'hiddify': 'hiddify/hiddify-app',
-    'flclash': 'chen08209/FlClash',
-    'v2rayng': '2dust/v2rayNG',
-    'v2rayn': '2dust/v2rayN'
+
+// resolveClientConfig 大小写不敏感地从 CLIENT_CONFIGS 查找客户端
+function resolveClientConfig(clientKey) {
+  if (!clientKey) return null
+  if (CLIENT_CONFIGS[clientKey]) return CLIENT_CONFIGS[clientKey]
+  const lower = clientKey.toLowerCase()
+  for (const [key, cfg] of Object.entries(CLIENT_CONFIGS)) {
+    if (key.toLowerCase() === lower) {
+      return cfg
+    }
   }
-  const repo = clientMap[clientKey]
-  if (!repo) {
+  return null
+}
+
+export function getClientReleasesUrl(clientKey) {
+  const client = resolveClientConfig(clientKey)
+  if (!client) {
     return null
   }
-  return toResolverURL(`https://github.com/${repo}/releases/latest`)
+  return toResolverURL(`https://github.com/${client.repo}/releases/latest`)
 }

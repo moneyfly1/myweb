@@ -116,33 +116,10 @@ func CreateBackup(c *gin.Context) {
 		}
 	}
 
+	// 配置文件以脱敏形式写入备份（密钥值替换为掩码，防止凭据随备份外泄）
 	configFiles := []string{".env", "config.yaml"}
 	for _, configFile := range configFiles {
-		if strings.Contains(configFile, "..") || strings.Contains(configFile, "/") ||
-			strings.Contains(configFile, "\\") || strings.Contains(configFile, "~") {
-			continue
-		}
-
-		configPath, inBase := utils.JoinWithinBaseDir(wd, configFile)
-		if inBase {
-			if _, err := os.Stat(configPath); err == nil {
-				file, err := os.Open(configPath)
-				if err == nil {
-					defer func() {
-						if closeErr := file.Close(); closeErr != nil {
-							log.Printf("failed to close config file %s: %v", configFile, closeErr)
-						}
-					}()
-
-					writer, err := zipWriter.Create(filepath.Base(configFile))
-					if err == nil {
-						if _, copyErr := io.Copy(writer, file); copyErr != nil {
-							log.Printf("failed to copy config file %s: %v", configFile, copyErr)
-						}
-					}
-				}
-			}
-		}
+		backup_service.AddSanitizedConfigFile(zipWriter, wd, configFile)
 	}
 
 	uploadResult := gin.H{
@@ -153,7 +130,7 @@ func CreateBackup(c *gin.Context) {
 	db := database.GetDB()
 	remoteCfg := backup_service.LoadRemoteBackupConfig(db)
 	backupTarget := remoteCfg.Target
-	if remoteCfg.Enabled && remoteCfg.Token != "" {
+	if remoteCfg.CanPush() {
 		tmpFileName, tmpFilePath, tmpFileSize, err := backup_service.BuildDBOnlyBackupZip(wd, backupDir, utils.GetBeijingTime())
 		if err != nil {
 			utils.LogWarn("创建数据库备份文件用于远程上传失败: %v", err)
@@ -339,8 +316,8 @@ func ListRemoteBackupContents(c *gin.Context) {
 
 	db := database.GetDB()
 	remoteCfg := backup_service.LoadRemoteBackupConfig(db)
-	if remoteCfg.Token == "" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "未配置远程备份平台Token", nil)
+	if remoteCfg.Token == "" || remoteCfg.Owner == "" || remoteCfg.Repo == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "未完整配置远程备份（Token/Owner/Repo 必填）", nil)
 		return
 	}
 
@@ -417,8 +394,8 @@ func RestoreBackup(c *gin.Context) {
 
 		db := database.GetDB()
 		remoteCfg := backup_service.LoadRemoteBackupConfig(db)
-		if remoteCfg.Token == "" {
-			utils.ErrorResponse(c, http.StatusBadRequest, "未配置远程备份平台Token", nil)
+		if remoteCfg.Token == "" || remoteCfg.Owner == "" || remoteCfg.Repo == "" {
+			utils.ErrorResponse(c, http.StatusBadRequest, "未完整配置远程备份（Token/Owner/Repo 必填）", nil)
 			return
 		}
 
@@ -498,8 +475,18 @@ func extractDBFromZip(zipPath string) (string, error) {
 	}
 	defer r.Close()
 
+	// 防 zip 炸弹：限制单文件解压大小（数据库通常 < 2GB，但备份来自不可信来源时仍需上限）
+	const maxExtractSize = 4 << 30 // 4GB
+	var totalSize int64
 	for _, f := range r.File {
+		totalSize += int64(f.UncompressedSize64)
+		if totalSize > maxExtractSize {
+			return "", fmt.Errorf("备份文件解压总量超过 %dGB 限制", maxExtractSize>>30)
+		}
 		if f.Name == "cboard.db" {
+			if f.UncompressedSize64 > maxExtractSize {
+				return "", fmt.Errorf("数据库文件超过解压大小限制")
+			}
 			rc, err := f.Open()
 			if err != nil {
 				return "", fmt.Errorf("打开zip内文件失败: %w", err)
@@ -512,9 +499,14 @@ func extractDBFromZip(zipPath string) (string, error) {
 			}
 			defer tmpFile.Close()
 
-			if _, err := io.Copy(tmpFile, rc); err != nil {
+			written, err := io.Copy(tmpFile, io.LimitReader(rc, maxExtractSize))
+			if err != nil {
 				os.Remove(tmpFile.Name())
 				return "", fmt.Errorf("解压数据库文件失败: %w", err)
+			}
+			if written >= maxExtractSize {
+				os.Remove(tmpFile.Name())
+				return "", fmt.Errorf("数据库文件超过解压大小限制")
 			}
 			return tmpFile.Name(), nil
 		}

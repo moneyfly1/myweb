@@ -498,8 +498,10 @@ func doJSONPost(apiURL string, payload interface{}, result interface{}) error {
 		return err
 	}
 
+	// 带超时的客户端，防止第三方通知服务无响应时 goroutine 永久泄漏
+	client := &http.Client{Timeout: 10 * time.Second}
 	// #nosec G107 - URL is validated above with ValidateHTTPURL
-	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(jsonData))
+	resp, err := client.Post(apiURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return err
 	}

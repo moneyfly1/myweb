@@ -117,12 +117,12 @@ func ClearSubscriptionConfigCacheWithContext(ctx context.Context, subscriptionUR
 	if !IsRedisEnabled() {
 		return nil
 	}
-	
+
 	keys := []string{
 		fmt.Sprintf("subscription:config:%s:clash", subscriptionURL),
 		fmt.Sprintf("subscription:config:%s:base64", subscriptionURL),
 	}
-	
+
 	if err := redisClient.Del(ctx, keys...).Err(); err != nil {
 		return fmt.Errorf("failed to delete subscription config cache: %w", err)
 	}

@@ -183,24 +183,45 @@ func incrementSequence(seq int) int {
 }
 
 func generateOrderNo(gen orderNoGenerator) (string, error) {
+	// 使用时间戳(到秒)+4位随机数生成订单号，从根本上消除"探测-插入"TOCTOU 竞态：
+	// 并发请求不会再读到相同的 maxSeq。数据库层 order_no 唯一索引作为最终兜底。
 	now := GetBeijingTime()
+	prefix := gen.getPrefix()
 	dateStr := now.Format("20060102")
-	fullPrefix := fmt.Sprintf("%s%s", gen.getPrefix(), dateStr)
+	timeStr := now.Format("150405")
+	randSuffix, err := cryptoRandDigits(4)
+	if err != nil {
+		return "", fmt.Errorf("生成订单号随机数失败: %w", err)
+	}
+	orderNo := fmt.Sprintf("%s%s%s%s", prefix, dateStr, timeStr, randSuffix)
 
-	maxSeq := gen.getMaxSequence()
-	maxSeq = incrementSequence(maxSeq)
-	orderNo := fmt.Sprintf("%s%03d", fullPrefix, maxSeq)
-
-	// 最多重试10次避免重复
+	// 万一极端碰撞（唯一索引兜底），重试几次
 	for i := 0; i < 10; i++ {
 		if !gen.checkExists(orderNo) {
 			break
 		}
-		maxSeq = incrementSequence(maxSeq)
-		orderNo = fmt.Sprintf("%s%03d", fullPrefix, maxSeq)
+		randSuffix, err = cryptoRandDigits(4)
+		if err != nil {
+			return "", fmt.Errorf("生成订单号随机数失败: %w", err)
+		}
+		orderNo = fmt.Sprintf("%s%s%s%s", prefix, dateStr, timeStr, randSuffix)
 	}
-
 	return orderNo, nil
+}
+
+// cryptoRandDigits 生成 n 位加密安全的随机数字串。
+func cryptoRandDigits(n int) (string, error) {
+	const digits = "0123456789"
+	b := make([]byte, n)
+	max := big.NewInt(int64(len(digits)))
+	for i := range b {
+		v, err := crand.Int(crand.Reader, max)
+		if err != nil {
+			return "", err
+		}
+		b[i] = digits[v.Int64()]
+	}
+	return string(b), nil
 }
 
 func GenerateOrderNo(db interface{}) (string, error) {
@@ -607,6 +628,11 @@ type JWTClaims struct {
 
 // GetSessionTimeout 获取会话超时时间（分钟），优先级：每用户设置 > 全局设置 > .env 配置
 func GetSessionTimeout(userID uint) int {
+	// 全局配置低频变更，缓存 2 分钟避免每次签发 token 都查库
+	if v, ok := getCachedSessionTimeout(); ok {
+		return v
+	}
+
 	db := database.GetDB()
 	if db != nil {
 		// 1. 检查每用户设置
@@ -622,6 +648,7 @@ func GetSessionTimeout(userID uint) int {
 		var globalCfg models.SystemConfig
 		if err := db.Where("category = ? AND key = ?", "security", "session_timeout").First(&globalCfg).Error; err == nil {
 			if v, err := strconv.Atoi(globalCfg.Value); err == nil && v > 0 {
+				cacheSessionTimeout(v)
 				return v
 			}
 		}
@@ -633,6 +660,31 @@ func GetSessionTimeout(userID uint) int {
 		return cfg.AccessTokenExpireMinutes
 	}
 	return 60
+}
+
+// 会话超时全局配置缓存：低频变更，2 分钟 TTL，避免每次签发 token 都查库
+var (
+	sessionTimeoutCache     int
+	sessionTimeoutCacheTime time.Time
+	sessionTimeoutCacheSet  bool
+)
+
+func getCachedSessionTimeout() (int, bool) {
+	if sessionTimeoutCacheSet && time.Since(sessionTimeoutCacheTime) < 2*time.Minute {
+		return sessionTimeoutCache, true
+	}
+	return 0, false
+}
+
+func cacheSessionTimeout(v int) {
+	sessionTimeoutCache = v
+	sessionTimeoutCacheTime = time.Now()
+	sessionTimeoutCacheSet = true
+}
+
+// InvalidateSessionTimeoutCache 安全设置变更时清除缓存（由 UpdateSecuritySettings 调用）
+func InvalidateSessionTimeoutCache() {
+	sessionTimeoutCacheSet = false
 }
 
 func CreateAccessToken(userID uint, email string, isAdmin bool) (string, error) {

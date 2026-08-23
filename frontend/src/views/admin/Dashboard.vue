@@ -450,8 +450,10 @@ export default {
         const response = await api.get('/admin/users/abnormal')
         if (response && response.data) {
           if (response.data.success !== false) {
-            const data = response.data.data || []
-            abnormalUsers.value = Array.isArray(data) ? data.slice(0, 5) : []
+            // 后端返回 { users, total, page, size }
+            const data = response.data.data || response.data
+            const list = Array.isArray(data) ? data : (data.users || [])
+            abnormalUsers.value = list.slice(0, 5)
           } else {
             abnormalUsers.value = []
           }

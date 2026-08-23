@@ -53,7 +53,7 @@
               </el-form-item>
               <el-form-item>
                 <div class="form-options">
-                  <el-checkbox v-model="rememberMe" disabled>保持登录 30 天</el-checkbox>
+                  <el-checkbox v-model="rememberMe">保持登录 30 天</el-checkbox>
                   <a href="#" @click.prevent="switchView('forgot')" class="lux-link">忘记密码？</a>
                 </div>
               </el-form-item>

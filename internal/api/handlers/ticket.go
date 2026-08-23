@@ -446,15 +446,17 @@ func GetTicket(c *gin.Context) {
 		"updated_at": utils.FormatBeijingTime(ticket.UpdatedAt),
 	}
 
-	// 补充可选字段
-	if ticket.AdminNotes != nil {
-		responseData["admin_notes"] = *ticket.AdminNotes
-	}
-	if ticket.Rating != nil {
-		responseData["rating"] = *ticket.Rating
-	}
-	if ticket.RatingComment != nil {
-		responseData["rating_comment"] = *ticket.RatingComment
+	// 补充可选字段（管理员内部备注/评分仅管理员可见，防止泄露给工单所属用户）
+	if isAdmin {
+		if ticket.AdminNotes != nil {
+			responseData["admin_notes"] = *ticket.AdminNotes
+		}
+		if ticket.Rating != nil {
+			responseData["rating"] = *ticket.Rating
+		}
+		if ticket.RatingComment != nil {
+			responseData["rating_comment"] = *ticket.RatingComment
+		}
 	}
 	if ticket.ResolvedAt != nil {
 		responseData["resolved_at"] = utils.FormatBeijingTime(*ticket.ResolvedAt)

@@ -152,12 +152,14 @@ func UpdateCurrentUser(c *gin.Context) {
 	}
 
 	var req struct {
-		Username string `json:"username"`
-		Nickname string `json:"nickname"`
-		Avatar   string `json:"avatar"`
-		Theme    string `json:"theme"`
-		Language string `json:"language"`
-		Timezone string `json:"timezone"`
+		Username         string `json:"username"`
+		Nickname         string `json:"nickname"`
+		Avatar           string `json:"avatar"`
+		Theme            string `json:"theme"`
+		Language         string `json:"language"`
+		Timezone         string `json:"timezone"`
+		Email            string `json:"email"`
+		VerificationCode string `json:"verification_code"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -166,6 +168,48 @@ func UpdateCurrentUser(c *gin.Context) {
 	}
 
 	db := database.GetDB()
+
+	// 邮箱换绑：需先向新邮箱发送验证码，校验通过后才更新
+	if req.Email != "" {
+		newEmail := utils.NormalizeEmail(req.Email)
+		if newEmail == user.Email {
+			utils.ErrorResponse(c, http.StatusBadRequest, "新邮箱与当前邮箱相同", nil)
+			return
+		}
+		if req.VerificationCode == "" {
+			utils.ErrorResponse(c, http.StatusBadRequest, "请先获取邮箱验证码", nil)
+			return
+		}
+		var existingUser models.User
+		if err := db.Where("LOWER(email) = ? AND id != ?", newEmail, user.ID).First(&existingUser).Error; err == nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, "该邮箱已被其他账号使用", nil)
+			return
+		}
+		// 校验验证码（purpose=email_change，未使用且未过期）
+		var verificationCode models.VerificationCode
+		if err := db.Where("LOWER(email) = ? AND code = ? AND used = ? AND purpose = ?", newEmail, req.VerificationCode, 0, "email_change").
+			Order("created_at DESC").First(&verificationCode).Error; err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, "验证码错误，请重新获取", nil)
+			return
+		}
+		if verificationCode.IsExpired() {
+			utils.ErrorResponse(c, http.StatusBadRequest, "验证码已过期，请重新获取", nil)
+			return
+		}
+		// 事务：更新邮箱 + 标记验证码已用
+		err := db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&models.User{}).Where("id = ?", user.ID).Update("email", newEmail).Error; err != nil {
+				return err
+			}
+			return tx.Model(&models.VerificationCode{}).Where("id = ?", verificationCode.ID).Update("used", 1).Error
+		})
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "邮箱修改失败", err)
+			return
+		}
+		user.Email = newEmail
+		utils.CreateAuditLogSimple(c, "change_email", "user", user.ID, fmt.Sprintf("用户修改邮箱: %s", newEmail))
+	}
 
 	if req.Username != "" {
 		var existingUser models.User
@@ -1548,12 +1592,11 @@ func CreateUser(c *gin.Context) {
 			expireTimeStr = utils.FormatBeijingTime(expireTime)
 		}
 
-		plainPassword := req.Password
-
+		// 管理员通知不含明文密码：管理员本人设置的密码无需回执，
+		// 且通知可能流经 Telegram/Bark/邮件等多个渠道，明文密码泄露面过大
 		_ = notificationService.SendAdminNotification("user_created", map[string]interface{}{
 			"username":     user.Username,
 			"email":        user.Email,
-			"password":     plainPassword, // 明文密码
 			"created_by":   createdBy,
 			"create_time":  createTime,
 			"expire_time":  expireTimeStr,
@@ -1870,15 +1913,7 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	if err := tx.Where("subscription_id IN (SELECT id FROM subscriptions WHERE user_id = ?)", user.ID).Delete(&models.Device{}).Error; err != nil {
-		tx.Rollback()
-		utils.LogError("DeleteUser: delete devices by subscription failed", err, map[string]interface{}{
-			"user_id": user.ID,
-		})
-		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户设备失败", err)
-		return
-	}
-
+	// 设备按 user_id 直接删除（此前“按订阅子查询删除”在订阅已删后恒为空，属死代码）
 	if err := tx.Where("user_id = ?", user.ID).Delete(&models.Device{}).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete devices by user_id failed", err, map[string]interface{}{
@@ -2004,6 +2039,32 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
+	// 补充清理遗漏的关联数据，避免残留孤儿记录
+	if err := tx.Where("user_id = ?", user.ID).Delete(&models.CheckinRecord{}).Error; err != nil {
+		tx.Rollback()
+		utils.LogError("DeleteUser: delete checkin records failed", err, map[string]interface{}{"user_id": user.ID})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户签到记录失败", err)
+		return
+	}
+	if err := tx.Where("user_id = ?", user.ID).Delete(&models.UserCustomNode{}).Error; err != nil {
+		tx.Rollback()
+		utils.LogError("DeleteUser: delete user custom nodes failed", err, map[string]interface{}{"user_id": user.ID})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户专线节点分配失败", err)
+		return
+	}
+	if err := tx.Where("username = ?", user.Username).Delete(&models.LoginAttempt{}).Error; err != nil {
+		tx.Rollback()
+		utils.LogError("DeleteUser: delete login attempts failed", err, map[string]interface{}{"username": user.Username})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户登录尝试记录失败", err)
+		return
+	}
+	if err := tx.Where("email = ?", user.Email).Delete(&models.VerificationCode{}).Error; err != nil {
+		tx.Rollback()
+		utils.LogError("DeleteUser: delete verification codes failed", err, map[string]interface{}{"email": user.Email})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户验证码记录失败", err)
+		return
+	}
+
 	if err := tx.Delete(&user).Error; err != nil {
 		tx.Rollback()
 		utils.LogError("DeleteUser: delete user failed", err, map[string]interface{}{
@@ -2058,6 +2119,10 @@ func LoginAsUser(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusForbidden, "不能以管理员账号进入用户后台", nil)
 		return
 	}
+	if !targetUser.IsActive {
+		utils.ErrorResponse(c, http.StatusBadRequest, "该用户已被禁用，无法登录", nil)
+		return
+	}
 
 	accessToken, err := utils.CreateAccessToken(targetUser.ID, targetUser.Email, false)
 	if err != nil {
@@ -2110,6 +2175,19 @@ func UpdateUserStatus(c *gin.Context) {
 	if err := db.First(&user, id).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusNotFound, "用户不存在", err)
 		return
+	}
+
+	// 自我保护：禁止管理员禁用自己或取消自己的管理员身份
+	currentUser, _ := middleware.GetCurrentUser(c)
+	if currentUser != nil && currentUser.ID == user.ID {
+		if (req.IsActive != nil && !*req.IsActive) || req.Status == "inactive" || req.Status == "disabled" {
+			utils.ErrorResponse(c, http.StatusBadRequest, "不能禁用当前登录的管理员账号", nil)
+			return
+		}
+		if req.IsAdmin != nil && !*req.IsAdmin {
+			utils.ErrorResponse(c, http.StatusBadRequest, "不能取消当前登录账号的管理员身份", nil)
+			return
+		}
 	}
 
 	// 保存变更前的状态
@@ -2421,57 +2499,15 @@ func BatchDeleteUsers(c *gin.Context) {
 }
 
 func BatchEnableUsers(c *gin.Context) {
-	var req struct {
-		UserIDs []uint `json:"user_ids" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
-		return
-	}
-
-	if len(req.UserIDs) == 0 {
-		utils.ErrorResponse(c, http.StatusBadRequest, "请选择要启用的用户", nil)
-		return
-	}
-
-	db := database.GetDB()
-	var targetUsers []models.User
-	db.Where("id IN ?", req.UserIDs).Select("id, username, email").Find(&targetUsers)
-	result := db.Model(&models.User{}).Where("id IN ?", req.UserIDs).Update("is_active", true)
-
-	if result.Error != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "启用用户失败", result.Error)
-		return
-	}
-
-	// 清除被启用用户的订阅配置缓存
-	go func(userIDs []uint) {
-		var subs []models.Subscription
-		db.Select("subscription_url").Where("user_id IN ?", userIDs).Find(&subs)
-		for _, sub := range subs {
-			if err := cache.ClearSubscriptionConfigCache(sub.SubscriptionURL); err != nil {
-				log.Printf("failed to clear subscription config cache: %v", err)
-			}
-		}
-	}(req.UserIDs)
-
-	userDetails := make([]map[string]interface{}, 0, len(targetUsers))
-	for _, u := range targetUsers {
-		userDetails = append(userDetails, map[string]interface{}{
-			"user_id":  u.ID,
-			"username": u.Username,
-			"email":    u.Email,
-		})
-	}
-	utils.CreateAuditLog(c, "batch_enable_users", "user", 0,
-		fmt.Sprintf("管理员批量启用 %d 个用户", result.RowsAffected),
-		map[string]interface{}{"user_ids": req.UserIDs, "users": userDetails},
-		map[string]interface{}{"is_active": true, "count": result.RowsAffected})
-	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功启用 %d 个用户", result.RowsAffected), nil)
+	batchUpdateUsersActive(c, true)
 }
 
 func BatchDisableUsers(c *gin.Context) {
+	batchUpdateUsersActive(c, false)
+}
+
+// batchUpdateUsersActive 批量启用/禁用用户的公共实现（Enable/Disable 此前约 120 行复制粘贴）
+func batchUpdateUsersActive(c *gin.Context, active bool) {
 	var req struct {
 		UserIDs []uint `json:"user_ids" binding:"required"`
 	}
@@ -2481,39 +2517,48 @@ func BatchDisableUsers(c *gin.Context) {
 		return
 	}
 
-	if len(req.UserIDs) == 0 {
-		utils.ErrorResponse(c, http.StatusBadRequest, "请选择要禁用的用户", nil)
-		return
+	actionName := "启用"
+	actionKey := "batch_enable_users"
+	if !active {
+		actionName = "禁用"
+		actionKey = "batch_disable_users"
 	}
 
-	currentUser, _ := middleware.GetCurrentUser(c)
-	if currentUser != nil {
-		for _, id := range req.UserIDs {
-			if id == currentUser.ID {
-				utils.ErrorResponse(c, http.StatusBadRequest, "不能禁用当前登录的管理员账户", nil)
-				return
-			}
-		}
+	if len(req.UserIDs) == 0 {
+		utils.ErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("请选择要%s的用户", actionName), nil)
+		return
 	}
 
 	db := database.GetDB()
 
-	var adminUsers []models.User
-	if err := db.Where("id IN ? AND is_admin = ?", req.UserIDs, true).Find(&adminUsers).Error; err == nil && len(adminUsers) > 0 {
-		utils.ErrorResponse(c, http.StatusBadRequest, "不能禁用管理员用户", nil)
-		return
+	if !active {
+		// 自我保护 + 管理员保护（仅禁用时）
+		currentUser, _ := middleware.GetCurrentUser(c)
+		if currentUser != nil {
+			for _, id := range req.UserIDs {
+				if id == currentUser.ID {
+					utils.ErrorResponse(c, http.StatusBadRequest, "不能禁用当前登录的管理员账户", nil)
+					return
+				}
+			}
+		}
+		var adminUsers []models.User
+		if err := db.Where("id IN ? AND is_admin = ?", req.UserIDs, true).Find(&adminUsers).Error; err == nil && len(adminUsers) > 0 {
+			utils.ErrorResponse(c, http.StatusBadRequest, "不能禁用管理员用户", nil)
+			return
+		}
 	}
 
 	var targetUsers []models.User
 	db.Where("id IN ?", req.UserIDs).Select("id, username, email").Find(&targetUsers)
-	result := db.Model(&models.User{}).Where("id IN ?", req.UserIDs).Update("is_active", false)
+	result := db.Model(&models.User{}).Where("id IN ?", req.UserIDs).Update("is_active", active)
 
 	if result.Error != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "禁用用户失败", result.Error)
+		utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("%s用户失败", actionName), result.Error)
 		return
 	}
 
-	// 清除被禁用用户的订阅配置缓存
+	// 清除被操作用户的订阅配置缓存
 	go func(userIDs []uint) {
 		var subs []models.Subscription
 		db.Select("subscription_url").Where("user_id IN ?", userIDs).Find(&subs)
@@ -2532,11 +2577,11 @@ func BatchDisableUsers(c *gin.Context) {
 			"email":    u.Email,
 		})
 	}
-	utils.CreateAuditLog(c, "batch_disable_users", "user", 0,
-		fmt.Sprintf("管理员批量禁用 %d 个用户", result.RowsAffected),
+	utils.CreateAuditLog(c, actionKey, "user", 0,
+		fmt.Sprintf("管理员批量%s %d 个用户", actionName, result.RowsAffected),
 		map[string]interface{}{"user_ids": req.UserIDs, "users": userDetails},
-		map[string]interface{}{"is_active": false, "count": result.RowsAffected})
-	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功禁用 %d 个用户", result.RowsAffected), nil)
+		map[string]interface{}{"is_active": active, "count": result.RowsAffected})
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功%s %d 个用户", actionName, result.RowsAffected), nil)
 }
 
 func BatchSendSubEmail(c *gin.Context) {

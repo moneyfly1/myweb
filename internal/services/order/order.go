@@ -134,12 +134,22 @@ func (s *OrderService) CancelPendingOrders(orderIDs []uint) (int64, error) {
 	return cancelled, err
 }
 
-func (s *OrderService) refundFrozenBalanceTx(tx *gorm.DB, order *models.Order) error {
-	if !order.ExtraData.Valid || order.ExtraData.String == "" {
+// parseOrderExtraData 解析订单 ExtraData JSON；无效或为空时返回 nil。
+// 替代此前 10+ 处重复的 json.Unmarshal 样板。
+func parseOrderExtraData(order *models.Order) map[string]interface{} {
+	if order == nil || !order.ExtraData.Valid || order.ExtraData.String == "" {
 		return nil
 	}
 	var extraData map[string]interface{}
 	if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err != nil {
+		return nil
+	}
+	return extraData
+}
+
+func (s *OrderService) refundFrozenBalanceTx(tx *gorm.DB, order *models.Order) error {
+	extraData := parseOrderExtraData(order)
+	if extraData == nil {
 		return nil
 	}
 	deducted, _ := extraData["balance_deducted"].(bool)
@@ -199,10 +209,12 @@ func (s *OrderService) DeleteOrders(orderIDs []uint) (int64, error) {
 
 		ids := make([]uint, 0, len(orders))
 		for _, order := range orders {
-			if order.Status != "paid" && order.Status != "refunded" {
-				if err := s.releaseDiscountReservationsTx(tx, order.ID); err != nil {
-					return err
-				}
+			if order.Status == "paid" || order.Status == "refunded" {
+				// 已支付/已退款的财务订单不允许物理删除，避免对账记录缺失
+				continue
+			}
+			if err := s.releaseDiscountReservationsTx(tx, order.ID); err != nil {
+				return err
 			}
 			ids = append(ids, order.ID)
 		}
@@ -314,7 +326,9 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	totalDiscountAmount := levelDiscountAmount + couponDiscountAmount + promotionDiscountAmount
 	balanceUsed := 0.0
 
-	if params.UseBalance && user.Balance > 0 {
+	// 兼容两种契约：前端既可能传 use_balance=true，也可能传 payment_method="balance"
+	useBalance := params.UseBalance || params.PaymentMethod == "balance"
+	if useBalance && user.Balance > 0 {
 		availableBalance := math.Round(user.Balance*100) / 100
 		if availableBalance > finalAmount {
 			availableBalance = finalAmount
@@ -774,15 +788,13 @@ func (s *OrderService) processPaidOrderTx(tx *gorm.DB, order *models.Order, opts
 	// 从订单的 ExtraData 中提取已预留的余额抵扣；opts.BalanceAmount 表示本次支付动作额外使用余额。
 	var storedBalanceUsed float64
 	var balanceDeducted bool
-	var extraData map[string]interface{}
-	if order.ExtraData.Valid && order.ExtraData.String != "" {
-		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
-			if balance, ok := extraData["balance_used"].(float64); ok {
-				storedBalanceUsed = balance
-			}
-			if deducted, ok := extraData["balance_deducted"].(bool); ok {
-				balanceDeducted = deducted
-			}
+	extraData := parseOrderExtraData(order)
+	if extraData != nil {
+		if balance, ok := extraData["balance_used"].(float64); ok {
+			storedBalanceUsed = balance
+		}
+		if deducted, ok := extraData["balance_deducted"].(bool); ok {
+			balanceDeducted = deducted
 		}
 	}
 	additionalBalanceUsed := utils.RoundFloat(opts.BalanceAmount, 2)
@@ -912,12 +924,9 @@ func (s *OrderService) processPaidOrderTx(tx *gorm.DB, order *models.Order, opts
 
 	// 检查是否是自定义套餐订单
 	isCustomPackage := false
-	if order.ExtraData.Valid && order.ExtraData.String != "" {
-		var extraData map[string]interface{}
-		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
-			if orderType, ok := extraData["type"].(string); ok && orderType == "custom_package" {
-				isCustomPackage = true
-			}
+	if extraData := parseOrderExtraData(order); extraData != nil {
+		if orderType, ok := extraData["type"].(string); ok && orderType == "custom_package" {
+			isCustomPackage = true
 		}
 	}
 
@@ -1252,11 +1261,12 @@ func (s *OrderService) updateUserLevel(user *models.User) {
 func (s *OrderService) updateUserLevelTx(tx *gorm.DB, user *models.User) {
 	var userLevels []models.UserLevel
 	if err := tx.Where("is_active = ?", true).Order("level_order ASC").Find(&userLevels).Error; err == nil {
+		// 选择满足消费门槛的“最高”达标等级（level_order 越大代表等级越高）
 		var targetLevel *models.UserLevel
 		for i := range userLevels {
 			level := &userLevels[i]
 			if user.TotalConsumption >= level.MinConsumption {
-				if targetLevel == nil || level.LevelOrder < targetLevel.LevelOrder {
+				if targetLevel == nil || level.LevelOrder > targetLevel.LevelOrder {
 					targetLevel = level
 				}
 			}
@@ -1265,22 +1275,23 @@ func (s *OrderService) updateUserLevelTx(tx *gorm.DB, user *models.User) {
 		if targetLevel != nil {
 			if !user.UserLevelID.Valid || user.UserLevelID.Int64 != utils.MustSafeUintToInt64(targetLevel.ID) {
 				var currentLevel models.UserLevel
-				shouldUpgrade := true
+				shouldUpdate := true
 				if user.UserLevelID.Valid {
 					if err := tx.First(&currentLevel, user.UserLevelID.Int64).Error; err == nil {
-						if currentLevel.LevelOrder < targetLevel.LevelOrder {
-							shouldUpgrade = false
+						// 只升不降：目标等级排序值低于当前等级时不更新
+						if currentLevel.LevelOrder > targetLevel.LevelOrder {
+							shouldUpdate = false
 						}
 					}
 				}
-				if shouldUpgrade {
+				if shouldUpdate {
 					user.UserLevelID = sql.NullInt64{Int64: utils.MustSafeUintToInt64(targetLevel.ID), Valid: true}
 					if err := tx.Save(user).Error; err != nil {
 						if utils.AppLogger != nil {
 							utils.AppLogger.Error("更新用户等级失败: %v", err)
 						}
 					} else if utils.AppLogger != nil {
-						utils.AppLogger.Info("ProcessPaidOrder: ✅ 用户等级升级 - user_id=%d, level_id=%d, level_name=%s",
+						utils.AppLogger.Info("ProcessPaidOrder: ✅ 用户等级更新 - user_id=%d, level_id=%d, level_name=%s",
 							user.ID, targetLevel.ID, targetLevel.LevelName)
 					}
 				}
@@ -1433,90 +1444,99 @@ func (s *OrderService) ProcessRefundOrder(order *models.Order) error {
 		return fmt.Errorf("只能退款已支付的订单")
 	}
 
-	var user models.User
-	if err := s.db.First(&user, order.UserID).Error; err != nil {
-		return fmt.Errorf("用户不存在: %v", err)
-	}
+	// 整体包在事务内：余额回退、订阅回退、邀请奖励回退、订单状态更新必须原子完成，
+	// 任一环节失败则整体回滚，避免出现"余额已退但订阅未退"等不一致状态
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var user models.User
+		if err := tx.First(&user, order.UserID).Error; err != nil {
+			return fmt.Errorf("用户不存在: %v", err)
+		}
 
-	// 回退余额（如果使用了余额支付）
-	var balanceUsed float64 = 0
-	if order.ExtraData.Valid && order.ExtraData.String != "" {
-		var extraData map[string]interface{}
-		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
-			if balanceUsedVal, ok := extraData["balance_used"].(float64); ok {
-				balanceUsed = balanceUsedVal
+		// 回退余额（如果使用了余额支付）
+		var balanceUsed float64 = 0
+		if order.ExtraData.Valid && order.ExtraData.String != "" {
+			var extraData map[string]interface{}
+			if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+				if balanceUsedVal, ok := extraData["balance_used"].(float64); ok {
+					balanceUsed = balanceUsedVal
+				}
 			}
 		}
-	}
-	paidAmount := s.calculateOrderPaidAmount(order, balanceUsed)
+		paidAmount := s.calculateOrderPaidAmount(order, balanceUsed)
 
-	// 回退用户累计消费
-	if user.TotalConsumption >= paidAmount {
-		user.TotalConsumption = utils.RoundFloat(user.TotalConsumption-paidAmount, 2)
-	} else {
-		user.TotalConsumption = 0
-	}
+		// 回退用户累计消费
+		if user.TotalConsumption >= paidAmount {
+			user.TotalConsumption = utils.RoundFloat(user.TotalConsumption-paidAmount, 2)
+		} else {
+			user.TotalConsumption = 0
+		}
 
-	// 回退订阅或设备升级
-	isCustomPackage := false
-	if order.ExtraData.Valid && order.ExtraData.String != "" {
-		var extraData map[string]interface{}
-		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
-			if orderType, ok := extraData["type"].(string); ok && orderType == "custom_package" {
-				isCustomPackage = true
+		// 回退订阅或设备升级
+		isCustomPackage := false
+		if order.ExtraData.Valid && order.ExtraData.String != "" {
+			var extraData map[string]interface{}
+			if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
+				if orderType, ok := extraData["type"].(string); ok && orderType == "custom_package" {
+					isCustomPackage = true
+				}
 			}
 		}
-	}
 
-	if order.PackageID > 0 || isCustomPackage {
-		// 套餐订单：回退订阅时长和设备限制
-		if err := s.rollbackPackageOrder(order, &user); err != nil {
-			return fmt.Errorf("回退套餐订单失败: %v", err)
+		if order.PackageID > 0 || isCustomPackage {
+			// 套餐订单：回退订阅时长和设备限制
+			if err := s.rollbackPackageOrderTx(tx, order, &user); err != nil {
+				return fmt.Errorf("回退套餐订单失败: %w", err)
+			}
+		} else {
+			// 设备升级订单：回退设备数量和时长
+			if err := s.rollbackDeviceUpgradeOrderTx(tx, order, &user); err != nil {
+				return fmt.Errorf("回退设备升级订单失败: %w", err)
+			}
 		}
-	} else {
-		// 设备升级订单：回退设备数量和时长
-		if err := s.rollbackDeviceUpgradeOrder(order, &user); err != nil {
-			return fmt.Errorf("回退设备升级订单失败: %v", err)
+
+		// 回退余额
+		if balanceUsed > 0 {
+			user.Balance += balanceUsed
+			utils.LogInfo("ProcessRefundOrder: 回退余额 - user_id=%d, balance_used=%.2f, new_balance=%.2f", user.ID, balanceUsed, user.Balance)
 		}
-	}
 
-	// 回退余额
-	if balanceUsed > 0 {
-		user.Balance += balanceUsed
-		utils.LogInfo("ProcessRefundOrder: 回退余额 - user_id=%d, balance_used=%.2f, new_balance=%.2f", user.ID, balanceUsed, user.Balance)
-	}
+		// 回退邀请奖励（如果已发放）
+		s.rollbackInviteRewardsTx(tx, order, paidAmount)
 
-	// 回退邀请奖励（如果已发放）
-	s.rollbackInviteRewards(order, paidAmount)
+		if err := s.releaseCompletedDiscountApplicationsTx(tx, order.ID); err != nil {
+			return err
+		}
 
-	if err := s.releaseCompletedDiscountApplicationsTx(s.db, order.ID); err != nil {
+		// 更新用户信息
+		if err := tx.Save(&user).Error; err != nil {
+			return fmt.Errorf("更新用户信息失败: %w", err)
+		}
+
+		// 更新订单状态
+		order.Status = "refunded"
+		if err := tx.Save(order).Error; err != nil {
+			return fmt.Errorf("更新订单状态失败: %w", err)
+		}
+
+		utils.LogInfo("ProcessRefundOrder: 订单退款成功 - order_id=%d, order_no=%s, user_id=%d, amount=%.2f", order.ID, order.OrderNo, user.ID, paidAmount)
+		return nil
+	})
+	if err != nil {
 		return err
 	}
 
-	// 更新用户信息
-	if err := s.db.Save(&user).Error; err != nil {
-		return fmt.Errorf("更新用户信息失败: %v", err)
-	}
-
-	// 更新订单状态
-	order.Status = "refunded"
-	if err := s.db.Save(order).Error; err != nil {
-		return fmt.Errorf("更新订单状态失败: %v", err)
-	}
-
+	// 事务提交成功后清理缓存
 	if sub, err := s.getUserSubscriptionTx(s.db, order.UserID); err == nil {
 		s.clearSubscriptionCaches(sub.UserID, sub.SubscriptionURL)
 	} else {
 		s.clearUserCaches(order.UserID)
 	}
-
-	utils.LogInfo("ProcessRefundOrder: 订单退款成功 - order_id=%d, order_no=%s, user_id=%d, amount=%.2f", order.ID, order.OrderNo, user.ID, paidAmount)
 	return nil
 }
 
-func (s *OrderService) rollbackPackageOrder(order *models.Order, user *models.User) error {
+func (s *OrderService) rollbackPackageOrderTx(tx *gorm.DB, order *models.Order, user *models.User) error {
 	var subscription models.Subscription
-	if err := s.db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
+	if err := tx.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
 		// 如果订阅不存在，说明可能是新创建的，退款时不需要回退
 		utils.LogWarn("ProcessRefundOrder: 订阅不存在，跳过回退 - user_id=%d", user.ID)
 		return nil
@@ -1552,7 +1572,7 @@ func (s *OrderService) rollbackPackageOrder(order *models.Order, user *models.Us
 		totalDurationDays = durationMonths * 30
 	} else {
 		var pkg models.Package
-		if err := s.db.First(&pkg, order.PackageID).Error; err != nil {
+		if err := tx.First(&pkg, order.PackageID).Error; err != nil {
 			return fmt.Errorf("套餐不存在: %v", err)
 		}
 		packageID = pkg.ID
@@ -1593,7 +1613,7 @@ func (s *OrderService) rollbackPackageOrder(order *models.Order, user *models.Us
 					subscription.IsActive = false
 					subscription.Status = "expired"
 				}
-				if err := s.db.Save(&subscription).Error; err != nil {
+				if err := tx.Save(&subscription).Error; err != nil {
 					return fmt.Errorf("恢复自定义套餐前订阅失败: %v", err)
 				}
 				utils.LogInfo("ProcessRefundOrder: 恢复自定义套餐前订阅成功 - user_id=%d, duration_days=%d, expire_time=%s",
@@ -1618,7 +1638,7 @@ func (s *OrderService) rollbackPackageOrder(order *models.Order, user *models.Us
 		subscription.Status = "expired"
 	}
 
-	if err := s.db.Save(&subscription).Error; err != nil {
+	if err := tx.Save(&subscription).Error; err != nil {
 		return fmt.Errorf("回退订阅失败: %v", err)
 	}
 
@@ -1627,26 +1647,24 @@ func (s *OrderService) rollbackPackageOrder(order *models.Order, user *models.Us
 	return nil
 }
 
-func (s *OrderService) rollbackDeviceUpgradeOrder(order *models.Order, user *models.User) error {
+func (s *OrderService) rollbackDeviceUpgradeOrderTx(tx *gorm.DB, order *models.Order, user *models.User) error {
 	var additionalDevices int
 	var additionalDays int
 
-	if order.ExtraData.Valid && order.ExtraData.String != "" {
-		var extraData map[string]interface{}
-		if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
-			if extraData["type"] == "device_upgrade" {
-				if devices, ok := extraData["additional_devices"].(float64); ok {
-					additionalDevices = int(devices)
-				}
-				if days, ok := extraData["additional_days"].(float64); ok {
-					additionalDays = int(days)
-				}
+	extraData := parseOrderExtraData(order)
+	if extraData != nil {
+		if extraData["type"] == "device_upgrade" {
+			if devices, ok := extraData["additional_devices"].(float64); ok {
+				additionalDevices = int(devices)
+			}
+			if days, ok := extraData["additional_days"].(float64); ok {
+				additionalDays = int(days)
 			}
 		}
 	}
 
 	var subscription models.Subscription
-	if err := s.db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
+	if err := tx.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
 		return fmt.Errorf("订阅不存在: %v", err)
 	}
 
@@ -1671,7 +1689,7 @@ func (s *OrderService) rollbackDeviceUpgradeOrder(order *models.Order, user *mod
 		}
 	}
 
-	if err := s.db.Save(&subscription).Error; err != nil {
+	if err := tx.Save(&subscription).Error; err != nil {
 		return fmt.Errorf("回退设备升级失败: %v", err)
 	}
 
@@ -1680,9 +1698,9 @@ func (s *OrderService) rollbackDeviceUpgradeOrder(order *models.Order, user *mod
 	return nil
 }
 
-func (s *OrderService) rollbackInviteRewards(order *models.Order, paidAmount float64) {
+func (s *OrderService) rollbackInviteRewardsTx(tx *gorm.DB, order *models.Order, paidAmount float64) {
 	var inviteRelation models.InviteRelation
-	if err := s.db.Where("invitee_id = ?", order.UserID).First(&inviteRelation).Error; err != nil {
+	if err := tx.Where("invitee_id = ?", order.UserID).First(&inviteRelation).Error; err != nil {
 		// 没有邀请关系，不需要回退
 		return
 	}
@@ -1700,7 +1718,7 @@ func (s *OrderService) rollbackInviteRewards(order *models.Order, paidAmount flo
 		utils.LogWarn("ProcessRefundOrder: 订单已发放邀请奖励，需要手动处理回退 - order_id=%d, invite_relation_id=%d", order.ID, inviteRelation.ID)
 	}
 
-	if err := s.db.Save(&inviteRelation).Error; err != nil {
+	if err := tx.Save(&inviteRelation).Error; err != nil {
 		utils.LogError("ProcessRefundOrder: 回退邀请关系失败", err, map[string]interface{}{
 			"invite_relation_id": inviteRelation.ID,
 		})

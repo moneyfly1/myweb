@@ -130,41 +130,74 @@ func (s *Scheduler) checkExpiringSubscriptions() {
 func (s *Scheduler) checkExpiringSubscriptionsNow() {
 	now := utils.GetBeijingTime()
 
-	sevenDaysLater := now.Add(7 * 24 * time.Hour)
-	s.sendExpirationReminders(now, sevenDaysLater, 7, false)
+	// 一次查询未来 7 天内（含当天）到期的订阅，按剩余天数分组提醒。
+	// 注意：查询窗口必须覆盖 +1/+3/+7 天，否则对应分组永远为空。
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, utils.BeijingTZ)
+	windowEnd := dayStart.Add(8 * 24 * time.Hour)
 
-	threeDaysLater := now.Add(3 * 24 * time.Hour)
-	s.sendExpirationReminders(now, threeDaysLater, 3, false)
-
-	oneDayLater := now.Add(1 * 24 * time.Hour)
-	s.sendExpirationReminders(now, oneDayLater, 1, false)
-
-	s.sendExpirationReminders(now, now, 0, true)
-}
-
-func (s *Scheduler) sendExpirationReminders(now, targetTime time.Time, remainingDays int, isExpired bool) {
 	var subscriptions []models.Subscription
-	query := s.db.Where("is_active = ? AND status = ?", true, "active")
-
-	if isExpired {
-		yesterday := now.Add(-24 * time.Hour)
-		query = query.Where("expire_time <= ? AND expire_time > ?", now, yesterday)
-	} else {
-		beforeTime := targetTime.Add(-1 * time.Hour)
-		afterTime := targetTime.Add(1 * time.Hour)
-		query = query.Where("expire_time >= ? AND expire_time <= ?", beforeTime, afterTime)
-	}
-
-	if err := query.Preload("User").Preload("Package").Find(&subscriptions).Error; err != nil {
-		utils.LogErrorMsg("查询到期订阅失败: %v", err)
-		if logErr := utils.CreateSchedulerLog("expiring_subscriptions", "error", fmt.Sprintf("查询到期订阅失败: %v", err), map[string]interface{}{
-			"error": err.Error(),
-		}); logErr != nil {
-			log.Printf("failed to create scheduler log: %v", logErr)
-		}
+	if err := s.db.Where("is_active = ? AND status = ? AND expire_time >= ? AND expire_time < ?",
+		true, "active", dayStart, windowEnd).
+		Preload("User").Preload("Package").Find(&subscriptions).Error; err != nil {
+		utils.LogErrorMsg("查询未来24小时到期订阅失败: %v", err)
 		return
 	}
 
+	// 按到期时间精确分组：0天（今日到期）、1天、3天、7天
+	grouped := groupExpiringSubscriptions(subscriptions, dayStart)
+
+	// 已过期处理：昨天到期但未标记的订阅
+	var expiredSubs []models.Subscription
+	if err := s.db.Where("is_active = ? AND status = ? AND expire_time < ? AND expire_time >= ?",
+		true, "active", dayStart, dayStart.Add(-24*time.Hour)).
+		Preload("User").Preload("Package").Find(&expiredSubs).Error; err != nil {
+		utils.LogErrorMsg("查询已过期订阅失败: %v", err)
+	}
+
+	if len(grouped[7]) > 0 {
+		s.sendExpirationReminders(grouped[7], 7, false)
+	}
+	if len(grouped[3]) > 0 {
+		s.sendExpirationReminders(grouped[3], 3, false)
+	}
+	if len(grouped[1]) > 0 {
+		s.sendExpirationReminders(grouped[1], 1, false)
+	}
+	if len(grouped[0]) > 0 {
+		s.sendExpirationReminders(grouped[0], 0, false)
+	}
+	if len(expiredSubs) > 0 {
+		s.sendExpirationReminders(expiredSubs, 0, true)
+	}
+}
+
+// groupExpiringSubscriptions 按到期日把订阅分组为：0（当天到期）、1、3、7 天后到期。
+// 不匹配任何档位的订阅（如剩余 2 天）不进入任何分组。
+// 纯函数，便于单元测试。
+func groupExpiringSubscriptions(subscriptions []models.Subscription, dayStart time.Time) map[int][]models.Subscription {
+	grouped := map[int][]models.Subscription{
+		0: {}, 1: {}, 3: {}, 7: {},
+	}
+	for _, sub := range subscriptions {
+		if sub.UserID == 0 || sub.User.ID == 0 {
+			continue
+		}
+		expireDay := time.Date(sub.ExpireTime.Year(), sub.ExpireTime.Month(), sub.ExpireTime.Day(), 0, 0, 0, 0, utils.BeijingTZ)
+		switch {
+		case expireDay.Equal(dayStart):
+			grouped[0] = append(grouped[0], sub)
+		case expireDay.Equal(dayStart.Add(24 * time.Hour)):
+			grouped[1] = append(grouped[1], sub)
+		case expireDay.Equal(dayStart.Add(3 * 24 * time.Hour)):
+			grouped[3] = append(grouped[3], sub)
+		case expireDay.Equal(dayStart.Add(7 * 24 * time.Hour)):
+			grouped[7] = append(grouped[7], sub)
+		}
+	}
+	return grouped
+}
+
+func (s *Scheduler) sendExpirationReminders(subscriptions []models.Subscription, remainingDays int, isExpired bool) {
 	count := len(subscriptions)
 	statusText := func() string {
 		if isExpired {
@@ -637,34 +670,14 @@ func (s *Scheduler) runAutoBackup() error {
 		}
 	}
 
-	// 备份配置文件
+	// 配置文件以脱敏形式写入备份（密钥值替换为掩码，防止凭据随备份外泄）
 	configFiles := []string{".env", "config.yaml"}
 	for _, configFile := range configFiles {
-		if strings.Contains(configFile, "..") || strings.Contains(configFile, "/") ||
-			strings.Contains(configFile, "\\") || strings.Contains(configFile, "~") {
-			continue
-		}
-
-		configPath, inBase := utils.JoinWithinBaseDir(wd, configFile)
-		if inBase {
-			if _, err := os.Stat(configPath); err == nil {
-				file, err := os.Open(configPath)
-				if err == nil {
-					defer file.Close()
-
-					writer, err := zipWriter.Create(filepath.Base(configFile))
-					if err == nil {
-						if _, copyErr := io.Copy(writer, file); copyErr != nil {
-							log.Printf("failed to copy config file %s: %v", configFile, copyErr)
-						}
-					}
-				}
-			}
-		}
+		backup_service.AddSanitizedConfigFile(zipWriter, wd, configFile)
 	}
 
 	remoteCfg := backup_service.LoadRemoteBackupConfig(s.db)
-	if remoteCfg.Enabled && remoteCfg.Token != "" {
+	if remoteCfg.CanPush() {
 		_, backupFilePath, _, err := backup_service.BuildDBOnlyBackupZip(wd, backupDir, utils.GetBeijingTime())
 		if err != nil {
 			utils.LogErrorMsg("创建数据库备份文件用于远程上传失败: %v", err)

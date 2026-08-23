@@ -480,8 +480,10 @@ export default {
     }
 
     // ========== 实时刷新控制 (核心修复点) ==========
+    let pollingStopped = false
     const startPolling = () => {
       if (pollingTimer) clearTimeout(pollingTimer)
+      pollingStopped = false
       isLogPolling.value = true
 
       const poll = async () => {
@@ -489,6 +491,11 @@ export default {
           await getStatus()
           await getLogs() // 强制同步获取最新日志，确保完全实时
         } finally {
+          // 组件已卸载时不再续订定时器
+          if (pollingStopped) {
+            isLogPolling.value = false
+            return
+          }
           // 如果状态仍然在运行，1.5秒后继续拉取
           if (status.value.is_running) {
             pollingTimer = setTimeout(poll, 1500)
@@ -504,6 +511,7 @@ export default {
     }
 
     const stopPolling = () => {
+      pollingStopped = true
       if (pollingTimer) {
         clearTimeout(pollingTimer)
         pollingTimer = null

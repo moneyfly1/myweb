@@ -561,11 +561,17 @@ export default {
         })
       })
       merged.sort((a, b) => {
-        const timeA = new Date(a.created_at || a.paid_at || 0).getTime()
-        const timeB = new Date(b.created_at || b.paid_at || 0).getTime()
+        // 兼容 Safari：'YYYY-MM-DD HH:mm:ss' 需替换为 ISO 格式再解析
+        const timeA = parseDateSafe(a.created_at || a.paid_at)
+        const timeB = parseDateSafe(b.created_at || b.paid_at)
         return timeB - timeA
       })
       allRecords.value = merged
+    }
+    const parseDateSafe = (value) => {
+      if (!value) return 0
+      const time = new Date(String(value).replace(' ', 'T')).getTime()
+      return Number.isNaN(time) ? 0 : time
     }
     const formatOrderRecord = (order) => {
       // 统一使用 payment_method
@@ -805,11 +811,23 @@ export default {
     const handleSizeChange = (size) => {
       pagination.size = size
       pagination.current = 1
-      loadOrders()
+      if (activeTab.value === 'recharges') {
+        loadRecharges()
+      } else if (activeTab.value === 'all') {
+        loadOrders()
+      } else {
+        loadOrders()
+      }
     }
     const handleCurrentChange = (page) => {
       pagination.current = page
-      loadOrders()
+      if (activeTab.value === 'recharges') {
+        loadRecharges()
+      } else if (activeTab.value === 'all') {
+        loadOrders()
+      } else {
+        loadOrders()
+      }
     }
     const PAYMENT_METHOD_KEY_MAP = Object.freeze({
       alipay: 'alipay',

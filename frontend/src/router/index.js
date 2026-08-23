@@ -92,7 +92,20 @@ const routes = [
   },
   { path: '/:pathMatch(.*)*', name: 'NotFound', component: () => import('@/views/NotFound.vue') }
 ]
-const router = createRouter({ history: createWebHistory(), routes })
+const router = createRouter({
+  history: createWebHistory(),
+  routes,
+  // 路由切换滚动行为：返回时恢复位置，前进时回到顶部
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) {
+      return savedPosition
+    }
+    if (to.hash) {
+      return { el: to.hash, behavior: 'smooth' }
+    }
+    return { top: 0 }
+  }
+})
 const ADMIN_USER_TTL = 30 * 24 * 60 * 60 * 1000 // 30天
 const LOGIN_HANDOFF_STORAGE_PREFIX = 'cboard_login_handoff_'
 const getStorageMode = (key) => {
@@ -263,6 +276,10 @@ router.beforeEach(async (to, from, next) => {
   } catch (error) {
     if (process.env.NODE_ENV === 'development') {
       console.error('Router Guard Error:', error)
+    }
+    // 异常时不静默放行：若目标需要认证，跳转登录页，避免绕过鉴权
+    if (to.meta.requiresAuth) {
+      return next(to.path.startsWith('/admin') ? '/admin/login' : '/login')
     }
     next()
   }

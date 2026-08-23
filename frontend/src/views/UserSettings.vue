@@ -57,6 +57,7 @@
                 action="#"
                 :show-file-list="false"
                 :before-upload="beforeAvatarUpload"
+                :http-request="handleAvatarUpload"
               >
                 <img v-if="profileForm.avatar" :src="profileForm.avatar" class="avatar" />
                 <div v-else class="avatar-uploader-icon avatar-fallback-text">
@@ -705,6 +706,20 @@ export default {
       }
       return isJPG && isLt2M
     }
+    // 头像本地转 base64 预览（保存时随 profile 一并提交）
+    const handleAvatarUpload = ({ file, onSuccess, onError }) => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        profileForm.avatar = e.target.result
+        ElMessage.success('头像已选择，点击"保存修改"生效')
+        onSuccess && onSuccess(file)
+      }
+      reader.onerror = () => {
+        ElMessage.error('头像读取失败')
+        onError && onError(new Error('头像读取失败'))
+      }
+      reader.readAsDataURL(file)
+    }
     const saveCurrentSetting = () => {
       const actions = {
         profile: saveProfile,
@@ -756,7 +771,8 @@ export default {
       showEmailChangeDialog,
       sendVerificationCode,
       confirmEmailChange,
-      beforeAvatarUpload
+      beforeAvatarUpload,
+      handleAvatarUpload
     }
   }
 }

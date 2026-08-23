@@ -295,7 +295,7 @@
             </template>
             <div class="action-buttons">
               <el-button @click="showStatusDialog = true">更新状态</el-button>
-              <el-button @click="showNotesDialog = true">添加备注</el-button>
+              <el-button @click="openNotesDialog">添加备注</el-button>
             </div>
           </el-card>
           <div class="mobile-action-buttons" v-else>
@@ -307,7 +307,7 @@
               更新状态
             </el-button>
             <el-button 
-              @click="showNotesDialog = true" 
+              @click="openNotesDialog" 
               class="mobile-action-btn"
             >
               添加备注
@@ -542,6 +542,11 @@ const updateStatus = async () => {
   } finally {
     statusUpdating.value = false
   }
+}
+// 打开备注对话框：预填已有备注，防止空白保存清空原备注
+const openNotesDialog = () => {
+  adminNotes.value = currentTicket.value?.admin_notes || ''
+  showNotesDialog.value = true
 }
 const updateNotes = async () => {
   if (!currentTicket.value) return

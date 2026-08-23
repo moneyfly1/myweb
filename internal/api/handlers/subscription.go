@@ -26,6 +26,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -212,71 +213,83 @@ func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, 
 	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&deviceCountBefore)
 
 	newURL := utils.GenerateSubscriptionURL()
-	sub.SubscriptionURL = newURL
-	sub.CurrentDevices = 0
 
-	if err := db.Save(sub).Error; err != nil {
-		return err
-	}
-
-	// 清除旧 token 的配置缓存（带超时）
-	go func(url string) {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, url); err != nil {
-			select {
-			case <-ctx.Done():
-				// 超时，不记录错误
-			default:
-				log.Printf("failed to clear subscription config cache: %v", err)
-			}
+	// 整体包在事务内：URL 轮换 + 设备删除必须原子完成，
+	// 否则设备删除失败时 URL 已轮换但接口报错，用户侧状态不一致
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.Subscription{}).Where("id = ?", sub.ID).
+			Updates(map[string]interface{}{
+				"subscription_url": newURL,
+				"current_devices":  0,
+			}).Error; err != nil {
+			return err
 		}
-	}(oldURL)
+		sub.SubscriptionURL = newURL
+		sub.CurrentDevices = 0
 
-	reset := models.SubscriptionReset{
-		UserID:             sub.UserID,
-		SubscriptionID:     sub.ID,
-		ResetType:          resetType,
-		Reason:             reason,
-		OldSubscriptionURL: &oldURL,
-		NewSubscriptionURL: &newURL,
-		DeviceCountBefore:  int(deviceCountBefore),
-		DeviceCountAfter:   0,
-		ResetBy:            resetBy,
-	}
-	if err := db.Create(&reset).Error; err != nil {
-		return err
-	}
+		reset := models.SubscriptionReset{
+			UserID:             sub.UserID,
+			SubscriptionID:     sub.ID,
+			ResetType:          resetType,
+			Reason:             reason,
+			OldSubscriptionURL: &oldURL,
+			NewSubscriptionURL: &newURL,
+			DeviceCountBefore:  int(deviceCountBefore),
+			DeviceCountAfter:   0,
+			ResetBy:            resetBy,
+		}
+		if err := tx.Create(&reset).Error; err != nil {
+			return err
+		}
 
-	// 记录日志
-	beforeData := map[string]interface{}{
-		"subscription_url": oldURL,
-		"device_count":     deviceCountBefore,
-	}
-	afterData := map[string]interface{}{
-		"subscription_url": newURL,
-		"device_count":     0,
-	}
-	actionBy := "user"
-	var actionByUserID *uint
-	if resetBy != nil && resetByUserID != nil {
-		// 管理员重置
-		actionBy = "admin"
-		actionByUserID = resetByUserID
-	} else if resetBy != nil {
-		// 用户自己重置（通过用户名）
-		actionBy = "user"
-		actionByUserID = &sub.UserID
-	} else {
-		// 系统重置
-		actionBy = "system"
-	}
+		if err := tx.Where("subscription_id = ?", sub.ID).Delete(&models.Device{}).Error; err != nil {
+			return err
+		}
 
-	// 使用传入的 IP 地址记录日志
-	asyncSubscriptionLog(context.Background(), sub.ID, sub.UserID, "reset", actionBy, actionByUserID, ipAddress, beforeData, afterData, reason)
+		// 事务提交后再清理旧 token 配置缓存（带超时）
+		go func(url string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
 
-	return db.Where("subscription_id = ?", sub.ID).Delete(&models.Device{}).Error
+			if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, url); err != nil {
+				select {
+				case <-ctx.Done():
+					// 超时，不记录错误
+				default:
+					log.Printf("failed to clear subscription config cache: %v", err)
+				}
+			}
+		}(oldURL)
+
+		// 记录日志
+		beforeData := map[string]interface{}{
+			"subscription_url": oldURL,
+			"device_count":     deviceCountBefore,
+		}
+		afterData := map[string]interface{}{
+			"subscription_url": newURL,
+			"device_count":     0,
+		}
+		actionBy := "user"
+		var actionByUserID *uint
+		if resetBy != nil && resetByUserID != nil {
+			// 管理员重置
+			actionBy = "admin"
+			actionByUserID = resetByUserID
+		} else if resetBy != nil {
+			// 用户自己重置（通过用户名）
+			actionBy = "user"
+			actionByUserID = &sub.UserID
+		} else {
+			// 系统重置
+			actionBy = "system"
+		}
+
+		// 使用传入的 IP 地址记录日志
+		asyncSubscriptionLog(context.Background(), sub.ID, sub.UserID, "reset", actionBy, actionByUserID, ipAddress, beforeData, afterData, reason)
+
+		return nil
+	})
 }
 
 // calculateSubscriptionValue 计算订阅剩余价值
@@ -469,7 +482,8 @@ func GetAdminSubscriptions(c *gin.Context) {
 	sort := c.DefaultQuery("sort", "add_time_desc")
 	needOnlineJoin := sort == "online_devices_desc" || sort == "online_devices_asc"
 	if needOnlineJoin {
-		query = query.Joins("LEFT JOIN (SELECT subscription_id, COUNT(*) as online_count FROM devices WHERE is_active = 1 GROUP BY subscription_id) AS od ON od.subscription_id = subscriptions.id")
+		// is_active 传布尔参数，兼容 SQLite/MySQL/PostgreSQL
+		query = query.Joins("LEFT JOIN (SELECT subscription_id, COUNT(*) as online_count FROM devices WHERE is_active = ? GROUP BY subscription_id) AS od ON od.subscription_id = subscriptions.id", true)
 	}
 
 	sortMap := map[string]string{
@@ -1134,35 +1148,53 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 		return
 	}
 
-	if !sub.ExpireTime.After(utils.GetBeijingTime()) {
-		utils.ErrorResponse(c, http.StatusBadRequest, "订阅已过期", nil)
-		return
-	}
-
-	convertedAmount, days, dailyPrice, originalPkgDays, originalPkgPrice := calculateSubscriptionValue(db, sub, user.ID)
-
 	ipAddress := utils.GetRealClientIP(c)
 	var oldBalance, newBalance float64
+	var convertedAmount, dailyPrice, originalPkgPrice float64
+	var days, originalPkgDays int
+	var subID uint
 
 	txErr := db.Transaction(func(tx *gorm.DB) error {
-		// 行锁：防止并发双花
+		// 在事务内用 FOR UPDATE 重新锁定订阅行与用户行，防止并发双花
+		var lockedSub models.Subscription
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("user_id = ?", user.ID).First(&lockedSub).Error; err != nil {
+			return fmt.Errorf("锁定订阅失败: %v", err)
+		}
+
+		// 事务内复核：订阅必须仍存在且未过期
+		if !lockedSub.ExpireTime.After(utils.GetBeijingTime()) {
+			return fmt.Errorf("订阅已过期")
+		}
+
 		var lockedUser models.User
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&lockedUser, user.ID).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&lockedUser, user.ID).Error; err != nil {
 			return fmt.Errorf("锁定用户失败: %v", err)
 		}
+
+		convertedAmount, days, dailyPrice, originalPkgDays, originalPkgPrice = calculateSubscriptionValue(db, lockedSub, user.ID)
 		oldBalance = lockedUser.Balance
 		newBalance = lockedUser.Balance + convertedAmount
 
-		if err := tx.Model(&models.User{}).Where("id = ?", user.ID).Update("balance", newBalance).Error; err != nil {
+		// 原子累加余额，避免读改写竞态
+		if err := tx.Model(&models.User{}).Where("id = ?", user.ID).
+			Update("balance", gorm.Expr("balance + ?", convertedAmount)).Error; err != nil {
 			return fmt.Errorf("更新余额失败: %v", err)
 		}
-		if err := tx.Delete(&sub).Error; err != nil {
-			return fmt.Errorf("删除订阅失败: %v", err)
+
+		// 删除订阅：RowsAffected==0 说明已被并发请求删除，回滚本次入账
+		result := tx.Delete(&lockedSub)
+		if result.Error != nil {
+			return fmt.Errorf("删除订阅失败: %v", result.Error)
 		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("订阅已被处理，请刷新后重试")
+		}
+		subID = lockedSub.ID
 		return nil
 	})
 	if txErr != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, txErr.Error(), txErr)
+		utils.ErrorResponse(c, http.StatusBadRequest, txErr.Error(), txErr)
 		return
 	}
 
@@ -1180,7 +1212,7 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 			newBalance,
 			nil,
 			nil,
-			fmt.Sprintf("订阅转换为余额，订阅ID: %d", sub.ID),
+			fmt.Sprintf("订阅转换为余额，订阅ID: %d", subID),
 			"user",
 			&userID,
 			ipAddress,
@@ -1196,10 +1228,10 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 
 	// 记录订阅日志
 	beforeData := map[string]interface{}{
-		"subscription_id": sub.ID,
+		"subscription_id": subID,
 		"expire_time":     sub.ExpireTime.Format(TimeLayout),
 	}
-	asyncSubscriptionLog(c.Request.Context(), sub.ID, user.ID, "delete", "user", &user.ID, ipAddress, beforeData, nil, "订阅转换为余额")
+	asyncSubscriptionLog(c.Request.Context(), subID, user.ID, "delete", "user", &user.ID, ipAddress, beforeData, nil, "订阅转换为余额")
 
 	utils.SuccessResponse(c, http.StatusOK, "已转换为余额", gin.H{
 		"converted_amount":       convertedAmount,
@@ -1226,7 +1258,10 @@ func ExportSubscriptions(c *gin.Context) {
 			active = "否"
 		}
 		csv.WriteString(fmt.Sprintf("%d,%d,%s,%s,%s,%s,%s,%d,%d,%s,%s\n",
-			s.ID, s.UserID, s.User.Username, s.User.Email, s.SubscriptionURL, s.Status, active,
+			s.ID, s.UserID,
+			utils.SanitizeCSVField(s.User.Username),
+			utils.SanitizeCSVField(s.User.Email),
+			utils.SanitizeCSVField(s.SubscriptionURL), s.Status, active,
 			s.DeviceLimit, s.CurrentDevices, s.ExpireTime.Format(TimeLayout), s.CreatedAt.Format(TimeLayout)))
 	}
 	c.Header("Content-Type", "text/csv; charset=utf-8")

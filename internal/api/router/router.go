@@ -56,9 +56,9 @@ func SetupRouter() *gin.Engine {
 			auth.POST("/refresh", handlers.RefreshToken)
 			auth.POST("/logout", middleware.AuthMiddleware(), handlers.Logout)
 			auth.POST("/verification/send", middleware.VerifyCodeRateLimitMiddleware(), handlers.SendVerificationCode)
-			auth.POST("/verification/verify", handlers.VerifyCode)
+			auth.POST("/verification/verify", middleware.ResetCodeRateLimitMiddleware(), handlers.VerifyCode)
 			auth.POST("/forgot-password", middleware.VerifyCodeRateLimitMiddleware(), handlers.ForgotPassword)
-			auth.POST("/reset-password", handlers.ResetPasswordByCode)
+			auth.POST("/reset-password", middleware.ResetCodeRateLimitMiddleware(), handlers.ResetPasswordByCode)
 		}
 
 		// 支付回调路由（在CSRF中间件之前，添加专门的日志中间件）
@@ -178,6 +178,7 @@ func SetupRouter() *gin.Engine {
 		}
 		nodesAuth := api.Group("/nodes")
 		nodesAuth.Use(middleware.AuthMiddleware())
+		nodesAuth.Use(middleware.AdminMiddleware())
 		{
 			nodesAuth.POST("/:id/test", handlers.TestNode)
 			nodesAuth.POST("/batch-test", handlers.BatchTestNodes)
@@ -185,11 +186,12 @@ func SetupRouter() *gin.Engine {
 		}
 
 		coupons := api.Group("/coupons")
+		coupons.Use(middleware.AuthMiddleware())
 		{
 			coupons.GET("", handlers.GetCoupons)
 			coupons.GET("/:code", handlers.GetCoupon)
-			coupons.POST("/verify", middleware.TryAuthMiddleware(), handlers.VerifyCoupon)
 			// 兼容旧前端路径
+			coupons.POST("/verify", middleware.TryAuthMiddleware(), handlers.VerifyCoupon)
 			coupons.POST("/validate", middleware.TryAuthMiddleware(), handlers.VerifyCoupon)
 		}
 		couponsAuth := coupons.Group("")

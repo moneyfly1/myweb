@@ -562,11 +562,12 @@ export default {
           `确定要将用户 ${user.username} 标记为正常吗？这将从异常列表中移除该用户。`,
           { title: '确认操作' }
         )
+        await adminAPI.markUserNormal(user.id)
         ElMessage.success('用户已标记为正常')
         loadAbnormalUsers()
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error('操作失败')
+          ElMessage.error(error?.response?.data?.message || '操作失败')
         }
       }
     }

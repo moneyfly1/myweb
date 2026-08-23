@@ -3,12 +3,16 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -28,6 +32,13 @@ func ResolveDownload(c *gin.Context) {
 
 	// 仅允许 http(s) 链接，避免被滥用于任意协议跳转
 	if !strings.HasPrefix(target, "https://") && !strings.HasPrefix(target, "http://") {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "无效的下载链接"})
+		return
+	}
+
+	// 防 SSRF：目标与代理前缀均需通过 URL 合法性校验（协议白名单 + 禁止内网地址）
+	if err := validateDownloadURL(target); err != nil {
+		utils.LogWarn("ResolveDownload: target 校验失败: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "无效的下载链接"})
 		return
 	}
@@ -56,6 +67,34 @@ func ResolveDownload(c *gin.Context) {
 
 	// 所有代理不可用时回退原始地址
 	c.Redirect(http.StatusFound, target)
+}
+
+// validateDownloadURL 校验下载目标 URL：协议白名单 + 解析后主机非内网/回环地址。
+// 防止通过 /download/resolve 探测内网服务（SSRF）。
+func validateDownloadURL(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return err
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("不支持的协议: %s", parsed.Scheme)
+	}
+	hostname := parsed.Hostname()
+	if hostname == "" {
+		return fmt.Errorf("URL缺少主机名")
+	}
+	if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" {
+		return fmt.Errorf("禁止访问本地地址")
+	}
+	ips, err := net.LookupIP(hostname)
+	if err == nil {
+		for _, ip := range ips {
+			if utils.IsPrivateIP(ip) || ip.IsLoopback() {
+				return fmt.Errorf("禁止访问内网地址: %s", ip.String())
+			}
+		}
+	}
+	return nil
 }
 
 func loadDownloadProxyPrefixes() []string {
@@ -158,7 +197,13 @@ func buildDownloadCandidates(target string, prefixes []string) []string {
 }
 
 func isDownloadURLReachable(url string) bool {
-	client := &http.Client{Timeout: 2500 * time.Millisecond}
+	// 不跟随重定向：重定向目标可能是内网地址（SSRF 跳板），探测只认原始 URL 的直接响应
+	client := &http.Client{
+		Timeout: 2500 * time.Millisecond,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 
 	req, err := http.NewRequest(http.MethodHead, url, nil)
 	if err != nil {

@@ -38,6 +38,24 @@ export function formatDateTime(date, format = 'YYYY-MM-DD HH:mm:ss') {
 
 // formatDate 是 formatDateTime 的别名，保持向后兼容
 export const formatDate = formatDateTime
+
+/**
+ * formatDateTimeSafe 统一处理各种日期输入（含 Go sql.NullTime 序列化对象）：
+ * - null/undefined/空串 → empty（默认 '-'）
+ * - {Time, Valid:false} → empty
+ * - {Time, Valid:true} → 按 format 格式化
+ * - 字符串/Date → 按 format 格式化
+ * 供各页面替换本地重复的 formatDate 实现。
+ */
+export function formatDateTimeSafe(date, format = 'YYYY-MM-DD HH:mm:ss', empty = '-') {
+  if (date === null || date === undefined || date === '') return empty
+  if (typeof date === 'object') {
+    if (date.Valid === false) return empty
+    if (date.Time) return createShanghaiDayjs(date.Time).format(format)
+    return empty
+  }
+  return formatDateTime(date, format)
+}
 export function formatTime(date, format = 'HH:mm:ss') {
   if (!date) return ''
   return createShanghaiDayjs(date).format(format)

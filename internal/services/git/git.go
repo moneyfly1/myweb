@@ -481,13 +481,8 @@ func (c *GitClient) ListContents(path string) ([]RemoteEntry, error) {
 	path = strings.TrimPrefix(path, "/")
 
 	apiURL := c.getAPIURL("/contents/" + path)
-	if c.Platform == PlatformGitee && c.Token != "" {
-		if strings.Contains(apiURL, "?") {
-			apiURL += "&access_token=" + c.Token
-		} else {
-			apiURL += "?access_token=" + c.Token
-		}
-	}
+	// 注意：Gitee token 通过 Authorization 头传递（getAuthHeader），
+	// 不再拼进 URL query，避免 token 进入访问/代理日志
 
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
@@ -546,13 +541,7 @@ func (c *GitClient) DownloadFile(remotePath, localPath string) error {
 	remotePath = strings.TrimPrefix(remotePath, "/")
 
 	apiURL := c.getAPIURL("/contents/" + remotePath)
-	if c.Platform == PlatformGitee && c.Token != "" {
-		if strings.Contains(apiURL, "?") {
-			apiURL += "&access_token=" + c.Token
-		} else {
-			apiURL += "?access_token=" + c.Token
-		}
-	}
+	// 注意：Gitee token 通过 Authorization 头传递，不拼进 URL query
 
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {

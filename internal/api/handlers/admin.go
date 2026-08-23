@@ -1007,15 +1007,15 @@ func GetPaymentConfig(c *gin.Context) {
 			ID:                   config.ID,
 			PayType:              config.PayType,
 			AppID:                safeNullString(config.AppID),
-			MerchantPrivateKey:   safeNullString(config.MerchantPrivateKey),
-			AlipayPublicKey:      safeNullString(config.AlipayPublicKey),
+			MerchantPrivateKey:   maskSecret(config.MerchantPrivateKey),
+			AlipayPublicKey:      maskSecret(config.AlipayPublicKey),
 			WechatAppID:          safeNullString(config.WechatAppID),
 			WechatMchID:          safeNullString(config.WechatMchID),
-			WechatAPIKey:         safeNullString(config.WechatAPIKey),
+			WechatAPIKey:         maskSecret(config.WechatAPIKey),
 			PaypalClientID:       safeNullString(config.PaypalClientID),
-			PaypalSecret:         safeNullString(config.PaypalSecret),
+			PaypalSecret:         maskSecret(config.PaypalSecret),
 			StripePublishableKey: safeNullString(config.StripePublishableKey),
-			StripeSecretKey:      safeNullString(config.StripeSecretKey),
+			StripeSecretKey:      maskSecret(config.StripeSecretKey),
 			BankName:             safeNullString(config.BankName),
 			AccountName:          safeNullString(config.AccountName),
 			AccountNumber:        safeNullString(config.AccountNumber),
@@ -1208,7 +1208,12 @@ func UpdatePaymentConfig(c *gin.Context) {
 
 	utils.LogInfo("UpdatePaymentConfig: 收到请求, id=%s, pay_type=%s, config_json不为nil=%v", id, req.PayType, req.ConfigJSON != nil)
 	if req.ConfigJSON != nil {
-		utils.LogInfo("UpdatePaymentConfig: config_json内容=%+v", req.ConfigJSON)
+		// 仅记录配置 JSON 的键名，避免密钥类值进入日志
+		keys := make([]string, 0, len(req.ConfigJSON))
+		for k := range req.ConfigJSON {
+			keys = append(keys, k)
+		}
+		utils.LogInfo("UpdatePaymentConfig: config_json键=%v", keys)
 	}
 
 	db := database.GetDB()
@@ -1231,10 +1236,10 @@ func UpdatePaymentConfig(c *gin.Context) {
 	if req.AppID != nil {
 		paymentConfig.AppID = ptrToNullString(req.AppID)
 	}
-	if req.MerchantPrivateKey != nil {
+	if req.MerchantPrivateKey != nil && !isMaskedSecret(req.MerchantPrivateKey) {
 		paymentConfig.MerchantPrivateKey = ptrToNullString(req.MerchantPrivateKey)
 	}
-	if req.AlipayPublicKey != nil {
+	if req.AlipayPublicKey != nil && !isMaskedSecret(req.AlipayPublicKey) {
 		paymentConfig.AlipayPublicKey = ptrToNullString(req.AlipayPublicKey)
 	}
 	if req.WechatAppID != nil {
@@ -1243,19 +1248,19 @@ func UpdatePaymentConfig(c *gin.Context) {
 	if req.WechatMchID != nil {
 		paymentConfig.WechatMchID = ptrToNullString(req.WechatMchID)
 	}
-	if req.WechatAPIKey != nil {
+	if req.WechatAPIKey != nil && !isMaskedSecret(req.WechatAPIKey) {
 		paymentConfig.WechatAPIKey = ptrToNullString(req.WechatAPIKey)
 	}
 	if req.PaypalClientID != nil {
 		paymentConfig.PaypalClientID = ptrToNullString(req.PaypalClientID)
 	}
-	if req.PaypalSecret != nil {
+	if req.PaypalSecret != nil && !isMaskedSecret(req.PaypalSecret) {
 		paymentConfig.PaypalSecret = ptrToNullString(req.PaypalSecret)
 	}
 	if req.StripePublishableKey != nil {
 		paymentConfig.StripePublishableKey = ptrToNullString(req.StripePublishableKey)
 	}
-	if req.StripeSecretKey != nil {
+	if req.StripeSecretKey != nil && !isMaskedSecret(req.StripeSecretKey) {
 		paymentConfig.StripeSecretKey = ptrToNullString(req.StripeSecretKey)
 	}
 	if req.BankName != nil {
@@ -1302,8 +1307,8 @@ func UpdatePaymentConfig(c *gin.Context) {
 		}
 		oldConfigJSON := paymentConfig.ConfigJSON.String
 		paymentConfig.ConfigJSON = sql.NullString{String: string(bytes), Valid: true}
-		utils.LogInfo("UpdatePaymentConfig: 更新ConfigJSON, id=%s, 旧值长度=%d, 新值长度=%d, 新值=%s",
-			id, len(oldConfigJSON), len(string(bytes)), string(bytes))
+		utils.LogInfo("UpdatePaymentConfig: 更新ConfigJSON, id=%s, 旧值长度=%d, 新值长度=%d",
+			id, len(oldConfigJSON), len(string(bytes)))
 	} else {
 		utils.LogInfo("UpdatePaymentConfig: ConfigJSON为nil，跳过更新, id=%s", id)
 	}
@@ -1326,15 +1331,15 @@ func UpdatePaymentConfig(c *gin.Context) {
 		"id":                     paymentConfig.ID,
 		"pay_type":               paymentConfig.PayType,
 		"app_id":                 safeNullString(paymentConfig.AppID),
-		"merchant_private_key":   safeNullString(paymentConfig.MerchantPrivateKey),
-		"alipay_public_key":      safeNullString(paymentConfig.AlipayPublicKey),
+		"merchant_private_key":   maskSecret(paymentConfig.MerchantPrivateKey),
+		"alipay_public_key":      maskSecret(paymentConfig.AlipayPublicKey),
 		"wechat_app_id":          safeNullString(paymentConfig.WechatAppID),
 		"wechat_mch_id":          safeNullString(paymentConfig.WechatMchID),
-		"wechat_api_key":         safeNullString(paymentConfig.WechatAPIKey),
+		"wechat_api_key":         maskSecret(paymentConfig.WechatAPIKey),
 		"paypal_client_id":       safeNullString(paymentConfig.PaypalClientID),
-		"paypal_secret":          safeNullString(paymentConfig.PaypalSecret),
+		"paypal_secret":          maskSecret(paymentConfig.PaypalSecret),
 		"stripe_publishable_key": safeNullString(paymentConfig.StripePublishableKey),
-		"stripe_secret_key":      safeNullString(paymentConfig.StripeSecretKey),
+		"stripe_secret_key":      maskSecret(paymentConfig.StripeSecretKey),
 		"bank_name":              safeNullString(paymentConfig.BankName),
 		"account_name":           safeNullString(paymentConfig.AccountName),
 		"account_number":         safeNullString(paymentConfig.AccountNumber),
@@ -1552,6 +1557,23 @@ func safeNullString(ns sql.NullString) string {
 		return ns.String
 	}
 	return ""
+}
+
+// 支付配置密钥脱敏标记：列表/详情接口不回传真实密钥，仅返回占位符；
+// 更新接口收到该占位符时跳过该字段，避免前端回显后误覆盖已保存的密钥。
+const maskedSecretValue = "******"
+
+// maskSecret 对非空密钥返回掩码占位符，空值保持为空。
+func maskSecret(ns sql.NullString) string {
+	if ns.Valid && strings.TrimSpace(ns.String) != "" {
+		return maskedSecretValue
+	}
+	return ""
+}
+
+// isMaskedSecret 判断请求中的密钥字段是否为脱敏占位符（即前端未修改，应跳过更新）。
+func isMaskedSecret(s *string) bool {
+	return s != nil && strings.TrimSpace(*s) == maskedSecretValue
 }
 
 func ptrToNullString(s *string) sql.NullString {

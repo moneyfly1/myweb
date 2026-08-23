@@ -212,6 +212,8 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { ArrowLeft, Refresh, Delete, CopyDocument, Download } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { sanitizeEmailHtml } from '@/utils/sanitizeHtml'
+import { formatDateTimeSafe } from '@/utils/date'
+import { EMAIL_STATUS_MAP } from '@/utils/statusMaps'
 import { confirmDelete, confirmWarning } from '@/utils/confirmAction'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
@@ -236,13 +238,14 @@ export default {
       loading.value = true
       try {
         const response = await adminAPI.getEmailDetail(emailId)
-        if (response.success) {
-          emailDetail.value = response.data
+        // axios 拦截器返回完整 response，业务成功标志在 response.data.success
+        if (response?.data?.success) {
+          emailDetail.value = response.data.data
         } else {
-          ElMessage.error('获取邮件详情失败')
+          ElMessage.error(response?.data?.message || '获取邮件详情失败')
         }
       } catch (error) {
-        ElMessage.error('获取邮件详情失败')
+        ElMessage.error(error?.response?.data?.message || '获取邮件详情失败')
       } finally {
         loading.value = false
       }
@@ -252,19 +255,19 @@ export default {
       try {
         await confirmWarning(
           `确定要重试发送邮件到 ${emailDetail.value.to_email} 吗？`,
-          '确认重试'
+          { title: '确认重试' }
         )
         retryLoading.value = true
         const response = await adminAPI.retryEmail(emailDetail.value.id)
-        if (response.success) {
+        if (response?.data?.success) {
           ElMessage.success('邮件重试成功')
           await fetchEmailDetail()
         } else {
-          ElMessage.error('邮件重试失败')
+          ElMessage.error(response?.data?.message || '邮件重试失败')
         }
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error('邮件重试失败')
+          ElMessage.error(error?.response?.data?.message || '邮件重试失败')
         }
       } finally {
         retryLoading.value = false
@@ -273,20 +276,20 @@ export default {
     const deleteEmail = async () => {
       if (!emailDetail.value) return
       try {
-        await confirmDelete(
-          `确定要删除发送到 ${emailDetail.value.to_email} 的邮件吗？`,
-          '确认删除'
-        )
+        await confirmDelete('邮件', 1, {
+          message: `确定要删除发送到 ${emailDetail.value.to_email} 的邮件吗？`,
+          title: '确认删除'
+        })
         const response = await adminAPI.deleteEmailFromQueue(emailDetail.value.id)
-        if (response.success) {
+        if (response?.data?.success) {
           ElMessage.success('邮件删除成功')
           router.go(-1)
         } else {
-          ElMessage.error('邮件删除失败')
+          ElMessage.error(response?.data?.message || '邮件删除失败')
         }
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error('邮件删除失败')
+          ElMessage.error(error?.response?.data?.message || '邮件删除失败')
         }
       }
     }
@@ -324,26 +327,8 @@ export default {
         return emailDetail.value.template_data
       }
     })
-    const getStatusTagType = (status) => {
-      const statusMap = {
-        pending: 'warning',
-        sending: 'info',
-        sent: 'success',
-        failed: 'danger',
-        cancelled: 'info'
-      }
-      return statusMap[status] || 'info'
-    }
-    const getStatusText = (status) => {
-      const statusMap = {
-        pending: '待发送',
-        sending: '发送中',
-        sent: '已发送',
-        failed: '发送失败',
-        cancelled: '已取消'
-      }
-      return statusMap[status] || status
-    }
+    const getStatusTagType = (status) => EMAIL_STATUS_MAP[status]?.type || 'info'
+    const getStatusText = (status) => EMAIL_STATUS_MAP[status]?.text || status
     const getPriorityTagType = (priority) => {
       const priorityMap = {
         high: 'danger',
@@ -360,10 +345,7 @@ export default {
       }
       return priorityMap[priority] || priority
     }
-    const formatDate = (dateString) => {
-      if (!dateString) return '-'
-      return new Date(dateString).toLocaleString('zh-CN')
-    }
+    const formatDate = (dateString) => formatDateTimeSafe(dateString, 'YYYY-MM-DD HH:mm:ss', '-')
     onMounted(() => {
       fetchEmailDetail()
     })

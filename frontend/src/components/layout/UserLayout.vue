@@ -181,21 +181,20 @@ import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { secureStorage } from '@/utils/api'
-import { ticketAPI } from '@/utils/api'
-import { useMobile } from '@/composables/useMobile'
-import { initTextSelection, cleanupTextSelection } from '@/utils/textSelection'
+import { useLayoutCommon } from '@/composables/useLayoutCommon'
 import '@/styles/user-client-polish.scss'
 import '@/styles/text-selection.css'
+
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
-const isMobile = useMobile()
-const sidebarCollapsed = ref(false)
-const mobileNavExpanded = ref(false)
+
+// 布局共享逻辑（侧边栏/移动端/主题/未读轮询/文本选择）
+const layout = useLayoutCommon({ storageKey: 'userSidebarCollapsed' })
+const { sidebarCollapsed, mobileNavExpanded, isMobile } = layout
+
 const unreadTicketReplies = ref(0)
-let unreadCheckInterval = null
-let unreadRepliesRequest = null
 const user = computed(() => authStore.user)
 const currentTheme = computed(() => themeStore.currentTheme)
 const themes = computed(() => themeStore.availableThemes)
@@ -277,10 +276,7 @@ const currentPageTitle = computed(() => {
   const allItems = menuSections.value.flatMap(s => s.items)
   return allItems.find(i => i.path === route.path)?.title || '用户中心'
 })
-const toggleSidebar = () => {
-  sidebarCollapsed.value = !sidebarCollapsed.value
-  if (!isMobile.value) localStorage.setItem('userSidebarCollapsed', sidebarCollapsed.value)
-}
+const toggleSidebar = layout.toggleSidebar
 const isRouteActive = (path) => {
   if (path === '#admin') return false
   return route.path === path || (path !== '/dashboard' && route.path.startsWith(path))
@@ -294,9 +290,7 @@ const navigateTo = (path) => {
   mobileNavExpanded.value = false
   if (isMobile.value) sidebarCollapsed.value = true
 }
-const handleNavClick = () => {
-  if (isMobile.value) sidebarCollapsed.value = true
-}
+const handleNavClick = layout.handleNavClick
 const handleUserCommand = (command) => {
   const actions = {
     backToAdmin: returnToAdmin,
@@ -307,18 +301,8 @@ const handleUserCommand = (command) => {
 }
 const getCurrentThemeLabel = () => themes.value.find(t => t.value === currentTheme.value)?.label || '主题'
 const loadUnreadTicketReplies = async () => {
-  if (unreadRepliesRequest) return unreadRepliesRequest
-  try {
-    unreadRepliesRequest = ticketAPI.getUnreadCount()
-    const response = await unreadRepliesRequest
-    if (response.data && response.data.success) {
-      unreadTicketReplies.value = response.data.data?.count || 0
-    }
-  } catch (error) {
-    // 未读消息数加载失败，不影响主功能
-  } finally {
-    unreadRepliesRequest = null
-  }
+  await layout.loadUnreadCount()
+  unreadTicketReplies.value = layout.unreadCount.value
 }
 const returnToAdmin = () => {
   const token = secureStorage.get('admin_token')
@@ -334,21 +318,8 @@ const returnToAdmin = () => {
     ElMessage.error('返回失败，请重新登录')
   }
 }
-const handleThemeChange = async (name) => {
-  const res = await themeStore.setTheme(name)
-  res.success ? ElMessage.success('主题已同步') : ElMessage.warning('本地生效')
-}
-const checkMobile = () => {
-  if (isMobile.value) {
-    sidebarCollapsed.value = true
-  } else {
-    sidebarCollapsed.value = false
-    localStorage.setItem('userSidebarCollapsed', 'false')
-  }
-}
-watch(isMobile, () => {
-  checkMobile()
-})
+const handleThemeChange = layout.handleThemeChange
+const checkMobile = layout.checkMobile
 watch(() => route.path, () => {
   if (isMobile.value) {
     mobileNavExpanded.value = false
@@ -359,21 +330,14 @@ watch(() => route.path, () => {
   }
 })
 onMounted(() => {
-  checkMobile()
-  initTextSelection()
+  layout.init()
   loadUnreadTicketReplies()
-  unreadCheckInterval = setInterval(() => {
-    loadUnreadTicketReplies()
-  }, 30000)
+  layout.startUnreadPolling()
   window.addEventListener('ticket-viewed', loadUnreadTicketReplies)
 })
 onUnmounted(() => {
   window.removeEventListener('ticket-viewed', loadUnreadTicketReplies)
-  cleanupTextSelection()
-  if (unreadCheckInterval) {
-    clearInterval(unreadCheckInterval)
-    unreadCheckInterval = null
-  }
+  layout.cleanup()
 })
 </script>
 <style scoped lang="scss">

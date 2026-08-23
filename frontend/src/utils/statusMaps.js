@@ -23,8 +23,11 @@ export const SUBSCRIPTION_STATUS_MAP = {
 export const ORDER_STATUS_MAP = {
   pending: { text: '待支付', type: 'warning' },
   paid: { text: '已支付', type: 'success' },
+  completed: { text: '已完成', type: 'success' },
+  refunding: { text: '退款中', type: 'warning' },
   cancelled: { text: '已取消', type: 'info' },
   failed: { text: '支付失败', type: 'danger' },
+  expired: { text: '已过期', type: 'info' },
   refunded: { text: '已退款', type: 'info' }
 }
 

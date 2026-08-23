@@ -157,6 +157,15 @@ func (b *MessageTemplateBuilder) buildOrderPaidTelegram(data map[string]interfac
 }
 
 func (b *MessageTemplateBuilder) buildUpgradeDetailsTelegram(data map[string]interface{}) string {
+	return buildUpgradeDetails(data, true)
+}
+
+func (b *MessageTemplateBuilder) buildUpgradeDetailsBark(data map[string]interface{}) string {
+	return buildUpgradeDetails(data, false)
+}
+
+// buildUpgradeDetails Telegram/Bark 升级详情的公共实现（此前两份仅 HTML 标签差异）
+func buildUpgradeDetails(data map[string]interface{}, useHTML bool) string {
 	oldLimit := getInt(data, "old_device_limit", 0)
 	newLimit := getInt(data, "new_device_limit", 0)
 	addDevices := getInt(data, "additional_devices", 0)
@@ -169,16 +178,22 @@ func (b *MessageTemplateBuilder) buildUpgradeDetailsTelegram(data map[string]int
 	}
 
 	section := `┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃  📊 <b>升级详情</b>
+┃  📊 升级详情
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 `
+	bold := func(s string) string {
+		if useHTML {
+			return "<b>" + s + "</b>"
+		}
+		return s
+	}
 	if oldLimit > 0 && newLimit > 0 {
-		section += fmt.Sprintf("\n📱 <b>设备数量</b>: <b>%d</b> → <b>%d</b> 台 (+%d)", oldLimit, newLimit, addDevices)
+		section += fmt.Sprintf("\n📱 %s: %s → %s 台 (+%d)", bold("设备数量"), bold(fmt.Sprintf("%d", oldLimit)), bold(fmt.Sprintf("%d", newLimit)), addDevices)
 	}
 	if oldExpire != "" && newExpire != "" && addDays > 0 {
-		section += fmt.Sprintf("\n📅 <b>有效期</b>: %s → %s (+%d天)", oldExpire, newExpire, addDays)
+		section += fmt.Sprintf("\n📅 %s: %s → %s (+%d天)", bold("有效期"), oldExpire, newExpire, addDays)
 	} else if addDays > 0 {
-		section += fmt.Sprintf("\n📅 <b>增加时长</b>: +%d 天", addDays)
+		section += fmt.Sprintf("\n📅 %s: +%d 天", bold("增加时长"), addDays)
 	}
 	return section
 }
@@ -535,33 +550,6 @@ func (b *MessageTemplateBuilder) buildOrderPaidBark(data map[string]interface{})
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`)
 
 	return title, body
-}
-
-func (b *MessageTemplateBuilder) buildUpgradeDetailsBark(data map[string]interface{}) string {
-	oldLimit := getInt(data, "old_device_limit", 0)
-	newLimit := getInt(data, "new_device_limit", 0)
-	addDevices := getInt(data, "additional_devices", 0)
-	addDays := getInt(data, "additional_days", 0)
-	oldExpire := getString(data, "old_expire_time", "")
-	newExpire := getString(data, "new_expire_time", "")
-
-	if oldLimit == 0 && newLimit == 0 && addDays == 0 {
-		return ""
-	}
-
-	section := `┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃  📊 升级详情
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-`
-	if oldLimit > 0 && newLimit > 0 {
-		section += fmt.Sprintf("\n📱 设备数量: %d → %d 台 (+%d)", oldLimit, newLimit, addDevices)
-	}
-	if oldExpire != "" && newExpire != "" && addDays > 0 {
-		section += fmt.Sprintf("\n📅 有效期: %s → %s (+%d天)", oldExpire, newExpire, addDays)
-	} else if addDays > 0 {
-		section += fmt.Sprintf("\n📅 增加时长: +%d 天", addDays)
-	}
-	return section
 }
 
 func (b *MessageTemplateBuilder) buildRechargePaidBark(data map[string]interface{}) (string, string) {

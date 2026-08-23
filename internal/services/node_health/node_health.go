@@ -288,8 +288,10 @@ func (s *NodeHealthService) UpdateNodeStatus(result *TestResult) error {
 }
 
 func (s *NodeHealthService) CheckAllNodes() error {
+	// 检查全部节点（含 is_active=false 的离线节点），
+	// 否则节点一旦被置为离线就永远不会再被健康检查覆盖，无法自动恢复
 	var nodes []models.Node
-	if err := s.db.Where("is_active = ?", true).Find(&nodes).Error; err != nil {
+	if err := s.db.Find(&nodes).Error; err != nil {
 		return err
 	}
 

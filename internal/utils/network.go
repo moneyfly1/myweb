@@ -122,6 +122,49 @@ func FormatDomainURL(domain string) string {
 
 // ========== IP相关 ==========
 
+// trustedProxyCIDRs 存放可信代理 CIDR 列表（来自 TRUSTED_PROXIES 环境变量）。
+// 仅在直连地址命中该列表时才信任 X-Forwarded-For / CF-Connecting-IP 等转发头，
+// 否则这些头可被客户端伪造，导致限流/审计/IP 管控全部失效。
+var trustedProxyCIDRs []*net.IPNet
+
+// InitTrustedProxies 从环境变量 TRUSTED_PROXIES（逗号分隔的 IP/CIDR）初始化可信代理列表。
+// 为空表示不信任任何代理：GetRealClientIP 只返回直连地址。
+func InitTrustedProxies(value string) {
+	trustedProxyCIDRs = nil
+	if strings.TrimSpace(value) == "" {
+		return
+	}
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if _, ipNet, err := net.ParseCIDR(part); err == nil {
+			trustedProxyCIDRs = append(trustedProxyCIDRs, ipNet)
+			continue
+		}
+		if ip := net.ParseIP(part); ip != nil {
+			bits := 32
+			if ip.To4() == nil {
+				bits = 128
+			}
+			trustedProxyCIDRs = append(trustedProxyCIDRs, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+		}
+	}
+}
+
+func isTrustedProxy(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	for _, ipNet := range trustedProxyCIDRs {
+		if ipNet.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 // IsPrivateIP 检查IP是否为私有IP（内网IP或本地IP）
 func IsPrivateIP(ip net.IP) bool {
 	if ip == nil {
@@ -177,83 +220,75 @@ func IsPrivateIP(ip net.IP) bool {
 	return false
 }
 
+// GetRealClientIP 获取真实客户端 IP。
+//
+// 安全模型：默认（未配置 TRUSTED_PROXIES）只信任直连地址（Gin ClientIP / RemoteAddr），
+// 客户端传入的 CF-Connecting-IP / X-Forwarded-For / X-Real-IP 等转发头一律忽略，
+// 防止攻击者伪造 IP 绕过登录/注册/验证码限流。
+// 当部署在可信反代（nginx/Cloudflare）之后时，设置 TRUSTED_PROXIES=<代理IP或CIDR,逗号分隔>
+// 才会读取转发头（且只接受首个非内网值）。
 func GetRealClientIP(c *gin.Context) string {
-	// 优先级1: CF-Connecting-IP (Cloudflare)
-	if ip := c.GetHeader("CF-Connecting-IP"); ip != "" {
-		if realIP := ParseIP(ip); realIP != "" && !IsPrivateIP(net.ParseIP(realIP)) {
-			return realIP
-		}
-	}
+	directIP := directClientIP(c)
+	directParsed := net.ParseIP(directIP)
 
-	// 优先级2: True-Client-IP (Cloudflare Enterprise)
-	if ip := c.GetHeader("True-Client-IP"); ip != "" {
-		if realIP := ParseIP(ip); realIP != "" && !IsPrivateIP(net.ParseIP(realIP)) {
-			return realIP
+	// 只有直连地址来自可信代理时才读取转发头
+	if isTrustedProxy(directParsed) {
+		// 优先级1: CF-Connecting-IP (Cloudflare)
+		if ip := c.GetHeader("CF-Connecting-IP"); ip != "" {
+			if realIP := ParseIP(ip); realIP != "" && !IsPrivateIP(net.ParseIP(realIP)) {
+				return realIP
+			}
 		}
-	}
-
-	// 优先级3: X-Forwarded-For (从右到左检查，最后一个通常是客户端IP)
-	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
-		ips := strings.Split(xff, ",")
-		// 从最后一个IP开始检查（客户端IP通常在最后）
-		for i := len(ips) - 1; i >= 0; i-- {
-			ip := strings.TrimSpace(ips[i])
-			if realIP := ParseIP(ip); realIP != "" {
-				parsedIP := net.ParseIP(realIP)
-				if parsedIP != nil && !IsPrivateIP(parsedIP) {
+		// 优先级2: X-Forwarded-For（从右向左取第一个公网 IP）
+		if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
+			ips := strings.Split(xff, ",")
+			for i := len(ips) - 1; i >= 0; i-- {
+				ip := strings.TrimSpace(ips[i])
+				if realIP := ParseIP(ip); realIP != "" {
+					parsedIP := net.ParseIP(realIP)
+					if parsedIP != nil && !IsPrivateIP(parsedIP) {
+						return realIP
+					}
+				}
+			}
+			// 全部为内网（如多层内网代理），取最后一个
+			for i := len(ips) - 1; i >= 0; i-- {
+				if realIP := ParseIP(strings.TrimSpace(ips[i])); realIP != "" {
 					return realIP
 				}
 			}
 		}
-		// 如果所有IP都是内网IP，返回最后一个（可能是内网代理后的真实客户端）
-		for i := len(ips) - 1; i >= 0; i-- {
-			ip := strings.TrimSpace(ips[i])
-			if realIP := ParseIP(ip); realIP != "" {
+		// 优先级3: X-Real-IP
+		if ip := c.GetHeader("X-Real-IP"); ip != "" {
+			if realIP := ParseIP(ip); realIP != "" && !IsPrivateIP(net.ParseIP(realIP)) {
 				return realIP
 			}
 		}
 	}
 
-	// 优先级4: X-Real-IP
-	if ip := c.GetHeader("X-Real-IP"); ip != "" {
-		if realIP := ParseIP(ip); realIP != "" && !IsPrivateIP(net.ParseIP(realIP)) {
-			return realIP
-		}
+	if directIP != "" {
+		return directIP
 	}
-
-	// 优先级5: Gin的ClientIP()方法
-	if ip := c.ClientIP(); ip != "" {
-		if realIP := ParseIP(ip); realIP != "" {
-			parsedIP := net.ParseIP(realIP)
-			if parsedIP != nil && !IsPrivateIP(parsedIP) {
-				return realIP
-			}
-		}
-	}
-
-	// 优先级6: RemoteAddr (最后备选)
-	if ip, _, err := net.SplitHostPort(c.Request.RemoteAddr); err == nil {
-		if realIP := ParseIP(ip); realIP != "" {
-			parsedIP := net.ParseIP(realIP)
-			if parsedIP != nil && !IsPrivateIP(parsedIP) {
-				return realIP
-			}
-		}
-	}
-
-	// 如果所有IP都是内网IP，返回最后一个获取到的IP（至少记录一个IP）
-	if ip := c.ClientIP(); ip != "" {
-		if realIP := ParseIP(ip); realIP != "" {
-			return realIP
-		}
-	}
-
 	if ip, _, err := net.SplitHostPort(c.Request.RemoteAddr); err == nil {
 		if realIP := ParseIP(ip); realIP != "" {
 			return realIP
 		}
 	}
+	return ""
+}
 
+// directClientIP 返回与请求直连的地址（Gin ClientIP，优先）。
+func directClientIP(c *gin.Context) string {
+	if ip := c.ClientIP(); ip != "" {
+		if realIP := ParseIP(ip); realIP != "" {
+			return realIP
+		}
+	}
+	if ip, _, err := net.SplitHostPort(c.Request.RemoteAddr); err == nil {
+		if realIP := ParseIP(ip); realIP != "" {
+			return realIP
+		}
+	}
 	return ""
 }
 

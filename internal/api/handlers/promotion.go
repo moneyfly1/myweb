@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // 用户端 - 获取当前有效促销活动
@@ -123,15 +125,27 @@ func ParticipatePromotion(c *gin.Context) {
 		return
 	}
 
-	// 检查用户是否已参与
+	// 检查用户是否已参与（快速失败；事务内还会复核，防止并发双领）
 	var existingParticipation models.PromotionParticipation
 	if err := db.Where("promotion_id = ? AND user_id = ?", promotion.ID, user.ID).First(&existingParticipation).Error; err == nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "您已参与过此活动", nil)
 		return
 	}
 
-	// 根据活动类型应用奖励
+	// 根据活动类型应用奖励（重复参与检查在事务内进行，防止并发双领）
 	err := utils.WithTransaction(db, func(tx *gorm.DB) error {
+		// 事务内锁定用户行，串行化同一用户的并发参与请求
+		var lockedUser models.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&lockedUser, user.ID).Error; err != nil {
+			return fmt.Errorf("锁定用户失败: %v", err)
+		}
+
+		// 在事务内复核是否已参与（唯一索引 (promotion_id, user_id) 作为数据库兜底）
+		var existingParticipation models.PromotionParticipation
+		if err := tx.Where("promotion_id = ? AND user_id = ?", promotion.ID, user.ID).First(&existingParticipation).Error; err == nil {
+			return fmt.Errorf("您已参与过此活动")
+		}
+
 		participation := models.PromotionParticipation{
 			PromotionID: promotion.ID,
 			UserID:      user.ID,
@@ -215,6 +229,10 @@ func ParticipatePromotion(c *gin.Context) {
 	})
 
 	if err != nil {
+		if strings.Contains(err.Error(), "您已参与过此活动") {
+			utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+			return
+		}
 		utils.ErrorResponse(c, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}

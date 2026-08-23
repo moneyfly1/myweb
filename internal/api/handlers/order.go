@@ -864,6 +864,10 @@ func GetOrders(c *gin.Context) {
 	paymentMethod := c.Query("payment_method")
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
+	keyword := c.Query("keyword")
+	if keyword == "" {
+		keyword = c.Query("search")
+	}
 
 	isAdmin, exists := c.Get("is_admin")
 	admin := exists && isAdmin.(bool)
@@ -876,6 +880,15 @@ func GetOrders(c *gin.Context) {
 
 	if !admin {
 		query = query.Where("user_id = ?", user.ID)
+	}
+
+	// 关键词搜索：订单号/套餐名/支付方式（用户端此前为假搜索，keyword 被后端忽略）
+	if keyword != "" {
+		sanitizedKeyword := utils.SanitizeSearchKeyword(keyword)
+		if sanitizedKeyword != "" {
+			query = query.Where("(order_no LIKE ? OR package_id IN (SELECT id FROM packages WHERE name LIKE ?) OR payment_method_name LIKE ?)",
+				"%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%", "%"+sanitizedKeyword+"%")
+		}
 	}
 
 	if status != "" && status != "all" {
@@ -1200,9 +1213,15 @@ func RefundAdminOrder(c *gin.Context) {
 		return
 	}
 
-	// 只能退款已支付的订单
+	// 只能退款已支付的订单（幂等保护：refunding/refunded 状态不可重复退款）
 	if order.Status != "paid" {
 		utils.ErrorResponse(c, http.StatusBadRequest, "只能退款已支付的订单", nil)
+		return
+	}
+
+	// 立即把订单置为 refunding，防止并发/重复点击触发二次退款
+	if err := db.Model(&order).Where("status = ?", "paid").Update("status", "refunding").Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新订单状态失败", err)
 		return
 	}
 
@@ -1446,7 +1465,8 @@ func ExportOrders(c *gin.Context) {
 	}
 
 	var orders []models.Order
-	if err := query.Order("created_at DESC").Find(&orders).Error; err != nil {
+	// 必须预加载 User/Package，否则 formatOrderData 拿不到用户与套餐（CSV 会显示"已删除"/"套餐未加载"）
+	if err := query.Preload("User").Preload("Package").Order("created_at DESC").Find(&orders).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取订单列表失败", err)
 		return
 	}
@@ -1469,17 +1489,17 @@ func ExportOrders(c *gin.Context) {
 		}
 
 		csvContent.WriteString(fmt.Sprintf("%s,%d,%s,%s,%d,%s,%.2f,%s,%s,%s,%s,%s\n",
-			order.OrderNo,
+			utils.SanitizeCSVField(order.OrderNo),
 			order.UserID,
-			userMap["username"],
-			userMap["email"],
+			utils.SanitizeCSVField(fmt.Sprintf("%v", userMap["username"])),
+			utils.SanitizeCSVField(fmt.Sprintf("%v", userMap["email"])),
 			formatted["package_id"],
-			formatted["package_name"],
+			utils.SanitizeCSVField(fmt.Sprintf("%v", formatted["package_name"])),
 			formatted["amount"],
-			formatted["payment_method"],
-			statusText,
+			utils.SanitizeCSVField(fmt.Sprintf("%v", formatted["payment_method"])),
+			utils.SanitizeCSVField(statusText),
 			utils.FormatBeijingTime(order.CreatedAt),
-			formatted["payment_time"],
+			utils.SanitizeCSVField(fmt.Sprintf("%v", formatted["payment_time"])),
 			utils.FormatBeijingTime(order.UpdatedAt),
 		))
 	}
@@ -1836,7 +1856,31 @@ func UpgradeDevices(c *gin.Context) {
 		paymentURL, err = generatePaymentURL(db, &order, &paymentConfig, req.PaymentMethod, finalAmount)
 		if err != nil {
 			_, _ = orderServicePkg.NewOrderService().MarkPendingOrderStatus(order.OrderNo, user.ID, "failed")
-			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付链接失败", err)
+			// 退回已扣余额：支付链接生成失败时订单作废，用户不应承担扣款
+			if balanceUsed > 0 {
+				refundErr := db.Transaction(func(tx *gorm.DB) error {
+					result := tx.Model(&models.User{}).Where("id = ?", user.ID).
+						Update("balance", gorm.Expr("balance + ?", balanceUsed))
+					if result.Error != nil {
+						return result.Error
+					}
+					orderID := uint(order.ID)
+					userID := user.ID
+					return utils.CreateBalanceLogWithDB(
+						tx, user.ID, "refund", balanceUsed,
+						user.Balance-balanceUsed, user.Balance,
+						&orderID, nil,
+						fmt.Sprintf("设备升级订单支付链接生成失败退回余额，订单号: %s", orderNo),
+						"user", &userID, utils.GetRealClientIP(c),
+					)
+				})
+				if refundErr != nil {
+					utils.LogError("UpgradeDevices: 退款失败", refundErr, map[string]interface{}{
+						"order_no": orderNo, "user_id": user.ID, "amount": balanceUsed,
+					})
+				}
+			}
+			utils.ErrorResponse(c, http.StatusInternalServerError, "创建支付链接失败，已退回余额", err)
 			return
 		}
 	}

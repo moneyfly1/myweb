@@ -1351,19 +1351,30 @@ func SendVerificationCode(c *gin.Context) {
 
 	expiresAt := utils.GetBeijingTime().Add(5 * time.Minute)
 
-	if req.Type == "email" {
+	if req.Type == "email" || req.Type == "email_change" {
 		if req.Email == "" {
 			utils.ErrorResponse(c, http.StatusBadRequest, "邮箱不能为空", nil)
 			return
 		}
 		req.Email = utils.NormalizeEmail(req.Email)
 
+		purpose := "register"
+		if req.Type == "email_change" {
+			// 邮箱换绑：验证码发送到新邮箱，仅校验新邮箱未被占用
+			purpose = "email_change"
+			var existingUser models.User
+			if err := db.Where("LOWER(email) = ?", req.Email).First(&existingUser).Error; err == nil {
+				utils.ErrorResponse(c, http.StatusBadRequest, "该邮箱已被其他账号使用", nil)
+				return
+			}
+		}
+
 		verificationCode := models.VerificationCode{
 			Email:     req.Email,
 			Code:      code,
 			ExpiresAt: expiresAt,
 			Used:      0,
-			Purpose:   "register",
+			Purpose:   purpose,
 		}
 
 		if err := db.Create(&verificationCode).Error; err != nil {

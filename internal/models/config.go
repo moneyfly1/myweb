@@ -40,4 +40,3 @@ type Announcement struct {
 func (Announcement) TableName() string {
 	return "announcements"
 }
-
