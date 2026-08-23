@@ -515,7 +515,6 @@ func (s *YipayService) VerifyNotify(params map[string]string) bool {
 	}
 
 	signStr := buildSignString(params, "sign", "sign_type", "rsa_sign")
-	utils.LogInfo("易支付验签字符串: %s", signStr)
 
 	switch signType {
 	case "RSA":
@@ -526,11 +525,14 @@ func (s *YipayService) VerifyNotify(params map[string]string) bool {
 			utils.LogError("MD5+RSA模式: MD5校验失败", nil, nil)
 			return false
 		}
-		if rsaSign, ok := params["rsa_sign"]; ok && rsaSign != "" {
-			return s.verifyRSASign(signStr, rsaSign)
+		rsaSign, ok := params["rsa_sign"]
+		if !ok || rsaSign == "" {
+			// 配置为 MD5+RSA 的商户必须携带 rsa_sign；
+			// 缺失时拒绝回调，防止降级为仅 MD5 校验（攻击者可伪造回调）
+			utils.LogWarn("MD5+RSA模式: 缺少rsa_sign，拒绝回调（防降级攻击）")
+			return false
 		}
-		utils.LogWarn("MD5+RSA模式: 缺少rsa_sign，仅通过MD5校验")
-		return true
+		return s.verifyRSASign(signStr, rsaSign)
 	default: // MD5
 		calcSign := s.calcMD5FromStr(signStr)
 		match := strings.EqualFold(sign, calcSign)

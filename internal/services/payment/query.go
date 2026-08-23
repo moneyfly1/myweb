@@ -1,11 +1,13 @@
 package payment
 
 import (
+	"crypto/md5" // #nosec G501 - MD5 required by epay query API spec
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 )
@@ -32,6 +34,45 @@ func (r *EpayQueryResult) IsPaid() bool {
 	default:
 		return false
 	}
+}
+
+// epayMD5Sign 计算 epay 协议族（码支付/易支付）的 MD5 签名：
+// 参数（排除 sign/sign_type/空值）按 key 排序拼接 k=v&...，末尾追加 key，MD5 小写。
+func epayMD5Sign(params map[string]string, key string) string {
+	var keys []string
+	for k, v := range params {
+		if k == "sign" || k == "sign_type" || v == "" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var sb strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			sb.WriteString("&")
+		}
+		sb.WriteString(k)
+		sb.WriteString("=")
+		sb.WriteString(params[k])
+	}
+	sb.WriteString(key)
+
+	sum := md5.Sum([]byte(sb.String())) // #nosec G401
+	return fmt.Sprintf("%x", sum)
+}
+
+// verifyEpayQueryResponseSign 校验查单响应签名。
+// 返回 (hasSign, ok)：响应无 sign 时 hasSign=false（调用方决定是否放行）；
+// 有 sign 时严格校验，不匹配返回 ok=false。
+func verifyEpayQueryResponseSign(raw map[string]string, key string) (hasSign, ok bool) {
+	signVal, hasSign := raw["sign"]
+	if !hasSign || signVal == "" {
+		return false, false
+	}
+	calculated := epayMD5Sign(raw, key)
+	return true, strings.EqualFold(signVal, calculated)
 }
 
 func buildEpayOrderQueryURL(apiURL string) string {
@@ -115,7 +156,22 @@ func queryEpayOrder(provider, queryURL, pid, key, orderNo string) (*EpayQueryRes
 	if err != nil {
 		return nil, fmt.Errorf("%s查单响应解析失败: %v", provider, err)
 	}
-	return normalizeEpayQueryResult(provider, raw), nil
+
+	result := normalizeEpayQueryResult(provider, raw)
+
+	// 查单响应验签：状态为已支付时必须通过签名校验；
+	// 无 sign 字段的已支付响应视为伪造/被篡改，直接拒绝（fail-closed）。
+	if result.IsPaid() {
+		hasSign, ok := verifyEpayQueryResponseSign(raw, key)
+		if !hasSign {
+			return nil, fmt.Errorf("%s查单响应缺少签名（状态为已支付但无sign，拒绝采信）", provider)
+		}
+		if !ok {
+			return nil, fmt.Errorf("%s查单响应签名校验失败", provider)
+		}
+	}
+
+	return result, nil
 }
 
 func parseEpayQueryResponse(body string) (map[string]string, error) {

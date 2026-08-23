@@ -6,6 +6,7 @@ import (
 	"cboard-go/internal/services/cache_service"
 	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/utils"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -338,17 +339,65 @@ func GetUserStatistics(c *gin.Context) {
 
 func GetRegionStats(c *gin.Context) {
 	db := database.GetDB()
+	// 只统计最近 90 天的活动：地区分布卡不需要无限期历史，
+	// 避免每次打开统计页都把整张 audit_logs/user_activities 表装载进内存。
+	windowStart := utils.GetBeijingTime().AddDate(0, -3, 0)
 
-	var auditLogs []models.AuditLog
-	db.Select("DISTINCT user_id, location, ip_address, created_at").
-		Where("user_id IS NOT NULL AND (location IS NOT NULL AND location != '' OR ip_address IS NOT NULL AND ip_address != '')").
-		Order("created_at DESC").
-		Find(&auditLogs)
+	type auditCombo struct {
+		UserID   sql.NullInt64  `gorm:"column:user_id"`
+		Location sql.NullString `gorm:"column:location"`
+		IP       sql.NullString `gorm:"column:ip_address"`
+		LastAt   time.Time      `gorm:"column:last_at"`
+	}
+	var auditCombos []auditCombo
+	if err := db.Table("audit_logs").
+		Select("user_id, location, ip_address, MAX(created_at) AS last_at").
+		Where("user_id IS NOT NULL AND created_at >= ? AND (location IS NOT NULL AND location != '' OR ip_address IS NOT NULL AND ip_address != '')", windowStart).
+		Group("user_id, location, ip_address").
+		Scan(&auditCombos).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取地区统计失败", err)
+		return
+	}
 
-	var activities []models.UserActivity
-	db.Select("DISTINCT user_id, location, ip_address").
+	// 登录次数在 SQL 侧按 location 精确计数（保持与原语义一致）
+	type locationCount struct {
+		Location sql.NullString `gorm:"column:location"`
+		Cnt      int64          `gorm:"column:cnt"`
+	}
+	var auditCounts []locationCount
+	if err := db.Table("audit_logs").
+		Select("location, COUNT(*) AS cnt").
+		Where("location IS NOT NULL AND location != '' AND created_at >= ?", windowStart).
+		Group("location").
+		Scan(&auditCounts).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取地区统计失败", err)
+		return
+	}
+
+	type activityCombo struct {
+		UserID   uint           `gorm:"column:user_id"`
+		Location sql.NullString `gorm:"column:location"`
+		IP       sql.NullString `gorm:"column:ip_address"`
+	}
+	var activityCombos []activityCombo
+	if err := db.Table("user_activities").
+		Select("user_id, location, ip_address").
 		Where("location IS NOT NULL AND location != ''").
-		Find(&activities)
+		Group("user_id, location, ip_address").
+		Scan(&activityCombos).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取地区统计失败", err)
+		return
+	}
+
+	var activityCounts []locationCount
+	if err := db.Table("user_activities").
+		Select("location, COUNT(*) AS cnt").
+		Where("location IS NOT NULL AND location != ''").
+		Group("location").
+		Scan(&activityCounts).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取地区统计失败", err)
+		return
+	}
 
 	type RegionStat struct {
 		Region     string `json:"region"`
@@ -391,7 +440,38 @@ func GetRegionStats(c *gin.Context) {
 		return
 	}
 
-	processEntry := func(userID uint, locationStr, ipStr string, createdAt time.Time) {
+	regionKeyOf := func(country, city string) string {
+		if city != "" {
+			return country + " - " + city
+		}
+		return country
+	}
+
+	ensureRegion := func(country, city string) *RegionStat {
+		key := regionKeyOf(country, city)
+		stat, ok := statsMap[key]
+		if !ok {
+			stat = &RegionStat{Region: key, Country: country, City: city, LastLogin: "-"}
+			statsMap[key] = stat
+		}
+		return stat
+	}
+
+	// 合并登录/活动计数（按 location 原始字符串 → 解析出地区）
+	mergeCounts := func(counts []locationCount) {
+		for _, row := range counts {
+			country, city := parseLocation(row.Location.String)
+			if country == "" {
+				continue
+			}
+			ensureRegion(country, city).LoginCount += int(row.Cnt)
+		}
+	}
+	mergeCounts(auditCounts)
+	mergeCounts(activityCounts)
+
+	// 组合数据：用户归属地区 + 最近登录时间
+	registerCombo := func(userID uint, locationStr, ipStr string, createdAt time.Time) {
 		var country, city string
 		if locationStr != "" {
 			country, city = parseLocation(locationStr)
@@ -401,28 +481,11 @@ func GetRegionStats(c *gin.Context) {
 				country, city = parseLocation(locationResult.String)
 			}
 		}
-
 		if country == "" {
 			return
 		}
 
-		regionKey := country
-		if city != "" {
-			regionKey = country + " - " + city
-		}
-
-		if _, exists := statsMap[regionKey]; !exists {
-			statsMap[regionKey] = &RegionStat{
-				Region:    regionKey,
-				Country:   country,
-				City:      city,
-				LastLogin: "-",
-			}
-		}
-
-		stat := statsMap[regionKey]
-		stat.LoginCount++
-
+		stat := ensureRegion(country, city)
 		if !createdAt.IsZero() {
 			currentLastLogin := time.Time{}
 			if stat.LastLogin != "-" {
@@ -432,21 +495,19 @@ func GetRegionStats(c *gin.Context) {
 				stat.LastLogin = utils.FormatBeijingTime(createdAt)
 			}
 		}
-
 		if _, exists := userRegionMap[userID]; !exists {
-			userRegionMap[userID] = regionKey
+			userRegionMap[userID] = stat.Region
 			stat.UserCount++
 		}
 	}
 
-	for _, log := range auditLogs {
-		if log.UserID.Valid {
-			processEntry(utils.MustSafeInt64ToUint(log.UserID.Int64), log.Location.String, log.IPAddress.String, log.CreatedAt)
+	for _, combo := range auditCombos {
+		if combo.UserID.Valid {
+			registerCombo(utils.MustSafeInt64ToUint(combo.UserID.Int64), combo.Location.String, combo.IP.String, combo.LastAt)
 		}
 	}
-
-	for _, activity := range activities {
-		processEntry(activity.UserID, activity.Location.String, "", time.Time{})
+	for _, combo := range activityCombos {
+		registerCombo(combo.UserID, combo.Location.String, combo.IP.String, time.Time{})
 	}
 
 	totalUsers := len(userRegionMap)

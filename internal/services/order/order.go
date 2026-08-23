@@ -508,7 +508,7 @@ func (s *OrderService) generatePaymentURLWithUA(order *models.Order, payType str
 		OrderID:         order.ID,
 		UserID:          order.UserID,
 		PaymentMethodID: paymentConfig.ID,
-		Amount:          int(math.Round(amount * 100)),
+		Amount:          amount, // 金额统一以元存储
 		Currency:        "CNY",
 		Status:          "pending",
 	}

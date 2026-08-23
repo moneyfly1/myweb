@@ -5,7 +5,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"strings"
 
@@ -195,12 +194,12 @@ func CreatePayment(c *gin.Context) {
 		}
 	}
 
-	amt := int(math.Round(amount * 100))
+	// 金额统一以元存储（与 Order.Amount 一致）
 	tx := models.PaymentTransaction{
 		OrderID:         order.ID,
 		UserID:          u.ID,
 		PaymentMethodID: cfg.ID,
-		Amount:          amt,
+		Amount:          amount,
 		Currency:        "CNY",
 		Status:          "pending",
 	}
@@ -345,7 +344,7 @@ func parseXMLPaymentParams(body []byte) (map[string]string, error) {
 	return params, nil
 }
 
-func updatePaymentTransactionTx(tx *gorm.DB, orderID uint, userID uint, amountCents int, externalTransactionID string, paymentMethodID uint, callbackData string, transactionID string) error {
+func updatePaymentTransactionTx(tx *gorm.DB, orderID uint, userID uint, amount float64, externalTransactionID string, paymentMethodID uint, callbackData string, transactionID string) error {
 	var paymentTx models.PaymentTransaction
 	query := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("status IN ?", []string{"pending", "failed"})
 	if orderID > 0 {
@@ -353,7 +352,8 @@ func updatePaymentTransactionTx(tx *gorm.DB, orderID uint, userID uint, amountCe
 	} else if transactionID != "" {
 		query = query.Where("order_id = ? AND transaction_id = ?", 0, transactionID)
 	} else {
-		query = query.Where("order_id = ? AND user_id = ? AND amount = ?", 0, userID, amountCents)
+		// amount 单位与 PaymentTransaction.Amount 一致（元）
+		query = query.Where("order_id = ? AND user_id = ? AND amount = ?", 0, userID, amount)
 	}
 	if paymentMethodID > 0 {
 		query = query.Where("payment_method_id = ?", paymentMethodID)
@@ -430,8 +430,8 @@ func processPaidRecharge(db *gorm.DB, orderNo string, paymentType string, paymen
 			return err
 		}
 
-		if err := updatePaymentTransactionTx(tx, 0, recharge.UserID, int(math.Round(recharge.Amount*100)), externalTransactionID, paymentConfigID, callbackData, orderNo); err != nil {
-			if fallbackErr := updatePaymentTransactionTx(tx, 0, recharge.UserID, int(math.Round(recharge.Amount*100)), externalTransactionID, paymentConfigID, callbackData, ""); fallbackErr != nil {
+		if err := updatePaymentTransactionTx(tx, 0, recharge.UserID, recharge.Amount, externalTransactionID, paymentConfigID, callbackData, orderNo); err != nil {
+			if fallbackErr := updatePaymentTransactionTx(tx, 0, recharge.UserID, recharge.Amount, externalTransactionID, paymentConfigID, callbackData, ""); fallbackErr != nil {
 				utils.LogWarn("PaymentNotify: payment transaction not found for recharge: %+v", map[string]interface{}{
 					"order_no": orderNo,
 					"user_id":  recharge.UserID,
@@ -540,10 +540,8 @@ func sendRechargePaidNotifications(db *gorm.DB, recharge *models.RechargeRecord,
 func PaymentNotify(c *gin.Context) {
 	paymentType := c.Param("type")
 
-	// 立即记录回调到达（用于诊断）
-	utils.LogInfo("========== PaymentNotify 函数被调用 ==========")
-	utils.LogInfo("PaymentNotify: 回调到达 - payment_type=%s, method=%s, remote_addr=%s, url=%s",
-		paymentType, c.Request.Method, c.ClientIP(), c.Request.URL.String())
+	// 未认证回调端点：只记一条精简日志，避免攻击者刷请求造成日志洪水
+	utils.LogInfo("PaymentNotify: 收到回调 payment_type=%s method=%s", paymentType, c.Request.Method)
 
 	db := database.GetDB()
 
@@ -613,27 +611,7 @@ func PaymentNotify(c *gin.Context) {
 		}
 	}
 
-	utils.LogInfo("PaymentNotify: 解析后的参数 - 原始参数数量=%d", len(params))
-	for k, v := range params {
-		if k != "sign" && k != "rsa_sign" {
-			utils.LogInfo("PaymentNotify: 参数[%s]=%s (长度=%d)", k, v, len(v))
-		} else {
-			utils.LogInfo("PaymentNotify: 参数[%s]=*** (隐藏)", k)
-		}
-	}
-
-	utils.LogInfo("PaymentNotify: 收到回调请求 - payment_type=%s, method=%s, content_type=%s, params_count=%d, url=%s, remote_addr=%s",
-		paymentType, c.Request.Method, c.Request.Header.Get("Content-Type"), len(params), c.Request.URL.String(), c.ClientIP())
-
-	safeParams := make(map[string]string)
-	for k, v := range params {
-		if k != "sign" && k != "rsa_sign" {
-			safeParams[k] = v
-		} else {
-			safeParams[k] = "***"
-		}
-	}
-	utils.LogInfo("PaymentNotify: 回调参数 - %+v", safeParams)
+	utils.LogInfo("PaymentNotify: 回调参数解析完成 payment_type=%s params_count=%d", paymentType, len(params))
 
 	paymentConfig, err := utils.FindEnabledPaymentConfig(db, paymentType)
 	if err != nil {
@@ -1174,7 +1152,7 @@ func GetPaymentStatus(c *gin.Context) {
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"status":   transaction.Status,
-		"amount":   float64(transaction.Amount) / 100,
+		"amount":   transaction.Amount, // 单位已统一为元
 		"order_id": transaction.OrderID,
 	})
 }
