@@ -173,7 +173,7 @@ var (
 	loginRateLimiter    = NewRateLimiter(5, 15*time.Minute, 15*time.Minute)
 	registerRateLimiter = NewRateLimiter(3, 1*time.Hour, 1*time.Hour)
 	verifyCodeLimiter   = NewRateLimiter(5, 1*time.Hour, 1*time.Hour)
-	generalRateLimiter  = NewRateLimiter(100, 1*time.Minute, 5*time.Minute)
+	resetCodeLimiter    = NewRateLimiter(10, 15*time.Minute, 15*time.Minute)
 )
 
 // ReloadLoginRateLimiter 从数据库读取 login_fail_limit 和 login_lock_time 并更新限流器
@@ -202,39 +202,6 @@ func ReloadLoginRateLimiter() {
 
 	if utils.AppLogger != nil {
 		utils.AppLogger.Info("登录限流器配置已加载: 最大失败次数=%d, 锁定时间=%d分钟", rate, lockMinutes)
-	}
-}
-
-func RateLimitMiddleware(limiter *RateLimiter) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		key := utils.GetRealClientIP(c)
-		if key == "" {
-			key = c.ClientIP()
-		}
-
-		if userID, exists := c.Get("user_id"); exists {
-			key = key + ":" + fmt.Sprintf("%d", userID.(uint))
-		}
-
-		allowed, resetAt, locked := limiter.Allow(key)
-
-		if !allowed {
-			if locked {
-				utils.ErrorResponse(c, http.StatusTooManyRequests, "请求过于频繁，账户已被临时锁定，请稍后再试", nil)
-			} else {
-				c.Header("X-RateLimit-Limit", "100")
-				c.Header("X-RateLimit-Remaining", "0")
-				c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))
-				utils.ErrorResponse(c, http.StatusTooManyRequests, "请求过于频繁，请稍后再试", nil)
-			}
-			c.Abort()
-			return
-		}
-
-		c.Header("X-RateLimit-Limit", "100")
-		c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))
-
-		c.Next()
 	}
 }
 
@@ -372,6 +339,38 @@ func VerifyCodeRateLimitMiddleware() gin.HandlerFunc {
 		c.Header("X-RateLimit-Limit", "5")
 		c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))
 
+		c.Next()
+	}
+}
+
+// ResetCodeRateLimitMiddleware 限制验证码提交（密码重置/邮箱验证等）频率，防止 6 位验证码被暴力枚举。
+func ResetCodeRateLimitMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		key := utils.GetRealClientIP(c)
+		if key == "" {
+			key = c.ClientIP()
+		}
+
+		allowed, resetAt, locked := resetCodeLimiter.Allow(key)
+
+		if !allowed {
+			if locked {
+				utils.CreateSecurityLog(c, "reset_code_rate_limit", "HIGH",
+					fmt.Sprintf("验证码校验IP被锁定: %s (尝试次数过多，疑似暴力枚举)", key),
+					map[string]interface{}{"ip": key, "reason": "验证码尝试次数过多", "reset_at": utils.FormatBeijingTime(resetAt), "locked": true})
+				utils.ErrorResponse(c, http.StatusTooManyRequests, "验证码校验失败次数过多，已临时锁定，请稍后再试", nil)
+			} else {
+				c.Header("X-RateLimit-Limit", "10")
+				c.Header("X-RateLimit-Remaining", "0")
+				c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))
+				utils.ErrorResponse(c, http.StatusTooManyRequests, "验证码校验过于频繁，请稍后再试", nil)
+			}
+			c.Abort()
+			return
+		}
+
+		c.Header("X-RateLimit-Limit", "10")
+		c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))
 		c.Next()
 	}
 }

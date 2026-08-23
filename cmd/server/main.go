@@ -45,6 +45,10 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
+	// 初始化可信代理列表（TRUSTED_PROXIES 环境变量），
+	// 必须在路由/限流使用 GetRealClientIP 之前调用
+	utils.InitTrustedProxies(os.Getenv("TRUSTED_PROXIES"))
+
 	if err := database.InitDatabase(); err != nil {
 		log.Fatalf("数据库初始化失败: %v", err)
 	}

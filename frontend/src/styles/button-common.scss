@@ -2,6 +2,7 @@
  * 统一的按钮样式类
  * 规范所有按钮的样式和使用方式
  */
+@use 'mixins/action-grid' as *;
 
 /* ========================================
    按钮组样式
@@ -14,34 +15,7 @@
   flex-wrap: wrap;
   align-items: center;
   
-  @media (max-width: 768px) {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-    width: 100%;
-    min-width: 0;
-
-    > * {
-      width: 100%;
-      min-width: 0;
-      max-width: 100%;
-    }
-
-    &:has(> :nth-child(1):last-child) {
-      grid-template-columns: 1fr;
-    }
-
-    &:has(> :nth-child(2):last-child),
-    &:has(> :nth-child(3):last-child),
-    &:has(> :nth-child(4):last-child) {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    &:has(> :nth-child(3):last-child) > :nth-child(3),
-    &:has(> :nth-child(5):last-child) > :nth-child(4) {
-      grid-column: span 2;
-    }
-    
+  @include mobile-action-grid {
     .el-button {
       width: 100%;
       min-width: 0;
@@ -55,28 +29,7 @@
 
 /* 按钮组（Element Plus button-group 增强） */
 .el-button-group {
-  @media (max-width: 768px) {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-    width: 100%;
-    min-width: 0;
-
-    &:has(> :nth-child(1):last-child) {
-      grid-template-columns: 1fr;
-    }
-
-    &:has(> :nth-child(2):last-child),
-    &:has(> :nth-child(3):last-child),
-    &:has(> :nth-child(4):last-child) {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    &:has(> :nth-child(3):last-child) > :nth-child(3),
-    &:has(> :nth-child(5):last-child) > :nth-child(4) {
-      grid-column: span 2;
-    }
-    
+  @include mobile-action-grid {
     .el-button {
       width: 100%;
       min-width: 0;
@@ -95,25 +48,7 @@
   grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
   gap: 6px;
   
-  @media (max-width: 768px) {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-
-    &:has(> :nth-child(1):last-child) {
-      grid-template-columns: 1fr;
-    }
-
-    &:has(> :nth-child(2):last-child),
-    &:has(> :nth-child(3):last-child),
-    &:has(> :nth-child(4):last-child) {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    &:has(> :nth-child(3):last-child) > :nth-child(3),
-    &:has(> :nth-child(5):last-child) > :nth-child(4) {
-      grid-column: span 2;
-    }
-  }
+  @include mobile-action-grid;
 }
 
 /* ========================================
@@ -126,33 +61,7 @@
   flex-wrap: wrap;
   align-items: center;
   
-  @media (max-width: 768px) {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    width: 100%;
-    min-width: 0;
-
-    > * {
-      width: 100%;
-      min-width: 0;
-      max-width: 100%;
-    }
-
-    &:has(> :nth-child(1):last-child) {
-      grid-template-columns: 1fr;
-    }
-
-    &:has(> :nth-child(2):last-child),
-    &:has(> :nth-child(3):last-child),
-    &:has(> :nth-child(4):last-child) {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    &:has(> :nth-child(3):last-child) > :nth-child(3),
-    &:has(> :nth-child(5):last-child) > :nth-child(4) {
-      grid-column: span 2;
-    }
-    
+  @include mobile-action-grid {
     .el-button {
       width: 100%;
       min-width: 0;
@@ -209,10 +118,6 @@
       grid-template-columns: 1fr;
     }
 
-    &:has(> :nth-child(3):last-child) {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
     &:has(> :nth-child(3):last-child) > :nth-child(3) {
       grid-column: span 2;
     }
@@ -239,34 +144,9 @@
   align-items: center;
   margin-bottom: 16px;
   
-  @media (max-width: 768px) {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    width: 100%;
-    min-width: 0;
+  @include mobile-action-grid {
     margin-bottom: 12px;
 
-    > * {
-      width: 100%;
-      min-width: 0;
-      max-width: 100%;
-    }
-
-    &:has(> :nth-child(1):last-child) {
-      grid-template-columns: 1fr;
-    }
-
-    &:has(> :nth-child(2):last-child),
-    &:has(> :nth-child(3):last-child),
-    &:has(> :nth-child(4):last-child) {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    &:has(> :nth-child(3):last-child) > :nth-child(3),
-    &:has(> :nth-child(5):last-child) > :nth-child(4) {
-      grid-column: span 2;
-    }
-    
     .el-button {
       width: 100%;
       min-width: 0;

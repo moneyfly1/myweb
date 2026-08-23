@@ -50,22 +50,22 @@ func CreateInviteCode(c *gin.Context) {
 
 	db := database.GetDB()
 
-	if req.InviterReward == 0 || req.InviteeReward == 0 {
-		var configs []models.SystemConfig
-		db.Where("category = ? AND `key` IN (?)", "invite", []string{
-			"inviter_reward", "invitee_reward",
-		}).Find(&configs)
+	// 奖励金额一律以全局配置为准，忽略客户端提交的 inviter_reward/invitee_reward，
+	// 防止用户自邀刷奖励（此前客户端可提交任意金额且后端完全信任）
+	var configs []models.SystemConfig
+	db.Where("category = ? AND `key` IN (?)", "invite", []string{
+		"inviter_reward", "invitee_reward",
+	}).Find(&configs)
 
-		for _, cfg := range configs {
-			if cfg.Key == "inviter_reward" && req.InviterReward == 0 {
-				if val, err := strconv.ParseFloat(cfg.Value, 64); err == nil {
-					req.InviterReward = val
-				}
+	for _, cfg := range configs {
+		if cfg.Key == "inviter_reward" {
+			if val, err := strconv.ParseFloat(cfg.Value, 64); err == nil {
+				req.InviterReward = val
 			}
-			if cfg.Key == "invitee_reward" && req.InviteeReward == 0 {
-				if val, err := strconv.ParseFloat(cfg.Value, 64); err == nil {
-					req.InviteeReward = val
-				}
+		}
+		if cfg.Key == "invitee_reward" {
+			if val, err := strconv.ParseFloat(cfg.Value, 64); err == nil {
+				req.InviteeReward = val
 			}
 		}
 	}

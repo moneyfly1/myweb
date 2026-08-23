@@ -26,10 +26,10 @@ deps:
 # 下载 GeoIP 数据库
 geoip:
 	@echo "正在下载 GeoIP 数据库..."
-	@go run scripts/download_geoip.go .
+	@go run ./scripts/download_geoip .
 
-# 构建（包含下载 GeoIP）
-build: geoip
+# 构建（GeoIP 可选下载，避免 CI 交互挂起）
+build:
 	go build -o bin/cboard-go cmd/server/main.go
 
 # 修复依赖（生成 go.sum）

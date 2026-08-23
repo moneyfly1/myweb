@@ -39,8 +39,8 @@
                 <el-form-item label="网站Logo">
                   <el-upload
                     class="avatar-uploader"
-                    :action="uploadUrl"
                     :show-file-list="false"
+                    :http-request="handleLogoUpload"
                     :on-success="handleLogoSuccess"
                     :before-upload="beforeLogoUpload"
                   >
@@ -978,7 +978,7 @@
 import { ref, reactive, onMounted, onBeforeUnmount, computed } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Check, Plus, Refresh, Message, Bell } from '@element-plus/icons-vue'
-import { useApi, adminAPI } from '@/utils/api'
+import { useApi, adminAPI, secureStorage } from '@/utils/api'
 import { useThemeStore } from '@/store/theme'
 import { useMobile } from '@/composables/useMobile'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
@@ -1688,9 +1688,38 @@ export default {
       if (res?.success || url) { generalSettings.site_logo = url || ''; ElMessage.success('Logo 上传成功') }
       else ElMessage.error('Logo 上传失败')
     }
+    // 自定义上传：携带 Authorization 头（el-upload 默认 action 请求不带 token，必然 401）
+    const handleLogoUpload = async ({ file, onSuccess, onError }) => {
+      try {
+        const formData = new FormData()
+        formData.append('file', file)
+        const token = secureStorage.get('admin_token') || secureStorage.get('user_token')
+        const response = await api.post('/admin/upload', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          }
+        })
+        if (response?.data?.success) {
+          onSuccess && onSuccess(response.data)
+        } else {
+          ElMessage.error(response?.data?.message || 'Logo 上传失败')
+          onError && onError(new Error(response?.data?.message || '上传失败'))
+        }
+      } catch (error) {
+        ElMessage.error(error?.response?.data?.message || 'Logo 上传失败')
+        onError && onError(error)
+      }
+    }
     const beforeLogoUpload = (file) => {
-      if (!file.type.startsWith('image/')) return ElMessage.error('仅支持图片文件!') && false
-      if (file.size / 1024 / 1024 >= 2) return ElMessage.error('图片不能超过 2MB!') && false
+      if (!file.type.startsWith('image/')) {
+        ElMessage.error('仅支持图片文件!')
+        return false
+      }
+      if (file.size / 1024 / 1024 >= 2) {
+        ElMessage.error('图片不能超过 2MB!')
+        return false
+      }
       return true
     }
 
@@ -1710,7 +1739,7 @@ export default {
       saveNodeHealthSettings, saveAdminNotificationSettings, saveBackupSettings, saveProtocolFilterSettings, saveCurrentTab, refreshSettings, protocolFilterSettings, allProtocols: ALL_PROTOCOLS,
       repoSyncSettings, repoSyncStatus, repoSyncLoading, repoSyncBaseUrl, repoSyncFileUrl, repoSyncStatusType, repoSyncStatusLabel,
       saveRepoSyncSettings, testRepoSyncConnection, runRepoSyncNow, loadRepoSyncStatus, copyText,
-      testNotification, testGiteeConnection, testGitHubConnection, createManualBackup, updateGeoIPDatabase, switchDatabase, flushCache, handleLogoSuccess, beforeLogoUpload, formatFileSize
+      testNotification, testGiteeConnection, testGitHubConnection, createManualBackup, updateGeoIPDatabase, switchDatabase, flushCache, handleLogoSuccess, handleLogoUpload, beforeLogoUpload, formatFileSize
     }
   }
 }

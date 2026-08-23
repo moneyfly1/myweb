@@ -77,18 +77,8 @@ func getRequestedLogLevel(c *gin.Context) string {
 }
 
 // applyCommonKeywordFilter 通用关键词过滤 (针对 AuditLog)
-func applyAuditLogFilters(query *gorm.DB, c *gin.Context) *gorm.DB {
-	if logLevel := getRequestedLogLevel(c); logLevel != "" {
-		switch logLevel {
-		case "error":
-			query = query.Where("audit_logs.response_status >= ?", 400)
-		case "warning":
-			query = query.Where("audit_logs.response_status >= ? AND audit_logs.response_status < ?", 300, 400)
-		case "info":
-			query = query.Where("audit_logs.response_status < ? OR audit_logs.response_status IS NULL", 300)
-		}
-	}
-
+// applyCommonLogFilters 审计日志与系统日志共用的 module/username/keyword/时间过滤
+func applyCommonLogFilters(query *gorm.DB, c *gin.Context) *gorm.DB {
 	if module := strings.TrimSpace(c.Query("module")); module != "" {
 		escapedModule := utils.EscapeLikePattern(utils.SanitizeSearchKeyword(module))
 		query = query.Where("audit_logs.resource_type LIKE ?", "%"+escapedModule+"%")
@@ -101,13 +91,26 @@ func applyAuditLogFilters(query *gorm.DB, c *gin.Context) *gorm.DB {
 	}
 
 	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {
-		// 这里不需要再次 Escape，因为通常 utils 内部处理，或者简单的 SQL 注入防护
-		// 假设 utils.EscapeLikePattern 只是转义 % 和 _
 		k := "%" + utils.EscapeLikePattern(utils.SanitizeSearchKeyword(keyword)) + "%"
 		query = query.Where("audit_logs.action_description LIKE ? OR audit_logs.action_type LIKE ? OR audit_logs.resource_type LIKE ?", k, k, k)
 	}
 
 	return applyTimeRangeFilter(query, c, "audit_logs.created_at")
+}
+
+func applyAuditLogFilters(query *gorm.DB, c *gin.Context) *gorm.DB {
+	if logLevel := getRequestedLogLevel(c); logLevel != "" {
+		switch logLevel {
+		case "error":
+			query = query.Where("audit_logs.response_status >= ?", 400)
+		case "warning":
+			query = query.Where("audit_logs.response_status >= ? AND audit_logs.response_status < ?", 300, 400)
+		case "info":
+			query = query.Where("audit_logs.response_status < ? OR audit_logs.response_status IS NULL", 300)
+		}
+	}
+
+	return applyCommonLogFilters(query, c)
 }
 
 func applySystemLogsBaseScope(query *gorm.DB) *gorm.DB {
@@ -156,24 +159,7 @@ func applySystemLogsFilters(query *gorm.DB, c *gin.Context, includeLevel bool) *
 
 	query = applySystemTaskTypeFilter(query, c.Query("task_type"))
 
-	if module := strings.TrimSpace(c.Query("module")); module != "" {
-		escaped := utils.EscapeLikePattern(utils.SanitizeSearchKeyword(module))
-		query = query.Where("audit_logs.resource_type LIKE ?", "%"+escaped+"%")
-	}
-
-	if username := strings.TrimSpace(c.Query("username")); username != "" {
-		escaped := utils.EscapeLikePattern(utils.SanitizeSearchKeyword(username))
-		query = query.Joins("JOIN users ON audit_logs.user_id = users.id").
-			Where("users.username LIKE ?", "%"+escaped+"%")
-	}
-
-	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {
-		escaped := "%" + utils.EscapeLikePattern(utils.SanitizeSearchKeyword(keyword)) + "%"
-		query = query.Where("audit_logs.action_description LIKE ? OR audit_logs.action_type LIKE ? OR audit_logs.resource_type LIKE ?",
-			escaped, escaped, escaped)
-	}
-
-	return applyTimeRangeFilter(query, c, "audit_logs.created_at")
+	return applyCommonLogFilters(query, c)
 }
 
 // genericSuccessResponse 统一的分页响应封装
@@ -487,10 +473,10 @@ func formatLogForCSV(db *gorm.DB, log models.AuditLog) string {
 	return fmt.Sprintf("%s,%s,%s,%s,%s,%s,\"%s\"\n",
 		formatTime(log.CreatedAt),
 		level,
-		getNullableString(log.ResourceType),
-		username,
-		getNullableString(log.IPAddress),
-		log.ActionType,
+		utils.SanitizeCSVField(getNullableString(log.ResourceType)),
+		utils.SanitizeCSVField(username),
+		utils.SanitizeCSVField(getNullableString(log.IPAddress)),
+		utils.SanitizeCSVField(log.ActionType),
 		message,
 	)
 }
@@ -656,14 +642,36 @@ func GetLogsStats(c *gin.Context) {
 		Info    int64 `json:"info"`
 	}
 
-	baseQuery := db.Model(&models.AuditLog{})
-	baseQuery = applySystemLogsBaseScope(baseQuery)
-	baseQuery = applySystemLogsFilters(baseQuery, c, false)
+	baseScope := db.Model(&models.AuditLog{})
+	baseScope = applySystemLogsBaseScope(baseScope)
+	baseScope = applySystemLogsFilters(baseScope, c, false)
 
-	baseQuery.Count(&stats.Total)
-	baseQuery.Where("(audit_logs.response_status >= ? OR audit_logs.action_type = ?)", 400, "system_error").Count(&stats.Error)
-	baseQuery.Where("audit_logs.response_status >= ? AND audit_logs.response_status < ?", 300, 400).Count(&stats.Warning)
-	baseQuery.Where("(audit_logs.response_status < ? OR audit_logs.response_status IS NULL) AND audit_logs.action_type != ?", 300, "system_error").Count(&stats.Info)
+	// 注意：GORM 的 Count 会修改 query 状态，多次 Count 必须各自独立，
+	// 否则后续 Where 会叠加到已 Count 的查询上导致统计错误。
+	if err := baseScope.Count(&stats.Total).Error; err != nil {
+		utils.LogError("GetLogsStats: count total failed", err, nil)
+	}
+
+	errorQuery := db.Model(&models.AuditLog{})
+	errorQuery = applySystemLogsBaseScope(errorQuery)
+	errorQuery = applySystemLogsFilters(errorQuery, c, false)
+	if err := errorQuery.Where("(audit_logs.response_status >= ? OR audit_logs.action_type = ?)", 400, "system_error").Count(&stats.Error).Error; err != nil {
+		utils.LogError("GetLogsStats: count error failed", err, nil)
+	}
+
+	warningQuery := db.Model(&models.AuditLog{})
+	warningQuery = applySystemLogsBaseScope(warningQuery)
+	warningQuery = applySystemLogsFilters(warningQuery, c, false)
+	if err := warningQuery.Where("audit_logs.response_status >= ? AND audit_logs.response_status < ?", 300, 400).Count(&stats.Warning).Error; err != nil {
+		utils.LogError("GetLogsStats: count warning failed", err, nil)
+	}
+
+	infoQuery := db.Model(&models.AuditLog{})
+	infoQuery = applySystemLogsBaseScope(infoQuery)
+	infoQuery = applySystemLogsFilters(infoQuery, c, false)
+	if err := infoQuery.Where("(audit_logs.response_status < ? OR audit_logs.response_status IS NULL) AND audit_logs.action_type != ?", 300, "system_error").Count(&stats.Info).Error; err != nil {
+		utils.LogError("GetLogsStats: count info failed", err, nil)
+	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
@@ -695,7 +703,9 @@ func ExportLogs(c *gin.Context) {
 
 func ClearLogs(c *gin.Context) {
 	db := database.GetDB()
-	result := db.Where("1 = 1").Delete(&models.AuditLog{})
+
+	// 仅清理"系统/审计"类日志，避免误删业务关键日志
+	result := db.Where("action_type NOT IN ?", []string{"login", "register", "checkin"}).Delete(&models.AuditLog{})
 	if result.Error != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "清空日志失败", result.Error)
 		return

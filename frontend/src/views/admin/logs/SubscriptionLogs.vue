@@ -132,19 +132,11 @@
   </div>
 </template>
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import { debounce } from '@/composables/useDebounce'
 import { adminAPI } from '@/utils/api'
-import { useMobile } from '@/composables/useMobile'
+import { useLogListPage } from '@/composables/useLogListPage'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import MobileLogFields from '@/components/MobileLogFields.vue'
-
-const loading = ref(false)
-const list = ref([])
-const total = ref(0)
-const page = ref(1)
-const pageSize = ref(20)
 
 const ACTION_TYPE_MAP = {
   create: '创建', update: '更新', delete: '删除',
@@ -195,53 +187,14 @@ function getDeviceInfo(row) {
   return clean || '-'
 }
 
-const filter = ref({
-  keyword: '',
-  action_type: '',
-  action_by: '',
-  timeRange: null
+const {
+  loading, list, total, page, pageSize, filter, isMobile, paginationLayout,
+  fetchLogs: fetch, debouncedFetchLogs: debouncedFetch, resetFilter, onSizeChange
+} = useLogListPage({
+  fetcher: (params) => adminAPI.getSubscriptionLogs(params),
+  defaultFilter: () => ({ keyword: '', action_type: '', action_by: '', timeRange: null }),
+  extraFilterKeys: ['action_type', 'action_by']
 })
-const isMobile = useMobile()
-const paginationLayout = computed(() => (isMobile.value ? 'total, prev, pager, next' : 'total, prev, pager, next, sizes'))
-
-async function fetch() {
-  loading.value = true
-  try {
-    const params = { page: page.value, page_size: pageSize.value }
-    if (filter.value.keyword) params.keyword = filter.value.keyword
-    if (filter.value.action_type) params.action_type = filter.value.action_type
-    if (filter.value.action_by) params.action_by = filter.value.action_by
-    if (filter.value.timeRange && filter.value.timeRange.length === 2) {
-      params.start_time = filter.value.timeRange[0]
-      params.end_time = filter.value.timeRange[1]
-    }
-    const res = await adminAPI.getSubscriptionLogs(params)
-    const data = res?.data?.data ?? res?.data ?? {}
-    list.value = data.logs ?? []
-    total.value = data.total ?? 0
-  } catch (e) {
-    list.value = []
-  } finally {
-    loading.value = false
-  }
-}
-
-// 搜索输入实时生效，无需再次点击搜索按钮（500ms 防抖）
-const debouncedFetch = debounce(fetch, 500)
-
-function resetFilter() {
-  filter.value = { keyword: '', action_type: '', action_by: '', timeRange: null }
-  page.value = 1
-  fetch()
-}
-
-function onSizeChange(size) {
-  pageSize.value = size
-  page.value = 1
-  fetch()
-}
-
-onMounted(() => { fetch() })
 </script>
 <style scoped>
 .filter-keyword,

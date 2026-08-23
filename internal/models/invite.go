@@ -34,7 +34,7 @@ type InviteRelation struct {
 	ID                      uint          `gorm:"primaryKey" json:"id"`
 	InviteCodeID            uint          `gorm:"index;not null" json:"invite_code_id"`
 	InviterID               uint          `gorm:"index;index:idx_invite_relations_inviter_created_at;not null" json:"inviter_id"`
-	InviteeID               uint          `gorm:"index;not null" json:"invitee_id"`
+	InviteeID               uint          `gorm:"index;uniqueIndex:idx_invite_relations_invitee_unique;not null" json:"invitee_id"`
 	InviterRewardGiven      bool          `gorm:"default:false" json:"inviter_reward_given"`
 	InviteeRewardGiven      bool          `gorm:"default:false" json:"invitee_reward_given"`
 	InviterRewardAmount     float64       `gorm:"type:decimal(10,2);default:0" json:"inviter_reward_amount"`

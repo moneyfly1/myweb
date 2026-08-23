@@ -1,0 +1,46 @@
+// ========================================
+// 移动端操作按钮网格 mixin
+// 此前 :has(:nth-child) 网格规则在 button-common/list-common/user-client-polish
+// 中复制了 40+ 处，统一收敛为单个 mixin。
+//
+// 用法：
+//   .my-container {
+//     @include mobile-action-grid {
+//       .el-button { ... }   // 可选：额外移动端子规则
+//     }
+//   }
+// 生成：移动端 3 列网格 + 1/2/4 子项自适应 + 奇数列跨行 + 按钮铺满
+// ========================================
+
+@mixin mobile-action-grid($columns: 3, $gap: 8px) {
+  @media (max-width: 768px) {
+    display: grid;
+    grid-template-columns: repeat($columns, minmax(0, 1fr));
+    gap: $gap;
+    width: 100%;
+    min-width: 0;
+
+    > * {
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    &:has(> :nth-child(1):last-child) {
+      grid-template-columns: 1fr;
+    }
+
+    &:has(> :nth-child(2):last-child),
+    &:has(> :nth-child(3):last-child),
+    &:has(> :nth-child(4):last-child) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    &:has(> :nth-child(3):last-child) > :nth-child(3),
+    &:has(> :nth-child(5):last-child) > :nth-child(4) {
+      grid-column: span 2;
+    }
+
+    @content;
+  }
+}

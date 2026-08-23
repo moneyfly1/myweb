@@ -114,7 +114,8 @@ func (s *CodepayService) codepaySign(params map[string]string) string {
 	sb.WriteString(s.Key)
 
 	signStr := sb.String()
-	utils.LogInfo("码支付签名字符串(隐藏密钥): %s", strings.Replace(signStr, s.Key, "***KEY***", 1))
+	// 只记录参与签名的参数键，绝不输出签名串（其末尾拼有商户密钥）
+	utils.LogInfo("码支付签名参数键: %v", keys)
 
 	hash := md5.Sum([]byte(signStr)) // #nosec G401
 	return fmt.Sprintf("%x", hash)

@@ -32,6 +32,8 @@ func AddToBlacklist(db *gorm.DB, tokenHash string, userID uint, expiresAt time.T
 	return db.Create(&blacklist).Error
 }
 
+// IsTokenBlacklisted 判断 token 是否已被加入黑名单。
+// 注意：数据库错误时按“已拉黑”（fail-closed）处理，宁可拒绝请求也不放行可能已登出的令牌。
 func IsTokenBlacklisted(db *gorm.DB, tokenHash string) bool {
 	var blacklist TokenBlacklist
 	err := db.Where("token_hash = ? AND expires_at > ?", tokenHash, time.Now()).First(&blacklist).Error
@@ -39,7 +41,8 @@ func IsTokenBlacklisted(db *gorm.DB, tokenHash string) bool {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return false
 		}
-		return false
+		// 数据库错误：fail-closed
+		return true
 	}
 	return true
 }

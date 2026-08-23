@@ -382,7 +382,7 @@ const loadLevels = async () => {
   try {
     const filterValue = (statusFilter.value === 'all' || statusFilter.value === undefined || statusFilter.value === null || statusFilter.value === '') ? undefined : statusFilter.value
     const response = await userLevelAPI.getAllLevels(undefined, filterValue)
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
     }
     let levelList = []
     if (response?.data) {
@@ -404,7 +404,7 @@ const loadLevels = async () => {
       is_active: level.is_active === true || level.is_active === 1 || level.is_active === '1'
     }))
   } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       console.error('加载等级列表失败:', error)
     }
     const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '未知错误'
@@ -490,7 +490,7 @@ const saveLevel = async () => {
       benefits: benefits, // 传递空字符串以清空字段，传递字符串以更新字段
       is_active: isActiveValue
     }
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
     }
     let response
     if (editingLevel.value) {
@@ -512,7 +512,7 @@ const saveLevel = async () => {
     await loadLevels()
   } catch (error) {
     if (error !== false) { // 表单验证失败会返回false
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         console.error('保存等级失败:', error)
         console.error('错误详情:', error.response?.data)
       }
@@ -537,7 +537,7 @@ const deleteLevel = async (level) => {
     await loadLevels()
   } catch (error) {
     if (error !== 'cancel') {
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         console.error('删除等级失败:', error)
       }
       ElMessage.error('删除失败: ' + (error.response?.data?.message || error.message))

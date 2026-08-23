@@ -79,7 +79,7 @@
             :title="guide.title"
             :name="guide.id"
           >
-            <div class="guide-content" v-html="sanitizeHtml(guide.content)"></div>
+            <div class="guide-content" v-html="guide.content"></div>
           </el-collapse-item>
         </el-collapse>
       </el-card>
@@ -96,7 +96,7 @@
             :title="faq.question"
             :name="faq.id"
           >
-            <div class="faq-content" v-html="sanitizeHtml(faq.answer)"></div>
+            <div class="faq-content" v-html="faq.answer"></div>
           </el-collapse-item>
         </el-collapse>
       </el-card>

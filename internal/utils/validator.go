@@ -35,7 +35,10 @@ func SanitizeSearchKeyword(keyword string) string {
 		keyword = keyword[:100]
 	}
 
-	dangerous := []string{"'", "\"", ";", "--", "/*", "*/", "xp_", "sp_", "exec", "union", "select", "insert", "update", "delete", "drop", "create", "alter"}
+	// 查询全部走参数化（? 占位符），剥离 SQL 关键字没有实际防护价值，
+	// 反而破坏合法搜索词（如搜 "update"）。仅剥离引号与注释标记，
+	// 防止破坏 LIKE 模式拼接。
+	dangerous := []string{"'", "\"", "--", "/*", "*/"}
 	result := strings.ToLower(keyword)
 	for _, char := range dangerous {
 		result = strings.ReplaceAll(result, char, "")

@@ -640,15 +640,6 @@ export default {
         return false
       }
     }
-    const getChartFillStyle = (count) => {
-      if (deviceStats.total === 0) {
-        return { '--chart-fill-width': '0%' }
-      }
-      const percentage = Math.round((count / deviceStats.total) * 100)
-      return {
-        '--chart-fill-width': `${Math.min(Math.max(percentage, 0), 100)}%`
-      }
-    }
     const saveRemark = async (device, value) => {
       const newRemark = String(value || '').trim()
       const oldRemark = device.remark || ''
@@ -706,7 +697,6 @@ export default {
       getDeviceTypeColor,
       formatTime,
       truncateUserAgent,
-      getChartFillStyle,
       formatLocation,
       deviceTableRef,
       columnWidths,
@@ -987,24 +977,12 @@ export default {
     background: #f5f7fa;
   }
 }
-.chart-card {
-  background: var(--card-bg);
-  border-radius: var(--border-radius);
-  border: 1px solid var(--color-border, #e5e7eb);
-  margin-bottom: 1.5rem;
-}
 .pagination {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
   &.mobile-pagination {
     display: none;
-  }
-}
-.chart-container {
-  padding: 1rem 0;
-  @media (max-width: 768px) {
-    padding: 0.75rem 0;
   }
 }
 @media (max-width: 768px) {
@@ -1101,58 +1079,6 @@ export default {
         margin-bottom: 0;
       }
     }
-  }
-}
-.chart-item {
-  display: flex;
-  align-items: center;
-  margin-bottom: 1rem;
-  gap: 1rem;
-  @media (max-width: 768px) {
-    flex-direction: row; /* 保持行布局 */
-    flex-wrap: wrap; /* 允许换行 */
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
-  }
-}
-.chart-label {
-  width: 100px;
-  font-weight: 500;
-  color: #333;
-  @media (max-width: 768px) {
-    width: 100%; /* 标签占一行 */
-    font-size: 0.9rem;
-    margin-bottom: 2px;
-  }
-}
-.chart-bar {
-  flex: 1;
-  height: 20px;
-  background: #f0f0f0;
-  border-radius: 10px;
-  overflow: clip;
-  @media (max-width: 768px) {
-    width: calc(100% - 50px); /* 减去计数的宽度 */
-    flex: none;
-    height: 16px;
-  }
-}
-.chart-fill {
-  height: 100%;
-  width: var(--chart-fill-width, 0%);
-  background: var(--primary-color);
-  border-radius: 10px;
-  transition: width 0.3s ease;
-}
-.chart-count {
-  width: 60px;
-  text-align: right;
-  font-weight: 600;
-  color: var(--primary-color);
-  @media (max-width: 768px) {
-    width: 40px;
-    font-size: 0.9rem;
   }
 }
 </style> 

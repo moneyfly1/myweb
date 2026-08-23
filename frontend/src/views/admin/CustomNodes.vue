@@ -1371,10 +1371,25 @@ export default {
        finally { node.testing = false }
     }
     const testNodeFromLink = async () => {
-       testingFromLink.value = true
-       try {
-         ElMessage.success('测试连接通过') 
-       } finally { testingFromLink.value = false }
+      testingFromLink.value = true
+      try {
+        const link = nodeLinkInput.value.split('\n')[0].trim()
+        if (!link) {
+          ElMessage.warning('请先输入节点链接')
+          return
+        }
+        // 链接尚未保存为节点，无法按 ID 测速：先解析确认格式，再引导保存后测试
+        if (!parsedNode.value) {
+          await parseNodeLink()
+          if (!parsedNode.value) {
+            ElMessage.error('节点链接解析失败，无法测试')
+            return
+          }
+          ElMessage.info('节点解析成功，请点击"保存"创建节点后，在节点列表执行测速')
+          return
+        }
+        ElMessage.info('节点解析成功，请点击"保存"创建节点后，在节点列表执行测速')
+      } finally { testingFromLink.value = false }
     }
     // 监听视图模式和网格设置变化，自动保存
     watch([viewMode, gridOrientation, gridColumns, gridSize], () => {

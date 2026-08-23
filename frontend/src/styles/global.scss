@@ -1253,3 +1253,66 @@ $breakpoints: (
   display: flex;
   justify-content: flex-end;
 }
+
+/* ========================================
+   移动端全局增强（商业化体验）
+   ======================================== */
+
+/* iOS 安全区：固定底部元素统一避开 Home 指示条（需 viewport-fit=cover） */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .mobile-tabbar,
+  .mobile-bottom-bar,
+  .mobile-action-bar {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* 移动端触控目标最小 44px，符合 Apple/Google 推荐 */
+@media (max-width: 768px) {
+  .mobile-action-btn,
+  .mobile-tab,
+  .mobile-nav-item,
+  .el-dialog__footer .el-button {
+    min-height: 44px;
+  }
+}
+
+/* 禁用移动端双击缩放延迟与长按选中干扰 */
+@media (max-width: 768px) {
+  .el-button,
+  .el-tag,
+  .el-radio,
+  .el-checkbox {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-tabbar,
+  .mobile-nav-bar {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* 移动端滚动优化：iOS 惯性滚动 + 禁止 overscroll 露出背景 */
+@media (max-width: 768px) {
+  .main-content,
+  .page-content,
+  .el-dialog__body,
+  .el-drawer__body {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+}
+
+/* 移动端表单控件触控高度：iOS 推荐 44px 最小触控目标 */
+@media (max-width: 768px) {
+  .mobile-filter-form .el-input__inner,
+  .mobile-filter-form .el-select__wrapper,
+  .mobile-filter-form .el-textarea__inner,
+  .filter-bar .el-input__wrapper,
+  .filter-bar .el-select__wrapper {
+    min-height: 44px;
+  }
+  .mobile-filter-form .el-form-item {
+    margin-bottom: 12px;
+  }
+}

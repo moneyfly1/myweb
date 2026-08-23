@@ -36,6 +36,16 @@ func (w *compressResponseWriter) WriteString(s string) (int, error) {
 	return w.writer.Write([]byte(s))
 }
 
+// Flush 先排空压缩器缓冲，再 flush 底层连接。
+// 若不实现本方法，嵌入的 gin.ResponseWriter.Flush 会直接刷底层连接，
+// 导致 SSE 等流式响应的数据滞留在压缩缓冲中永远发不出去。
+func (w *compressResponseWriter) Flush() {
+	if f, ok := w.writer.(interface{ Flush() error }); ok {
+		_ = f.Flush()
+	}
+	w.ResponseWriter.Flush()
+}
+
 // CompressionMiddleware Brotli 优先，fallback Gzip，互斥不会双重压缩
 func CompressionMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -56,10 +66,12 @@ func CompressionMiddleware() gin.HandlerFunc {
 			c.Writer.Header().Del("Content-Length")
 
 			c.Writer = &compressResponseWriter{ResponseWriter: c.Writer, writer: bw}
+			// defer 保证 panic 时也能关闭压缩器并归还池（避免泄漏）
+			defer func() {
+				_ = bw.Close()
+				brotliWriterPool.Put(bw)
+			}()
 			c.Next()
-
-			bw.Close()
-			brotliWriterPool.Put(bw)
 			return
 		}
 
@@ -72,10 +84,11 @@ func CompressionMiddleware() gin.HandlerFunc {
 			c.Writer.Header().Del("Content-Length")
 
 			c.Writer = &compressResponseWriter{ResponseWriter: c.Writer, writer: gw}
+			defer func() {
+				_ = gw.Close()
+				gzipWriterPool.Put(gw)
+			}()
 			c.Next()
-
-			gw.Close()
-			gzipWriterPool.Put(gw)
 			return
 		}
 

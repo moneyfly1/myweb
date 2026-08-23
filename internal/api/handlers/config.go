@@ -68,6 +68,13 @@ func updateSettingsCommon(c *gin.Context, category string) {
 				targetCat = CatSystem
 			}
 
+			// 密钥类字段收到脱敏占位符时跳过，避免把掩码写回覆盖真实密钥
+			if isSensitiveConfigKey(key) {
+				if vs, ok := val.(string); ok && vs == maskedSecretValue {
+					continue
+				}
+			}
+
 			valStr := fmt.Sprintf("%v", val)
 			if arr, ok := val.([]interface{}); ok {
 				if b, err := json.Marshal(arr); err == nil {
@@ -99,9 +106,10 @@ func updateSettingsCommon(c *gin.Context, category string) {
 		return
 	}
 
-	// 安全设置变更后重载限流器配置
+	// 安全设置变更后重载限流器配置与会话超时缓存
 	if category == "security" {
 		middleware.ReloadLoginRateLimiter()
+		utils.InvalidateSessionTimeoutCache()
 	}
 
 	// 清除系统配置缓存
@@ -375,6 +383,13 @@ func GetAdminSettings(c *gin.Context) {
 			}
 
 			if exists {
+				if isSensitiveConfigKey(key) {
+					// 密钥类字段脱敏：只返回掩码占位符，真实值不回传浏览器
+					if val != "" {
+						settings[cat][key] = maskedSecretValue
+					}
+					continue
+				}
 				if stringOnlyFields[key] {
 					settings[cat][key] = val
 					continue
@@ -405,6 +420,22 @@ func GetAdminSettings(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", settings)
+}
+
+// isSensitiveConfigKey 判断配置键是否属于密钥/凭据类，读取接口需脱敏、保存接口需跳过掩码。
+func isSensitiveConfigKey(key string) bool {
+	switch key {
+	case "admin_telegram_bot_token", "admin_bark_device_key", "repo_sync_token",
+		"backup_gitee_token", "backup_github_token", "smtp_password",
+		"admin_notification_email_password", "alipay_private_key", "alipay_public_key",
+		"wechat_api_key", "paypal_secret", "stripe_secret_key",
+		"merchant_private_key", "secret_key", "jwt_secret_key",
+		"api_token", "access_token", "refresh_token", "webhook_secret",
+		"telegram_bot_token", "bark_device_key":
+		return true
+	default:
+		return false
+	}
 }
 
 func UpdateGeneralSettings(c *gin.Context)      { updateSettingsCommon(c, CatGeneral) }
@@ -733,7 +764,7 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 		return
 	}
 
-	// 下载文件
+	// 下载文件（限时 60s、限大小 200MB，防止网络黑洞挂起请求或写满磁盘）
 	tmpFile := filepath.Join(os.TempDir(), filename+".tmp")
 
 	// 验证URL以防止SSRF攻击
@@ -743,8 +774,9 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 		return
 	}
 
+	client := &http.Client{Timeout: 60 * time.Second}
 	// #nosec G107 - URL is validated above with ValidateHTTPURL
-	resp, err := http.Get(url) // #nosec G107
+	resp, err := client.Get(url) // #nosec G107
 	if err != nil {
 		utils.LogError("UpdateGeoIPDatabase: Download failed", err, nil)
 		utils.ErrorResponse(c, http.StatusInternalServerError, "下载失败", err)
@@ -783,10 +815,15 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 		reader = gzReader
 	}
 
-	written, err := io.Copy(out, reader)
+	written, err := io.Copy(out, io.LimitReader(reader, 200<<20))
 	if err != nil {
 		_ = os.Remove(tmpFile) // Ignore error, best effort cleanup
 		utils.ErrorResponse(c, http.StatusInternalServerError, "保存文件失败", err)
+		return
+	}
+	if written >= 200<<20 {
+		_ = os.Remove(tmpFile)
+		utils.ErrorResponse(c, http.StatusInternalServerError, "下载内容超过 200MB 限制，已中止", nil)
 		return
 	}
 	if err := out.Close(); err != nil {

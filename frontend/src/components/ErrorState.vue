@@ -63,19 +63,25 @@ const clearRetryResetTimer = () => {
 }
 
 // 处理重试
-const handleRetry = async () => {
+const handleRetry = () => {
   retrying.value = true
-  try {
-    await emit('retry')
-  } finally {
-    // 稍后重置状态，避免闪烁
-    clearRetryResetTimer()
-    retryResetTimer = setTimeout(() => {
-      retrying.value = false
-      retryResetTimer = null
-    }, 500)
-  }
+  // Vue3 的 emit 不返回 Promise，无法 await 父组件完成。
+  // 触发重试后：若父组件在 1.5s 内未通过事件复位，自动复位避免按钮卡死。
+  emit('retry')
+  clearRetryResetTimer()
+  retryResetTimer = setTimeout(() => {
+    retrying.value = false
+    retryResetTimer = null
+  }, 1500)
 }
+
+// 供父组件在加载完成时复位重试按钮（可选，配合 @retry 使用）
+const resetRetrying = () => {
+  retrying.value = false
+  clearRetryResetTimer()
+}
+
+defineExpose({ resetRetrying })
 
 // 处理返回
 const handleBack = () => {

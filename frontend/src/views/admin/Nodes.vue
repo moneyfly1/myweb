@@ -662,7 +662,7 @@ export default {
     }
     const resetForm = () => {
       editingNode.value = null
-      Object.assign(nodeForm, { name: '', region: '', type: 'vmess', config: '', is_active: true })
+      Object.assign(nodeForm, { name: '', region: '', type: 'vmess', config: '', description: '', is_recommended: false, is_active: true })
       nodeLinkInput.value = ''
       nodeLinkValue.value = ''
       parsedNode.value = null

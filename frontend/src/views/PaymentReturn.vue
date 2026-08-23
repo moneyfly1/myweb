@@ -158,6 +158,8 @@ export default {
       const maxChecks = 15
       let lastOrderData = null
       for (let i = 0; i < maxChecks; i++) {
+        // 组件已卸载则停止轮询，避免劫持用户后续导航/请求
+        if (unmountedFlag) return null
         const data = await fetchOrderData(no)
         if (data) {
           lastOrderData = data
@@ -186,6 +188,7 @@ export default {
       }
       throw new Error('无法获取订单状态，请稍后前往订单页面查看')
     }
+    let unmountedFlag = false
     const processPaymentReturn = async () => {
       try {
         isLoading.value = true
@@ -207,6 +210,7 @@ export default {
         orderType.value = getOrderType(no)
         if (route.query.trade_status === 'TRADE_SUCCESS' && route.query.pid) {
           for (let i = 0; i < 5; i++) {
+            if (unmountedFlag) return
             await new Promise(r => setTimeout(r, 1000))
             const fastData = await fetchOrderData(no)
             if (fastData && fastData.status === 'paid') {
@@ -215,9 +219,10 @@ export default {
             }
           }
         }
+        if (unmountedFlag) return
         await new Promise(r => setTimeout(r, 500))
         const data = await pollOrderStatus(no)
-        await handlePaymentSuccess(data)
+        if (data) await handlePaymentSuccess(data)
       } catch (error) {
         isLoading.value = false
         errorMessage.value = error.message || '处理支付结果失败'
@@ -227,6 +232,7 @@ export default {
     const goToOrders = () => router.push('/orders')
     onMounted(processPaymentReturn)
     onUnmounted(() => {
+      unmountedFlag = true
       if (redirectTimer) {
         clearTimeout(redirectTimer)
         redirectTimer = null

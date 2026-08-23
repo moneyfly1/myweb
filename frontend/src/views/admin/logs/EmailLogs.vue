@@ -115,16 +115,13 @@
   </div>
 </template>
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import { debounce } from '@/composables/useDebounce'
 import { adminAPI } from '@/utils/api'
-import { useMobile } from '@/composables/useMobile'
+import { useLogListPage } from '@/composables/useLogListPage'
 import { EMAIL_TYPE_MAP, getEmailTypeText } from '@/utils/statusMaps'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import MobileLogFields from '@/components/MobileLogFields.vue'
 
-const loading = ref(false)
 const getStatusText = (status) => {
   const map = { pending: '待发送', sent: '已发送', failed: '失败' }
   return map[status] || status || '-'
@@ -134,57 +131,14 @@ const getStatusColor = (status) => {
   return map[status] || 'info'
 }
 
-const list = ref([])
-const total = ref(0)
-const page = ref(1)
-const pageSize = ref(10)
-const filter = ref({
-  keyword: '',
-  email_type: '',
-  status: '',
-  timeRange: null
+const {
+  loading, list, total, page, pageSize, filter, isMobile, paginationLayout,
+  fetchLogs: fetch, debouncedFetchLogs: debouncedFetch, resetFilter, onSizeChange
+} = useLogListPage({
+  fetcher: (params) => adminAPI.getEmailLogs(params),
+  defaultFilter: () => ({ keyword: '', email_type: '', status: '', timeRange: null }),
+  extraFilterKeys: ['email_type', 'status']
 })
-const isMobile = useMobile()
-const paginationLayout = computed(() => (isMobile.value ? 'total, prev, pager, next' : 'total, prev, pager, next, sizes'))
-
-async function fetch() {
-  loading.value = true
-  try {
-    const params = { page: page.value, page_size: pageSize.value }
-    if (filter.value.keyword) params.keyword = filter.value.keyword
-    if (filter.value.email_type) params.email_type = filter.value.email_type
-    if (filter.value.status) params.status = filter.value.status
-    if (filter.value.timeRange && filter.value.timeRange.length === 2) {
-      params.start_time = filter.value.timeRange[0]
-      params.end_time = filter.value.timeRange[1]
-    }
-    const res = await adminAPI.getEmailLogs(params)
-    const data = res?.data?.data ?? res?.data ?? {}
-    list.value = data.logs ?? []
-    total.value = data.total ?? 0
-  } catch (e) {
-    list.value = []
-  } finally {
-    loading.value = false
-  }
-}
-
-// 搜索输入实时生效，无需再次点击搜索按钮（500ms 防抖）
-const debouncedFetch = debounce(fetch, 500)
-
-function resetFilter() {
-  filter.value = { keyword: '', email_type: '', status: '', timeRange: null }
-  page.value = 1
-  fetch()
-}
-
-function onSizeChange(size) {
-  pageSize.value = size
-  page.value = 1
-  fetch()
-}
-
-onMounted(() => { fetch() })
 </script>
 <style scoped>
 .filter-keyword,

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+	"html"
 	"net/http"
 	"strings"
 	"sync"
@@ -16,17 +17,17 @@ import (
 
 // 维护模式缓存
 var (
-	maintenanceCache     *maintenanceCacheData
-	maintenanceCacheMu   sync.RWMutex
-	maintenanceCacheTTL  = 30 * time.Second
+	maintenanceCache    *maintenanceCacheData
+	maintenanceCacheMu  sync.RWMutex
+	maintenanceCacheTTL = 30 * time.Second
 )
 
 type maintenanceCacheData struct {
-	enabled    bool
-	message    string
-	siteName   string
-	logoURL    string
-	expireAt   time.Time
+	enabled  bool
+	message  string
+	siteName string
+	logoURL  string
+	expireAt time.Time
 }
 
 func getMaintenanceConfig() *maintenanceCacheData {
@@ -122,6 +123,11 @@ func MaintenanceMiddleware() gin.HandlerFunc {
 					return
 				}
 
+				// siteName/message 来自系统配置（管理员可改，也可能被篡改），
+				// 必须 HTML 转义防止存储型 XSS；logoURL 同样转义并拒绝 javascript: 等危险协议
+				escapedSiteName := html.EscapeString(data.siteName)
+				escapedMessage := html.EscapeString(data.message)
+
 				htmlContent := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -155,7 +161,7 @@ func MaintenanceMiddleware() gin.HandlerFunc {
         </div>
     </div>
 </body>
-</html>`, data.siteName, getLogoHTML(data.logoURL), data.message, data.siteName)
+</html>`, escapedSiteName, getLogoHTML(data.logoURL), escapedMessage, escapedSiteName)
 
 				c.Data(http.StatusServiceUnavailable, "text/html; charset=utf-8", []byte(htmlContent))
 				c.Abort()
@@ -169,7 +175,12 @@ func MaintenanceMiddleware() gin.HandlerFunc {
 
 func getLogoHTML(logoURL string) string {
 	if logoURL != "" {
-		return fmt.Sprintf(`<img src="%s" alt="Logo" />`, logoURL)
+		// 只允许 http(s)/data:image 协议，杜绝 javascript: 等危险协议注入
+		lower := strings.ToLower(strings.TrimSpace(logoURL))
+		if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") ||
+			strings.HasPrefix(lower, "data:image/") {
+			return fmt.Sprintf(`<img src="%s" alt="Logo" />`, html.EscapeString(logoURL))
+		}
 	}
 	return "🔧"
 }

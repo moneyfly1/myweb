@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -73,12 +74,21 @@ func WarmupCache(ipAddresses []string) {
 		return
 	}
 
+	// 有界并发预热：限制同时进行的地理查询数量，避免 goroutine 风暴
+	const maxConcurrent = 10
+	sem := make(chan struct{}, maxConcurrent)
+	var wg sync.WaitGroup
 	for _, ip := range ipAddresses {
-		go func(ipAddr string) {
-			GetLocationWithCache(ipAddr)
-		}(ip)
-		time.Sleep(10 * time.Millisecond) // 避免过载
+		ip := ip
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			GetLocationWithCache(ip)
+		}()
 	}
+	wg.Wait()
 }
 
 // GetLocationWithFallbackCached 带缓存的详细地理位置查询（包含 Fallback）

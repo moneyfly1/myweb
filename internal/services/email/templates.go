@@ -3,6 +3,7 @@ package email
 import (
 	"bytes"
 	"fmt"
+	"html"
 	"html/template"
 	"os"
 	"strings"
@@ -452,6 +453,11 @@ func (b *EmailTemplateBuilder) GetUserCreatedTemplate(username, email, password,
 		expireDisplay = "未设置"
 	}
 
+	// 用户输入（用户名/密码）必须 HTML 转义，防止注入模板
+	escapedUsername := html.EscapeString(username)
+	escapedEmail := html.EscapeString(email)
+	escapedPassword := html.EscapeString(password)
+
 	content := fmt.Sprintf(`<h2>您的账户已创建</h2>
             <p>亲爱的 %s，</p>
             <p>管理员已为您创建账户，以下是您的账户信息：</p>
@@ -481,7 +487,7 @@ func (b *EmailTemplateBuilder) GetUserCreatedTemplate(username, email, password,
                     <li>您最多可以同时使用 <strong>%d 台设备</strong>连接服务</li>
                 </ul>
             </div>
-            %s`, username, username, email, password, loginURL, loginURL, expireDisplay, deviceLimit, expireDisplay, deviceLimit, buildActionBtn(loginURL, "立即登录"))
+            %s`, escapedUsername, escapedUsername, escapedEmail, escapedPassword, loginURL, loginURL, expireDisplay, deviceLimit, expireDisplay, deviceLimit, buildActionBtn(loginURL, "立即登录"))
 
 	return b.GetBaseTemplate(title, content, "期待为您提供优质服务")
 }

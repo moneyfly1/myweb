@@ -174,10 +174,10 @@ func GetChurnWarning(c *gin.Context) {
 	var users []ChurnUser
 	db.Raw(`SELECT u.id, u.username, u.email, u.last_login, s.expire_time
 		FROM users u
-		JOIN subscriptions s ON s.user_id = u.id AND s.is_active = 1
+		JOIN subscriptions s ON s.user_id = u.id AND s.is_active = ? AND s.is_active IS NOT NULL
 		WHERE (u.last_login < ? OR u.last_login IS NULL)
 		AND s.expire_time BETWEEN ? AND ?
-		ORDER BY s.expire_time ASC LIMIT 50`, sevenDaysAgo, now, sevenDaysLater).Scan(&users)
+		ORDER BY s.expire_time ASC LIMIT 50`, true, sevenDaysAgo, now, sevenDaysLater).Scan(&users)
 
 	utils.SuccessResponse(c, http.StatusOK, "", users)
 }

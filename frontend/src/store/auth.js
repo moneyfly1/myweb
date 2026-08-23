@@ -170,7 +170,8 @@ export const useAuthStore = defineStore('auth', () => {
         theme: userData.theme,
         language: userData.language
       }
-      const remember = true
+      // 尊重登录表单的"保持登录"选项：勾选时持久化到 localStorage，否则仅 sessionStorage
+      const remember = credentials.remember === true
       saveRememberPreference(remember, isAdminUser)
       saveToken(access_token, isAdminUser, remember)
       saveUser(safeUserData, isAdminUser, remember)

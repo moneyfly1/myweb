@@ -1030,25 +1030,14 @@ export default {
   watch: {
     visible(val, oldVal) {
       if (val && !oldVal && this.user) {
-        this.activeTab = this.initialTab
-        this.devices = []
-        this.customNodes = []
-        this.selectedCustomNodes = []
-        this.checkinLogs = []
-        this.checkinLoaded = false
-        this.subscriptionExcludedProtocols = {}
-        this.checkinPagination.page = 1
-        this.checkinPagination.size = 20
-        this.checkinPagination.total = 0
-        this.syncLineModeForm()
-        if (this.activeTab === 'devices') {
-          this.loadDevices()
-        } else if (this.activeTab === 'custom-nodes') {
-          this.assignSubscriptionType = 'both'
-          this.assignDeviceLimitMode = 'system'
-          this.loadUserCustomNodes()
-        } else if (this.activeTab === 'checkins') {
-          this.loadCheckinLogs()
+        this.resetDialogState()
+      }
+    },
+    // 抽屉已打开时切换用户：重置所有按用户缓存的状态，避免展示上一个用户的数据
+    user(newUser, oldUser) {
+      if (newUser && (!oldUser || oldUser.id !== newUser.id || (oldUser.user_info?.id || oldUser.id) !== (newUser.user_info?.id || newUser.id))) {
+        if (this.visible) {
+          this.resetDialogState()
         }
       }
     },
@@ -1066,6 +1055,29 @@ export default {
     this._unmounted = true
   },
   methods: {
+    // 重置所有按用户缓存的状态（打开或切换用户时调用）
+    resetDialogState() {
+      this.activeTab = this.initialTab
+      this.devices = []
+      this.customNodes = []
+      this.selectedCustomNodes = []
+      this.checkinLogs = []
+      this.checkinLoaded = false
+      this.subscriptionExcludedProtocols = {}
+      this.checkinPagination.page = 1
+      this.checkinPagination.size = 20
+      this.checkinPagination.total = 0
+      this.syncLineModeForm()
+      if (this.activeTab === 'devices') {
+        this.loadDevices()
+      } else if (this.activeTab === 'custom-nodes') {
+        this.assignSubscriptionType = 'both'
+        this.assignDeviceLimitMode = 'system'
+        this.loadUserCustomNodes()
+      } else if (this.activeTab === 'checkins') {
+        this.loadCheckinLogs()
+      }
+    },
     getDeviceTypeName(type) {
       const map = {
         mobile: '手机',

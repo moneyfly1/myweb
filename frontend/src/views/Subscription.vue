@@ -91,11 +91,11 @@
             <div>
               <div class="stat-value">
                 <el-tooltip content="在线设备数 / 允许最大设备数" placement="top">
-                  <span>{{ subscription.onlineDevices || subscription.current_devices || 0 }}/{{ subscription.device_limit || subscription.maxDevices || 0 }}</span>
+                  <span>{{ deviceUsage.online }}/{{ deviceUsage.limit }}</span>
                 </el-tooltip>
                 <el-progress
-                  :percentage="Math.min(100, Math.round(((subscription.onlineDevices || subscription.current_devices || 0) / (subscription.device_limit || subscription.maxDevices || 1)) * 100))"
-                  :color="((subscription.onlineDevices || subscription.current_devices || 0) / (subscription.device_limit || subscription.maxDevices || 1)) >= 0.9 ? '#f56c6c' : ((subscription.onlineDevices || subscription.current_devices || 0) / (subscription.device_limit || subscription.maxDevices || 1)) >= 0.7 ? '#e6a23c' : '#67c23a'"
+                  :percentage="deviceUsage.percent"
+                  :color="deviceUsage.color"
                   :show-text="false"
                   class="device-progress"
                 />
@@ -740,10 +740,21 @@ export default {
     }
     const isDeviceFull = (sub) => {
       if (!sub) return false
-      const online = sub.onlineDevices || sub.current_devices || 0
-      const limit = sub.device_limit || sub.maxDevices || 0
+      const online = sub.onlineDevices ?? sub.current_devices ?? 0
+      const limit = sub.device_limit ?? sub.maxDevices ?? 0
       return limit > 0 && online >= limit
     }
+    // 设备使用率 computed：模板内多处使用同一表达式（在线数/上限/比例/颜色），
+    // 抽成一次计算避免每次渲染重复求值 6 次
+    const deviceUsage = computed(() => {
+      const sub = subscription.value
+      if (!sub) return { online: 0, limit: 0, ratio: 0, percent: 0, color: '#67c23a' }
+      const online = sub.onlineDevices ?? sub.current_devices ?? 0
+      const limit = sub.device_limit ?? sub.maxDevices ?? 0
+      const ratio = limit > 0 ? online / limit : 0
+      const color = ratio >= 0.9 ? '#f56c6c' : ratio >= 0.7 ? '#e6a23c' : '#67c23a'
+      return { online, limit, ratio, percent: Math.min(100, Math.round(ratio * 100)), color }
+    })
     const applySpecialNodeInfo = (target, source = {}) => {
       if (!target || !source) return
       target.has_special_nodes = !!(source.has_special_nodes || source.subscription?.has_special_nodes)
@@ -781,6 +792,7 @@ export default {
       getStatusText,
       isSubscriptionActive,
       isDeviceFull,
+      deviceUsage,
       getSpecialNodeModeText
     }
   }
@@ -1181,126 +1193,6 @@ export default {
   text-align: center;
   padding: 40px 20px;
 }
-.payment-qr-dialog {
-  .payment-qr-container {
-    padding: 10px 0;
-  }
-  .order-info {
-    margin-bottom: 20px;
-    .amount {
-      color: #f56c6c;
-      font-weight: 700;
-      font-size: 1.1em;
-    }
-  }
-  .qr-code-wrapper {
-    text-align: center;
-    margin: 20px 0;
-    .qr-code {
-      display: inline-block;
-      padding: 15px;
-      background: #fff;
-      border: 1px solid #e4e7ed;
-      border-radius: 8px;
-      :is(img) {
-        max-width: 256px;
-        width: 100%;
-        height: auto;
-        display: block;
-      }
-    }
-    .qr-loading {
-      padding: 40px;
-      color: var(--el-text-color-secondary, #6b7280);
-      .el-icon {
-        font-size: 32px;
-        margin-bottom: 12px;
-      }
-    }
-  }
-  .payment-tips {
-    text-align: center;
-    margin-bottom: 20px;
-    .tip-text {
-      color: var(--el-text-color-secondary, #6b7280);
-      font-size: 13px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 5px;
-    }
-  }
-  .payment-actions-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 16px;
-    margin-top: 24px;
-    padding: 0 10px;
-    .payment-btn {
-      min-width: 120px;
-      .btn-icon {
-        margin-right: 5px;
-      }
-    }
-  }
-}
-.upgrade-dialog {
-  .upgrade-content {
-    padding: 10px 0;
-  }
-  .current-subscription-info,
-  .upgrade-options,
-  .cost-calculation,
-  .payment-method {
-    margin-bottom: 24px;
-    :is(h4) {
-      color: #333;
-      font-size: 1.1rem;
-      margin-bottom: 16px;
-      font-weight: 600;
-    }
-  }
-  .form-hint {
-    color: var(--el-text-color-secondary, #6b7280);
-    font-size: 0.875rem;
-    margin-top: 8px;
-  }
-  .final-amount {
-    color: #f56c6c;
-    font-size: 1.2rem;
-    font-weight: 600;
-  }
-  .balance-info {
-    padding: 12px;
-    background: #f5f7fa;
-    border-radius: 4px;
-    margin-bottom: 16px;
-    color: #606266;
-    font-weight: 500;
-  }
-  .payment-amount {
-    margin-top: 12px;
-    padding: 12px;
-    background: #f0f9ff;
-    border-radius: 4px;
-    :is(p) {
-      margin: 8px 0;
-      color: #606266;
-      &:first-child { color: #67c23a; font-weight: 500; }
-      &:last-child { color: #409eff; font-weight: 500; }
-    }
-  }
-  .dialog-footer {
-    display: flex;
-    justify-content: center;
-    gap: 16px;
-    padding: 0 10px;
-    .el-button {
-      min-width: 120px;
-    }
-  }
-}
 @media (max-width: 768px) {
   .subscription-container {
     padding: 10px !important;
@@ -1472,46 +1364,6 @@ export default {
     :deep(a),
     a {
       min-width: 0;
-    }
-  }
-  .payment-qr-dialog {
-    :deep(.el-dialog) {
-      width: 92% !important;
-      margin: 4vh auto !important;
-      border-radius: 8px;
-      max-width: 420px !important;
-    }
-    :deep(.el-dialog__body) {
-      padding: 20px 15px;
-    }
-    .qr-code-wrapper .qr-code {
-      padding: 10px;
-      :is(img) {
-        width: 180px;
-        height: 180px;
-      }
-    }
-    .payment-actions-container {
-      flex-direction: column; /* 垂直排列 */
-      width: 100%;
-      padding: 0; /* 移除容器内边距 */
-      gap: 12px;
-      .payment-btn {
-        width: 100%;
-        min-height: 46px;
-        font-size: 16px;
-        margin: 0 !important;
-        border-radius: 8px;
-      }
-      .alipay-btn {
-        order: 1;
-      }
-      .confirm-btn {
-        order: 2;
-      }
-      .cancel-btn {
-        order: 3;
-      }
     }
   }
   .upgrade-drawer {

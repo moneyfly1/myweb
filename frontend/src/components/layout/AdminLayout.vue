@@ -356,7 +356,14 @@ const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value
   if (!isMobile.value) localStorage.setItem('sidebarCollapsed', sidebarCollapsed.value)
 }
-const isRouteActive = (path) => route.path === path || (path !== '/admin/dashboard' && route.path.startsWith(path))
+const isRouteActive = (path) => {
+  // 精确匹配优先；前缀匹配仅在下一段不是子路由时生效，避免 /admin/config 与 /admin/config-update 双高亮
+  if (route.path === path) return true
+  if (path === '/admin/dashboard') return false
+  if (!route.path.startsWith(path)) return false
+  const rest = route.path.slice(path.length)
+  return rest === '' || !rest.startsWith('/')
+}
 const navigateTo = (path) => {
   router.push(path)
   mobileNavExpanded.value = false
