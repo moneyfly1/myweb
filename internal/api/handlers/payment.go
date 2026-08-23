@@ -368,7 +368,20 @@ func updatePaymentTransactionTx(tx *gorm.DB, orderID uint, userID uint, amountCe
 	if callbackData != "" {
 		paymentTx.CallbackData = database.NullString(callbackData)
 	}
-	return tx.Save(&paymentTx).Error
+	if err := tx.Save(&paymentTx).Error; err != nil {
+		return err
+	}
+
+	// 同一订单的其它 pending/failed 交易被本次成功交易取代，标记为 cancelled，
+	// 避免旧交易永久滞留 pending 造成幽灵待支付记录。
+	if orderID > 0 {
+		if err := tx.Model(&models.PaymentTransaction{}).
+			Where("order_id = ? AND id <> ? AND status IN ?", orderID, paymentTx.ID, []string{"pending", "failed"}).
+			Update("status", "cancelled").Error; err != nil {
+			utils.LogErrorMsg("标记被取代的支付交易失败: %v", err)
+		}
+	}
+	return nil
 }
 
 func processPaidRecharge(db *gorm.DB, orderNo string, paymentType string, paymentConfigID uint, externalTransactionID string, params map[string]string, ipAddress string) (*models.RechargeRecord, error) {

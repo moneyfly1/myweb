@@ -20,8 +20,8 @@
               placeholder="搜索文章标题或关键词"
               clearable
               class="knowledge-search-input"
-              @keyup.enter="loadArticles"
-              @clear="loadArticles"
+              @keyup.enter="searchArticles"
+              @clear="searchArticles"
             >
               <template #prefix>
                 <el-icon><Search /></el-icon>
@@ -29,7 +29,7 @@
             </el-input>
           </el-form-item>
           <el-form-item label="分类筛选">
-            <el-select v-model="selectedCategory" placeholder="全部分类" clearable class="knowledge-category-select" @change="loadArticles">
+            <el-select v-model="selectedCategory" placeholder="全部分类" clearable class="knowledge-category-select" @change="searchArticles">
               <el-option label="全部分类" :value="null" />
               <el-option
                 v-for="cat in categories"
@@ -40,7 +40,7 @@
             </el-select>
           </el-form-item>
           <el-form-item class="knowledge-filter-actions">
-            <el-button type="primary" @click="loadArticles">搜索</el-button>
+            <el-button type="primary" @click="searchArticles">搜索</el-button>
             <el-button :disabled="!keyword && !selectedCategory" @click="resetFilters">重置</el-button>
           </el-form-item>
         </el-form>
@@ -82,6 +82,16 @@
               <span><el-icon><Clock /></el-icon> 更新于 {{ formatDate(article.created_at) }}</span>
             </div>
           </div>
+        </div>
+        <div v-if="total > pageSize" class="knowledge-pagination">
+          <el-pagination
+            :current-page="page"
+            :page-size="pageSize"
+            :total="total"
+            layout="prev, pager, next"
+            background
+            @current-change="handlePageChange"
+          />
         </div>
       </div>
     </div>
@@ -135,10 +145,14 @@ const keyword = ref('')
 const selectedCategory = ref(null)
 const articleVisible = ref(false)
 const currentArticle = ref(null)
+const page = ref(1)
+const pageSize = ref(12)
+const total = ref(0)
 
 const formatDate = (d) => {
   if (!d) return ''
-  const date = new Date(d)
+  const date = new Date(String(d).replace(/-/g, '/'))
+  if (isNaN(date.getTime())) return ''
   return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
@@ -166,11 +180,13 @@ const loadCategories = async () => {
 const loadArticles = async () => {
   loading.value = true
   try {
-    const params = {}
+    const params = { page: page.value, page_size: pageSize.value }
     if (selectedCategory.value) params.category_id = selectedCategory.value
     if (keyword.value) params.keyword = keyword.value
     const res = await knowledgeAPI.getArticles(params)
-    articles.value = res.data?.data || []
+    const data = res.data?.data || {}
+    articles.value = data.items || []
+    total.value = data.total || 0
   } catch (e) {
     ElMessage.error('加载文章失败')
   } finally {
@@ -178,14 +194,27 @@ const loadArticles = async () => {
   }
 }
 
+// 搜索/切换分类时回到第一页
+const searchArticles = () => {
+  page.value = 1
+  loadArticles()
+}
+
+const handlePageChange = (p) => {
+  page.value = p
+  loadArticles()
+}
+
 const selectCategory = (categoryId) => {
   selectedCategory.value = categoryId
+  page.value = 1
   loadArticles()
 }
 
 const resetFilters = () => {
   keyword.value = ''
   selectedCategory.value = null
+  page.value = 1
   loadArticles()
 }
 
@@ -236,6 +265,14 @@ onMounted(() => {
 
 .knowledge-filter-body {
   padding: 16px;
+}
+
+.knowledge-pagination {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #ebeef5;
 }
 
 .knowledge-filter-form {

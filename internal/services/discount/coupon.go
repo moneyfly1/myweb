@@ -145,7 +145,10 @@ func ValidateCoupon(db *gorm.DB, coupon *models.Coupon, userID uint, packageID u
 	}
 	if userID > 0 && coupon.MaxUsesPerUser > 0 {
 		var usageCount int64
-		db.Model(&models.CouponUsage{}).Where("coupon_id = ? AND user_id = ?", coupon.ID, userID).Count(&usageCount)
+		// Count 出错时必须 fail-closed：宁可拒绝也不放行（否则可绕过每用户限额）
+		if err := db.Model(&models.CouponUsage{}).Where("coupon_id = ? AND user_id = ?", coupon.ID, userID).Count(&usageCount).Error; err != nil {
+			return fmt.Errorf("校验优惠券使用次数失败，请稍后重试")
+		}
 		if int(usageCount) >= coupon.MaxUsesPerUser {
 			return fmt.Errorf("您已达到该优惠券的使用上限")
 		}
