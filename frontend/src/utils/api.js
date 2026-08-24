@@ -191,7 +191,10 @@ const ADMIN_PATHS = [
   '/software-config',
   '/config/admin',
   '/tickets/admin',
-  '/coupons/admin'
+  '/coupons/admin',
+  '/recharge/admin',
+  '/nodes/batch-test',
+  '/nodes/import-from-clash'
 ]
 export const initApi = (router, useAuthStore) => {
   _router = router
@@ -304,6 +307,7 @@ api.interceptors.request.use(
     const isAdminAPI = config.url && (
       config.url.startsWith('/admin') || 
       config.url.includes('/admin/') ||
+      config.url.startsWith('/recharge/admin') || // 充值管理：不在 /admin 前缀下，必须显式判定，否则误用 user_token → 401 登出
       ADMIN_PATHS.some(path => config.url.startsWith(path)) ||
       (isInAdminPanel && (config.url.startsWith('/users/') || config.url.startsWith('/tickets/')))
     )
