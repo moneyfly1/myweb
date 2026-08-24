@@ -615,6 +615,117 @@ backup_database_before_upgrade() {
     fi
 }
 
+# 升级回退：代码 + 数据库一起回退到升级前状态。
+# 注意：金额迁移后旧代码会把「元」当「分」读，所以必须代码与数据库同步回退，缺一不可。
+rollback_upgrade() {
+    log "开始回退到升级前版本..."
+
+    if ! systemctl list-unit-files | grep -q "cboard.service"; then
+        error "服务 cboard 不存在，无需回退"
+        return 1
+    fi
+
+    # 1) 找到可用的数据库备份
+    local backup_dir="${PROJECT_DIR}/uploads/backups"
+    local db_backup
+    db_backup="$(ls -1 "${backup_dir}"/upgrade_pre_*.db 2>/dev/null | sort | tail -1)"
+    if [[ -z "$db_backup" ]]; then
+        error "未找到升级前数据库备份（${backup_dir}/upgrade_pre_*.db），无法回退数据库。"
+        return 1
+    fi
+    log "将使用数据库备份: $(basename "$db_backup") ($(du -h "$db_backup" | cut -f1))"
+
+    read -r -p "确认回退？将停止服务并用备份恢复数据库和旧版本代码（当前升级后的新数据会丢失）(y/N): " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        log "已取消回退"
+        return 0
+    fi
+
+    # 2) 停止服务
+    systemctl stop cboard 2>/dev/null
+    pkill -9 -f "${PROJECT_DIR}/server" 2>/dev/null
+    sleep 1
+
+    # 3) 恢复数据库
+    local db_path
+    db_path="$(detect_db_path)"
+    if [[ -n "$db_path" && -f "$db_path" ]]; then
+        cp "$db_path" "${db_path}.pre_rollback_$(date +%Y%m%d_%H%M%S)"
+        cp "$db_backup" "$db_path"
+        [[ -f "${db_backup}-wal" ]] && cp "${db_backup}-wal" "${db_path}-wal"
+        [[ -f "${db_backup}-shm" ]] && cp "${db_backup}-shm" "${db_path}-shm"
+        log "✅ 数据库已恢复: $db_path"
+    else
+        # MySQL/PostgreSQL：提示用 .sql 备份手动导入
+        local sql_backup
+        sql_backup="$(ls -1 "${backup_dir}"/upgrade_pre_*.sql 2>/dev/null | sort | tail -1)"
+        if [[ -n "$sql_backup" ]]; then
+            warn "检测到 MySQL/PostgreSQL，数据库未自动恢复。"
+            warn "请手动导入备份: mysql -u<用户> -p <库名> < $sql_backup"
+            warn "回退将继续恢复旧代码，但数据库需您手动导入。"
+        else
+            error "无法定位数据库文件（$db_path）且无 .sql 备份，回退中止！"
+            systemctl start cboard 2>/dev/null
+            return 1
+        fi
+    fi
+
+    # 4) 恢复旧版本代码（优先旧二进制，无需重新编译）
+    local restored_code=0
+    if [[ -f "${PROJECT_DIR}/server.previous" ]]; then
+        cp "${PROJECT_DIR}/server.previous" "${PROJECT_DIR}/server"
+        chmod +x "${PROJECT_DIR}/server"
+        log "✅ 已恢复旧版本二进制: server.previous"
+        restored_code=1
+    elif [[ -f "${PROJECT_DIR}/.last_commit" ]]; then
+        local old_commit
+        old_commit="$(cat "${PROJECT_DIR}/.last_commit")"
+        log "无旧二进制，尝试从 git 检出旧版本 ${old_commit:0:10} 并重新编译..."
+        cd "$PROJECT_DIR" || return 1
+        git checkout --force "$old_commit" 2>/dev/null && {
+            if go build -o server ./cmd/server/main.go 2>/dev/null; then
+                log "✅ 旧版本代码已重新编译"
+                restored_code=1
+            else
+                error "旧版本编译失败，请检查 Go 环境"
+            fi
+        }
+    else
+        warn "未找到旧版本代码（server.previous / .last_commit），只能回退数据库，代码保持新版本！"
+    fi
+
+    # 5) 启动服务
+    if [[ "$restored_code" == "1" ]]; then
+        if systemctl start cboard; then
+            sleep 3
+            if systemctl is-active --quiet cboard; then
+                log "✅ 回退完成，服务已启动（旧代码 + 旧数据库）"
+                log "   请立即验证网站可访问、订单金额正常"
+            else
+                error "回退后服务启动失败，请查看日志: journalctl -u cboard -n 50"
+            fi
+        else
+            error "回退后服务启动失败"
+        fi
+    else
+        warn "代码未回退，服务未启动。请人工处理：恢复旧二进制或检查日志。"
+    fi
+}
+
+# 从 .env 推导 SQLite 数据库文件路径（与 backup_database_before_upgrade 一致）
+detect_db_path() {
+    local db_url
+    db_url="$(grep "^DATABASE_URL=" "${PROJECT_DIR}/.env" 2>/dev/null | head -1 | cut -d'=' -f2-)"
+    if [[ "$db_url" == sqlite* ]]; then
+        local p="${db_url#sqlite:///}"
+        p="${p#./}"
+        if [[ "$p" != /* ]]; then p="${PROJECT_DIR}/${p}"; fi
+        echo "$p"
+    else
+        echo ""
+    fi
+}
+
 force_kill() {
     log "强制停止所有相关进程..."
     pkill -9 server 2>/dev/null
@@ -873,6 +984,18 @@ sync_from_github() {
     fi
     cd "$PROJECT_DIR" || { error "无法进入项目目录"; return 1; }
 
+    # 记录当前版本（回退用）：旧提交号 + 旧二进制备份
+    local cur_commit
+    cur_commit="$(git rev-parse HEAD 2>/dev/null)"
+    if [[ -n "$cur_commit" ]]; then
+        echo "$cur_commit" > "${PROJECT_DIR}/.last_commit"
+        log "已记录当前版本: ${cur_commit:0:10}（回退可用）"
+    fi
+    if [[ -f "${PROJECT_DIR}/server" && ! -f "${PROJECT_DIR}/server.previous" ]]; then
+        cp "${PROJECT_DIR}/server" "${PROJECT_DIR}/server.previous"
+        log "已备份旧版本二进制: server.previous（回退可用）"
+    fi
+
     # 检查是否是 git 仓库，不是则自动初始化
     if [ ! -d ".git" ]; then
         log "项目目录不是 Git 仓库，正在初始化..."
@@ -1032,9 +1155,10 @@ show_menu() {
     echo -e "  ${CYAN}10.${NC} 证书续期（手动续期，自动续期由 certbot 定时任务完成）"
     echo -e "  ${CYAN}11.${NC} 从 GitHub 同步代码并重新构建"
     echo -e "  ${YELLOW}12.${NC} 配置 Redis 缓存（性能优化）"
+    echo -e "  ${RED}13.${NC} 回滚到升级前版本（代码 + 数据库）"
     echo -e "  ${RED}0.${NC} 退出脚本"
     echo -e "${BLUE}==========================================${NC}"
-    read -r -p "请选择操作 [0-12]: " choice
+    read -r -p "请选择操作 [0-13]: " choice
 }
 
 # --- 主程序循环 ---
@@ -1111,6 +1235,7 @@ main() {
                 ;;
             10) renew_cert ;;
             11) sync_from_github ;;
+            13) rollback_upgrade ;;
             12)
                 configure_redis_cache
                 # 重启服务以应用新配置
