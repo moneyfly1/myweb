@@ -1317,6 +1317,18 @@ $breakpoints: (
   }
 }
 
+/* 移动端表单纵向按钮组对齐：Element Plus 默认 .el-button+.el-button 有
+   margin-left:12px，纵向排列（窄屏换行/column）时第二个按钮会右移错位。
+   仅在纵向（top 不同）场景下生效；横向排列的按钮组用 gap 提供间距 */
+@media (max-width: 768px) {
+  .el-form-item__content .el-button + .el-button {
+    margin-left: 0;
+  }
+  .el-form-item__content {
+    gap: 8px;
+  }
+}
+
 /* 移动端日期范围选择器全宽：Element Plus 默认宽 400px 会溢出屏幕。
    此规则不限容器作用域，覆盖所有页面（管理端日志/筛选、用户端等） */
 @media (max-width: 768px) {
