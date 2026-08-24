@@ -572,6 +572,49 @@ manage_admin() {
     fi
 }
 
+# 升级前备份数据库：服务已停止时调用，保证快照一致。
+# 支持 SQLite（复制库文件）与 MySQL（mysqldump，如可用）。
+backup_database_before_upgrade() {
+    local backup_dir="${PROJECT_DIR}/uploads/backups"
+    mkdir -p "$backup_dir" || { warn "创建备份目录失败: $backup_dir"; return 1; }
+    local stamp
+    stamp="$(date +%Y%m%d_%H%M%S)"
+
+    local db_url
+    db_url="$(grep "^DATABASE_URL=" "${PROJECT_DIR}/.env" 2>/dev/null | head -1 | cut -d'=' -f2-)"
+
+    # SQLite 检测：DATABASE_URL 含 sqlite，或未配置且未启用 MySQL
+    if [[ "$db_url" == sqlite* ]] || { [[ -z "$db_url" ]] && [[ "$USE_MYSQL" != "true" ]] && [[ -z "$MYSQL_DATABASE" ]]; }; then
+        local db_path="${db_url#sqlite:///}"
+        db_path="${db_path#./}"
+        if [[ "$db_path" != /* ]]; then
+            db_path="${PROJECT_DIR}/${db_path}"
+        fi
+        if [[ -f "$db_path" ]]; then
+            local dest="${backup_dir}/upgrade_pre_${stamp}.db"
+            cp "$db_path" "$dest"
+            [[ -f "${db_path}-wal" ]] && cp "${db_path}-wal" "${dest}-wal"
+            [[ -f "${db_path}-shm" ]] && cp "${db_path}-shm" "${dest}-shm"
+            log "✅ 升级前数据库已备份: ${dest} ($(du -h "$dest" | cut -f1))"
+        else
+            warn "未找到 SQLite 数据库文件: $db_path（跳过备份，请确认 DATABASE_URL）"
+        fi
+    elif [[ "$db_url" == mysql* ]] || [[ "$USE_MYSQL" == "true" ]] || [[ -n "$MYSQL_DATABASE" ]]; then
+        if command -v mysqldump &>/dev/null && [[ -n "$MYSQL_USER" ]] && [[ -n "$MYSQL_DATABASE" ]]; then
+            local dest="${backup_dir}/upgrade_pre_${stamp}.sql"
+            if mysqldump -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" > "$dest" 2>/dev/null; then
+                log "✅ 升级前 MySQL 数据库已备份: $dest ($(du -h "$dest" | cut -f1))"
+            else
+                warn "mysqldump 备份失败，请手动备份后再升级！"
+            fi
+        else
+            warn "检测到 MySQL 数据库但缺少 mysqldump/凭据，请手动备份后再升级！"
+        fi
+    else
+        warn "未能识别数据库类型，请手动备份后再升级！"
+    fi
+}
+
 force_kill() {
     log "强制停止所有相关进程..."
     pkill -9 server 2>/dev/null
@@ -938,6 +981,10 @@ sync_from_github() {
         systemctl stop cboard 2>/dev/null
         pkill -9 -f "${PROJECT_DIR}/server" 2>/dev/null
         sleep 1
+
+        # ===== 升级前数据库自动备份（服务已停止，快照一致）=====
+        backup_database_before_upgrade
+
         if systemctl start cboard; then
             sleep 2
             if systemctl is-active --quiet cboard; then
