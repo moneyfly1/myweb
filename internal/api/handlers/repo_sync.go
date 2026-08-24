@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"fmt"
+	"cboard-go/internal/core/database"
+	"cboard-go/internal/models"
 	"net/http"
 	"net/url"
 	"os"
@@ -34,6 +36,14 @@ func TestRepoSyncConnection(c *gin.Context) {
 		Path  string `json:"path"`
 	}
 	_ = c.ShouldBindJSON(&req)
+
+	// 请求体 token 为空或为脱敏掩码时，使用数据库已保存的真实 token（双保险，避免 401）
+	if req.Token == "" || req.Token == maskedSecretValue {
+		var saved models.SystemConfig
+		if err := database.GetDB().Where("key = ? AND category = ?", "repo_sync_token", "repo_sync").First(&saved).Error; err == nil {
+			req.Token = saved.Value
+		}
+	}
 
 	svc := repo_sync.NewService()
 	files, err := svc.TestConnectionWith(req.Token, req.Owner, req.Repo, req.Path)

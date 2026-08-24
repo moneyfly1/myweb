@@ -1600,8 +1600,11 @@ export default {
     }
 
     const testGiteeConnection = async () => {
-      const { backup_gitee_token: token, backup_gitee_owner: owner, backup_gitee_repo: repo } = backupSettings
-      if (!token || !owner || !repo) return ElMessage.error('请填写完整的 Gitee 配置')
+      const { backup_gitee_owner: owner, backup_gitee_repo: repo } = backupSettings
+      const rawToken = backupSettings.backup_gitee_token
+      // 掩码值不回传：后端会自动使用已保存的真实 token
+      const token = rawToken && rawToken !== '******' ? rawToken : ''
+      if (!owner || !repo) return ElMessage.error('请填写完整的 Gitee 配置')
       testingStates.gitee = true
       try {
         await api.put('/admin/settings/backup', backupSettings)
@@ -1612,8 +1615,11 @@ export default {
       finally { testingStates.gitee = false }
     }
     const testGitHubConnection = async () => {
-      const { backup_github_token: token, backup_github_owner: owner, backup_github_repo: repo } = backupSettings
-      if (!token || !owner || !repo) return ElMessage.error('请填写完整的 GitHub 配置')
+      const { backup_github_owner: owner, backup_github_repo: repo } = backupSettings
+      const rawToken = backupSettings.backup_github_token
+      // 掩码值不回传：后端会自动使用已保存的真实 token（避免把 "******" 发给 GitHub 导致 401）
+      const token = rawToken && rawToken !== '******' ? rawToken : ''
+      if (!owner || !repo) return ElMessage.error('请填写完整的 GitHub 配置')
       testingStates.github = true
       try {
         await api.put('/admin/settings/backup', backupSettings)
@@ -1657,8 +1663,11 @@ export default {
       }
     }
     const testRepoSyncConnection = async () => {
-      const { repo_sync_token: token, repo_sync_owner: owner, repo_sync_repo: repo, repo_sync_path: path } = repoSyncSettings
-      if (!token || !owner || !repo) return ElMessage.error('请填写完整的 GitHub 配置')
+      const { repo_sync_owner: owner, repo_sync_repo: repo, repo_sync_path: path } = repoSyncSettings
+      const rawToken = repoSyncSettings.repo_sync_token
+      // 掩码值不回传：后端会自动使用已保存的真实 token（避免 "******" 导致 401）
+      const token = rawToken && rawToken !== '******' ? rawToken : ''
+      if (!owner || !repo) return ElMessage.error('请填写完整的 GitHub 配置')
       repoSyncLoading.test = true
       try {
         await api.put('/admin/settings/repo-sync', repoSyncSettings)
