@@ -88,7 +88,10 @@
     <script>
       (function() {
         try {
-          // 清理已过期的令牌（admin + user 双角色）
+          // 清理已过期的访问令牌（admin + user 双角色）。
+          // 注意：只删已过期的 _token；必须保留 _user / _refresh_token / _remember
+          //（30 天有效），否则路由守卫无法用 refresh token 自动恢复登录，
+          // 导致每次打开网站都要重新点击登录。
           const roles = ['admin', 'user'];
           const storageTypes = [localStorage, sessionStorage];
           roles.forEach(role => {
@@ -99,11 +102,7 @@
               try {
                 const data = JSON.parse(raw);
                 if (data.expiry && Date.now() > data.expiry) {
-                  const keys = [role + '_token', role + '_user', role + '_refresh_token', role + '_remember'];
-                  keys.forEach(key => {
-                    localStorage.removeItem('cboard_secure_' + key);
-                    sessionStorage.removeItem('cboard_secure_' + key);
-                  });
+                  storage.removeItem(tokenKey);
                 }
               } catch (e) {
                 storage.removeItem(tokenKey);
