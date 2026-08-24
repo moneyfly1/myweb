@@ -555,12 +555,21 @@
       min-height: 44px;
     }
 
-    .filter-bar:not(.desktop-only),
+    /* 移动端：隐藏所有非 mobile-only 的筛选条（含 desktop-only 与无标记），
+       并确保 mobile-only 筛选条显示。原 :not(.desktop-only) 方向有误：
+       desktop-only 被 grid !important 显示、mobile-only 反被隐藏 */
+    .filter-bar:not(.mobile-only),
     .filter-form,
     .search-form,
     .search-section,
     .filter-section {
       display: none !important;
+    }
+
+    .filter-bar.mobile-only {
+      display: flex !important;
+      flex-wrap: wrap;
+      gap: 8px;
     }
   }
 }
