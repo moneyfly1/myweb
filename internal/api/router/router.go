@@ -538,6 +538,11 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/export-logs", handlers.ExportLogs)
 			admin.POST("/clear-logs", handlers.ClearLogs)
 
+			// 数据清理：手动清理 + 自动清理保留天数配置
+			admin.POST("/cleanup/:type", handlers.CleanupData)
+			admin.GET("/cleanup/retention", handlers.GetCleanupRetention)
+			admin.PUT("/cleanup/retention", handlers.UpdateCleanupRetention)
+
 			// 知识库管理
 			admin.GET("/knowledge/categories", handlers.GetAdminKnowledgeCategories)
 			admin.POST("/knowledge/categories", handlers.CreateKnowledgeCategory)

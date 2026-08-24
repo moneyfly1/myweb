@@ -18,6 +18,7 @@
       />
       <el-button type="primary" @click="fetch" :loading="loading">搜索</el-button>
       <el-button @click="resetFilter">重置</el-button>
+          <el-button type="danger" plain :loading="clearing" @click="runCleanup">清空</el-button>
     </div>
     <div class="filter-bar mobile-only">
       <el-form label-position="top" class="mobile-filter-form">
@@ -45,6 +46,7 @@
         <div class="mobile-filter-actions">
           <el-button type="primary" @click="fetch" :loading="loading" class="mobile-action-btn">搜索</el-button>
           <el-button @click="resetFilter" class="mobile-action-btn">重置</el-button>
+          <el-button type="danger" plain :loading="clearing" @click="runCleanup" class="mobile-action-btn">清空</el-button>
         </div>
       </el-form>
     </div>
@@ -129,11 +131,14 @@ const displayLocation = (loc) => {
 const reasonColWidth = ref(160)
 const {
   loading, list, total, page, pageSize, filter, isMobile, paginationLayout,
-  fetchLogs: fetch, debouncedFetchLogs: debouncedFetch, resetFilter, onSizeChange
+  fetchLogs: fetch, debouncedFetchLogs: debouncedFetch, resetFilter, onSizeChange,
+  clearing, runCleanup
 } = useLogListPage({
   fetcher: (params) => adminAPI.getRegistrationLogs(params),
   defaultFilter: () => ({ keyword: '', status: '', timeRange: null }),
-  extraFilterKeys: ['status']
+  extraFilterKeys: ['status'],
+  clearAction: () => adminAPI.cleanupData('registration_logs'),
+  clearLabel: '注册日志'
 })
 
 function startResize(e, col) {

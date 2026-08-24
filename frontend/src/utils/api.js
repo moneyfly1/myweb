@@ -603,6 +603,10 @@ export const adminAPI = {
   getSubscriptionResetLogs: (params) => api.get('/admin/logs/subscription-reset', { params }),
   getEmailLogs: (params) => api.get('/admin/logs/email', { params }),
   clearLogs: () => api.post('/admin/clear-logs'),
+  // 数据清理：手动清理 + 自动清理保留天数配置
+  cleanupData: (type, before) => api.post(`/admin/cleanup/${type}`, null, { params: before ? { before } : {} }),
+  getCleanupRetention: () => api.get('/admin/cleanup/retention'),
+  updateCleanupRetention: (data) => api.put('/admin/cleanup/retention', data),
   getSubscriptionDevices: (id) => api.get(`/admin/subscriptions/${id}/devices`),
   getAdminRechargeRecords: (params) => api.get('/recharge/admin', { params }),
   removeDevice: (id) => api.delete(`/admin/devices/${id}`),

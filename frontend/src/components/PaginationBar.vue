@@ -50,7 +50,7 @@ const props = defineProps({
   },
   mobileLayout: {
     type: String,
-    default: 'prev, pager, next',
+    default: 'sizes, prev, pager, next, jumper',
   },
   pagerCount: {
     type: Number,

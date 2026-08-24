@@ -320,6 +320,7 @@ func GetAdminSettings(c *gin.Context) {
 			"backup_github_enabled": "false", "backup_github_token": "", "backup_github_owner": githubDefaults.Owner,
 			"backup_github_repo":  githubDefaults.Repo,
 			"backup_auto_enabled": "false", "backup_auto_interval": "24",
+			"backup_clean_enabled": "true", "backup_log_retention_days": "7",
 		},
 		"repo_sync": {
 			"repo_sync_enabled": "false", "repo_sync_token": "",
@@ -328,6 +329,22 @@ func GetAdminSettings(c *gin.Context) {
 		},
 		"invite": {
 			"inviter_reward": 0.0, "invitee_reward": 0.0, "min_order_amount": 0.0, "new_user_only": true,
+		},
+		"cleanup": {
+			"audit_logs_retention_days":              "90",
+			"email_queue_retention_days":             "30",
+			"login_history_retention_days":           "90",
+			"user_activities_retention_days":         "90",
+			"notifications_retention_days":           "90",
+			"login_attempts_retention_days":          "30",
+			"verification_codes_retention_days":      "7",
+			"registration_logs_retention_days":       "180",
+			"subscription_logs_retention_days":       "180",
+			"balance_logs_retention_days":            "180",
+			"commission_logs_retention_days":         "180",
+			"subscription_reset_logs_retention_days": "180",
+			"checkin_logs_retention_days":            "180",
+			"payment_callbacks_retention_days":       "365",
 		},
 	}
 

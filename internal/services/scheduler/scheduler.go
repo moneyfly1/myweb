@@ -3,7 +3,6 @@ package scheduler
 import (
 	"archive/zip"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -299,28 +298,98 @@ func (s *Scheduler) cleanupExpiredData() {
 func (s *Scheduler) cleanupExpiredDataNow() {
 	now := utils.GetBeijingTime()
 
-	sevenDaysAgo := now.Add(-7 * 24 * time.Hour)
-	s.db.Where("created_at < ?", sevenDaysAgo).Delete(&models.VerificationCode{})
+	// 读取自动清理保留天数（system_configs, category=cleanup，可在设置页配置）。
+	// 各类型默认保留天数：历史短数据少留，审计/资金日志多留。
+	cleanupRetention := s.loadCleanupRetention()
 
-	thirtyDaysAgo := now.Add(-30 * 24 * time.Hour)
-	s.db.Where("created_at < ?", thirtyDaysAgo).Delete(&models.LoginAttempt{})
+	// 验证码：默认保留 7 天
+	s.cleanupByRetention(&models.VerificationCode{}, "verification_codes", cleanupRetention, 7, now)
 
-	s.db.Where("status = ? AND sent_at < ?", "sent", thirtyDaysAgo).Delete(&models.EmailQueue{})
+	// 登录失败记录（防爆破依赖近期数据）：默认保留 30 天
+	s.cleanupByRetention(&models.LoginAttempt{}, "login_attempts", cleanupRetention, 30, now)
 
-	// 清理过期审计日志，默认保留 90 天
-	auditRetentionDays := 90
-	var auditRetentionCfg models.SystemConfig
-	if err := s.db.Where("key = ? AND category = ?", "log_retention_days", "security").First(&auditRetentionCfg).Error; err == nil {
-		if v, err2 := strconv.Atoi(auditRetentionCfg.Value); err2 == nil && v > 0 {
-			auditRetentionDays = v
+	// 邮件队列：默认保留 30 天
+	s.cleanupByRetention(&models.EmailQueue{}, "email_queue", cleanupRetention, 30, now)
+
+	// 登录历史 / 用户活动 / 站内通知：默认保留 90 天
+	s.cleanupByRetentionCol(&models.LoginHistory{}, "login_history", cleanupRetention, 90, now, "login_time")
+	s.cleanupByRetention(&models.UserActivity{}, "user_activities", cleanupRetention, 90, now)
+	s.cleanupByRetention(&models.Notification{}, "notifications", cleanupRetention, 90, now)
+
+	// 各类业务日志：默认保留 180 天
+	s.cleanupByRetention(&models.RegistrationLog{}, "registration_logs", cleanupRetention, 180, now)
+	s.cleanupByRetention(&models.SubscriptionLog{}, "subscription_logs", cleanupRetention, 180, now)
+	s.cleanupByRetention(&models.BalanceLog{}, "balance_logs", cleanupRetention, 180, now)
+	s.cleanupByRetention(&models.CommissionLog{}, "commission_logs", cleanupRetention, 180, now)
+	s.cleanupByRetention(&models.SubscriptionReset{}, "subscription_reset_logs", cleanupRetention, 180, now)
+	s.cleanupByRetention(&models.CheckinRecord{}, "checkin_logs", cleanupRetention, 180, now)
+
+	// 支付回调记录：默认保留 365 天（保留近期回调便于对账）
+	s.cleanupByRetention(&models.PaymentCallback{}, "payment_callbacks", cleanupRetention, 365, now)
+
+	// 审计日志：默认保留 90 天（兼容旧配置键 log_retention_days/security）
+	auditDays := cleanupRetention["audit_logs"]
+	if auditDays <= 0 {
+		auditDays = 90
+		var legacy models.SystemConfig
+		if err := s.db.Where("key = ? AND category = ?", "log_retention_days", "security").First(&legacy).Error; err == nil {
+			if v, err2 := strconv.Atoi(legacy.Value); err2 == nil && v > 0 {
+				auditDays = v
+			}
 		}
 	}
-	auditRetention := now.Add(-time.Duration(auditRetentionDays) * 24 * time.Hour)
-	if result := s.db.Where("created_at < ?", auditRetention).Delete(&models.AuditLog{}); result.RowsAffected > 0 {
-		log.Printf("过期审计日志清理完成，删除 %d 条（保留 %d 天）", result.RowsAffected, auditRetentionDays)
+	auditRetention := now.Add(-time.Duration(auditDays) * 24 * time.Hour)
+	// 审计日志清理保护登录/注册/签到等安全关键记录
+	if result := s.db.Where("created_at < ? AND action_type NOT IN ?", auditRetention, []string{"login", "register", "checkin"}).Delete(&models.AuditLog{}); result.RowsAffected > 0 {
+		log.Printf("过期审计日志清理完成，删除 %d 条（保留 %d 天）", result.RowsAffected, auditDays)
+	}
+
+	// 过期邀请码（按有效期过期，非创建时间）
+	if err := s.db.Where("expires_at IS NOT NULL AND expires_at < ?", now).Delete(&models.InviteCode{}).Error; err != nil {
+		log.Printf("过期邀请码清理失败: %v", err)
+	}
+
+	// 过期黑名单令牌（防重放必须保留未过期项）
+	if result := s.db.Where("expires_at < ?", now).Delete(&models.TokenBlacklist{}); result.RowsAffected > 0 {
+		log.Printf("过期黑名单令牌清理完成，删除 %d 条", result.RowsAffected)
 	}
 
 	log.Println("过期数据清理完成")
+}
+
+// loadCleanupRetention 读取 category=cleanup 的自动清理保留天数配置。
+func (s *Scheduler) loadCleanupRetention() map[string]int {
+	retention := map[string]int{}
+	var configs []models.SystemConfig
+	if err := s.db.Where("category = ?", "cleanup").Find(&configs).Error; err != nil {
+		return retention
+	}
+	for _, cfg := range configs {
+		key := strings.TrimSuffix(cfg.Key, "_retention_days")
+		if v, err := strconv.Atoi(cfg.Value); err == nil && v > 0 {
+			retention[key] = v
+		}
+	}
+	return retention
+}
+
+// cleanupByRetention 按保留天数清理某张表（created_at < now-天数），days<=0 时用默认值。
+func (s *Scheduler) cleanupByRetention(model interface{}, key string, retention map[string]int, defaultDays int, now time.Time) {
+	s.cleanupByRetentionCol(model, key, retention, defaultDays, now, "created_at")
+}
+
+// cleanupByRetentionCol 同 cleanupByRetention，但可指定时间列（如 login_history 用 login_time）。
+func (s *Scheduler) cleanupByRetentionCol(model interface{}, key string, retention map[string]int, defaultDays int, now time.Time, column string) {
+	days := retention[key]
+	if days <= 0 {
+		days = defaultDays
+	}
+	cutoff := now.Add(-time.Duration(days) * 24 * time.Hour)
+	if result := s.db.Where(column+" < ?", cutoff).Delete(model); result.Error != nil {
+		log.Printf("清理 %s 失败: %v", key, result.Error)
+	} else if result.RowsAffected > 0 {
+		log.Printf("过期 %s 清理完成，删除 %d 条（保留 %d 天）", key, result.RowsAffected, days)
+	}
 }
 
 func (s *Scheduler) checkNodeHealth() {
@@ -652,21 +721,39 @@ func (s *Scheduler) runAutoBackup() error {
 	zipWriter := zip.NewWriter(zipFile)
 	defer zipWriter.Close()
 
-	// 备份数据库文件
-	dbPath, ok := utils.JoinWithinBaseDir(wd, "cboard.db")
-	if ok {
-		if _, err := os.Stat(dbPath); err == nil {
-			dbFile, err := os.Open(dbPath)
-			if err == nil {
-				defer dbFile.Close()
-
-				writer, err := zipWriter.Create("cboard.db")
-				if err == nil {
-					if _, copyErr := io.Copy(writer, dbFile); copyErr != nil {
-						log.Printf("failed to copy database file: %v", copyErr)
-					}
+	// 备份前在临时副本上清理日志类数据并压缩（可选；失败回退为原始文件，不阻断备份）
+	var dbSourcePath string
+	var rawDBSize, cleanedSize int64
+	if info, statErr := os.Stat(filepath.Join(wd, "cboard.db")); statErr == nil {
+		rawDBSize = info.Size()
+	}
+	cleanCfg := backup_service.LoadBackupCleanConfig(s.db)
+	if strings.Contains(cfg.DatabaseURL, "sqlite") && cleanCfg.Enabled {
+		tmpPath, tmpSize, prepErr := backup_service.PrepareBackupDB(wd, cleanCfg.RetentionDays)
+		if prepErr != nil {
+			utils.LogWarn("自动备份: 数据库清理失败，回退为原始文件: %v", prepErr)
+		} else {
+			dbSourcePath = tmpPath
+			cleanedSize = tmpSize
+			defer func() {
+				if rmErr := os.Remove(tmpPath); rmErr != nil {
+					log.Printf("failed to remove temp db: %v", rmErr)
 				}
-			}
+			}()
+		}
+	}
+
+	// 备份数据库文件
+	sourcePath := dbSourcePath
+	if sourcePath == "" {
+		sourcePath, ok = utils.JoinWithinBaseDir(wd, "cboard.db")
+		if !ok {
+			return fmt.Errorf("无效的数据库路径")
+		}
+	}
+	if _, err := os.Stat(sourcePath); err == nil {
+		if copyErr := backup_service.WriteDBEntryToZip(zipWriter, sourcePath); copyErr != nil {
+			log.Printf("failed to copy database file: %v", copyErr)
 		}
 	}
 
@@ -678,7 +765,7 @@ func (s *Scheduler) runAutoBackup() error {
 
 	remoteCfg := backup_service.LoadRemoteBackupConfig(s.db)
 	if remoteCfg.CanPush() {
-		_, backupFilePath, _, err := backup_service.BuildDBOnlyBackupZip(wd, backupDir, utils.GetBeijingTime())
+		_, backupFilePath, _, err := backup_service.BuildDBOnlyBackupZip(wd, backupDir, utils.GetBeijingTime(), dbSourcePath)
 		if err != nil {
 			utils.LogErrorMsg("创建数据库备份文件用于远程上传失败: %v", err)
 		} else {
@@ -692,6 +779,10 @@ func (s *Scheduler) runAutoBackup() error {
 				log.Printf("failed to remove backup file: %v", err)
 			}
 		}
+	}
+
+	if cleanedSize > 0 {
+		utils.LogInfo("自动备份完成: 数据库清理后 %d 字节（原始 %d 字节）", cleanedSize, rawDBSize)
 	}
 
 	return nil

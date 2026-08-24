@@ -767,6 +767,24 @@
                   </el-form-item>
                 </el-collapse-transition>
 
+                <div class="switch-card mb-3">
+                  <div class="switch-card-content">
+                    <span class="title">备份前清理日志数据</span>
+                    <span class="desc">打包前删除日志类数据并压缩数据库文件，业务数据始终完整保留。</span>
+                  </div>
+                  <el-switch v-model="backupSettings.backup_clean_enabled" />
+                </div>
+
+                <el-collapse-transition>
+                  <el-form-item label="日志保留天数" v-show="backupSettings.backup_clean_enabled">
+                    <div class="inline-control-row">
+                      <el-input-number v-model="backupSettings.backup_log_retention_days" :min="1" :max="365" size="small" class="interval-input" />
+                      <span class="unit-text">天</span>
+                    </div>
+                    <div class="form-tip">审计日志、登录历史等仅保留最近 N 天；验证码、邮件队列、操作尝试等临时数据清空。</div>
+                  </el-form-item>
+                </el-collapse-transition>
+
                 <div class="settings-section-title text-sm">手动备份</div>
                 <el-button type="primary" plain @click="createManualBackup" :loading="creatingBackup" :class="{ 'full-width': isMobile }">立即打包并上传</el-button>
 
@@ -969,6 +987,48 @@
             </div>
           </div>
         </el-tab-pane>
+
+        <!-- ==================== 数据清理 ==================== -->
+        <el-tab-pane label="数据清理" name="cleanup">
+          <div class="notification-layout">
+            <div class="notification-panel">
+              <div class="panel-header">
+                <h3>自动清理（每日执行）</h3>
+                <el-tag type="info" size="small" effect="plain">定时任务</el-tag>
+              </div>
+              <p class="cleanup-desc">设置各类日志/历史数据的保留天数，系统每天自动清理更早的数据，减小数据库压力。0 或留空 = 使用默认值。</p>
+              <el-form :model="cleanupSettings" label-position="top" class="compact-form">
+                <div class="cleanup-grid">
+                  <el-form-item v-for="item in cleanupFields" :key="item.key" :label="item.label">
+                    <el-input-number v-model="cleanupSettings[item.key]" :min="0" :max="3650" size="small" class="input-full" />
+                  </el-form-item>
+                </div>
+                <div class="mt-3">
+                  <el-button type="primary" :loading="savingCleanup" @click="saveCleanupSettings">保存保留天数</el-button>
+                </div>
+              </el-form>
+            </div>
+
+            <div class="notification-panel">
+              <div class="panel-header">
+                <h3>手动清理</h3>
+                <el-tag type="warning" size="small" effect="plain">谨慎操作</el-tag>
+              </div>
+              <p class="cleanup-desc">按类型立即清理数据。清理前请确认，删除后不可恢复。审计日志清理会保留登录/注册/签到等安全关键记录。</p>
+              <div class="cleanup-manual-list">
+                <div v-for="item in manualCleanupList" :key="item.type" class="cleanup-manual-item">
+                  <div class="cleanup-manual-info">
+                    <span class="cleanup-manual-name">{{ item.label }}</span>
+                    <span class="cleanup-manual-desc">{{ item.desc }}</span>
+                  </div>
+                  <el-button size="small" type="danger" plain :loading="cleaningType === item.type" @click="manualCleanup(item.type, item.label)">
+                    清空
+                  </el-button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
   </div>
@@ -976,7 +1036,7 @@
 
 <script>
 import { ref, reactive, onMounted, onBeforeUnmount, computed } from 'vue'
-import { ElMessage } from '@/utils/elementPlusServices'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Check, Plus, Refresh, Message, Bell } from '@element-plus/icons-vue'
 import { useApi, adminAPI, secureStorage } from '@/utils/api'
 import { useThemeStore } from '@/store/theme'
@@ -1170,7 +1230,8 @@ export default {
       backup_target: 'gitee',
       backup_gitee_enabled: false, backup_gitee_token: '', backup_gitee_owner: 'moneyfly', backup_gitee_repo: 'backup',
       backup_github_enabled: false, backup_github_token: '', backup_github_owner: 'moneyfly1', backup_github_repo: 'backup',
-      backup_auto_enabled: false, backup_auto_interval: 24
+      backup_auto_enabled: false, backup_auto_interval: 24,
+      backup_clean_enabled: true, backup_log_retention_days: 7
     })
     const protocolFilterSettings = reactive({
       clash_protocols: [...ALL_PROTOCOLS], universal_protocols: [...ALL_PROTOCOLS]
@@ -1182,6 +1243,88 @@ export default {
     })
     const repoSyncStatus = ref(null)
     const repoSyncLoading = reactive({ test: false, run: false, status: false })
+
+    // ========== 数据清理 ==========
+    const cleanupFields = [
+      { key: 'audit_logs_retention_days', label: '操作审计日志(天)' },
+      { key: 'registration_logs_retention_days', label: '注册日志(天)' },
+      { key: 'subscription_logs_retention_days', label: '订阅日志(天)' },
+      { key: 'balance_logs_retention_days', label: '余额日志(天)' },
+      { key: 'commission_logs_retention_days', label: '佣金日志(天)' },
+      { key: 'subscription_reset_logs_retention_days', label: '订阅重置日志(天)' },
+      { key: 'email_queue_retention_days', label: '邮件队列(天)' },
+      { key: 'login_history_retention_days', label: '登录历史(天)' },
+      { key: 'user_activities_retention_days', label: '用户活动(天)' },
+      { key: 'notifications_retention_days', label: '站内通知(天)' },
+      { key: 'login_attempts_retention_days', label: '登录失败记录(天)' },
+      { key: 'verification_codes_retention_days', label: '验证码记录(天)' },
+      { key: 'checkin_logs_retention_days', label: '签到记录(天)' },
+      { key: 'payment_callbacks_retention_days', label: '支付回调记录(天)' },
+    ]
+    const cleanupSettings = reactive({
+      audit_logs_retention_days: 90, email_queue_retention_days: 30,
+      login_history_retention_days: 90, user_activities_retention_days: 90,
+      notifications_retention_days: 90, login_attempts_retention_days: 30,
+      verification_codes_retention_days: 7,
+      registration_logs_retention_days: 180, subscription_logs_retention_days: 180,
+      balance_logs_retention_days: 180, commission_logs_retention_days: 180,
+      subscription_reset_logs_retention_days: 180, checkin_logs_retention_days: 180,
+      payment_callbacks_retention_days: 365,
+    })
+    const manualCleanupList = [
+      { type: 'audit_logs', label: '操作审计日志', desc: '保留登录/注册/签到记录' },
+      { type: 'email_queue', label: '邮件队列', desc: '含已发送与待发送邮件' },
+      { type: 'registration_logs', label: '注册日志', desc: '注册记录明细' },
+      { type: 'subscription_logs', label: '订阅日志', desc: '订阅变更明细' },
+      { type: 'balance_logs', label: '余额日志', desc: '余额变动明细' },
+      { type: 'commission_logs', label: '佣金日志', desc: '佣金发放明细' },
+      { type: 'subscription_reset_logs', label: '订阅重置日志', desc: '重置记录明细' },
+      { type: 'login_history', label: '登录历史', desc: '用户登录记录' },
+      { type: 'user_activities', label: '用户活动', desc: '用户操作足迹' },
+      { type: 'notifications', label: '站内通知', desc: '站内通知记录' },
+      { type: 'login_attempts', label: '登录失败记录', desc: '登录尝试明细' },
+      { type: 'verification_codes', label: '验证码记录', desc: '验证码发送记录' },
+      { type: 'checkin_logs', label: '签到记录', desc: '用户签到明细' },
+      { type: 'payment_callbacks', label: '支付回调记录', desc: '回调报文留痕' },
+      { type: 'invite_codes', label: '过期邀请码', desc: '仅清理已过期邀请码' },
+      { type: 'token_blacklist', label: '过期黑名单令牌', desc: '仅清理已过期项' },
+    ]
+    const savingCleanup = ref(false)
+    const cleaningType = ref('')
+
+    const saveCleanupSettings = async () => {
+      savingCleanup.value = true
+      try {
+        const res = await adminAPI.updateCleanupRetention({ ...cleanupSettings })
+        ElMessage.success(res?.data?.message || '保留天数配置已保存')
+      } catch (e) {
+        ElMessage.error(e?.response?.data?.message || '保存失败')
+        throw e
+      } finally {
+        savingCleanup.value = false
+      }
+    }
+
+    const manualCleanup = async (type, label) => {
+      try {
+        await ElMessageBox.confirm(
+          `确定要清空${label}吗？此操作不可恢复！`,
+          '清理确认',
+          { type: 'warning', confirmButtonText: '确认清空', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger' }
+        )
+      } catch {
+        return
+      }
+      cleaningType.value = type
+      try {
+        const res = await adminAPI.cleanupData(type)
+        ElMessage.success(`已清理 ${res?.data?.data?.deleted_count ?? 0} 条${label}`)
+      } catch (e) {
+        ElMessage.error(e?.response?.data?.message || '清理失败')
+      } finally {
+        cleaningType.value = ''
+      }
+    }
     
     const generalRules = { site_name: [{ required: true, message: '请输入网站名称', trigger: 'blur' }] }
 
@@ -1219,6 +1362,11 @@ export default {
           if (data.node_health.test_url) nodeHealthSettings.test_url = data.node_health.test_url
         }
         if (data.registration) Object.assign(registrationSettings, data.registration)
+        if (data.cleanup) {
+          Object.entries(data.cleanup).forEach(([k, v]) => {
+            if (k in cleanupSettings) cleanupSettings[k] = Number(v) || 0
+          })
+        }
         if (data.invite) {
           Object.assign(inviteSettings, data.invite)
           inviteSettings.inviter_reward = Number(inviteSettings.inviter_reward) || 0
@@ -1278,6 +1426,8 @@ export default {
           backupSettings.backup_github_enabled = toBool(backupSettings.backup_github_enabled)
           backupSettings.backup_auto_enabled = toBool(backupSettings.backup_auto_enabled)
           backupSettings.backup_auto_interval = parseInt(backupSettings.backup_auto_interval) || 24
+          backupSettings.backup_clean_enabled = toBool(backupSettings.backup_clean_enabled)
+          backupSettings.backup_log_retention_days = parseInt(backupSettings.backup_log_retention_days) || 7
         }
         if (data.protocol_filter) {
           const pf = data.protocol_filter
@@ -1393,7 +1543,7 @@ export default {
       notification: async () => (await saveNotificationSettings() && await saveAdminNotificationSettings()),
       announcement: saveAnnouncementSettings, theme: saveThemeSettings, 'node-health': saveNodeHealthSettings,
       security: saveSecuritySettings, backup: saveBackupSettings, 'protocol-filter': saveProtocolFilterSettings,
-      'repo-sync': saveRepoSyncSettings
+      'repo-sync': saveRepoSyncSettings, cleanup: saveCleanupSettings
     }
 
     const saveCurrentTab = async () => {
@@ -1576,6 +1726,7 @@ export default {
           const d = res.data.data || res.data
           let msg = '打包成功！'
           if (d.filename) msg += ` ${d.filename}`
+          if (d.db_cleaned) msg += `（清理后 ${formatFileSize(d.db_cleaned_size)}，原始 ${formatFileSize(d.db_original_size)}）`
           
           const uploadInfo = d.github || d.gitee || {}
           if (uploadInfo.async && uploadInfo.task_id) {
@@ -1739,6 +1890,7 @@ export default {
       saveNodeHealthSettings, saveAdminNotificationSettings, saveBackupSettings, saveProtocolFilterSettings, saveCurrentTab, refreshSettings, protocolFilterSettings, allProtocols: ALL_PROTOCOLS,
       repoSyncSettings, repoSyncStatus, repoSyncLoading, repoSyncBaseUrl, repoSyncFileUrl, repoSyncStatusType, repoSyncStatusLabel,
       saveRepoSyncSettings, testRepoSyncConnection, runRepoSyncNow, loadRepoSyncStatus, copyText,
+      cleanupSettings, cleanupFields, manualCleanupList, savingCleanup, cleaningType, saveCleanupSettings, manualCleanup,
       testNotification, testGiteeConnection, testGitHubConnection, createManualBackup, updateGeoIPDatabase, switchDatabase, flushCache, handleLogoSuccess, handleLogoUpload, beforeLogoUpload, formatFileSize
     }
   }
@@ -1988,6 +2140,28 @@ export default {
 }
 .inline-fields-row :deep(.el-form-item) { margin-bottom: 0; }
 
+/* ========== 数据清理 ========== */
+.cleanup-desc { color: var(--el-text-color-secondary); font-size: 13px; line-height: 1.6; margin: 0 0 12px; }
+.cleanup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.cleanup-manual-list { display: flex; flex-direction: column; gap: 8px; }
+.cleanup-manual-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+}
+.cleanup-manual-info { min-width: 0; }
+.cleanup-manual-name { font-size: 14px; font-weight: 600; color: var(--el-text-color-primary); }
+.cleanup-manual-desc { display: block; margin-top: 2px; font-size: 12px; color: var(--el-text-color-secondary); }
+
 /* ========== 通知布局与矩阵表 ========== */
 .notification-layout {
   display: grid;
@@ -2141,6 +2315,8 @@ export default {
   .theme-top-row { grid-template-columns: 1fr; }
   .expiry-config-row { grid-template-columns: 1fr; }
   .inline-fields-row { grid-template-columns: 1fr; }
+  .cleanup-grid { grid-template-columns: 1fr; }
+  .cleanup-manual-item { flex-direction: column; align-items: flex-start; }
   .backup-fields-row { grid-template-columns: 1fr; }
   .settings-table-desktop { display: none; }
   .settings-responsive-list :deep(.responsive-data-view__cards) {
