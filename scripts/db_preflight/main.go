@@ -3,10 +3,12 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
@@ -49,18 +51,27 @@ func report(kind, msg string) {
 }
 
 func main() {
+	// 用法：
+	//   go run ./scripts/db_preflight /root/preflight.db        只读预检
+	//   go run ./scripts/db_preflight --repair /root/preflight.db  预检 + 损坏自动修复
+	repairMode := false
+	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "--repair" {
+		repairMode = true
+		args = args[1:]
+	}
 	// 支持命令行直接指定数据库副本路径（推荐）：
 	//   go run ./scripts/db_preflight /root/preflight/cboard.db
 	// 未指定时使用 .env 的 DATABASE_URL。
-	if len(os.Args) > 1 && strings.HasSuffix(os.Args[1], ".db") {
-		abs, err := filepath.Abs(os.Args[1])
+	if len(args) > 0 && strings.HasSuffix(args[0], ".db") {
+		abs, err := filepath.Abs(args[0])
 		if err != nil {
 			log.Fatalf("解析数据库路径失败: %v", err)
 		}
 		os.Setenv("DATABASE_URL", "sqlite:///"+abs)
 		fmt.Printf(" 目标数据库: %s\n", abs)
-	} else if len(os.Args) > 1 {
-		log.Fatalf("用法: go run ./scripts/db_preflight [数据库副本路径.db]\n    或设置 DATABASE_URL 环境变量")
+	} else if len(args) > 0 {
+		log.Fatalf("用法: go run ./scripts/db_preflight [--repair] [数据库副本路径.db]\n    或设置 DATABASE_URL 环境变量")
 	}
 
 	cfg, err := config.LoadConfig()
@@ -74,7 +85,19 @@ func main() {
 
 	// 打开数据库但不执行 AutoMigrate（只读检查）
 	if err := database.InitDatabase(); err != nil {
-		log.Fatalf("❌ 无法打开数据库: %v", err)
+		if repairMode {
+			fmt.Printf("❌ 数据库打开失败（%v），尝试自动修复...\n", err)
+			if repairCorruptSQLite() {
+				if err := database.InitDatabase(); err != nil {
+					log.Fatalf("修复后仍无法打开数据库: %v", err)
+				}
+				fmt.Println("✅ 数据库已修复，继续预检...")
+			} else {
+				log.Fatalf("自动修复失败，请人工处理或使用 install.sh 选项13 回退")
+			}
+		} else {
+			log.Fatalf("❌ 无法打开数据库: %v（可用 --repair 尝试自动修复）", err)
+		}
 	}
 	db := database.GetDB()
 	// 静默 GORM 日志，避免 SQL 刷屏
@@ -184,6 +207,30 @@ func main() {
 		}
 	}
 
+	// ---------- 损坏修复（--repair） ----------
+	if repairMode && tableExists(db, dialect, "sqlite_master") == false {
+		// sqlite_master 都读不到说明库损坏
+		report("fail", "数据库文件损坏，尝试自动修复...")
+		if repairCorruptSQLite() {
+			report("ok", "已从最近备份自动修复，请重新运行预检确认")
+		} else {
+			report("fail", "自动修复失败，请人工处理或使用 install.sh 选项13 回退")
+		}
+	} else if repairMode && dialect == "sqlite" {
+		var n int
+		err := db.Raw("SELECT COUNT(*) FROM sqlite_master").Scan(&n).Error
+		if err != nil {
+			report("fail", fmt.Sprintf("数据库自检失败（%v），尝试自动修复...", err))
+			if repairCorruptSQLite() {
+				report("ok", "已从最近备份自动修复，请重新运行预检确认")
+			} else {
+				report("fail", "自动修复失败，请人工处理或使用 install.sh 选项13 回退")
+			}
+		} else {
+			report("ok", "数据库完整性正常")
+		}
+	}
+
 	// ---------- 汇总 ----------
 	fmt.Println("\n================================================================")
 	fmt.Printf(" 预检结果: ✅ %d 项通过 | ⚠️ %d 项注意 | ❌ %d 项阻塞\n", passCount, warnCount, failCount)
@@ -196,6 +243,83 @@ func main() {
 	}
 	fmt.Println("================================================================")
 	fmt.Println(" 安全提示: 本工具只读检查，不修改任何数据；正式升级前 install.sh 会再自动备份一次数据库。")
+}
+
+// repairCorruptSQLite 从 uploads/backups/upgrade_pre_*.db 或同目录备份恢复损坏的库（先留底损坏文件）。
+func repairCorruptSQLite() bool {
+	cfg := config.AppConfig
+	searchDirs := []string{}
+	if cfg != nil && cfg.UploadDir != "" {
+		searchDirs = append(searchDirs, filepath.Join(cfg.UploadDir, "backups"))
+	}
+	dbPath := resolveDBPath()
+	if dbPath != "" {
+		searchDirs = append(searchDirs, filepath.Dir(dbPath))
+		searchDirs = append(searchDirs, filepath.Join(filepath.Dir(dbPath), "uploads", "backups"))
+	}
+	var candidates []string
+	for _, dir := range searchDirs {
+		ms, _ := filepath.Glob(filepath.Join(dir, "upgrade_pre_*.db"))
+		candidates = append(candidates, ms...)
+		ms2, _ := filepath.Glob(filepath.Join(dir, "*.db.backup*"))
+		candidates = append(candidates, ms2...)
+	}
+	if len(candidates) == 0 {
+		fmt.Println("   未找到可用备份（upgrade_pre_*.db / *.db.backup*）")
+		return false
+	}
+	latest := candidates[0]
+	for _, c := range candidates[1:] {
+		i1, e1 := os.Stat(latest)
+		i2, e2 := os.Stat(c)
+		if e1 == nil && e2 == nil && i2.ModTime().After(i1.ModTime()) {
+			latest = c
+		}
+	}
+	if dbPath == "" {
+		fmt.Println("   无法定位数据库路径")
+		return false
+	}
+	if err := os.Rename(dbPath, dbPath+".corrupt."+time.Now().Format("20060102_150405")); err != nil {
+		fmt.Printf("   留底损坏文件失败: %v\n", err)
+	}
+	if err := copyFile(latest, dbPath); err != nil {
+		fmt.Printf("   恢复失败: %v\n", err)
+		return false
+	}
+	fmt.Printf("   已用 %s 恢复\n", latest)
+	return true
+}
+
+// resolveDBPath 读取 DATABASE_URL 推导 sqlite 路径（与预检打开逻辑一致）
+func resolveDBPath() string {
+	cfg := config.AppConfig
+	if cfg == nil || !strings.Contains(cfg.DatabaseURL, "sqlite") {
+		return ""
+	}
+	p := strings.Replace(cfg.DatabaseURL, "sqlite:///./", "", 1)
+	p = strings.Replace(p, "sqlite:///", "", 1)
+	if !filepath.IsAbs(p) {
+		if exe, err := os.Executable(); err == nil {
+			p = filepath.Join(filepath.Dir(exe), p)
+		}
+	}
+	return p
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
 }
 
 func tableExists(db *gorm.DB, dialect, table string) bool {
