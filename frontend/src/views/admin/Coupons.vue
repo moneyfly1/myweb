@@ -725,7 +725,7 @@ onMounted(() => {
     }
   }
   .filter-bar.desktop-only {
-    display: none;
+    display: none !important;
   }
   .filter-drawer-content {
     padding: 20px 0;
