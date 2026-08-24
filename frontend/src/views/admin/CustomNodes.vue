@@ -395,11 +395,9 @@
               </div>
             </div>
           </el-tab-pane>
-          <el-tab-pane label="手动填写" name="manual">
-          </el-tab-pane>
         </el-tabs>
         <el-form 
-          v-if="editingNode || addNodeTab === 'manual'" 
+          v-if="editingNode" 
           :model="nodeForm" 
           :rules="rules" 
           ref="nodeFormRef"
@@ -425,7 +423,7 @@
               </el-option-group>
             </el-select>
           </el-form-item>
-          <template v-if="editingNode || addNodeTab === 'manual'">
+          <template v-if="editingNode">
             <el-form-item label="配置(JSON)" prop="config">
               <el-input 
                 v-model="nodeForm.config" 
@@ -476,7 +474,7 @@
           @submit="importSubscription"
         />
         <FormActionBar
-          v-if="editingNode || addNodeTab === 'manual'"
+          v-if="editingNode"
           :loading="saving"
           submit-text="保存"
           @cancel="showAddDialog = false"

@@ -615,9 +615,23 @@ func ImportNodeLinks(c *gin.Context) {
 		return
 	}
 	db := database.GetDB()
-	imp, skp, fail := 0, 0, 0
-	failReasons := make([]string, 0)
-	for _, link := range req.Links {
+	imp, skp, fail, failReasons := importNodeLinks(db, req.Links)
+	utils.CreateAuditLogSimple(c, "import_node_links", "node", 0, fmt.Sprintf("管理员操作: 导入节点链接 成功 %d 跳过 %d 失败 %d", imp, skp, fail))
+
+	// 清除节点相关缓存
+	clearNodeCaches()
+
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功 %d, 跳过 %d, 失败 %d", imp, skp, fail), gin.H{
+		"imported": imp,
+		"skipped":  skp,
+		"failed":   fail,
+		"errors":   failReasons,
+	})
+}
+
+// importNodeLinks 批量解析并创建普通节点，返回成功/跳过/失败数与失败原因。
+func importNodeLinks(db *gorm.DB, links []string) (imp, skp, fail int, failReasons []string) {
+	for _, link := range links {
 		parsed, err := config_update.ParseNodeLink(strings.TrimSpace(link))
 		if err != nil {
 			// 解析失败单独统计并返回原因，避免静默失败让用户以为导入成功
@@ -641,16 +655,67 @@ func ImportNodeLinks(c *gin.Context) {
 		}
 		imp++
 	}
-	utils.CreateAuditLogSimple(c, "import_node_links", "node", 0, fmt.Sprintf("管理员操作: 导入节点链接 成功 %d 跳过 %d 失败 %d", imp, skp, fail))
+	return
+}
 
-	// 清除节点相关缓存
-	clearNodeCaches()
+// ImportNodeSubscription 通过订阅地址导入普通节点（替代手动填写）。
+func ImportNodeSubscription(c *gin.Context) {
+	var req struct {
+		URL string `json:"url" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
+		return
+	}
 
-	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功 %d, 跳过 %d, 失败 %d", imp, skp, fail), gin.H{
-		"imported": imp,
-		"skipped":  skp,
-		"failed":   fail,
-		"errors":   failReasons,
+	urlStr := strings.TrimSpace(req.URL)
+	if urlStr == "" || (!strings.HasPrefix(urlStr, "http://") && !strings.HasPrefix(urlStr, "https://")) {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请输入有效的 http/https 订阅链接", nil)
+		return
+	}
+
+	svc := config_update.NewConfigUpdateService()
+	nodes, err := svc.FetchNodesFromURLs([]string{urlStr})
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取订阅失败", err)
+		return
+	}
+	if len(nodes) == 0 {
+		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+			"imported": 0, "error_count": 0, "errors": []string{},
+			"message": "订阅获取失败或内容中没有解析到节点，请检查订阅链接是否可访问",
+		})
+		return
+	}
+
+	links := make([]string, 0, len(nodes))
+	seen := make(map[string]bool)
+	for _, n := range nodes {
+		link, _ := n["url"].(string)
+		link = strings.TrimSpace(link)
+		if link != "" && !seen[link] {
+			seen[link] = true
+			links = append(links, link)
+		}
+	}
+	if len(links) == 0 {
+		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+			"imported": 0, "error_count": 0, "errors": []string{},
+			"message": "订阅内容中没有解析到节点",
+		})
+		return
+	}
+
+	db := database.GetDB()
+	imp, skp, fail, failReasons := importNodeLinks(db, links)
+	utils.CreateAuditLogSimple(c, "import_node_subscription", "node", 0,
+		fmt.Sprintf("管理员操作: 导入节点订阅 %s 解析 %d 个 成功 %d 跳过 %d 失败 %d", urlStr, len(links), imp, skp, fail))
+	if imp > 0 {
+		clearNodeCaches()
+	}
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("订阅解析出 %d 个节点，成功导入 %d 个", len(links), imp), gin.H{
+		"imported": imp, "skipped": skp, "failed": fail, "errors": failReasons, "total": len(links),
+		"message": fmt.Sprintf("订阅解析出 %d 个节点，成功导入 %d 个", len(links), imp),
 	})
 }
 
