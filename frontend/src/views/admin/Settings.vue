@@ -1781,6 +1781,9 @@ export default {
 
 .settings-tabs :deep(.el-tabs__header.is-left) {
   width: 200px;
+  /* 禁止 flex 收缩：内容区内容较宽时若 header 被压缩，左侧导航宽窄不一，
+     导致内容区左边缘（页边距）在各 tab 间跳动 */
+  flex-shrink: 0;
   background: var(--el-fill-color-light);
   margin-right: 0;
   border-right: 1px solid var(--el-border-color-light);
@@ -1802,7 +1805,7 @@ export default {
   color: var(--el-color-primary);
 }
 .settings-tabs :deep(.el-tabs__active-bar.is-left) { left: 0; right: auto; width: 3px; }
-.settings-tabs :deep(.el-tabs__content) { padding: 20px; min-height: 600px; }
+.settings-tabs :deep(.el-tabs__content) { padding: 20px; min-height: 600px; min-width: 0; }
 
 /* ========== 表单元素标准规范 ========== */
 .settings-form { max-width: 900px; }
@@ -1959,10 +1962,13 @@ export default {
 .switch-card .desc { font-size: 12px; color: var(--el-text-color-secondary); line-height: 1.3; }
 
 /* ========== 单面板布局 (公告、主题等) ========== */
-.single-panel-wrapper { max-width: 720px; }
+/* 单面板 tab 与双列 tab 保持同一内容区宽度，避免切换时宽度在
+   "整宽"与"720px"之间跳动导致页边距不一致；表单列宽单独控制 */
+.single-panel-wrapper { width: 100%; }
+.single-panel-wrapper .compact-form { max-width: 780px; }
 .theme-top-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   align-items: end;
   margin-bottom: 4px;
@@ -1972,12 +1978,12 @@ export default {
 .theme-checkbox-group :deep(.el-checkbox) { margin-right: 0; background: var(--el-bg-color); }
 .backup-fields-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
 }
 .inline-fields-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 .inline-fields-row :deep(.el-form-item) { margin-bottom: 0; }
@@ -1985,7 +1991,7 @@ export default {
 /* ========== 通知布局与矩阵表 ========== */
 .notification-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -2017,7 +2023,7 @@ export default {
 }
 .expiry-config-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   background: var(--el-bg-color);
   padding: 12px;
