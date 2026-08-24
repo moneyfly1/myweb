@@ -53,6 +53,16 @@ func main() {
 		log.Fatalf("数据库初始化失败: %v", err)
 	}
 
+	// 数据库保护：如果 SQLite 数据库文件不存在（即将创建全新库），大声告警，
+	// 避免"重建后数据消失"（真实原因是启动目录/路径变化导致连到了新库）
+	if database.IsSQLiteFreshDB() {
+		log.Println("======================================================")
+		log.Println("⚠️  未找到现有数据库文件，即将创建【全新】数据库！")
+		log.Println("    如您已有数据，请检查 .env 中 DATABASE_URL 指向的路径是否正确，")
+		log.Println("    否则本次启动将生成一个全新的空库（旧数据不会被删除，只是不在这个路径）。")
+		log.Println("======================================================")
+	}
+
 	if err := database.AutoMigrate(); err != nil {
 		log.Fatalf("数据库迁移失败: %v", err)
 	}

@@ -199,6 +199,15 @@ configure_redis_cache() {
 
     log "✅ Redis 配置已保存到 .env 文件"
 
+    # 固定数据库路径为绝对路径：避免因启动目录变化而静默新建数据库导致"数据丢失"
+    # （相对路径 ./cboard.db 依赖进程工作目录，换目录启动会生成全新空库）
+    if ! grep -q "^DATABASE_URL=" "$env_file" 2>/dev/null; then
+        echo "DATABASE_URL=sqlite:///${PROJECT_DIR}/cboard.db" >> "$env_file"
+        log "已写入固定数据库路径: ${PROJECT_DIR}/cboard.db"
+    else
+        log "检测到 .env 已配置 DATABASE_URL，保持原有配置"
+    fi
+
     # 更新 systemd 服务文件以加载环境变量
     local service_file="/etc/systemd/system/cboard.service"
     if [[ -f "$service_file" ]]; then
