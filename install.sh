@@ -574,6 +574,91 @@ manage_admin() {
 
 # 升级前备份数据库：服务已停止时调用，保证快照一致。
 # 支持 SQLite（复制库文件）与 MySQL（mysqldump，如可用）。
+# 升级环境预检：Go 版本 / 磁盘空间。任何一项不满足立即中止（不影响现有服务）。
+preflight_environment() {
+    local failed=0
+
+    if ! command -v go &>/dev/null; then
+        error "未安装 Go，无法构建。请先安装 Go 1.24+ 再升级。"
+        return 1
+    fi
+    local go_ver
+    go_ver="$(go version 2>/dev/null | grep -oE 'go1\.[0-9]+' | head -1 | tr -d 'go')"
+    local go_major="${go_ver%%.*}"; local go_minor="${go_ver#*.}"
+    if [[ "${go_major:-0}" -lt 1 || ( "${go_major}" -eq 1 && "${go_minor:-0}" -lt 24 ) ]]; then
+        error "Go 版本过低（当前 go$go_ver），新代码需要 Go 1.24+。请先升级 Go 再执行升级。"
+        failed=1
+    else
+        log "✅ Go 版本: $go_ver (满足 ≥1.24)"
+    fi
+
+    local free_kb
+    free_kb="$(df -Pk "$PROJECT_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
+    if [[ -n "$free_kb" && "$free_kb" -lt 1048576 ]]; then
+        error "磁盘剩余空间不足 1GB（当前 $((free_kb/1024))MB），构建与备份可能失败。请清理空间后重试。"
+        failed=1
+    else
+        log "✅ 磁盘空间: $((free_kb/1024))MB 可用"
+    fi
+
+    # 残留进程检查（防止库被锁导致迁移失败）
+    if pgrep -f "${PROJECT_DIR}/server" >/dev/null 2>&1; then
+        warn "检测到残留 server 进程，将在停止阶段一并清理。"
+    fi
+
+    if [[ "$failed" == "1" ]]; then
+        error "环境预检未通过，升级已中止（现有服务不受影响）"
+        return 1
+    fi
+    log "✅ 环境预检通过"
+    return 0
+}
+
+# 启动失败自动回退：恢复旧二进制 + 旧数据库，保证服务能跑起来
+auto_rollback_on_failure() {
+    warn "新版本启动失败，正在自动回退到升级前版本..."
+    systemctl stop cboard 2>/dev/null
+    pkill -9 -f "${PROJECT_DIR}/server" 2>/dev/null
+    sleep 1
+
+    local db_path db_backup restored=0
+    db_path="$(detect_db_path)"
+    db_backup="$(ls -1 "${PROJECT_DIR}/uploads/backups"/upgrade_pre_*.db 2>/dev/null | sort | tail -1)"
+
+    # 恢复数据库
+    if [[ -n "$db_path" && -f "$db_path" && -n "$db_backup" ]]; then
+        cp "$db_path" "${db_path}.pre_rollback_$(date +%Y%m%d_%H%M%S)"
+        cp "$db_backup" "$db_path"
+        [[ -f "${db_backup}-wal" ]] && cp "${db_backup}-wal" "${db_path}-wal"
+        log "✅ 已自动恢复升级前数据库"
+    else
+        warn "未找到数据库备份，数据库保持当前状态（可能已迁移）"
+    fi
+
+    # 恢复旧二进制
+    if [[ -f "${PROJECT_DIR}/server.previous" ]]; then
+        cp "${PROJECT_DIR}/server.previous" "${PROJECT_DIR}/server"
+        chmod +x "${PROJECT_DIR}/server"
+        restored=1
+        log "✅ 已自动恢复旧版本二进制"
+    elif [[ -f "${PROJECT_DIR}/.last_commit" ]]; then
+        cd "$PROJECT_DIR" || return 1
+        git checkout --force "$(cat .last_commit)" 2>/dev/null && go build -o server ./cmd/server/main.go 2>/dev/null && restored=1
+    fi
+
+    if [[ "$restored" == "1" ]]; then
+        if systemctl start cboard; then
+            sleep 3
+            if systemctl is-active --quiet cboard; then
+                log "✅ 已自动回退并成功启动（旧代码 + 旧数据库）"
+                return 0
+            fi
+        fi
+    fi
+    error "自动回退失败，请人工处理：查看日志 journalctl -u cboard -n 50，或用旧二进制手动启动"
+    return 1
+}
+
 backup_database_before_upgrade() {
     local backup_dir="${PROJECT_DIR}/uploads/backups"
     mkdir -p "$backup_dir" || { warn "创建备份目录失败: $backup_dir"; return 1; }
@@ -978,6 +1063,11 @@ unlock_user() {
 sync_from_github() {
     log "开始从 GitHub 同步代码..."
 
+    # 环境预检：Go 版本 / 磁盘空间，不满足直接中止（现有服务不受影响）
+    if ! preflight_environment; then
+        return 1
+    fi
+
     if [ ! -d "$PROJECT_DIR" ]; then
         error "项目目录不存在: $PROJECT_DIR"
         return 1
@@ -1114,10 +1204,12 @@ sync_from_github() {
                 ensure_repo_sync_nginx
                 log "✅ 服务已成功重启，同步完成！"
             else
-                error "服务重启后未运行，请查看日志: journalctl -u cboard -n 50"
+                error "服务重启后未运行，正在自动回退..."
+                auto_rollback_on_failure
             fi
         else
-            error "服务启动失败"
+            error "服务启动失败，正在自动回退..."
+            auto_rollback_on_failure
         fi
     else
         warn "服务 cboard 不存在，跳过重启。请先执行全自动部署。"
