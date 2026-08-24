@@ -614,129 +614,6 @@ preflight_environment() {
     return 0
 }
 
-# 启动失败自动回退：恢复旧二进制 + 旧数据库，保证服务能跑起来
-auto_rollback_on_failure() {
-    warn "新版本启动失败，正在自动回退到升级前版本..."
-    systemctl stop cboard 2>/dev/null
-    pkill -9 -f "${PROJECT_DIR}/server" 2>/dev/null
-    sleep 1
-
-    local db_path db_backup restored=0
-    db_path="$(detect_db_path)"
-    db_backup="$(ls -1 "${PROJECT_DIR}/uploads/backups"/upgrade_pre_*.db 2>/dev/null | sort | tail -1)"
-
-    # 恢复数据库
-    if [[ -n "$db_path" && -f "$db_path" && -n "$db_backup" ]]; then
-        cp "$db_path" "${db_path}.pre_rollback_$(date +%Y%m%d_%H%M%S)"
-        cp "$db_backup" "$db_path"
-        [[ -f "${db_backup}-wal" ]] && cp "${db_backup}-wal" "${db_path}-wal"
-        log "✅ 已自动恢复升级前数据库"
-    else
-        warn "未找到数据库备份，数据库保持当前状态（可能已迁移）"
-    fi
-
-    # 恢复旧二进制
-    if [[ -f "${PROJECT_DIR}/server.previous" ]]; then
-        cp "${PROJECT_DIR}/server.previous" "${PROJECT_DIR}/server"
-        chmod +x "${PROJECT_DIR}/server"
-        restored=1
-        log "✅ 已自动恢复旧版本二进制"
-    elif [[ -f "${PROJECT_DIR}/.last_commit" ]]; then
-        cd "$PROJECT_DIR" || return 1
-        git checkout --force "$(cat .last_commit)" 2>/dev/null && go build -o server ./cmd/server/main.go 2>/dev/null && restored=1
-    fi
-
-    if [[ "$restored" == "1" ]]; then
-        if systemctl start cboard; then
-            sleep 3
-            if systemctl is-active --quiet cboard; then
-                log "✅ 已自动回退并成功启动（旧代码 + 旧数据库）"
-                return 0
-            fi
-        fi
-    fi
-    error "自动回退失败，请人工处理：查看日志 journalctl -u cboard -n 50，或用旧二进制手动启动"
-    return 1
-}
-
-# 升级预演：用【真实生产数据的副本】在新版本上试跑一次迁移+启动。
-# 预演通过才允许正式升级；预演失败立即中止（生产服务完全不受影响）。
-# 这是"尽量保证升级成功"的最强保障：迁移在真实数据上先跑通一遍。
-dry_run_upgrade() {
-    local dry_dir="/tmp/cboard_upgrade_dryrun"
-    local dry_port="19123"
-
-    log "开始升级预演（用生产数据副本试跑新版本，不影响生产）..."
-    rm -rf "$dry_dir" && mkdir -p "$dry_dir"
-
-    # 1) 复制生产数据库（副本）
-    local db_path
-    db_path="$(detect_db_path)"
-    if [[ -z "$db_path" || ! -f "$db_path" ]]; then
-        error "无法定位生产数据库（$db_path），预演中止"
-        return 1
-    fi
-    cp "$db_path" "$dry_dir/cboard.db"
-    [[ -f "${db_path}-wal" ]] && cp "${db_path}-wal" "$dry_dir/cboard.db-wal"
-    [[ -f "${db_path}-shm" ]] && cp "${db_path}-shm" "$dry_dir/cboard.db-shm"
-    log "  已复制数据库副本 ($(du -h "$db_path" | cut -f1))"
-
-    # 端口占用检查
-    if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:${dry_port}/health"; then
-        error "预演端口 ${dry_port} 被占用，请调整 dry_run_upgrade 的 dry_port"
-        return 1
-    fi
-
-    # 2) 用副本启动新版本（绝对 DB 路径避免锚定问题）
-    cd "$dry_dir" || return 1
-    PORT="$dry_port" HOST="127.0.0.1" \
-        DATABASE_URL="sqlite:///${dry_dir}/cboard.db" \
-        SECRET_KEY="dryrun-$(date +%s)" \
-        DISABLE_SCHEDULE_TASKS="true" \
-        "$PROJECT_DIR/server" > "$dry_dir/run.log" 2>&1 &
-    local dry_pid=$!
-
-    # 3) 等待健康检查（最多 40 秒；GeoIP 下载可能较慢）
-    local ok=0
-    for i in $(seq 1 20); do
-        sleep 2
-        if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:${dry_port}/health"; then
-            ok=1; break
-        fi
-        if ! kill -0 "$dry_pid" 2>/dev/null; then
-            break # 进程已退出 = 启动失败
-        fi
-    done
-
-    # 4) 检查迁移结果：金额列应为 decimal/非整型，且迁移标记存在
-    local migrated=0
-    local col_type
-    col_type="$(/usr/bin/sqlite3 "$dry_dir/cboard.db" "SELECT type FROM pragma_table_info('payment_transactions') WHERE name='amount';" 2>/dev/null)"
-    local mark
-    mark="$(/usr/bin/sqlite3 "$dry_dir/cboard.db" "SELECT value FROM system_configs WHERE key='payment_amount_unit' AND category='migration';" 2>/dev/null)"
-    if [[ -n "$col_type" && "$col_type" != *INT* ]] && [[ "$mark" == "yuan" ]]; then
-        migrated=1
-    fi
-
-    kill "$dry_pid" 2>/dev/null; sleep 1; pkill -9 -f "$dry_dir" 2>/dev/null
-
-    if [[ "$ok" == "1" && "$migrated" == "1" ]]; then
-        log "✅ 升级预演通过：新版本在真实数据副本上启动成功，金额迁移完成"
-        log "   金额列类型: $col_type | 迁移标记: $mark"
-        return 0
-    fi
-
-    # 预演失败：输出诊断
-    error "❌ 升级预演失败！生产服务未受影响，正式升级已中止。"
-    error "   健康检查: $([ "$ok" == 1 ] && echo '通过' || echo '失败') | 迁移检查: $([ "$migrated" == 1 ] && echo '通过' || echo '失败')"
-    if [[ -f "$dry_dir/run.log" ]]; then
-        error "   预演日志关键行："
-        grep -aE "迁移|失败|panic|error|Error|中止" "$dry_dir/run.log" | head -8 | sed 's/^/     /'
-    fi
-    error "   请将上方日志提供给开发者，或人工处理。回退点已保留。"
-    return 1
-}
-
 backup_database_before_upgrade() {
     local backup_dir="${PROJECT_DIR}/uploads/backups"
     mkdir -p "$backup_dir" || { warn "创建备份目录失败: $backup_dir"; return 1; }
@@ -775,103 +652,6 @@ backup_database_before_upgrade() {
         fi
     else
         warn "未能识别数据库类型，请手动备份后再升级！"
-    fi
-}
-
-# 升级回退：代码 + 数据库一起回退到升级前状态。
-# 注意：金额迁移后旧代码会把「元」当「分」读，所以必须代码与数据库同步回退，缺一不可。
-rollback_upgrade() {
-    log "开始回退到升级前版本..."
-
-    if ! systemctl list-unit-files | grep -q "cboard.service"; then
-        error "服务 cboard 不存在，无需回退"
-        return 1
-    fi
-
-    # 1) 找到可用的数据库备份
-    local backup_dir="${PROJECT_DIR}/uploads/backups"
-    local db_backup
-    db_backup="$(ls -1 "${backup_dir}"/upgrade_pre_*.db 2>/dev/null | sort | tail -1)"
-    if [[ -z "$db_backup" ]]; then
-        error "未找到升级前数据库备份（${backup_dir}/upgrade_pre_*.db），无法回退数据库。"
-        return 1
-    fi
-    log "将使用数据库备份: $(basename "$db_backup") ($(du -h "$db_backup" | cut -f1))"
-
-    read -r -p "确认回退？将停止服务并用备份恢复数据库和旧版本代码（当前升级后的新数据会丢失）(y/N): " confirm
-    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
-        log "已取消回退"
-        return 0
-    fi
-
-    # 2) 停止服务
-    systemctl stop cboard 2>/dev/null
-    pkill -9 -f "${PROJECT_DIR}/server" 2>/dev/null
-    sleep 1
-
-    # 3) 恢复数据库
-    local db_path
-    db_path="$(detect_db_path)"
-    if [[ -n "$db_path" && -f "$db_path" ]]; then
-        cp "$db_path" "${db_path}.pre_rollback_$(date +%Y%m%d_%H%M%S)"
-        cp "$db_backup" "$db_path"
-        [[ -f "${db_backup}-wal" ]] && cp "${db_backup}-wal" "${db_path}-wal"
-        [[ -f "${db_backup}-shm" ]] && cp "${db_backup}-shm" "${db_path}-shm"
-        log "✅ 数据库已恢复: $db_path"
-    else
-        # MySQL/PostgreSQL：提示用 .sql 备份手动导入
-        local sql_backup
-        sql_backup="$(ls -1 "${backup_dir}"/upgrade_pre_*.sql 2>/dev/null | sort | tail -1)"
-        if [[ -n "$sql_backup" ]]; then
-            warn "检测到 MySQL/PostgreSQL，数据库未自动恢复。"
-            warn "请手动导入备份: mysql -u<用户> -p <库名> < $sql_backup"
-            warn "回退将继续恢复旧代码，但数据库需您手动导入。"
-        else
-            error "无法定位数据库文件（$db_path）且无 .sql 备份，回退中止！"
-            systemctl start cboard 2>/dev/null
-            return 1
-        fi
-    fi
-
-    # 4) 恢复旧版本代码（优先旧二进制，无需重新编译）
-    local restored_code=0
-    if [[ -f "${PROJECT_DIR}/server.previous" ]]; then
-        cp "${PROJECT_DIR}/server.previous" "${PROJECT_DIR}/server"
-        chmod +x "${PROJECT_DIR}/server"
-        log "✅ 已恢复旧版本二进制: server.previous"
-        restored_code=1
-    elif [[ -f "${PROJECT_DIR}/.last_commit" ]]; then
-        local old_commit
-        old_commit="$(cat "${PROJECT_DIR}/.last_commit")"
-        log "无旧二进制，尝试从 git 检出旧版本 ${old_commit:0:10} 并重新编译..."
-        cd "$PROJECT_DIR" || return 1
-        git checkout --force "$old_commit" 2>/dev/null && {
-            if go build -o server ./cmd/server/main.go 2>/dev/null; then
-                log "✅ 旧版本代码已重新编译"
-                restored_code=1
-            else
-                error "旧版本编译失败，请检查 Go 环境"
-            fi
-        }
-    else
-        warn "未找到旧版本代码（server.previous / .last_commit），只能回退数据库，代码保持新版本！"
-    fi
-
-    # 5) 启动服务
-    if [[ "$restored_code" == "1" ]]; then
-        if systemctl start cboard; then
-            sleep 3
-            if systemctl is-active --quiet cboard; then
-                log "✅ 回退完成，服务已启动（旧代码 + 旧数据库）"
-                log "   请立即验证网站可访问、订单金额正常"
-            else
-                error "回退后服务启动失败，请查看日志: journalctl -u cboard -n 50"
-            fi
-        else
-            error "回退后服务启动失败"
-        fi
-    else
-        warn "代码未回退，服务未启动。请人工处理：恢复旧二进制或检查日志。"
     fi
 }
 
@@ -1152,17 +932,6 @@ sync_from_github() {
     fi
     cd "$PROJECT_DIR" || { error "无法进入项目目录"; return 1; }
 
-    # 记录当前版本（回退用）：旧提交号 + 旧二进制备份
-    local cur_commit
-    cur_commit="$(git rev-parse HEAD 2>/dev/null)"
-    if [[ -n "$cur_commit" ]]; then
-        echo "$cur_commit" > "${PROJECT_DIR}/.last_commit"
-        log "已记录当前版本: ${cur_commit:0:10}（回退可用）"
-    fi
-    if [[ -f "${PROJECT_DIR}/server" && ! -f "${PROJECT_DIR}/server.previous" ]]; then
-        cp "${PROJECT_DIR}/server" "${PROJECT_DIR}/server.previous"
-        log "已备份旧版本二进制: server.previous（回退可用）"
-    fi
 
     # 检查是否是 git 仓库，不是则自动初始化
     if [ ! -d ".git" ]; then
@@ -1229,12 +998,6 @@ sync_from_github() {
     fi
     cd ..
 
-    # ===== 升级预演：用真实数据副本试跑新版本，通过才继续 =====
-    if ! dry_run_upgrade; then
-        error "升级预演未通过，正式升级已中止（生产服务保持旧版本运行，未受影响）"
-        return 1
-    fi
-
     # 检查并更新 Redis 配置（同步模式不阻塞等待输入）
     log "检查 Redis 配置状态（非交互模式）..."
     check_and_update_redis_config "true"
@@ -1288,12 +1051,10 @@ sync_from_github() {
                 ensure_repo_sync_nginx
                 log "✅ 服务已成功重启，同步完成！"
             else
-                error "服务重启后未运行，正在自动回退..."
-                auto_rollback_on_failure
+                error "服务重启后未运行，请查看日志: journalctl -u cboard -n 50"
             fi
         else
-            error "服务启动失败，正在自动回退..."
-            auto_rollback_on_failure
+            error "服务启动失败"
         fi
     else
         warn "服务 cboard 不存在，跳过重启。请先执行全自动部署。"
@@ -1331,10 +1092,9 @@ show_menu() {
     echo -e "  ${CYAN}10.${NC} 证书续期（手动续期，自动续期由 certbot 定时任务完成）"
     echo -e "  ${CYAN}11.${NC} 从 GitHub 同步代码并重新构建"
     echo -e "  ${YELLOW}12.${NC} 配置 Redis 缓存（性能优化）"
-    echo -e "  ${RED}13.${NC} 回滚到升级前版本（代码 + 数据库）"
     echo -e "  ${RED}0.${NC} 退出脚本"
     echo -e "${BLUE}==========================================${NC}"
-    read -r -p "请选择操作 [0-13]: " choice
+    read -r -p "请选择操作 [0-12]: " choice
 }
 
 # --- 主程序循环 ---
@@ -1411,7 +1171,6 @@ main() {
                 ;;
             10) renew_cert ;;
             11) sync_from_github ;;
-            13) rollback_upgrade ;;
             12)
                 configure_redis_cache
                 # 重启服务以应用新配置
