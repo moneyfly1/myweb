@@ -2309,6 +2309,9 @@ export default {
   .settings-page-header .header-actions .el-button { flex: 1; margin: 0; }
   
   .settings-tabs :deep(.el-tabs__header.is-top) { background: var(--el-bg-color); padding: 0 4px; }
+  .settings-tabs :deep(.el-tabs__nav-wrap) { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .settings-tabs :deep(.el-tabs__nav-wrap::after) { display: none; }
+  .settings-tabs :deep(.el-tabs__nav) { min-width: max-content; }
   .settings-tabs :deep(.el-tabs__item.is-top) { font-size: 14px; padding: 0 16px; }
   .settings-tabs :deep(.el-tabs__content) { padding: 16px 12px; min-height: auto; }
   
