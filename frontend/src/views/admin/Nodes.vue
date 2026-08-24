@@ -767,6 +767,26 @@ export default {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+/* 移动端：开关一行、测试/编辑/删除三按钮一行均分，避免纵向堆叠错乱 */
+@media (max-width: 768px) {
+  .mobile-node-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .mobile-node-buttons {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+  .mobile-node-buttons .el-button {
+    margin: 0 !important;
+    width: 100%;
+    padding: 8px 4px;
+    font-size: 13px;
+  }
+}
 .dialog-scroll-content {
   min-width: 0;
 }
