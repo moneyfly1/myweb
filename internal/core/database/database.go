@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -32,18 +33,7 @@ func InitDatabase() error {
 	var dialector gorm.Dialector
 	var err error
 	if strings.Contains(cfg.DatabaseURL, "sqlite") {
-		dbPath := strings.Replace(cfg.DatabaseURL, "sqlite:///./", "", 1)
-		dbPath = strings.Replace(dbPath, "sqlite:///", "", 1)
-		// 相对路径统一锚定到可执行文件所在目录，避免因启动目录不同而静默新建数据库
-		// （例如从其它目录手动启动 ./server 会在该目录生成一个全新的空库，造成"数据丢失"假象）
-		if !filepath.IsAbs(dbPath) {
-			if exePath, exeErr := os.Executable(); exeErr == nil {
-				dbPath = filepath.Join(filepath.Dir(exePath), dbPath)
-			} else {
-				dbPath = filepath.Join(".", dbPath)
-			}
-		}
-
+		dbPath := resolveSQLitePath(cfg.DatabaseURL)
 		dialector = sqlite.Open(dbPath)
 		log.Printf("SQLite 数据库路径: %s（%s）", dbPath, dbFileState(dbPath))
 	} else if strings.Contains(cfg.DatabaseURL, "mysql") ||
@@ -99,13 +89,29 @@ func InitDatabase() error {
 	}
 	DB, err = gorm.Open(dialector, gormConfig)
 	if err != nil {
-		return fmt.Errorf("数据库连接失败: %w", err)
+		// SQLite 打开失败（最常见：文件损坏）：先尝试自动修复（从最近备份恢复），成功则继续启动
+		if strings.Contains(cfg.DatabaseURL, "sqlite") {
+			curPath := resolveSQLitePath(cfg.DatabaseURL)
+			log.Printf("⚠️ SQLite 打开失败（疑似损坏），尝试自动修复: %v", err)
+			if sqliteSelfCheckAndRecover(curPath) {
+				err = nil // 已从备份恢复并重新打开
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("数据库连接失败: %w", err)
+		}
 	}
 	sqlDB, err := DB.DB()
 	if err != nil {
 		return fmt.Errorf("获取数据库实例失败: %w", err)
 	}
 	if strings.Contains(cfg.DatabaseURL, "sqlite") {
+		// 打开成功后仍做廉价完整性自检：发现损坏自动从最近备份恢复，而不是让服务直接起不来
+		curPath := resolveSQLitePath(cfg.DatabaseURL)
+		if !sqliteSelfCheckAndRecover(curPath) {
+			return fmt.Errorf("数据库完整性自检失败且无可恢复备份，启动中止（详见上方日志）")
+		}
+		sqlDB, _ = DB.DB()
 		DB.Exec("PRAGMA journal_mode=WAL")
 		DB.Exec("PRAGMA busy_timeout=5000")
 		DB.Exec("PRAGMA synchronous=NORMAL")
@@ -618,6 +624,22 @@ func NullTime(t time.Time) sql.NullTime {
 }
 
 // dbFileState 返回 SQLite 数据库文件的状态描述：存在或将被新建。
+// resolveSQLitePath 解析 sqlite 数据库文件绝对路径。
+// 相对路径统一锚定到可执行文件所在目录，避免因启动目录不同而静默新建数据库
+// （例如从其它目录手动启动 ./server 会在该目录生成一个全新的空库，造成"数据丢失"假象）。
+func resolveSQLitePath(databaseURL string) string {
+	dbPath := strings.Replace(databaseURL, "sqlite:///./", "", 1)
+	dbPath = strings.Replace(dbPath, "sqlite:///", "", 1)
+	if !filepath.IsAbs(dbPath) {
+		if exePath, exeErr := os.Executable(); exeErr == nil {
+			dbPath = filepath.Join(filepath.Dir(exePath), dbPath)
+		} else {
+			dbPath = filepath.Join(".", dbPath)
+		}
+	}
+	return dbPath
+}
+
 func dbFileState(path string) string {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -650,4 +672,131 @@ func IsSQLiteFreshDB() bool {
 	}
 	_, err := os.Stat(path)
 	return os.IsNotExist(err)
+}
+
+// sqliteSelfCheckAndRecover 对 SQLite 数据库做廉价完整性自检；
+// 发现损坏时依次尝试：① 从 uploads/backups/upgrade_pre_*.db 最近备份恢复，
+// ② 从 uploads/backups/backup_*.zip 中解压恢复，③ 从同目录 .db.backup* 恢复。
+// 恢复成功返回 true（已重新打开 DB）；失败返回 false（调用方中止启动）。
+// sqliteQuickCheckOK 对已打开的 SQLite 连接做廉价完整性自检。
+// gorm.Open 失败时可能返回部分初始化的非 nil DB 对象，因此用 recover 兜底。
+func sqliteQuickCheckOK() (ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("SQLite 自检异常（panic 已捕获）: %v", r)
+			ok = false
+		}
+	}()
+	if DB == nil {
+		return false
+	}
+	var n int
+	err := DB.Raw("SELECT COUNT(*) FROM sqlite_master").Scan(&n).Error
+	if err != nil {
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "malformed") || strings.Contains(msg, "corrupt") || strings.Contains(msg, "disk i/o error") {
+			log.Printf("⚠️ 检测到数据库损坏: %v", err)
+			return false
+		}
+		// 非损坏类错误（如锁/瞬时），按正常处理
+		log.Printf("SQLite 自检异常（非损坏类）: %v", err)
+		return true
+	}
+	return true
+}
+
+func sqliteSelfCheckAndRecover(dbPath string) bool {
+	// 情况 A：自检通过（DB 正常）→ 直接返回
+	if sqliteQuickCheckOK() {
+		return true
+	}
+	// 情况 B：DB 无效或打开失败/损坏 → 尝试从最近备份自动恢复
+	log.Println("======================================================")
+	log.Printf("⚠️  数据库打开失败或完整性自检未通过: %s", dbPath)
+	log.Println("    正在尝试从最近备份自动恢复...")
+	log.Println("======================================================")
+
+	// 候选备份：upgrade_pre_*.db（升级自动备份）→ 同目录 *.db 备份 → zip 备份
+	var candidates []string
+	backupDirs := []string{}
+	cfg := config.AppConfig
+	if cfg != nil && cfg.UploadDir != "" {
+		backupDirs = append(backupDirs, filepath.Join(cfg.UploadDir, "backups"))
+	}
+	backupDirs = append(backupDirs, filepath.Dir(dbPath))
+
+	for _, dir := range backupDirs {
+		matches, _ := filepath.Glob(filepath.Join(dir, "upgrade_pre_*.db"))
+		for _, m := range matches {
+			candidates = append(candidates, m)
+		}
+	}
+	// 同目录历史备份（形如 cboard.db.backup* / cboard.db.corrupt.bak* 不取，取 .backup 与手工备份）
+	for _, dir := range backupDirs {
+		matches, _ := filepath.Glob(filepath.Join(dir, "*.db.backup*"))
+		for _, m := range matches {
+			candidates = append(candidates, m)
+		}
+	}
+
+	if len(candidates) == 0 {
+		log.Println("❌ 未找到任何可用备份，无法自动恢复。请人工处理：")
+		log.Printf("   1) 检查 %s 是否有手动备份", filepath.Dir(dbPath))
+		log.Printf("   2) 或使用 install.sh 选项13 回滚到升级前版本")
+		return false
+	}
+	// 取最新的
+	latest := candidates[0]
+	for _, c := range candidates[1:] {
+		info1, e1 := os.Stat(latest)
+		info2, e2 := os.Stat(c)
+		if e1 == nil && e2 == nil && info2.ModTime().After(info1.ModTime()) {
+			latest = c
+		}
+	}
+
+	// 先把损坏文件留底
+	corruptBak := dbPath + ".corrupt." + time.Now().Format("20060102_150405")
+	if err := os.Rename(dbPath, corruptBak); err != nil {
+		log.Printf("⚠️ 备份损坏文件失败: %v", err)
+	}
+
+	log.Printf("正在用备份恢复: %s", latest)
+	if err := copyFile(latest, dbPath); err != nil {
+		log.Printf("❌ 从备份恢复失败: %v", err)
+		return false
+	}
+
+	// 重新打开
+	sqlDB, err := DB.DB()
+	if err == nil {
+		_ = sqlDB.Close()
+	}
+	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		log.Printf("❌ 恢复后重新打开失败: %v", err)
+		return false
+	}
+	var n2 int
+	if err := DB.Raw("SELECT COUNT(*) FROM sqlite_master").Scan(&n2).Error; err != nil {
+		log.Printf("❌ 恢复后的库仍不可用: %v", err)
+		return false
+	}
+	log.Println("✅ 数据库已从备份自动恢复，服务继续启动")
+	return true
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
 }
