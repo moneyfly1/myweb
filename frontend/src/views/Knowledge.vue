@@ -83,14 +83,16 @@
             </div>
           </div>
         </div>
-        <div v-if="total > pageSize" class="knowledge-pagination">
-          <el-pagination
-            :current-page="page"
-            :page-size="pageSize"
+        <div v-if="total > 0" class="knowledge-pagination">
+          <PaginationBar
+            v-model:current-page="page"
+            v-model:page-size="pageSize"
             :total="total"
-            layout="prev, pager, next"
-            background
+            :page-sizes="[12, 24, 48, 100]"
+            layout="total, sizes, prev, pager, next, jumper"
+            mobile-layout="sizes, prev, pager, next, jumper"
             @current-change="handlePageChange"
+            @size-change="handleSizeChange"
           />
         </div>
       </div>
@@ -132,6 +134,7 @@ import { Search, Folder, View, Clock, Document, Reading, Files, Setting, Star, I
 import AppDrawer from '@/components/AppDrawer.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
 import { knowledgeAPI } from '@/utils/api'
 import { sanitizeArticleHtml } from '@/utils/sanitizeHtml'
 
@@ -202,6 +205,12 @@ const searchArticles = () => {
 
 const handlePageChange = (p) => {
   page.value = p
+  loadArticles()
+}
+
+const handleSizeChange = (s) => {
+  pageSize.value = s
+  page.value = 1
   loadArticles()
 }
 
