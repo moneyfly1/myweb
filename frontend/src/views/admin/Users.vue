@@ -1929,13 +1929,22 @@ export default {
     padding: 0 12px !important;
   }
 }
-.admin-users :deep(.search-form.list-filter-form) {
-  display: grid !important;
-  grid-template-columns: minmax(240px, 1.35fr) minmax(150px, 0.75fr) minmax(300px, 1.25fr) minmax(144px, max-content);
-  align-items: end;
-  column-gap: 16px;
-  row-gap: 12px;
-  width: 100%;
+/* 桌面端筛选表单：仅 ≥769px 生效；移动端强制隐藏（desktop-only 的 display:none
+   会被本规则的特异性压过，导致状态筛选框溢出屏幕） */
+@media (min-width: 769px) {
+  .admin-users :deep(.search-form.list-filter-form) {
+    display: grid !important;
+    grid-template-columns: minmax(240px, 1.35fr) minmax(150px, 0.75fr) minmax(300px, 1.25fr) minmax(144px, max-content);
+    align-items: end;
+    column-gap: 16px;
+    row-gap: 12px;
+    width: 100%;
+  }
+}
+@media (max-width: 768px) {
+  .admin-users :deep(.search-form.list-filter-form) {
+    display: none !important;
+  }
 }
 .admin-users :deep(.search-form.list-filter-form .el-form-item) {
   min-width: 0;

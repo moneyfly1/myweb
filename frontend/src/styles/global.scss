@@ -1316,3 +1316,15 @@ $breakpoints: (
     margin-bottom: 12px;
   }
 }
+
+/* 移动端日期范围选择器全宽：Element Plus 默认宽 400px 会溢出屏幕。
+   此规则不限容器作用域，覆盖所有页面（管理端日志/筛选、用户端等） */
+@media (max-width: 768px) {
+  .el-date-editor--daterange,
+  .el-date-editor--datetimerange,
+  .el-date-editor--monthrange {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0;
+  }
+}

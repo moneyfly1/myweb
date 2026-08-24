@@ -7,7 +7,7 @@
           <p>查看和管理各类系统日志</p>
         </div>
       </template>
-      <el-tabs v-model="activeTab">
+      <el-tabs v-model="activeTab" class="logs-tabs-host">
         <el-tab-pane label="注册日志" name="registration">
           <RegistrationLogs />
         </el-tab-pane>
@@ -44,3 +44,20 @@ import EmailLogs from './logs/EmailLogs.vue'
 import AuditLogs from './logs/AuditLogs.vue'
 const activeTab = ref('registration')
 </script>
+
+<style scoped>
+/* 移动端：7 个日志 tab 超宽时横向滚动，确保能切到后面的 tab（如管理员操作日志） */
+.logs-tabs-host :deep(.el-tabs__nav-wrap) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.logs-tabs-host :deep(.el-tabs__nav-wrap::after) {
+  display: none;
+}
+.logs-tabs-host :deep(.el-tabs__nav) {
+  min-width: max-content;
+}
+.logs-tabs-host :deep(.el-tabs__item) {
+  white-space: nowrap;
+}
+</style>
