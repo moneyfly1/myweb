@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -236,6 +237,11 @@ func AutoMigrate() error {
 			return err
 		}
 	}
+	// 先确保 system_configs 表存在：金额单位迁移的完成标记依赖它，
+	// 且迁移必须在本批 AutoMigrate（会变更 payment_transactions 列类型）之前执行。
+	if err := DB.AutoMigrate(&models.SystemConfig{}); err != nil {
+		return fmt.Errorf("初始化 system_configs 表失败: %w", err)
+	}
 	// 历史数据迁移：PaymentTransaction.Amount 曾以「分」存储（int），现统一为「元」。
 	// 检测到旧整型列时先 ÷100 转换存量数据，再由下方 AutoMigrate 完成列类型变更（幂等，不会重复执行）。
 	if err := migratePaymentTransactionAmountToYuan(); err != nil {
@@ -455,6 +461,14 @@ func migratePaymentTransactionAmountToYuan() error {
 		return nil
 	}
 
+	// 迁移完成标记（system_configs）：防止「UPDATE 成功但 AutoMigrate 表重建失败」的中间态
+	// 导致下次启动把已是「元」的数据再 ÷100。
+	migrationDone := false
+	var mark models.SystemConfig
+	if err := DB.Where("key = ? AND category = ?", paymentAmountUnitMarkKey, paymentAmountUnitMarkCategory).First(&mark).Error; err == nil && mark.Value == "yuan" {
+		migrationDone = true
+	}
+
 	dialect := strings.ToLower(DB.Dialector.Name())
 	var colType string
 	switch {
@@ -469,8 +483,20 @@ func migratePaymentTransactionAmountToYuan() error {
 	}
 
 	colType = strings.ToUpper(strings.TrimSpace(colType))
-	if !strings.Contains(colType, "INT") {
-		// 非整型（新结构或已迁移）→ 无需转换
+	isLegacyInt := strings.Contains(colType, "INT")
+
+	if migrationDone && isLegacyInt {
+		// 数据已换算为元、标记已存在，但列类型仍是整型（上次 AutoMigrate 中途失败）。
+		// 只允许 AutoMigrate 改列类型，绝不再 ÷100。
+		log.Println("payment_transactions.amount 已完成分→元换算（标记存在），等待 AutoMigrate 变更列类型")
+		return nil
+	}
+
+	if !isLegacyInt {
+		// 列已是非整型（新结构或已由 AutoMigrate 变更）→ 补写完成标记，无需转换
+		if !migrationDone {
+			_ = setPaymentAmountUnitMark()
+		}
 		return nil
 	}
 
@@ -478,8 +504,39 @@ func migratePaymentTransactionAmountToYuan() error {
 	if err := DB.Exec("UPDATE payment_transactions SET amount = amount / 100.0 WHERE amount IS NOT NULL").Error; err != nil {
 		return fmt.Errorf("迁移 payment_transactions.amount 分→元失败: %w", err)
 	}
+	if err := setPaymentAmountUnitMark(); err != nil {
+		// 标记写入失败则拒绝启动：宁可失败也不让下次启动重复 ÷100 造成金额错误
+		return fmt.Errorf("写入金额单位迁移标记失败: %w", err)
+	}
 	log.Println("payment_transactions.amount 分→元 迁移完成（随后 AutoMigrate 变更列类型）")
 	return nil
+}
+
+const (
+	paymentAmountUnitMarkKey      = "payment_amount_unit"
+	paymentAmountUnitMarkCategory = "migration"
+)
+
+// setPaymentAmountUnitMark 写入「金额单位已统一为元」的迁移完成标记。
+func setPaymentAmountUnitMark() error {
+	var mark models.SystemConfig
+	err := DB.Where("key = ? AND category = ?", paymentAmountUnitMarkKey, paymentAmountUnitMarkCategory).First(&mark).Error
+	if err == nil {
+		if mark.Value == "yuan" {
+			return nil
+		}
+		mark.Value = "yuan"
+		return DB.Save(&mark).Error
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	mark = models.SystemConfig{
+		Key:      paymentAmountUnitMarkKey,
+		Category: paymentAmountUnitMarkCategory,
+		Value:    "yuan",
+	}
+	return DB.Create(&mark).Error
 }
 
 // deduplicateInviteRelations 在 AutoMigrate 前清理 invite_relations 中重复的 InviteeID，
