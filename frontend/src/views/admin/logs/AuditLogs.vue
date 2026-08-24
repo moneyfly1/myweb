@@ -5,6 +5,7 @@
       <el-date-picker v-model="filter.timeRange" type="datetimerange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD HH:mm:ss" class="filter-date" @change="fetch" />
       <el-button type="primary" @click="fetch" :loading="loading">搜索</el-button>
       <el-button @click="resetFilter">重置</el-button>
+      <el-button type="danger" plain :loading="clearing" @click="runCleanup">清空日志</el-button>
     </div>
     <ResponsiveDataView
       :data="list"
@@ -74,9 +75,9 @@
       v-model:current-page="page"
       v-model:page-size="pageSize"
       :total="total"
-      layout="total, prev, pager, next"
-      mobile-layout="prev, pager, next"
-      :page-sizes="[10, 20, 50]"
+      layout="total, sizes, prev, pager, next, jumper"
+      mobile-layout="sizes, prev, pager, next, jumper"
+      :page-sizes="[10, 20, 50, 100]"
       @current-change="fetch"
       @size-change="(s) => { pageSize = s; page = 1; fetch() }"
     />
@@ -86,6 +87,7 @@
 import { ref, onMounted } from 'vue'
 import { debounce } from '@/composables/useDebounce'
 import { adminAPI } from '@/utils/api'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import MobileLogFields from '@/components/MobileLogFields.vue'
@@ -95,7 +97,32 @@ const list = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
+const clearing = ref(false)
 const filter = ref({ keyword: '', timeRange: null })
+
+// 清空操作审计日志（保留登录/注册/签到等安全关键记录，后端强制保护）
+const runCleanup = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要清空操作审计日志吗？登录/注册/签到等安全关键记录会保留。此操作不可恢复！',
+      '清理确认',
+      { type: 'warning', confirmButtonText: '确认清空', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger' }
+    )
+  } catch {
+    return
+  }
+  clearing.value = true
+  try {
+    const res = await adminAPI.cleanupData('audit_logs')
+    ElMessage.success(`已清空 ${res?.data?.data?.deleted_count ?? 0} 条审计日志`)
+    page.value = 1
+    fetch()
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || '清理失败')
+  } finally {
+    clearing.value = false
+  }
+}
 
 const ACTION_TYPE_MAP = {
   send_subscription_email: '发送订阅邮件', extend_subscription: '延长订阅', reset_subscription: '重置订阅',

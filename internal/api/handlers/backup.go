@@ -94,25 +94,41 @@ func CreateBackup(c *gin.Context) {
 		}
 	}()
 
-	dbPath, ok := utils.JoinWithinBaseDir(wd, "cboard.db")
-	if ok {
-		if _, err := os.Stat(dbPath); err == nil {
-			dbFile, err := os.Open(dbPath)
-			if err == nil {
-				defer func() {
-					if closeErr := dbFile.Close(); closeErr != nil {
-						log.Printf("failed to close db file: %v", closeErr)
-					}
-				}()
-
-				writer, err := zipWriter.Create("cboard.db")
-				if err == nil {
-					if _, copyErr := io.Copy(writer, dbFile); copyErr != nil {
-						utils.ErrorResponse(c, http.StatusInternalServerError, "写入数据库备份失败", copyErr)
-						return
-					}
+	// 备份前在临时副本上清理日志类数据并压缩（可选；失败回退为原始文件，不阻断备份）
+	db := database.GetDB()
+	var dbSourcePath string
+	var rawDBSize, cleanedSize int64
+	if info, statErr := os.Stat(filepath.Join(wd, "cboard.db")); statErr == nil {
+		rawDBSize = info.Size()
+	}
+	cleanCfg := backup_service.LoadBackupCleanConfig(db)
+	if strings.Contains(cfg.DatabaseURL, "sqlite") && cleanCfg.Enabled {
+		tmpPath, tmpSize, prepErr := backup_service.PrepareBackupDB(wd, cleanCfg.RetentionDays)
+		if prepErr != nil {
+			utils.LogWarn("备份数据库清理失败，回退为原始文件: %v", prepErr)
+		} else {
+			dbSourcePath = tmpPath
+			cleanedSize = tmpSize
+			defer func() {
+				if rmErr := os.Remove(tmpPath); rmErr != nil {
+					log.Printf("failed to remove temp db: %v", rmErr)
 				}
-			}
+			}()
+		}
+	}
+
+	sourcePath := dbSourcePath
+	if sourcePath == "" {
+		sourcePath, ok = utils.JoinWithinBaseDir(wd, "cboard.db")
+		if !ok {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "无效的数据库路径", nil)
+			return
+		}
+	}
+	if _, err := os.Stat(sourcePath); err == nil {
+		if copyErr := backup_service.WriteDBEntryToZip(zipWriter, sourcePath); copyErr != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "写入数据库备份失败", copyErr)
+			return
 		}
 	}
 
@@ -127,11 +143,10 @@ func CreateBackup(c *gin.Context) {
 		"async":    false,
 	}
 
-	db := database.GetDB()
 	remoteCfg := backup_service.LoadRemoteBackupConfig(db)
 	backupTarget := remoteCfg.Target
 	if remoteCfg.CanPush() {
-		tmpFileName, tmpFilePath, tmpFileSize, err := backup_service.BuildDBOnlyBackupZip(wd, backupDir, utils.GetBeijingTime())
+		tmpFileName, tmpFilePath, tmpFileSize, err := backup_service.BuildDBOnlyBackupZip(wd, backupDir, utils.GetBeijingTime(), dbSourcePath)
 		if err != nil {
 			utils.LogWarn("创建数据库备份文件用于远程上传失败: %v", err)
 		} else {
@@ -178,9 +193,12 @@ func CreateBackup(c *gin.Context) {
 	}
 
 	response := gin.H{
-		"filename": backupFileName,
-		"path":     backupPath,
-		"size":     fileSize,
+		"filename":          backupFileName,
+		"path":              backupPath,
+		"size":              fileSize,
+		"db_cleaned":        cleanedSize > 0,
+		"db_original_size":  rawDBSize,
+		"db_cleaned_size":   cleanedSize,
 	}
 
 	// 根据目标平台设置响应字段

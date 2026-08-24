@@ -137,7 +137,10 @@ func DefaultPlatformConfig(target string) PlatformBackupConfig {
 	}
 }
 
-func BuildDBOnlyBackupZip(wd, backupDir string, now time.Time) (string, string, int64, error) {
+// BuildDBOnlyBackupZip 构建仅含数据库文件的备份 zip（用于远端上传）。
+// dbSourcePath 为数据库来源文件路径（通常是清理后的临时副本）；为空时回退为 wd 下的原始 cboard.db。
+// zip 内条目名固定为 cboard.db，与恢复流程保持一致。
+func BuildDBOnlyBackupZip(wd, backupDir string, now time.Time, dbSourcePath string) (string, string, int64, error) {
 	backupFileName := fmt.Sprintf("backup_db_%s.zip", now.Format("20060102_150405"))
 	backupFilePath, ok := utils.JoinWithinBaseDir(backupDir, backupFileName)
 	if !ok {
@@ -150,33 +153,20 @@ func BuildDBOnlyBackupZip(wd, backupDir string, now time.Time) (string, string, 
 	}
 
 	zipWriter := zip.NewWriter(zipFile)
-	dbPath, ok := utils.JoinWithinBaseDir(wd, "cboard.db")
-	if ok {
-		if _, statErr := os.Stat(dbPath); statErr == nil {
-			dbFile, openErr := os.Open(dbPath)
-			if openErr != nil {
-				_ = zipWriter.Close()
-				_ = zipFile.Close()
-				return "", "", 0, openErr
-			}
-			writer, createErr := zipWriter.Create("cboard.db")
-			if createErr != nil {
-				_ = dbFile.Close()
-				_ = zipWriter.Close()
-				_ = zipFile.Close()
-				return "", "", 0, createErr
-			}
-			if _, copyErr := io.Copy(writer, dbFile); copyErr != nil {
-				_ = dbFile.Close()
-				_ = zipWriter.Close()
-				_ = zipFile.Close()
-				return "", "", 0, copyErr
-			}
-			if closeErr := dbFile.Close(); closeErr != nil {
-				_ = zipWriter.Close()
-				_ = zipFile.Close()
-				return "", "", 0, closeErr
-			}
+	sourcePath := dbSourcePath
+	if sourcePath == "" {
+		sourcePath, ok = utils.JoinWithinBaseDir(wd, "cboard.db")
+		if !ok {
+			_ = zipWriter.Close()
+			_ = zipFile.Close()
+			return "", "", 0, fmt.Errorf("invalid db path")
+		}
+	}
+	if _, statErr := os.Stat(sourcePath); statErr == nil {
+		if err := WriteDBEntryToZip(zipWriter, sourcePath); err != nil {
+			_ = zipWriter.Close()
+			_ = zipFile.Close()
+			return "", "", 0, err
 		}
 	}
 
@@ -267,4 +257,22 @@ func isSensitiveKey(key string) bool {
 		}
 	}
 	return false
+}
+
+// WriteDBEntryToZip 将数据库文件以条目名 cboard.db 写入 zip（本地/远端备份共用）
+func WriteDBEntryToZip(zipWriter *zip.Writer, sourcePath string) error {
+	dbFile, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer dbFile.Close()
+
+	writer, err := zipWriter.Create("cboard.db")
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(writer, dbFile); err != nil {
+		return err
+	}
+	return nil
 }
