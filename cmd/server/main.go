@@ -184,6 +184,13 @@ func ensureDefaultAdmin() {
 
 	username := "admin"
 	email := "admin@example.com"
+	// 支持环境变量覆盖默认管理员用户名/邮箱（与 scripts/admin_tool 一致）
+	if v := os.Getenv("ADMIN_USERNAME"); v != "" {
+		username = v
+	}
+	if v := os.Getenv("ADMIN_EMAIL"); v != "" {
+		email = v
+	}
 
 	var user models.User
 	err := db.Where("username = ? OR email = ?", username, email).First(&user).Error
@@ -197,7 +204,15 @@ func ensureDefaultAdmin() {
 		return
 	}
 
-	password := generateRandomPassword()
+	// 首次创建管理员时：优先使用 ADMIN_PASSWORD 环境变量（部署可预测、重建不随机），
+	// 未设置则生成随机密码并打印到日志（仅显示一次）。
+	password := os.Getenv("ADMIN_PASSWORD")
+	if password == "" {
+		password = generateRandomPassword()
+	} else if len(password) < 6 {
+		log.Println("警告: ADMIN_PASSWORD 长度不足 6 位，忽略并使用随机密码")
+		password = generateRandomPassword()
+	}
 	hashed, err := auth.HashPassword(password)
 	if err != nil {
 		log.Printf("生成管理员密码哈希失败: %v", err)
@@ -222,10 +237,14 @@ func ensureDefaultAdmin() {
 	log.Printf("管理员账号已自动创建")
 	log.Printf("用户名: %s", username)
 	log.Printf("邮箱: %s", email)
-	log.Printf("初始密码: %s", password)
+	if os.Getenv("ADMIN_PASSWORD") != "" {
+		log.Println("密码: [使用环境变量 ADMIN_PASSWORD 配置的密码]")
+	} else {
+		log.Printf("初始密码: %s", password)
+		log.Println("⚠️  此密码仅显示一次，请妥善保存！")
+	}
 	log.Println("========================================")
 	log.Println("⚠️  请立即登录并修改密码！")
-	log.Println("⚠️  此密码仅显示一次，请妥善保存！")
 	log.Println("========================================")
 }
 
