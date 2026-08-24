@@ -281,7 +281,9 @@ func testBackupConnection(c *gin.Context, target string) {
 	_ = c.ShouldBindJSON(&req) // 请求体可为空，允许使用已保存配置
 
 	platformCfg := backup_service.LoadPlatformConfig(database.GetDB(), target)
-	if req.Token == "" {
+	// 前端在 token 为脱敏掩码（"******"）时应不回传；这里双保险：
+	// 请求体 token 为空或为掩码时，一律使用数据库已保存的真实 token。
+	if req.Token == "" || req.Token == maskedSecretValue {
 		req.Token = platformCfg.Token
 	}
 	if req.Owner == "" {
