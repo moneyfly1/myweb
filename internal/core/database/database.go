@@ -34,11 +34,18 @@ func InitDatabase() error {
 	if strings.Contains(cfg.DatabaseURL, "sqlite") {
 		dbPath := strings.Replace(cfg.DatabaseURL, "sqlite:///./", "", 1)
 		dbPath = strings.Replace(dbPath, "sqlite:///", "", 1)
+		// 相对路径统一锚定到可执行文件所在目录，避免因启动目录不同而静默新建数据库
+		// （例如从其它目录手动启动 ./server 会在该目录生成一个全新的空库，造成"数据丢失"假象）
 		if !filepath.IsAbs(dbPath) {
-			dbPath = filepath.Join(".", dbPath)
+			if exePath, exeErr := os.Executable(); exeErr == nil {
+				dbPath = filepath.Join(filepath.Dir(exePath), dbPath)
+			} else {
+				dbPath = filepath.Join(".", dbPath)
+			}
 		}
 
 		dialector = sqlite.Open(dbPath)
+		log.Printf("SQLite 数据库路径: %s（%s）", dbPath, dbFileState(dbPath))
 	} else if strings.Contains(cfg.DatabaseURL, "mysql") ||
 		os.Getenv("USE_MYSQL") == "true" {
 		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Asia%%2FShanghai",
@@ -608,4 +615,39 @@ func NullTime(t time.Time) sql.NullTime {
 		Time:  t,
 		Valid: !t.IsZero(),
 	}
+}
+
+// dbFileState 返回 SQLite 数据库文件的状态描述：存在或将被新建。
+func dbFileState(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "文件不存在，将创建全新数据库"
+	}
+	if info.IsDir() {
+		return "路径是目录（配置异常）"
+	}
+	return "已存在，使用现有数据库"
+}
+
+// IsSQLiteFreshDB 判断 SQLite 数据库文件是否不存在（即将新建）。
+// 供启动流程检测"将创建全新数据库"的场景并告警。
+func IsSQLiteFreshDB() bool {
+	if DB == nil {
+		return false
+	}
+	cfg := config.AppConfig
+	if cfg == nil || !strings.Contains(cfg.DatabaseURL, "sqlite") {
+		return false
+	}
+	path := strings.Replace(cfg.DatabaseURL, "sqlite:///./", "", 1)
+	path = strings.Replace(path, "sqlite:///", "", 1)
+	if !filepath.IsAbs(path) {
+		if exePath, exeErr := os.Executable(); exeErr == nil {
+			path = filepath.Join(filepath.Dir(exePath), path)
+		} else {
+			path = filepath.Join(".", path)
+		}
+	}
+	_, err := os.Stat(path)
+	return os.IsNotExist(err)
 }
