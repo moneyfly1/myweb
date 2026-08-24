@@ -712,7 +712,7 @@ export default {
   }
 }
 .config-buttons-group {
-  .el-form-item__content {
+  :deep(.el-form-item__content) {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
@@ -738,6 +738,7 @@ export default {
         min-height: 44px;
         margin-bottom: 10px;
         margin-right: 0 !important;
+        margin-left: 0 !important; /* 覆盖 el-button+el-button 默认 margin-left:12px，保证纵向对齐 */
         box-sizing: border-box;
       }
       .config-action-btn:last-child {
