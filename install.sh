@@ -659,6 +659,84 @@ auto_rollback_on_failure() {
     return 1
 }
 
+# 升级预演：用【真实生产数据的副本】在新版本上试跑一次迁移+启动。
+# 预演通过才允许正式升级；预演失败立即中止（生产服务完全不受影响）。
+# 这是"尽量保证升级成功"的最强保障：迁移在真实数据上先跑通一遍。
+dry_run_upgrade() {
+    local dry_dir="/tmp/cboard_upgrade_dryrun"
+    local dry_port="19123"
+
+    log "开始升级预演（用生产数据副本试跑新版本，不影响生产）..."
+    rm -rf "$dry_dir" && mkdir -p "$dry_dir"
+
+    # 1) 复制生产数据库（副本）
+    local db_path
+    db_path="$(detect_db_path)"
+    if [[ -z "$db_path" || ! -f "$db_path" ]]; then
+        error "无法定位生产数据库（$db_path），预演中止"
+        return 1
+    fi
+    cp "$db_path" "$dry_dir/cboard.db"
+    [[ -f "${db_path}-wal" ]] && cp "${db_path}-wal" "$dry_dir/cboard.db-wal"
+    [[ -f "${db_path}-shm" ]] && cp "${db_path}-shm" "$dry_dir/cboard.db-shm"
+    log "  已复制数据库副本 ($(du -h "$db_path" | cut -f1))"
+
+    # 端口占用检查
+    if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:${dry_port}/health"; then
+        error "预演端口 ${dry_port} 被占用，请调整 dry_run_upgrade 的 dry_port"
+        return 1
+    fi
+
+    # 2) 用副本启动新版本（绝对 DB 路径避免锚定问题）
+    cd "$dry_dir" || return 1
+    PORT="$dry_port" HOST="127.0.0.1" \
+        DATABASE_URL="sqlite:///${dry_dir}/cboard.db" \
+        SECRET_KEY="dryrun-$(date +%s)" \
+        DISABLE_SCHEDULE_TASKS="true" \
+        "$PROJECT_DIR/server" > "$dry_dir/run.log" 2>&1 &
+    local dry_pid=$!
+
+    # 3) 等待健康检查（最多 40 秒；GeoIP 下载可能较慢）
+    local ok=0
+    for i in $(seq 1 20); do
+        sleep 2
+        if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:${dry_port}/health"; then
+            ok=1; break
+        fi
+        if ! kill -0 "$dry_pid" 2>/dev/null; then
+            break # 进程已退出 = 启动失败
+        fi
+    done
+
+    # 4) 检查迁移结果：金额列应为 decimal/非整型，且迁移标记存在
+    local migrated=0
+    local col_type
+    col_type="$(/usr/bin/sqlite3 "$dry_dir/cboard.db" "SELECT type FROM pragma_table_info('payment_transactions') WHERE name='amount';" 2>/dev/null)"
+    local mark
+    mark="$(/usr/bin/sqlite3 "$dry_dir/cboard.db" "SELECT value FROM system_configs WHERE key='payment_amount_unit' AND category='migration';" 2>/dev/null)"
+    if [[ -n "$col_type" && "$col_type" != *INT* ]] && [[ "$mark" == "yuan" ]]; then
+        migrated=1
+    fi
+
+    kill "$dry_pid" 2>/dev/null; sleep 1; pkill -9 -f "$dry_dir" 2>/dev/null
+
+    if [[ "$ok" == "1" && "$migrated" == "1" ]]; then
+        log "✅ 升级预演通过：新版本在真实数据副本上启动成功，金额迁移完成"
+        log "   金额列类型: $col_type | 迁移标记: $mark"
+        return 0
+    fi
+
+    # 预演失败：输出诊断
+    error "❌ 升级预演失败！生产服务未受影响，正式升级已中止。"
+    error "   健康检查: $([ "$ok" == 1 ] && echo '通过' || echo '失败') | 迁移检查: $([ "$migrated" == 1 ] && echo '通过' || echo '失败')"
+    if [[ -f "$dry_dir/run.log" ]]; then
+        error "   预演日志关键行："
+        grep -aE "迁移|失败|panic|error|Error|中止" "$dry_dir/run.log" | head -8 | sed 's/^/     /'
+    fi
+    error "   请将上方日志提供给开发者，或人工处理。回退点已保留。"
+    return 1
+}
+
 backup_database_before_upgrade() {
     local backup_dir="${PROJECT_DIR}/uploads/backups"
     mkdir -p "$backup_dir" || { warn "创建备份目录失败: $backup_dir"; return 1; }
@@ -1150,6 +1228,12 @@ sync_from_github() {
         return 1
     fi
     cd ..
+
+    # ===== 升级预演：用真实数据副本试跑新版本，通过才继续 =====
+    if ! dry_run_upgrade; then
+        error "升级预演未通过，正式升级已中止（生产服务保持旧版本运行，未受影响）"
+        return 1
+    fi
 
     # 检查并更新 Redis 配置（同步模式不阻塞等待输入）
     log "检查 Redis 配置状态（非交互模式）..."
