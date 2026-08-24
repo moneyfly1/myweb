@@ -18,17 +18,6 @@ import { useThemeStore } from './store/theme'
 import { initApi, cachedAPI } from './utils/api'
 import './styles/global.scss'
 
-// 全局消息配置：统一时长、分组去重（避免操作频繁时消息堆叠、遮挡关键操作）
-ElMessage.config({
-  duration: 2500,
-  grouping: true,
-  max: 3
-})
-ElNotification.config({
-  duration: 3500,
-  grouping: true
-})
-
 // 尽早预热公共设置缓存，让路由守卫直接命中缓存
 cachedAPI.getPublicSettings().catch(() => {})
 
@@ -37,14 +26,18 @@ const pinia = createPinia()
 app.use(pinia)
 app.use(router)
 initApi(router, useAuthStore)
-provideGlobalConfig({ locale: zhCn }, app, true)
+// 全局配置：语言 + 消息统一时长/分组去重（避免操作频繁时消息堆叠、遮挡关键操作）
+provideGlobalConfig({
+  locale: zhCn,
+  message: { duration: 2500, grouping: true, max: 3 }
+}, app, true)
 app.use(ElLoading)
 app.use(ElMessage)
 app.use(ElMessageBox)
 app.use(ElNotification)
 
 app.config.errorHandler = (err, vm, info) => {
-  if (process.env.NODE_ENV === 'development') {
+  if (import.meta.env.DEV) {
     console.error('Vue error:', err, info)
   }
 }
