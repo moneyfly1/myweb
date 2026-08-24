@@ -184,7 +184,48 @@ func main() {
 		report("ok", "custom_nodes 不存在（新库自动创建）")
 	}
 
-	// ---------- 5. orders.fulfilled_at ----------
+	// ---------- 5. 支付配置密钥完整性 ----------
+	fmt.Println("\n[5] 支付配置密钥完整性（防掩码污染）")
+	if tableExists(db, dialect, "payment_configs") {
+		type pcRow struct {
+			ID       int
+			PayType  string
+			Priv     sql.NullString
+			Alipub   sql.NullString
+		}
+		var rows []pcRow
+		if err := db.Table("payment_configs").Select("id, pay_type, merchant_private_key, alipay_public_key").Scan(&rows).Error; err == nil {
+			if len(rows) == 0 {
+				report("ok", "无支付配置（不影响升级）")
+			}
+			for _, r := range rows {
+				bad := []string{}
+				if r.Priv.Valid {
+					if r.Priv.String == "******" || strings.TrimSpace(r.Priv.String) == "" {
+						bad = append(bad, "私钥被掩码/为空")
+					} else if !strings.Contains(r.Priv.String, "-----BEGIN") {
+						bad = append(bad, "私钥格式异常(非PEM)")
+					}
+				}
+				if r.Alipub.Valid {
+					if r.Alipub.String == "******" || strings.TrimSpace(r.Alipub.String) == "" {
+						bad = append(bad, "公钥被掩码/为空")
+					}
+				}
+				if len(bad) > 0 {
+					report("fail", fmt.Sprintf("支付配置 id=%d (%s): %s——支付回调将验签失败！需在管理后台重新保存正确的密钥", r.ID, r.PayType, strings.Join(bad, "、")))
+				} else {
+					report("ok", fmt.Sprintf("支付配置 id=%d (%s) 密钥完整", r.ID, r.PayType))
+				}
+			}
+		} else {
+			report("ok", "payment_configs 表读取跳过")
+		}
+	} else {
+		report("ok", "payment_configs 不存在（新库自动创建）")
+	}
+
+	// ---------- 6. orders.fulfilled_at ----------
 	fmt.Println("\n[5] orders.fulfilled_at 列")
 	if tableExists(db, dialect, "orders") {
 		if columnExists(db, dialect, "orders", "fulfilled_at") {
@@ -197,7 +238,7 @@ func main() {
 	}
 
 	// ---------- 6. 数据量概览 ----------
-	fmt.Println("\n[6] 数据量概览（估算迁移耗时）")
+	fmt.Println("\n[7] 数据量概览（估算迁移耗时）")
 	for _, t := range []string{"users", "orders", "subscriptions", "payment_transactions", "audit_logs", "devices"} {
 		if tableExists(db, dialect, t) {
 			var cnt int64
