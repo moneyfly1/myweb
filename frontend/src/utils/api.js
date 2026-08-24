@@ -535,6 +535,7 @@ export const nodeAPI = {
   testUserNode: (id) => api.post(`/nodes/${id}/test`),
   batchTestUserNodes: (data) => api.post('/nodes/batch-test', data),
   importFromClash: (config) => api.post('/nodes/import-from-clash', { clash_config: config }),
+  importNodeSubscription: (url) => api.post('/admin/nodes/import-subscription', { url }),
   getNodesStats: () => api.get('/admin/nodes/stats'),
   getAdminNodes: (params) => api.get('/admin/nodes', { params }),
   getAdminNode: (id) => api.get(`/admin/nodes/${id}`),

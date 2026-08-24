@@ -256,13 +256,23 @@
               </div>
             </div>
           </el-tab-pane>
-          <el-tab-pane label="手动填写" name="manual">
-            <div class="form-container">
+          <el-tab-pane label="订阅地址导入" name="subscription">
+            <div class="import-section">
+              <el-alert title="粘贴订阅链接，系统自动拉取并解析（支持 base64 订阅、Clash YAML、节点链接列表等格式）" type="info" :closable="false" show-icon />
+              <el-input
+                v-model="subUrlInput"
+                placeholder="请输入订阅链接，如 https://example.com/sub?token=xxx"
+                class="subscription-url-input"
+                clearable
+              />
+              <div class="subscription-tip">
+                导入前请确认订阅链接可正常访问；解析出的节点将自动添加为节点。
+              </div>
             </div>
           </el-tab-pane>
         </el-tabs>
         <el-form 
-          v-if="editingNode || addNodeTab === 'manual'" 
+          v-if="editingNode" 
           :model="nodeForm" 
           :label-position="isMobile ? 'top' : 'right'" 
           label-width="80px"
@@ -346,6 +356,9 @@
           <template v-if="!editingNode && addNodeTab === 'link'">
             <el-button type="warning" plain @click="parseNodeLink" :loading="parsing">仅解析预览</el-button>
             <el-button type="primary" @click="batchImportLinks" :loading="saving" :disabled="!nodeLinkInput">批量导入</el-button>
+          </template>
+          <template v-else-if="!editingNode && addNodeTab === 'subscription'">
+            <el-button type="primary" @click="importSubscription" :loading="importingSubscription" :disabled="!subUrlInput">导入订阅</el-button>
           </template>
           <el-button v-else type="primary" @click="saveNode" :loading="saving">保存节点</el-button>
         </FormActionBar>
@@ -479,6 +492,7 @@ export default {
     const handleSelectionChange = (val) => selectedNodes.value = val
     const handleAdd = () => {
       resetForm()
+      subUrlInput.value = ''
       showAddDialog.value = true
     }
     const handleCommand = (cmd) => {
@@ -544,6 +558,38 @@ export default {
         if (error !== 'cancel') ElMessage.error('删除节点失败: ' + (error.response?.data?.message || error.message))
       }
     }
+    const subUrlInput = ref('')
+    const importingSubscription = ref(false)
+    const importSubscription = async () => {
+      const url = (subUrlInput.value || '').trim()
+      if (!url) {
+        ElMessage.warning('请输入订阅链接')
+        return
+      }
+      importingSubscription.value = true
+      try {
+        const res = await adminAPI.importNodeSubscription(url)
+        const data = res.data?.data ?? {}
+        const imported = data.imported ?? 0
+        const total = data.total ?? imported
+        if (imported > 0) {
+          ElMessage.success(`订阅解析出 ${total} 个节点，成功导入 ${imported} 个`)
+          showAddDialog.value = false
+          loadNodes()
+        } else {
+          ElMessage.warning(res.data?.message || '订阅中没有解析到节点')
+        }
+      } catch (e) {
+        if (e.code === 'ECONNABORTED' || (e.message && e.message.includes('timeout'))) {
+          ElMessage.error('订阅导入超时：订阅源响应过慢，请检查链接是否可访问后重试')
+        } else {
+          ElMessage.error('导入订阅失败: ' + (e.response?.data?.message || e.message))
+        }
+      } finally {
+        importingSubscription.value = false
+      }
+    }
+
     const batchTest = async () => {
       testing.value = true
       try {
@@ -686,7 +732,7 @@ export default {
       isMobile, tableRef, loading, testing, deleting, saving, parsing,
       nodes, selectedNodes, showAddDialog, editingNode,
       filters, pagination, nodeForm, regions, types, allNodeTypes,
-      searchKeyword, addNodeTab, nodeLinkInput, parsedNode, mobileNodeFields,
+      searchKeyword, addNodeTab, nodeLinkInput, parsedNode, subUrlInput, importingSubscription, importSubscription, mobileNodeFields,
       loadNodes, applyNodeFilters, debouncedApplyNodeFilters, resetNodeFilters, handleSelectionChange, handleMobileSelect,
       handleAdd, handleCommand, editNode, saveNode, deleteNode,
       batchTest, batchDelete, testNode, toggleNodeStatus,
