@@ -55,7 +55,9 @@ func buildXrayConfig(protocols []XrayProtocol) string {
 			// 现在域名模式下服务端补 TLS（acme 证书），与链接一致。
 			sb.WriteString(fmt.Sprintf(`    { "type": "vmess", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}" } ], "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem", "server_name": "%s" }, "transport": { "type": "ws", "path": "/${WS_%s}" } }%s`+"\n", key, p.Port, key, tlsServerName(p), key, comma))
 		case "vless-reality", "vless-reality-grpc", "vless-reality-xhttp":
-			flow := "xtls-rprx-vision"
+			// 注意：Reality 不启用 Vision flow（xtls-rprx-vision）——
+			// sing-box 1.12 客户端 Reality+Vision 组合初始化有兼容性问题
+			// （"vision: not a valid supported TLS connection"），v2rayN 测速会超时。
 			transport := ""
 			switch p.Key {
 			case "vless-reality-grpc":
@@ -67,7 +69,7 @@ func buildXrayConfig(protocols []XrayProtocol) string {
 			if transport != "" {
 				transportStr = fmt.Sprintf(transport, key)
 			}
-			sb.WriteString(fmt.Sprintf(`    { "type": "vless", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}", "flow": "%s" } ], "tls": { "enabled": true, "server_name": "%s", "reality": { "enabled": true, "handshake": { "server": "%s", "server_port": 443 }, "private_key": "${REALITY_PRIVATE_KEY}", "short_id": [ "${REALITY_SHORT_ID}" ] } }%s }%s`+"\n", key, p.Port, key, flow, defaultRealitySNI(p), defaultRealitySNI(p), transportStr, comma))
+			sb.WriteString(fmt.Sprintf(`    { "type": "vless", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}" } ], "tls": { "enabled": true, "server_name": "%s", "reality": { "enabled": true, "handshake": { "server": "%s", "server_port": 443 }, "private_key": "${REALITY_PRIVATE_KEY}", "short_id": [ "${REALITY_SHORT_ID}" ] } }%s }%s`+"\n", key, p.Port, key, defaultRealitySNI(p), defaultRealitySNI(p), transportStr, comma))
 		case "vless-grpc-tls":
 			sb.WriteString(fmt.Sprintf(`    { "type": "vless", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}" } ], "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem", "server_name": "%s" }, "transport": { "type": "grpc", "service_name": "/${WS_%s}" } }%s`+"\n", key, p.Port, key, tlsServerName(p), key, comma))
 		case "vless-tcp-tls":
@@ -120,15 +122,16 @@ LINK_%s="vmess://$(echo -n "$VJSON_%s" | base64 -w0 | tr -d '=')"
 LINKS+=("$LINK_%s")
 `+"\n", key, protoLabel(p.Key), p.Port, key, key, key, key, key))
 		case "vless-reality":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=tcp#${SERVER_ADDR}-%s"
+			// Reality 不带 flow（vision 兼容性问题，见 buildXrayConfig 注释）
+			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?encryption=none&security=reality&sni=%s&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=tcp#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, defaultRealitySNI(p), protoLabel(p.Key), key))
 		case "vless-reality-grpc":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=grpc&serviceName=%%2F${WS_%s}#${SERVER_ADDR}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?encryption=none&security=reality&sni=%s&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=grpc&serviceName=%%2F${WS_%s}#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, defaultRealitySNI(p), key, protoLabel(p.Key), key))
 		case "vless-reality-xhttp":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=httpupgrade&path=%%2F${WS_%s}#${SERVER_ADDR}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?encryption=none&security=reality&sni=%s&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=httpupgrade&path=%%2F${WS_%s}#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, defaultRealitySNI(p), key, protoLabel(p.Key), key))
 		case "vless-grpc-tls":
