@@ -657,6 +657,7 @@ export const adminAPI = {
   getCustomNodeLink: (id) => api.get(`/admin/custom-nodes/${id}/link`),
   deploySelfHostVPS: (data) => api.post('/admin/custom-nodes/selfhost/deploy', data),
   deploySelfHostVPSDomain: (data) => api.post('/admin/custom-nodes/selfhost/deploy-domain', data),
+  getSavedSelfHostVPS: () => api.get('/admin/custom-nodes/selfhost/saved-vps'),
   selfHostTrafficLimit: (id, data) => api.post(`/admin/custom-nodes/selfhost/${id}/traffic-limit`, data),
   selfHostResetTraffic: (id) => api.post(`/admin/custom-nodes/selfhost/${id}/reset-traffic`),
   selfHostUpdateSSH: (id, data) => api.post(`/admin/custom-nodes/selfhost/${id}/update-ssh`, data),
