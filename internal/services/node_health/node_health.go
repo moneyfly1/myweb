@@ -51,7 +51,9 @@ func (s *NodeHealthService) loadConfig() {
 		configMap[config.Key] = config.Value
 	}
 
-	if testURL, ok := configMap["test_url"]; ok && testURL != "" {
+	if testURL, ok := configMap["test_url"]; ok {
+		// 允许显式保存空值以禁用网页测试（仅 TCP 探测）；
+		// 只有未配置该项时才使用默认值。
 		s.testURL = testURL
 	}
 
@@ -278,20 +280,53 @@ func (s *NodeHealthService) UpdateNodeStatus(result *TestResult) error {
 		"updated_at": now,
 	}
 
-	if result.Status == "timeout" || result.Status == "offline" {
-		updates["is_active"] = false
-	} else if result.Status == "online" {
-		updates["is_active"] = true
+	// 自动屏蔽超时/离线节点开关（system_configs category=node_health key=auto_disable_timeout）
+	// 开启时：检测到 timeout/offline 的节点自动置 is_active=false，用户订阅将不再包含失效节点。
+	if s.autoDisableTimeoutEnabled() {
+		if result.Status == "timeout" || result.Status == "offline" {
+			updates["is_active"] = false
+		} else if result.Status == "online" {
+			updates["is_active"] = true
+		}
 	}
 
 	return s.db.Model(&models.Node{}).Where("id = ?", result.NodeID).Updates(updates).Error
 }
 
+// autoDisableTimeoutEnabled 读取自动屏蔽超时节点开关（默认开启）。
+func (s *NodeHealthService) autoDisableTimeoutEnabled() bool {
+	var cfg models.SystemConfig
+	if err := s.db.Where("key = ? AND category = ?", "auto_disable_timeout", "node_health").First(&cfg).Error; err == nil {
+		return cfg.Value != "false" && cfg.Value != "0"
+	}
+	return true // 默认开启：保证用户订阅不到失效节点
+}
+
+// DisableTimeoutNodes 一键屏蔽所有状态为 timeout/offline 的节点（is_active=false）。
+// 返回被屏蔽的节点数。selfHosted 为 true 时同时处理自建节点（自建节点状态由心跳维护，
+// 若心跳超时已 offline，同样应屏蔽）。
+func (s *NodeHealthService) DisableTimeoutNodes() (int, error) {
+	res := s.db.Model(&models.Node{}).
+		Where("is_active = ? AND status IN ?", true, []string{"timeout", "offline"}).
+		Update("is_active", false)
+	return int(res.RowsAffected), res.Error
+}
+
+// EnableAllNodes 一键启用所有节点（is_active=true，管理员手动恢复用）。
+func (s *NodeHealthService) EnableAllNodes() (int, error) {
+	// GORM 默认拒绝无 Where 的全表 Update（ErrMissingWhereClause），
+	// 这里用恒真条件显式声明"全表"意图。
+	res := s.db.Model(&models.Node{}).Where("1 = 1").Update("is_active", true)
+	return int(res.RowsAffected), res.Error
+}
+
 func (s *NodeHealthService) CheckAllNodes() error {
 	// 检查全部节点（含 is_active=false 的离线节点），
 	// 否则节点一旦被置为离线就永远不会再被健康检查覆盖，无法自动恢复
+	// 注意：自建节点（self_hosted=true）的在线状态由心跳机制独占维护，
+	// 不参与自动健康检查，避免 TCP 探测覆盖心跳判定的 online/offline 状态。
 	var nodes []models.Node
-	if err := s.db.Find(&nodes).Error; err != nil {
+	if err := s.db.Where("self_hosted = ?", false).Find(&nodes).Error; err != nil {
 		return err
 	}
 

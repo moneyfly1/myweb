@@ -122,6 +122,10 @@ func GetCustomNodeUsers(c *gin.Context) {
 				"special_node_subscription_type": un.User.SpecialNodeSubscriptionType,
 				"special_node_expires_at":        un.User.SpecialNodeExpiresAt,
 				"special_node_unlimited_devices": un.User.SpecialNodeUnlimitedDevices,
+				// 分配级流量配额（客户独享节点时按分配设配额）
+				"traffic_limit_enabled": un.TrafficLimitEnabled,
+				"traffic_limit_bytes":   un.TrafficLimitBytes,
+				"traffic_used":          node.TrafficUp + node.TrafficDown,
 			})
 		}
 	}
@@ -658,11 +662,23 @@ func DeleteCustomNode(c *gin.Context) {
 
 	db.Where("custom_node_id = ?", nodeID).Delete(&models.UserCustomNode{})
 
+	// 自建节点联动：删除主节点时，一并删除同 install_id 的多协议子节点（避免孤儿记录）
+	siblingCount := int64(0)
+	if node.SelfHosted && node.InstallID != "" {
+		var siblingIDs []uint
+		db.Model(&models.CustomNode{}).Where("install_id = ? AND id != ?", node.InstallID, node.ID).Pluck("id", &siblingIDs)
+		if len(siblingIDs) > 0 {
+			db.Where("custom_node_id IN ?", siblingIDs).Delete(&models.UserCustomNode{})
+			db.Where("id IN ?", siblingIDs).Delete(&models.CustomNode{})
+			siblingCount = int64(len(siblingIDs))
+		}
+	}
+
 	if err := db.Delete(&node).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除失败: "+err.Error(), err)
 		return
 	}
-	utils.CreateAuditLogSimple(c, "delete_custom_node", "custom_node", node.ID, fmt.Sprintf("管理员操作: 删除专线节点 %s，同时取消 %d 个用户的分配", node.Name, len(affectedUserIDs)))
+	utils.CreateAuditLogSimple(c, "delete_custom_node", "custom_node", node.ID, fmt.Sprintf("管理员操作: 删除专线节点 %s，同时取消 %d 个用户的分配"+(map[bool]string{true: "，并联动删除 %d 个自建子节点"})[siblingCount > 0], node.Name, len(affectedUserIDs), siblingCount))
 	for _, uid := range affectedUserIDs {
 		clearUserCustomNodeCache(uid)
 		resetSpecialNodeFieldsIfNoCustomNodes(db, uid)
@@ -692,11 +708,25 @@ func BatchDeleteCustomNodes(c *gin.Context) {
 
 	db.Where("custom_node_id IN ?", req.NodeIDs).Delete(&models.UserCustomNode{})
 
+	// 自建节点联动：删除主节点时，一并删除同 install_id 的多协议子节点（避免孤儿记录）
+	var orphanIDs []uint
+	for _, n := range deletingNodes {
+		if n.SelfHosted && n.InstallID != "" {
+			var sibIDs []uint
+			db.Model(&models.CustomNode{}).Where("install_id = ? AND id NOT IN ?", n.InstallID, req.NodeIDs).Pluck("id", &sibIDs)
+			orphanIDs = append(orphanIDs, sibIDs...)
+		}
+	}
+	if len(orphanIDs) > 0 {
+		db.Where("custom_node_id IN ?", orphanIDs).Delete(&models.UserCustomNode{})
+		db.Where("id IN ?", orphanIDs).Delete(&models.CustomNode{})
+	}
+
 	if err := db.Where("id IN ?", req.NodeIDs).Delete(&models.CustomNode{}).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "批量删除失败: "+err.Error(), err)
 		return
 	}
-	utils.CreateAuditLogSimple(c, "batch_delete_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 批量删除专线节点 %d 个 [%s]，同时取消 %d 个用户的分配", len(req.NodeIDs), joinNodeNames(deletingNodes), len(batchAffectedUserIDs)))
+	utils.CreateAuditLogSimple(c, "batch_delete_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 批量删除专线节点 %d 个 [%s]，同时取消 %d 个用户的分配%s", len(req.NodeIDs), joinNodeNames(deletingNodes), len(batchAffectedUserIDs), map[bool]string{true: fmt.Sprintf("，并联动删除 %d 个自建子节点", len(orphanIDs))}[len(orphanIDs) > 0]))
 	for _, uid := range batchAffectedUserIDs {
 		clearUserCustomNodeCache(uid)
 		resetSpecialNodeFieldsIfNoCustomNodes(db, uid)
@@ -1026,6 +1056,12 @@ func TestCustomNode(c *gin.Context) {
 	node.Status = res.Status
 	node.Latency = res.Latency
 	node.LastTest = &now
+	// 自动屏蔽超时/离线专线节点（与普通节点同一开关）
+	if autoDisableTimeoutEnabled(db) && (res.Status == "timeout" || res.Status == "offline") {
+		node.IsActive = false
+	} else if res.Status == "online" {
+		node.IsActive = true
+	}
 	if err := db.Save(&node).Error; err != nil {
 		utils.LogError("TestCustomNode: save node failed", err, nil)
 	}
@@ -1127,6 +1163,12 @@ func BatchTestCustomNodes(c *gin.Context) {
 		node.Status = res.Status
 		node.Latency = res.Latency
 		node.LastTest = &now
+		// 自动屏蔽超时/离线专线节点（与普通节点同一开关：node_health.auto_disable_timeout）
+		if autoDisableTimeoutEnabled(db) && (res.Status == "timeout" || res.Status == "offline") {
+			node.IsActive = false
+		} else if res.Status == "online" {
+			node.IsActive = true
+		}
 		db.Save(node)
 
 		results = append(results, gin.H{
@@ -1134,6 +1176,7 @@ func BatchTestCustomNodes(c *gin.Context) {
 			"status":  res.Status,
 			"latency": res.Latency,
 			"message": res.Error,
+			"is_active": node.IsActive,
 		})
 	}
 
@@ -1151,6 +1194,88 @@ func BatchTestCustomNodes(c *gin.Context) {
 		"results": results,
 		"total":   len(req.NodeIDs),
 		"success": len(results),
+	})
+}
+
+// DisableTimeoutCustomNodes 一键屏蔽所有超时/离线的专线节点（is_active=false）。
+// POST /admin/custom-nodes/disable-timeout
+func DisableTimeoutCustomNodes(c *gin.Context) {
+	db := database.GetDB()
+	res := db.Model(&models.CustomNode{}).
+		Where("is_active = ? AND status IN ?", true, []string{"timeout", "offline"}).
+		Update("is_active", false)
+	disabled := int(res.RowsAffected)
+	if res.Error != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "屏蔽失败", res.Error)
+		return
+	}
+	clearNodeCaches()
+	utils.CreateAuditLogSimple(c, "disable_timeout_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 一键屏蔽 %d 个超时/离线专线节点", disabled))
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("已屏蔽 %d 个超时/离线专线节点", disabled), gin.H{
+		"disabled_count": disabled,
+	})
+}
+
+// EnableAllCustomNodes 一键启用所有专线节点（is_active=true）。
+// POST /admin/custom-nodes/enable-all
+func EnableAllCustomNodes(c *gin.Context) {
+	db := database.GetDB()
+	// GORM 默认拒绝无 Where 的全表 Update，用恒真条件显式声明全表意图
+	res := db.Model(&models.CustomNode{}).Where("1 = 1").Update("is_active", true)
+	enabled := int(res.RowsAffected)
+	if res.Error != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "启用失败", res.Error)
+		return
+	}
+	clearNodeCaches()
+	utils.CreateAuditLogSimple(c, "enable_all_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 一键启用 %d 个专线节点", enabled))
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("已启用 %d 个专线节点", enabled), gin.H{
+		"enabled_count": enabled,
+	})
+}
+
+// UpdateUserCustomNodeQuota 更新某个客户对某自建节点的分配级流量配额。
+// PUT /admin/custom-nodes/user-quota/:nodeId/:userId  body: {"enabled":true,"limit_bytes":107374182400}
+func UpdateUserCustomNodeQuota(c *gin.Context) {
+	nodeID := c.Param("nodeId")
+	userID := c.Param("userId")
+	var req struct {
+		Enabled    bool  `json:"enabled"`
+		LimitBytes int64 `json:"limit_bytes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
+		return
+	}
+	if req.Enabled && req.LimitBytes <= 0 {
+		utils.ErrorResponse(c, http.StatusBadRequest, "配额必须大于 0", nil)
+		return
+	}
+
+	db := database.GetDB()
+	var un models.UserCustomNode
+	if err := db.Where("user_id = ? AND custom_node_id = ?", parseUint(userID), parseUint(nodeID)).First(&un).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "该节点未分配给此客户", err)
+		return
+	}
+
+	if err := db.Model(&un).Updates(map[string]interface{}{
+		"traffic_limit_enabled": req.Enabled,
+		"traffic_limit_bytes":   req.LimitBytes,
+	}).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "更新配额失败", err)
+		return
+	}
+
+	var node models.CustomNode
+	db.First(&node, nodeID)
+	utils.CreateAuditLogSimple(c, "update_user_custom_node_quota", "custom_node", parseUint(nodeID),
+		fmt.Sprintf("管理员操作: 设置客户#%s 对节点 %s 的流量配额 %s", userID, node.Name, formatBytesHuman(req.LimitBytes)))
+
+	utils.SuccessResponse(c, http.StatusOK, "配额已更新", gin.H{
+		"enabled":     req.Enabled,
+		"limit_bytes": req.LimitBytes,
+		"used":        node.TrafficUp + node.TrafficDown,
 	})
 }
 
@@ -1262,10 +1387,12 @@ func AssignCustomNodeToUser(c *gin.Context) {
 	db := database.GetDB()
 
 	var req struct {
-		CustomNodeID     uint       `json:"custom_node_id" binding:"required"`
-		SubscriptionType string     `json:"subscription_type"`
-		ExpiresAt        *time.Time `json:"expires_at"`
-		UnlimitedDevices *bool      `json:"unlimited_devices"` // true = 不限制设备数量
+		CustomNodeID        uint       `json:"custom_node_id" binding:"required"`
+		SubscriptionType    string     `json:"subscription_type"`
+		ExpiresAt           *time.Time `json:"expires_at"`
+		UnlimitedDevices    *bool      `json:"unlimited_devices"` // true = 不限制设备数量
+		TrafficLimitEnabled bool       `json:"traffic_limit_enabled"` // 分配级流量配额
+		TrafficLimitBytes   int64      `json:"traffic_limit_bytes"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1280,8 +1407,10 @@ func AssignCustomNodeToUser(c *gin.Context) {
 	}
 
 	userNode := models.UserCustomNode{
-		UserID:       parseUint(userID),
-		CustomNodeID: req.CustomNodeID,
+		UserID:              parseUint(userID),
+		CustomNodeID:        req.CustomNodeID,
+		TrafficLimitEnabled: req.TrafficLimitEnabled,
+		TrafficLimitBytes:   req.TrafficLimitBytes,
 	}
 
 	if err := db.Create(&userNode).Error; err != nil {

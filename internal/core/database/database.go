@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -324,7 +325,201 @@ func AutoMigrate() error {
 	}
 
 	log.Println("数据库迁移成功")
+
+	// 恢复被重建的 custom_nodes 数据：旧版结构（缺 domain / 含旧字段 / protocol NOT NULL）
+	// 触发重建分支时，数据先备份到 custom_nodes_backup / custom_nodes_protocol_backup，
+	// 再由本函数在 AutoMigrate 建好新表后按共有列恢复回 custom_nodes，防止升级丢数据。
+	if err := restoreCustomNodesFromBackup(); err != nil {
+		log.Printf("警告: 恢复 custom_nodes 备份数据失败: %v", err)
+	}
+
+	// 自建节点迁移：旧版自建节点存在 nodes 表，现统一挂载到 custom_nodes（专线节点）体系。
+	if err := migrateSelfHostNodesToCustom(); err != nil {
+		log.Printf("警告: 自建节点迁移失败: %v", err)
+	}
+
 	return nil
+}
+
+// restoreCustomNodesFromBackup 把重建分支备份的 custom_nodes 数据恢复回新表。
+// 兼容两种备份表（旧版结构重建 → custom_nodes_backup；protocol NOT NULL 重建 → custom_nodes_protocol_backup）。
+// 按共有列恢复（旧表可能缺少新列，新表可能有旧表没有的默认列）；恢复后删除备份表。
+// 幂等：备份表不存在或为空时直接跳过；新表已有数据时不覆盖。
+func restoreCustomNodesFromBackup() error {
+	if DB == nil || !strings.Contains(DB.Dialector.Name(), "sqlite") {
+		return nil
+	}
+	backupTables := []string{"custom_nodes_backup", "custom_nodes_protocol_backup"}
+	for _, backupTable := range backupTables {
+		var exists int64
+		DB.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", backupTable).Scan(&exists)
+		if exists == 0 {
+			continue
+		}
+		// 备份表有数据且新表为空 → 恢复
+		var backupCount, newCount int64
+		DB.Raw("SELECT COUNT(*) FROM " + backupTable).Scan(&backupCount)
+		DB.Raw("SELECT COUNT(*) FROM custom_nodes").Scan(&newCount)
+		if backupCount == 0 {
+			DB.Exec("DROP TABLE " + backupTable)
+			log.Printf("备份表 %s 为空，已清理", backupTable)
+			continue
+		}
+		if newCount > 0 {
+			log.Printf("custom_nodes 已有 %d 条数据，跳过从 %s 恢复（保留备份表供人工核对）", newCount, backupTable)
+			continue
+		}
+		// 取两表共有列
+		common := commonColumnsOf("custom_nodes", backupTable)
+		if len(common) == 0 {
+			log.Printf("警告: %s 与 custom_nodes 无共有列，无法自动恢复（保留备份表供人工处理）", backupTable)
+			continue
+		}
+		colList := "`" + strings.Join(common, "`,`") + "`"
+		if err := DB.Exec("INSERT INTO custom_nodes (" + colList + ") SELECT " + colList + " FROM " + backupTable).Error; err != nil {
+			log.Printf("警告: 从 %s 恢复 custom_nodes 失败: %v（保留备份表）", backupTable, err)
+			continue
+		}
+		log.Printf("✅ 已从备份表 %s 恢复 %d 条 custom_nodes 数据", backupTable, backupCount)
+		if err := DB.Exec("DROP TABLE " + backupTable).Error; err != nil {
+			log.Printf("警告: 删除备份表 %s 失败: %v", backupTable, err)
+		}
+	}
+	return nil
+}
+
+// commonColumnsOf 返回两个表共有的列名列表（按 t1 顺序）。
+func commonColumnsOf(t1, t2 string) []string {
+	cols1 := tableColumnNames(t1)
+	cols2 := tableColumnNames(t2)
+	set2 := make(map[string]bool, len(cols2))
+	for _, c := range cols2 {
+		set2[c] = true
+	}
+	var common []string
+	for _, c := range cols1 {
+		if set2[c] {
+			common = append(common, c)
+		}
+	}
+	return common
+}
+
+// tableColumnNames 返回表的列名列表（SQLite pragma）。
+func tableColumnNames(table string) []string {
+	var cols []string
+	rows, err := DB.Raw("PRAGMA table_info(" + table + ")").Rows()
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			continue
+		}
+		cols = append(cols, name)
+	}
+	return cols
+}
+
+// migrateSelfHostNodesToCustom 把 nodes 表中 self_hosted=true 的记录迁移到 custom_nodes 表。
+// 幂等：custom_nodes 已有 install_id 的记录跳过；迁移完成后删除 nodes 表中的自建节点。
+func migrateSelfHostNodesToCustom() error {
+	var legacyNodes []models.Node
+	if err := DB.Where("self_hosted = ?", true).Find(&legacyNodes).Error; err != nil {
+		return err
+	}
+	if len(legacyNodes) == 0 {
+		return nil
+	}
+
+	migrated := 0
+	for _, n := range legacyNodes {
+		// 跳过已迁移的（custom_nodes 中存在相同 install_id）
+		var count int64
+		DB.Model(&models.CustomNode{}).Where("install_id = ?", n.InstallID).Count(&count)
+		if count > 0 {
+			continue
+		}
+
+		cn := models.CustomNode{
+			Name:              n.Name,
+			DisplayName:       n.Name,
+			Protocol:          n.SelfHostProtocol,
+			Domain:            extractNodeServerFromConfig(n.Config),
+			Port:              extractNodePortFromConfig(n.Config),
+			Config:            derefString(n.Config),
+			Status:            n.Status,
+			IsActive:          n.IsActive,
+			Latency:           n.Latency,
+			LastTest:          n.LastTest,
+			Source:            "selfhost",
+			SelfHosted:        true,
+			SelfHostProtocol:  n.SelfHostProtocol,
+			InstallID:         n.InstallID,
+			InstallToken:      n.InstallToken,
+			InstallExpiresAt:  n.InstallExpiresAt,
+			LastHeartbeatAt:   n.LastHeartbeatAt,
+			InstallCmd:        n.InstallCmd,
+			TrafficUp:         n.TrafficUp,
+			TrafficDown:       n.TrafficDown,
+			TrafficUpdatedAt:  n.TrafficUpdatedAt,
+			CreatedAt:         n.CreatedAt,
+			UpdatedAt:         n.UpdatedAt,
+		}
+		if err := DB.Create(&cn).Error; err != nil {
+			log.Printf("迁移自建节点 %s 失败: %v", n.Name, err)
+			continue
+		}
+		migrated++
+	}
+
+	if migrated > 0 {
+		// 迁移成功后删除 nodes 表中的自建节点（避免重复出现在普通节点列表）
+		if err := DB.Where("self_hosted = ?", true).Delete(&models.Node{}).Error; err != nil {
+			return fmt.Errorf("清理 nodes 表自建节点失败: %w", err)
+		}
+		log.Printf("自建节点迁移完成: %d 个节点已迁移到专线节点体系", migrated)
+	}
+	return nil
+}
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// extractNodeServerFromConfig 从节点 Config JSON 中提取 server 字段。
+func extractNodeServerFromConfig(config *string) string {
+	if config == nil || *config == "" {
+		return ""
+	}
+	var p struct {
+		Server string `json:"Server"`
+	}
+	_ = json.Unmarshal([]byte(*config), &p)
+	return p.Server
+}
+
+// extractNodePortFromConfig 从节点 Config JSON 中提取 port 字段。
+func extractNodePortFromConfig(config *string) int {
+	if config == nil || *config == "" {
+		return 443
+	}
+	var p struct {
+		Port int `json:"Port"`
+	}
+	_ = json.Unmarshal([]byte(*config), &p)
+	if p.Port <= 0 {
+		return 443
+	}
+	return p.Port
 }
 
 func repairSQLitePromotionParticipationsDDL() error {
