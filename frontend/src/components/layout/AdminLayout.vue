@@ -178,6 +178,7 @@ import {
   ArrowDown,
   Brush,
   Cellphone,
+  Promotion,
   Check,
   Close,
   Coin,
@@ -238,6 +239,7 @@ const iconMap = {
   knowledge: Reading,
   nodes: Monitor,
   customNodes: Connection,
+  selfHost: Promotion,
   configUpdate: Refresh,
   config: Setting,
   paymentConfig: Wallet,
@@ -315,6 +317,7 @@ const menuSections = computed(() => {
       items: [
         { path: '/admin/nodes', title: '节点列表', icon: 'nodes' },
         { path: '/admin/custom-nodes', title: '专线节点', icon: 'customNodes' },
+        { path: '/admin/selfhost-nodes', title: '自建节点', icon: 'selfHost' },
         { path: '/admin/config-update', title: '节点更新', icon: 'configUpdate' }
       ]
     },

@@ -23,6 +23,16 @@ import (
 	"gorm.io/gorm"
 )
 
+// autoDisableTimeoutEnabled 读取"自动屏蔽超时/离线节点"开关（category=node_health），
+// 普通节点与专线节点共用；未配置时默认开启（保证用户订阅不到失效节点）。
+func autoDisableTimeoutEnabled(db *gorm.DB) bool {
+	var cfg models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "auto_disable_timeout", "node_health").First(&cfg).Error; err == nil {
+		return cfg.Value != "false" && cfg.Value != "0"
+	}
+	return true
+}
+
 // clearNodeCaches 同步清除所有节点相关缓存，确保管理员操作后客户立即获取最新数据
 func clearNodeCaches() {
 	cs := cache_service.NewCacheService()
@@ -1187,6 +1197,37 @@ func BatchDeleteNodes(c *gin.Context) {
 
 	utils.CreateAuditLogSimple(c, "batch_delete_nodes", "node", 0, fmt.Sprintf("管理员操作: 批量删除节点 %d 个 [%s]", deletedCount, truncateDesc(strings.Join(deletingNodeNames, "、"))))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个节点", deletedCount), gin.H{"deleted_count": deletedCount})
+}
+
+// DisableTimeoutNodes 一键屏蔽所有超时/离线的普通节点（is_active=false），
+// 使用户订阅不再包含失效节点。POST /admin/nodes/disable-timeout
+func DisableTimeoutNodes(c *gin.Context) {
+	svc := node_health.NewNodeHealthService()
+	disabled, err := svc.DisableTimeoutNodes()
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "屏蔽失败", err)
+		return
+	}
+	clearNodeCaches()
+	utils.CreateAuditLogSimple(c, "disable_timeout_nodes", "node", 0, fmt.Sprintf("管理员操作: 一键屏蔽 %d 个超时/离线节点", disabled))
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("已屏蔽 %d 个超时/离线节点", disabled), gin.H{
+		"disabled_count": disabled,
+	})
+}
+
+// EnableAllNodes 一键启用所有普通节点（is_active=true）。POST /admin/nodes/enable-all
+func EnableAllNodes(c *gin.Context) {
+	svc := node_health.NewNodeHealthService()
+	enabled, err := svc.EnableAllNodes()
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "启用失败", err)
+		return
+	}
+	clearNodeCaches()
+	utils.CreateAuditLogSimple(c, "enable_all_nodes", "node", 0, fmt.Sprintf("管理员操作: 一键启用 %d 个节点", enabled))
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("已启用 %d 个节点", enabled), gin.H{
+		"enabled_count": enabled,
+	})
 }
 
 func ImportFromClash(c *gin.Context) {

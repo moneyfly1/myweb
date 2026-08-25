@@ -609,8 +609,15 @@
                   <el-input v-model="nodeHealthSettings.test_url" placeholder="例如: https://ping.pe" />
                   <div class="form-tip">用于 HTTP 延迟测试，不填则仅测 TCP 端口。</div>
                 </el-form-item>
-                <div class="mt-3">
+                <el-form-item label="自动屏蔽失效节点" class="mt-3">
+                  <el-switch v-model="nodeHealthSettings.auto_disable_timeout" />
+                  <div class="form-tip">开启后，健康检测到超时/离线的节点（含采集节点与专线节点）会自动禁用，用户订阅中不再出现失效节点。</div>
+                </el-form-item>
+                <div class="mt-3 node-health-actions">
                   <el-button type="primary" @click="saveNodeHealthSettings" :class="{ 'full-width': isMobile }">保存监控配置</el-button>
+                  <el-button type="danger" plain @click="disableAllTimeoutNodes" :loading="disablingTimeout" :class="{ 'full-width': isMobile }">
+                    一键屏蔽所有超时/离线节点
+                  </el-button>
                 </div>
               </el-form>
             </div>
@@ -1224,7 +1231,8 @@ export default {
     const adminNotificationSettings = reactive({ ...adminNotificationDefaults })
     const announcementSettings = reactive({ announcement_enabled: false, announcement_content: '' })
     const nodeHealthSettings = reactive({
-      check_interval: 30, max_latency: 3000, test_timeout: 5, test_url: 'https://ping.pe'
+      check_interval: 30, max_latency: 3000, test_timeout: 5, test_url: 'https://ping.pe',
+      auto_disable_timeout: true
     })
     const backupSettings = reactive({
       backup_target: 'gitee',
@@ -1360,6 +1368,7 @@ export default {
         if (data.node_health) {
           Object.assign(nodeHealthSettings, data.node_health)
           if (data.node_health.test_url) nodeHealthSettings.test_url = data.node_health.test_url
+          if (data.node_health.auto_disable_timeout !== undefined) nodeHealthSettings.auto_disable_timeout = toBool(data.node_health.auto_disable_timeout)
         }
         if (data.registration) Object.assign(registrationSettings, data.registration)
         if (data.cleanup) {
@@ -1527,9 +1536,29 @@ export default {
     const saveNodeHealthSettings = () => {
       const data = {
         node_health_check_interval: String(nodeHealthSettings.check_interval), node_max_latency: String(nodeHealthSettings.max_latency),
-        node_test_timeout: String(nodeHealthSettings.test_timeout), test_url: nodeHealthSettings.test_url
+        node_test_timeout: String(nodeHealthSettings.test_timeout), test_url: nodeHealthSettings.test_url,
+        auto_disable_timeout: nodeHealthSettings.auto_disable_timeout ? 'true' : 'false'
       }
       return handleSave(() => api.put('/admin/settings/node_health', data), '监控配置保存成功')
+    }
+    // 一键屏蔽所有超时/离线节点（普通 + 专线），确保用户订阅不到失效节点
+    const disablingTimeout = ref(false)
+    const disableAllTimeoutNodes = async () => {
+      disablingTimeout.value = true
+      try {
+        const [normalRes, customRes] = await Promise.all([
+          api.post('/admin/nodes/disable-timeout'),
+          api.post('/admin/custom-nodes/disable-timeout')
+        ])
+        const n = normalRes.data?.data?.disabled_count ?? 0
+        const c = customRes.data?.data?.disabled_count ?? 0
+        ElMessage.success(`已屏蔽 ${n} 个普通节点、${c} 个专线节点`)
+        loadSettings()
+      } catch (e) {
+        ElMessage.error('屏蔽失败: ' + (e.response?.data?.message || e.message))
+      } finally {
+        disablingTimeout.value = false
+      }
     }
     const saveAdminNotificationSettings = () => {
       syncAdminLegacyNotificationKeys()
@@ -1897,6 +1926,7 @@ export default {
       restoreLocal, restoreRemote, loadLocalBackups, doRestoreLocal, loadRemoteYears, onRemoteYearChange, onRemoteMonthChange, doRestoreRemote,
       saveGeneralSettings, saveRegistrationSettings, saveInviteSettings, saveNotificationSettings, saveSecuritySettings, saveThemeSettings, saveAnnouncementSettings,
       saveNodeHealthSettings, saveAdminNotificationSettings, saveBackupSettings, saveProtocolFilterSettings, saveCurrentTab, refreshSettings, protocolFilterSettings, allProtocols: ALL_PROTOCOLS,
+      disablingTimeout, disableAllTimeoutNodes,
       repoSyncSettings, repoSyncStatus, repoSyncLoading, repoSyncBaseUrl, repoSyncFileUrl, repoSyncStatusType, repoSyncStatusLabel,
       saveRepoSyncSettings, testRepoSyncConnection, runRepoSyncNow, loadRepoSyncStatus, copyText,
       cleanupSettings, cleanupFields, manualCleanupList, savingCleanup, cleaningType, saveCleanupSettings, manualCleanup,
@@ -1967,6 +1997,8 @@ export default {
 }
 .settings-tabs :deep(.el-tabs__active-bar.is-left) { left: 0; right: auto; width: 3px; }
 .settings-tabs :deep(.el-tabs__content) { padding: 20px; min-height: 600px; min-width: 0; }
+/* 修复移动端单面板 tab 内容区被压缩：tab-pane 必须占满内容区宽度 */
+.settings-tabs :deep(.el-tab-pane) { width: 100%; min-width: 0; }
 
 /* ========== 表单元素标准规范 ========== */
 .settings-form { max-width: 900px; }
@@ -1988,6 +2020,26 @@ export default {
 .full-width-control,
 .full-width-table {
   width: 100%;
+}
+/* 移动端按钮全宽（此前 .full-width 类未定义，导致移动端按钮不铺满） */
+.full-width {
+  width: 100% !important;
+  margin-left: 0 !important;
+}
+/* 节点健康操作按钮组：桌面端并排、移动端上下堆叠 */
+.node-health-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+@media (max-width: 768px) {
+  .node-health-actions {
+    flex-direction: column;
+  }
+  .node-health-actions .el-button {
+    margin-left: 0 !important;
+    width: 100%;
+  }
 }
 .inline-status-tag {
   margin-left: 6px;
