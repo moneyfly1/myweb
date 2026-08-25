@@ -195,6 +195,33 @@
         show-icon
         class="mb-3"
       />
+      <div class="saved-vps-section mb-3" v-if="savedVpsList.length > 0">
+        <div class="saved-vps-head">
+          <span class="saved-vps-label"><el-icon><Connection /></el-icon> 已搭建过的 VPS</span>
+          <el-button size="small" text bg @click="loadSavedVps">
+            <el-icon><Refresh /></el-icon>刷新
+          </el-button>
+        </div>
+        <el-select
+          v-model="selectedSavedVps"
+          placeholder="选择已保存的 VPS，自动填充 SSH 信息（免输密码）"
+          filterable
+          clearable
+          class="full-width-control"
+          @change="applySavedVps"
+        >
+          <el-option
+            v-for="v in savedVpsList"
+            :key="v.key"
+            :label="`${v.ssh_host}${v.ssh_port !== 22 ? ':' + v.ssh_port : ''}（${v.node_name || '历史节点'}${v.has_password ? ' · 已存密码' : ''}）`"
+            :value="v.key"
+          />
+        </el-select>
+        <div class="form-tip" v-if="selectedSavedVps">
+          已选择「{{ selectedVpsName }}」，SSH 信息已自动填充{{ savedSelectedHasPassword ? '，密码使用已保存的凭据' : '，请手动输入密码' }}
+        </div>
+      </div>
+
       <div class="vps-mode-switch mb-3">
         <el-radio-group v-model="vpsMode">
           <el-radio-button value="single">单协议搭建</el-radio-button>
@@ -259,7 +286,7 @@
       </div>
       <template #footer>
         <el-button :disabled="deployingVPS" @click="showVpsDialog = false">取消</el-button>
-        <el-button type="primary" :loading="deployingVPS" :disabled="!vpsForm.name || !vpsForm.ssh_host || !vpsForm.ssh_pass" @click="deploySelfHostVPSNode">
+        <el-button type="primary" :loading="deployingVPS" :disabled="!vpsForm.name || !vpsForm.ssh_host || (!vpsForm.ssh_pass && !savedSelectedHasPassword)" @click="deploySelfHostVPSNode">
           一键自动搭建
         </el-button>
       </template>
@@ -325,9 +352,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
-import { Promotion, DocumentCopy, Refresh, Setting, Operation, ArrowDown } from '@element-plus/icons-vue'
+import { Promotion, DocumentCopy, Refresh, Setting, Operation, ArrowDown, Connection } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { confirmAction } from '@/utils/confirmAction'
 import { useMobile } from '@/composables/useMobile'
@@ -487,15 +514,91 @@ const vpsForm = reactive({
   name: '', protocol: 'vless-ws', protocols: ['vless-ws', 'vless-reality', 'trojan-ws', 'ss'],
   domain: '', email: '', ssh_host: '', ssh_port: 22, ssh_user: 'root', ssh_pass: ''
 })
+// 已保存的 VPS（从历史自建节点去重提取，用于二次搭建免输 SSH 信息）
+const savedVpsList = ref([])
+const selectedSavedVps = ref('')
+const savedSelectedHasPassword = ref(false)
+const savedVpsNodes = ref([]) // 原始节点列表（含 ssh_password_enc 存在性判断）
+const selectedVpsName = computed(() => {
+  const v = savedVpsList.value.find(x => x.key === selectedSavedVps.value)
+  return v ? v.node_name || v.ssh_host : ''
+})
+// 已保存 VPS 的 key → node_id（有加密密码的节点，用于免密部署）
+const savedVpsNodeIdMap = ref({})
+
+const loadSavedVps = async () => {
+  try {
+    const res = await adminAPI.getSelfHostNodes()
+    const nodes = res.data?.data?.list || res.data?.data || []
+    savedVpsNodes.value = nodes
+    // 按 ssh_host+ssh_port 去重，保留最近一个节点作为代表
+    const byKey = new Map()
+    for (const n of nodes) {
+      if (!n.ssh_host) continue
+      const key = `${n.ssh_host}:${n.ssh_port || 22}`
+      if (!byKey.has(key) || (n.created_at || '') > (byKey.get(key).created_at || '')) {
+        byKey.set(key, n)
+      }
+    }
+    savedVpsList.value = [...byKey.entries()].map(([key, n]) => ({
+      key,
+      ssh_host: n.ssh_host,
+      ssh_port: n.ssh_port || 22,
+      ssh_user: n.ssh_user || 'root',
+      node_name: n.name,
+      node_id: n.id,
+      has_password: true // 自建节点只要有 ssh_host 就有加密密码（后端保存的）
+    }))
+    // node_id → 该 VPS 任一有密码的节点 id（供 saved_ssh_id 使用）
+    const idMap = {}
+    for (const n of nodes) {
+      if (!n.ssh_host) continue
+      const key = `${n.ssh_host}:${n.ssh_port || 22}`
+      if (!(key in idMap)) idMap[key] = n.id
+    }
+    savedVpsNodeIdMap.value = idMap
+  } catch (e) {
+    console.warn('加载已保存 VPS 失败', e)
+  }
+}
+
+const applySavedVps = (key) => {
+  if (!key) {
+    savedSelectedHasPassword.value = false
+    return
+  }
+  const v = savedVpsList.value.find(x => x.key === key)
+  if (!v) return
+  vpsForm.ssh_host = v.ssh_host
+  vpsForm.ssh_port = v.ssh_port
+  vpsForm.ssh_user = v.ssh_user
+  vpsForm.ssh_pass = '' // 密码留空，后端用已保存的加密密码
+  savedSelectedHasPassword.value = true
+  // 若该 VPS 已有节点，直接标记复用（二次搭建=重装，避免幽灵节点）
+  const nodeId = savedVpsNodeIdMap.value[key]
+  if (nodeId) vpsReuseNodeId.value = nodeId
+}
+
 const openVpsDialog = () => {
   Object.assign(vpsForm, { name: '', domain: '', email: '', ssh_host: '', ssh_pass: '' })
   vpsReuseNodeId.value = 0
+  selectedSavedVps.value = ''
+  savedSelectedHasPassword.value = false
   showVpsDialog.value = true
+  loadSavedVps()
 }
 const deploySelfHostVPSNode = async () => {
   deployingVPS.value = true
   try {
     const payload = { name: vpsForm.name, ssh_host: vpsForm.ssh_host, ssh_port: vpsForm.ssh_port, ssh_user: vpsForm.ssh_user, ssh_pass: vpsForm.ssh_pass }
+    // 使用已保存 VPS 的加密密码（未手动输入密码时）：传 saved_ssh_id，后端解密连接
+    if (!payload.ssh_pass && selectedSavedVps.value) {
+      const nodeId = savedVpsNodeIdMap.value[selectedSavedVps.value]
+      if (nodeId) {
+        payload.saved_ssh_id = nodeId
+        payload.ssh_pass = ''
+      }
+    }
     // 复用模式：携带 reuse_node_id，后端复用原节点记录重装（不新建，避免幽灵节点）
     if (vpsReuseNodeId.value) payload.reuse_node_id = vpsReuseNodeId.value
     if (vpsMode.value === 'domain') {
@@ -512,6 +615,7 @@ const deploySelfHostVPSNode = async () => {
       ElMessage.success(res.data.message || 'VPS 自动搭建完成')
       showVpsDialog.value = false
       vpsReuseNodeId.value = 0
+      selectedSavedVps.value = ''
       loadSelfHostNodes()
     } else {
       ElMessage.error(res.data?.message || '搭建失败')
@@ -817,6 +921,26 @@ onMounted(() => {
   font-size: 12px;
   color: var(--el-text-color-secondary);
   margin-top: 4px;
+}
+.saved-vps-section {
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.saved-vps-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.saved-vps-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 .traffic-limit-bar {
   margin-top: 10px;

@@ -113,6 +113,27 @@ func prepareSelfHostNodeForDeploy(db *gorm.DB, name, protocol, host string, sshP
 	return node, installID, token, false, nil
 }
 
+// resolveSSHPassword 解析部署用的 SSH 密码：
+//   - 优先用请求里明文密码；
+//   - 请求没传密码但给了 savedNodeID（已保存的 VPS）时，从该节点解密存储的密码；
+//   - 都拿不到返回错误。
+func resolveSSHPassword(db *gorm.DB, reqPass string, savedNodeID uint) (string, error) {
+	if strings.TrimSpace(reqPass) != "" {
+		return strings.TrimSpace(reqPass), nil
+	}
+	if savedNodeID > 0 {
+		var node models.CustomNode
+		if err := db.First(&node, savedNodeID).Error; err == nil && node.SSHPasswordEnc != "" {
+			dec, err := utils.DecryptSecret(node.SSHPasswordEnc)
+			if err == nil && dec != "" {
+				return dec, nil
+			}
+		}
+		return "", fmt.Errorf("无法从已保存节点 #%d 读取 SSH 密码，请手动输入", savedNodeID)
+	}
+	return "", fmt.Errorf("root 密码不能为空")
+}
+
 // DeploySelfHostVPS 填 VPS IP/SSH端口/root密码 → SSH 全自动部署 sing-box 节点。
 // POST /admin/custom-nodes/selfhost/deploy
 func DeploySelfHostVPS(c *gin.Context) {
@@ -122,8 +143,9 @@ func DeploySelfHostVPS(c *gin.Context) {
 		SSHHost     string `json:"ssh_host" binding:"required"`
 		SSHPort     int    `json:"ssh_port"`
 		SSHUser     string `json:"ssh_user"`
-		SSHPass     string `json:"ssh_pass" binding:"required"`
-		ReuseNodeID uint   `json:"reuse_node_id"` // 复用已有节点记录重装（覆盖同一 VPS 旧节点）
+		SSHPass     string `json:"ssh_pass"`
+		ReuseNodeID uint   `json:"reuse_node_id"`    // 复用已有节点记录重装（覆盖同一 VPS 旧节点）
+		SavedSSHID  uint   `json:"saved_ssh_id"`     // 引用已保存 VPS 的加密密码（不传明文密码时使用）
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请填写节点名称、协议、VPS 地址与 root 密码", err)
@@ -144,11 +166,6 @@ func DeploySelfHostVPS(c *gin.Context) {
 	if sshUser == "" {
 		sshUser = "root"
 	}
-	pass := strings.TrimSpace(req.SSHPass)
-	if pass == "" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "root 密码不能为空", nil)
-		return
-	}
 
 	db := database.GetDB()
 
@@ -168,6 +185,13 @@ func DeploySelfHostVPS(c *gin.Context) {
 			})
 			return
 		}
+	}
+
+	// 解析 SSH 密码：明文优先，否则用已保存 VPS 的加密密码
+	pass, err := resolveSSHPassword(db, req.SSHPass, req.SavedSSHID)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), err)
+		return
 	}
 
 	// 1. 创建占位记录（含 SSH 信息）或复用已有记录，获得 install_id/token
@@ -266,8 +290,9 @@ func DeploySelfHostVPSDomain(c *gin.Context) {
 		SSHHost     string   `json:"ssh_host" binding:"required"`
 		SSHPort     int      `json:"ssh_port"`
 		SSHUser     string   `json:"ssh_user"`
-		SSHPass     string   `json:"ssh_pass" binding:"required"`
+		SSHPass     string   `json:"ssh_pass"`
 		ReuseNodeID uint     `json:"reuse_node_id"` // 复用已有节点记录重装（覆盖同一 VPS 旧节点）
+		SavedSSHID  uint     `json:"saved_ssh_id"`  // 引用已保存 VPS 的加密密码（不传明文密码时使用）
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请填写节点名称、VPS 地址与 root 密码", err)
@@ -288,11 +313,6 @@ func DeploySelfHostVPSDomain(c *gin.Context) {
 	sshUser := strings.TrimSpace(req.SSHUser)
 	if sshUser == "" {
 		sshUser = "root"
-	}
-	pass := strings.TrimSpace(req.SSHPass)
-	if pass == "" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "root 密码不能为空", nil)
-		return
 	}
 
 	// 协议组合：未指定时用默认多协议（VLESS+WS+TLS / VLESS+Reality / Trojan+WS+TLS / SS）
@@ -367,6 +387,13 @@ func DeploySelfHostVPSDomain(c *gin.Context) {
 			})
 			return
 		}
+	}
+
+	// 解析 SSH 密码：明文优先，否则用已保存 VPS 的加密密码
+	pass, err := resolveSSHPassword(db, req.SSHPass, req.SavedSSHID)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), err)
+		return
 	}
 
 	node, installID, token, reused, err := prepareSelfHostNodeForDeploy(db, name, protoList[0].Key, host, sshPort, sshUser, req.ReuseNodeID)
