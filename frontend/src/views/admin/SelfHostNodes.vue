@@ -621,13 +621,19 @@ const applySavedVps = (key) => {
 
 // 一键重新搭建：直接用该 VPS 上次的信息（域名/协议/密码）部署
 const redeploySavedVps = async (v) => {
+  // 该 VPS 没有已保存的 SSH 密码 → 不能一键，引导打开编辑弹窗输入密码
+  if (!v.has_password) {
+    ElMessage.warning('该 VPS 没有已保存的 SSH 密码，请在弹出的窗口中输入密码后搭建')
+    editSavedVps(v)
+    return
+  }
   const protoDesc = formatVpsProtocols(v)
   const confirmMsg = `将使用该 VPS 上次的配置重新搭建：\n\n` +
     `VPS：${v.ssh_host}:${v.ssh_port || 22}\n` +
     `上次节点：${v.node_name || '-'}\n` +
     `域名：${v.domain || '（无）'}\n` +
     `协议：${protoDesc}\n` +
-    (v.has_password ? `密码：使用已保存的凭据\n` : `密码：将弹出输入框\n`) +
+    `密码：使用已保存的凭据\n` +
     `\n继续将覆盖该 VPS 上现有节点并使其失效。是否继续？`
   try {
     await ElMessageBox.confirm(confirmMsg, '一键重新搭建', {
@@ -645,7 +651,7 @@ const redeploySavedVps = async (v) => {
       ssh_user: v.ssh_user || 'root',
       ssh_pass: '',
       saved_ssh_id: v.node_id || 0,
-      reuse_node_id: v.node_id || 0,
+      reuse_node_id: v.main_node_id || v.node_id || 0,
     }
     if (v.deploy_mode === 'multi' || (v.protocol_list && v.protocol_list.length > 1)) {
       // 多协议：恢复协议列表 + 域名
@@ -702,7 +708,7 @@ const editSavedVps = (v) => {
   })
   selectedSavedVps.value = v.key
   savedSelectedHasPassword.value = v.has_password
-  vpsReuseNodeId.value = v.node_id || 0
+  vpsReuseNodeId.value = v.main_node_id || v.node_id || 0
   showVpsDialog.value = true
 }
 

@@ -201,7 +201,7 @@ func GetSavedSelfHostVPS(c *gin.Context) {
 			order = append(order, key)
 		}
 		p.NodeCount++
-		// 优先记录主节点/最新节点的域名与协议信息
+		// 记录主节点/最新节点的域名与协议信息（展示用）
 		if n.DeployMode != "" || (p.Domain == "" && n.Domain != "") {
 			p.Domain = n.Domain
 			p.DeployMode = n.DeployMode
@@ -210,17 +210,18 @@ func GetSavedSelfHostVPS(c *gin.Context) {
 			}
 			p.Protocol = n.SelfHostProtocol
 			p.NodeName = n.Name
-			p.NodeID = n.ID
 			if n.DeployMode != "" {
 				p.MainNodeID = n.ID
 			}
 			p.CreatedAt = &n.CreatedAt
 		}
-		if p.NodeID == 0 {
-			p.NodeID = n.ID
-		}
+		// NodeID 必须指向「有加密密码」的节点（供 saved_ssh_id 免密部署用）：
+		// 优先主节点，其次任意有密码节点；若该 VPS 完全没有密码节点，NodeID 保持 0。
 		if n.SSHPasswordEnc != "" {
 			p.HasPassword = true
+			if p.NodeID == 0 || (n.DeployMode != "" && p.NodeID != n.ID) {
+				p.NodeID = n.ID
+			}
 		}
 	}
 
