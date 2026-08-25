@@ -66,6 +66,40 @@
           show-icon
           class="selfhost-guide"
         />
+
+        <!-- 已保存的 VPS 档案（一键重新搭建） -->
+        <div v-if="savedVpsList.length" class="saved-vps-block">
+          <div class="saved-vps-block-head">
+            <span class="saved-vps-block-title"><el-icon><Connection /></el-icon> 已保存的 VPS</span>
+            <el-button size="small" text bg @click="loadSavedVps" :loading="savedVpsLoading">
+              <el-icon><Refresh /></el-icon>刷新
+            </el-button>
+          </div>
+          <div class="saved-vps-grid">
+            <div v-for="v in savedVpsList" :key="v.key" class="saved-vps-card">
+              <div class="saved-vps-card-head">
+                <span class="vps-address">{{ v.ssh_host }}<span v-if="v.ssh_port !== 22">:{{ v.ssh_port }}</span></span>
+                <el-tag v-if="v.has_password" type="success" size="small" effect="plain">已存密码</el-tag>
+                <el-tag v-else type="warning" size="small" effect="plain">需输密码</el-tag>
+              </div>
+              <div class="vps-meta">
+                <div class="vps-meta-row" v-if="v.node_name"><span class="meta-label">上次节点</span><span class="meta-value">{{ v.node_name }}</span></div>
+                <div class="vps-meta-row" v-if="v.domain"><span class="meta-label">域名</span><span class="meta-value">{{ v.domain }}</span></div>
+                <div class="vps-meta-row"><span class="meta-label">协议</span><span class="meta-value">{{ formatVpsProtocols(v) }}</span></div>
+                <div class="vps-meta-row"><span class="meta-label">节点数</span><span class="meta-value">{{ v.node_count }}</span></div>
+              </div>
+              <div class="saved-vps-actions">
+                <el-button size="small" type="primary" :loading="redeployingVpsKey === v.key" @click="redeploySavedVps(v)">
+                  <el-icon><VideoPlay /></el-icon>一键重新搭建
+                </el-button>
+                <el-button size="small" plain @click="editSavedVps(v)">
+                  <el-icon><Edit /></el-icon>编辑搭建
+                </el-button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <el-empty v-if="!selfHostLoading && selfHostNodes.length === 0" description="暂无自建节点，点击右上角「VPS自动搭建」创建" :image-size="100" />
         <div v-for="n in selfHostNodes" :key="n.id" class="selfhost-node-card">
           <div class="selfhost-node-head">
@@ -354,7 +388,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
-import { Promotion, DocumentCopy, Refresh, Setting, Operation, ArrowDown, Connection } from '@element-plus/icons-vue'
+import { Promotion, DocumentCopy, Refresh, Setting, Operation, ArrowDown, Connection, VideoPlay, Edit } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { confirmAction } from '@/utils/confirmAction'
 import { useMobile } from '@/composables/useMobile'
@@ -514,11 +548,12 @@ const vpsForm = reactive({
   name: '', protocol: 'vless-ws', protocols: ['vless-ws', 'vless-reality', 'trojan-ws', 'ss'],
   domain: '', email: '', ssh_host: '', ssh_port: 22, ssh_user: 'root', ssh_pass: ''
 })
-// 已保存的 VPS（从历史自建节点去重提取，用于二次搭建免输 SSH 信息）
+// 已保存的 VPS 档案（后端按 ssh_host 去重聚合，含上次域名/协议/节点数）
 const savedVpsList = ref([])
-const selectedSavedVps = ref('')
+const savedVpsLoading = ref(false)
+const redeployingVpsKey = ref('')
+const selectedSavedVps = ref('') // 弹窗内下拉选中项（保留旧交互）
 const savedSelectedHasPassword = ref(false)
-const savedVpsNodes = ref([]) // 原始节点列表（含 ssh_password_enc 存在性判断）
 const selectedVpsName = computed(() => {
   const v = savedVpsList.value.find(x => x.key === selectedSavedVps.value)
   return v ? v.node_name || v.ssh_host : ''
@@ -526,42 +561,41 @@ const selectedVpsName = computed(() => {
 // 已保存 VPS 的 key → node_id（有加密密码的节点，用于免密部署）
 const savedVpsNodeIdMap = ref({})
 
+// 协议中文展示（VPS 档案列表用）
+const protocolDisplayMap = {
+  'vless-ws': 'VLESS+WS', 'vmess-ws': 'VMess+WS', 'vless-reality': 'VLESS+Reality',
+  'vless-reality-grpc': 'Reality+gRPC', 'vless-reality-xhttp': 'Reality+XHTTP',
+  'vless-grpc-tls': 'VLESS+gRPC+TLS', 'trojan-tcp-tls': 'Trojan+TCP+TLS',
+  'trojan-ws': 'Trojan+WS', 'trojan-grpc-tls': 'Trojan+gRPC+TLS',
+  'hysteria2': 'Hysteria2', 'tuic': 'TUIC', 'ss': 'Shadowsocks'
+}
+const formatVpsProtocols = (v) => {
+  const keys = (v.protocol_list && v.protocol_list.length) ? v.protocol_list : (v.protocol ? [v.protocol] : [])
+  if (!keys.length) return v.deploy_mode === 'multi' ? '多协议' : '未记录'
+  if (keys.length > 3) return `${keys.slice(0, 3).map(k => protocolDisplayMap[k] || k).join('、')} 等 ${keys.length} 个`
+  return keys.map(k => protocolDisplayMap[k] || k).join('、')
+}
+
 const loadSavedVps = async () => {
+  savedVpsLoading.value = true
   try {
-    const res = await adminAPI.getSelfHostNodes()
-    const nodes = res.data?.data?.list || res.data?.data || []
-    savedVpsNodes.value = nodes
-    // 按 ssh_host+ssh_port 去重，保留最近一个节点作为代表
-    const byKey = new Map()
-    for (const n of nodes) {
-      if (!n.ssh_host) continue
-      const key = `${n.ssh_host}:${n.ssh_port || 22}`
-      if (!byKey.has(key) || (n.created_at || '') > (byKey.get(key).created_at || '')) {
-        byKey.set(key, n)
-      }
-    }
-    savedVpsList.value = [...byKey.entries()].map(([key, n]) => ({
-      key,
-      ssh_host: n.ssh_host,
-      ssh_port: n.ssh_port || 22,
-      ssh_user: n.ssh_user || 'root',
-      node_name: n.name,
-      node_id: n.id,
-      has_password: true // 自建节点只要有 ssh_host 就有加密密码（后端保存的）
-    }))
-    // node_id → 该 VPS 任一有密码的节点 id（供 saved_ssh_id 使用）
+    const res = await adminAPI.getSavedSelfHostVPS()
+    const list = res.data?.data?.list || []
+    savedVpsList.value = list
+    // key → node_id 映射（有密码的节点）
     const idMap = {}
-    for (const n of nodes) {
-      if (!n.ssh_host) continue
-      const key = `${n.ssh_host}:${n.ssh_port || 22}`
-      if (!(key in idMap)) idMap[key] = n.id
+    for (const v of list) {
+      if (v.node_id) idMap[v.key] = v.node_id
     }
     savedVpsNodeIdMap.value = idMap
   } catch (e) {
     console.warn('加载已保存 VPS 失败', e)
+  } finally {
+    savedVpsLoading.value = false
   }
 }
 
+// 弹窗内下拉应用（保留：从弹窗顶部下拉选择自动填充）
 const applySavedVps = (key) => {
   if (!key) {
     savedSelectedHasPassword.value = false
@@ -573,10 +607,97 @@ const applySavedVps = (key) => {
   vpsForm.ssh_port = v.ssh_port
   vpsForm.ssh_user = v.ssh_user
   vpsForm.ssh_pass = '' // 密码留空，后端用已保存的加密密码
-  savedSelectedHasPassword.value = true
+  savedSelectedHasPassword.value = v.has_password
   // 若该 VPS 已有节点，直接标记复用（二次搭建=重装，避免幽灵节点）
   const nodeId = savedVpsNodeIdMap.value[key]
   if (nodeId) vpsReuseNodeId.value = nodeId
+}
+
+// 一键重新搭建：直接用该 VPS 上次的信息（域名/协议/密码）部署
+const redeploySavedVps = async (v) => {
+  const protoDesc = formatVpsProtocols(v)
+  const confirmMsg = `将使用该 VPS 上次的配置重新搭建：\n\n` +
+    `VPS：${v.ssh_host}:${v.ssh_port || 22}\n` +
+    `上次节点：${v.node_name || '-'}\n` +
+    `域名：${v.domain || '（无）'}\n` +
+    `协议：${protoDesc}\n` +
+    (v.has_password ? `密码：使用已保存的凭据\n` : `密码：将弹出输入框\n`) +
+    `\n继续将覆盖该 VPS 上现有节点并使其失效。是否继续？`
+  try {
+    await ElMessageBox.confirm(confirmMsg, '一键重新搭建', {
+      confirmButtonText: '开始搭建', cancelButtonText: '取消', type: 'warning', confirmButtonClass: 'danger-confirm'
+    })
+  } catch (e) {
+    return // 用户取消
+  }
+  redeployingVpsKey.value = v.key
+  try {
+    const payload = {
+      name: v.node_name || v.ssh_host,
+      ssh_host: v.ssh_host,
+      ssh_port: v.ssh_port || 22,
+      ssh_user: v.ssh_user || 'root',
+      ssh_pass: '',
+      saved_ssh_id: v.node_id || 0,
+      reuse_node_id: v.node_id || 0,
+    }
+    if (v.deploy_mode === 'multi' || (v.protocol_list && v.protocol_list.length > 1)) {
+      // 多协议：恢复协议列表 + 域名
+      payload.domain = v.domain || ''
+      payload.email = ''
+      payload.protocols = (v.protocol_list && v.protocol_list.length) ? v.protocol_list : ['vless-ws', 'vless-reality', 'trojan-ws', 'ss']
+      const res = await adminAPI.deploySelfHostVPSDomain(payload)
+      if (res.data?.success) {
+        ElMessage.success(res.data.message || '重新搭建完成')
+        loadSelfHostNodes()
+        loadSavedVps()
+      } else {
+        ElMessage.error(res.data?.message || '重新搭建失败')
+      }
+    } else {
+      payload.protocol = v.protocol || 'vless-ws'
+      const res = await adminAPI.deploySelfHostVPS(payload)
+      if (res.data?.success) {
+        ElMessage.success(res.data.message || '重新搭建完成')
+        loadSelfHostNodes()
+        loadSavedVps()
+      } else {
+        ElMessage.error(res.data?.message || '重新搭建失败')
+      }
+    }
+  } catch (e) {
+    const resp = e.response?.data
+    // 密码未保存时需要手动输入：打开搭建弹窗并回填信息
+    if (resp?.code === 'vps_occupied' || (resp && !resp.success)) {
+      // 后端拒绝（可能占用/无密码）→ 回退到编辑模式
+      editSavedVps(v)
+      ElMessage.warning('已回退到编辑模式，请补充信息后重试: ' + (resp?.message || e.message))
+    } else {
+      ElMessage.error('重新搭建失败: ' + (resp?.message || e.message))
+    }
+  } finally {
+    redeployingVpsKey.value = ''
+  }
+}
+
+// 编辑搭建：把该 VPS 档案回填到搭建弹窗（可修改后再搭建）
+const editSavedVps = (v) => {
+  vpsMode.value = (v.deploy_mode === 'multi' || (v.protocol_list && v.protocol_list.length > 1)) ? 'domain' : 'single'
+  Object.assign(vpsForm, {
+    name: v.node_name || '',
+    domain: v.domain || '',
+    email: '',
+    protocols: (v.protocol_list && v.protocol_list.length) ? v.protocol_list : ['vless-ws', 'vless-reality', 'trojan-ws', 'ss'],
+    protocol: v.protocol || 'vless-ws',
+    ssh_host: v.ssh_host,
+    ssh_port: v.ssh_port || 22,
+    ssh_user: v.ssh_user || 'root',
+    ssh_pass: ''
+  })
+  selectedSavedVps.value = v.key
+  savedSelectedHasPassword.value = v.has_password
+  vpsReuseNodeId.value = v.node_id || 0
+  showVpsDialog.value = true
 }
 
 const openVpsDialog = () => {
@@ -801,6 +922,7 @@ const trafficColor = (n) => {
 
 onMounted(() => {
   loadSelfHostNodes()
+  loadSavedVps() // 页面加载即展示已保存的 VPS 档案
 })
 </script>
 
@@ -941,6 +1063,63 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+.saved-vps-block {
+  margin-bottom: 16px;
+}
+.saved-vps-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.saved-vps-block-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.saved-vps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.saved-vps-card {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--el-fill-color-lighter);
+  transition: border-color 0.2s;
+  &:hover { border-color: var(--el-color-primary); }
+}
+.saved-vps-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.vps-address {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.vps-meta {
+  margin-bottom: 10px;
+}
+.vps-meta-row {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.8;
+  .meta-label { color: var(--el-text-color-secondary); flex-shrink: 0; min-width: 56px; }
+  .meta-value { color: var(--el-text-color-primary); word-break: break-all; }
+}
+.saved-vps-actions {
+  display: flex;
+  gap: 8px;
 }
 .traffic-limit-bar {
   margin-top: 10px;

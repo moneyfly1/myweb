@@ -154,7 +154,86 @@ func GetSelfHostNodes(c *gin.Context) {
 	})
 }
 
-// AgentInstallScript 下发一键安装脚本（无鉴权，凭 install_id 取脚本）。
+// GetSavedSelfHostVPS 管理端"已保存的 VPS"档案列表：按 ssh_host+ssh_port 去重，
+// 聚合每台 VPS 的上次部署信息（域名、协议列表、节点数、密码状态），供二次搭建一键调用。
+// GET /admin/custom-nodes/selfhost/saved-vps
+func GetSavedSelfHostVPS(c *gin.Context) {
+	db := database.GetDB()
+	var nodes []models.CustomNode
+	if err := db.Where("self_hosted = ? AND ssh_host != ? AND status != ?", true, "", selfhost.StatusCanceled).
+		Order("created_at DESC").Find(&nodes).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取已保存VPS失败", err)
+		return
+	}
+
+	type vpsProfile struct {
+		Key          string   `json:"key"`
+		SSHHost      string   `json:"ssh_host"`
+		SSHPort      int      `json:"ssh_port"`
+		SSHUser      string   `json:"ssh_user"`
+		Domain       string   `json:"domain"`
+		DeployMode   string   `json:"deploy_mode"`
+		ProtocolList []string `json:"protocol_list"` // 上次部署的协议（多协议）
+		Protocol     string   `json:"protocol"`      // 单协议时的协议
+		NodeName     string   `json:"node_name"`     // 上次节点名（主节点）
+		NodeID       uint     `json:"node_id"`       // 引用节点（有加密密码，供 saved_ssh_id 用）
+		HasPassword  bool     `json:"has_password"`
+		NodeCount    int      `json:"node_count"`  // 该 VPS 上的自建节点数
+		MainNodeID   uint     `json:"main_node_id"` // 主节点 id（multi 模式）
+		CreatedAt    *time.Time `json:"created_at,omitempty"`
+	}
+
+	profiles := make(map[string]*vpsProfile)
+	order := make([]string, 0, len(nodes))
+	for i := range nodes {
+		n := nodes[i]
+		key := fmt.Sprintf("%s:%d", n.SSHHost, n.SSHPort)
+		p, exists := profiles[key]
+		if !exists {
+			p = &vpsProfile{
+				Key:        key,
+				SSHHost:    n.SSHHost,
+				SSHPort:    n.SSHPort,
+				SSHUser:    n.SSHUser,
+				HasPassword: n.SSHPasswordEnc != "",
+			}
+			profiles[key] = p
+			order = append(order, key)
+		}
+		p.NodeCount++
+		// 优先记录主节点/最新节点的域名与协议信息
+		if n.DeployMode != "" || (p.Domain == "" && n.Domain != "") {
+			p.Domain = n.Domain
+			p.DeployMode = n.DeployMode
+			if n.ProtocolList != "" {
+				p.ProtocolList = strings.Split(n.ProtocolList, ",")
+			}
+			p.Protocol = n.SelfHostProtocol
+			p.NodeName = n.Name
+			p.NodeID = n.ID
+			if n.DeployMode != "" {
+				p.MainNodeID = n.ID
+			}
+			p.CreatedAt = &n.CreatedAt
+		}
+		if p.NodeID == 0 {
+			p.NodeID = n.ID
+		}
+		if n.SSHPasswordEnc != "" {
+			p.HasPassword = true
+		}
+	}
+
+	list := make([]*vpsProfile, 0, len(order))
+	for _, key := range order {
+		list = append(list, profiles[key])
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"list":  list,
+		"total": len(list),
+	})
+}
 // GET /api/v1/agent/install.sh?install_id=xxx
 func AgentInstallScript(c *gin.Context) {
 	installID := strings.TrimSpace(c.Query("install_id"))
