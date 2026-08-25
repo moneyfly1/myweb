@@ -409,7 +409,9 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		time.Sleep(300 * time.Millisecond)
 
 		filterKeywords := s.extractFilterKeywords(config)
-		nodesWithOrder, stats := s.processFetchedNodes(urls, nodes, filterKeywords)
+		// 每个订阅源是否启用关键词过滤（与 urls 一一对应；缺省全启用，保持原行为）
+		urlFilterFlags := s.extractURLFilterFlags(config, len(urls))
+		nodesWithOrder, stats := s.processFetchedNodes(urls, nodes, filterKeywords, urlFilterFlags)
 
 		time.Sleep(300 * time.Millisecond)
 		s.logUpdateStats(stats, len(nodesWithOrder))
@@ -483,6 +485,38 @@ func (s *ConfigUpdateService) extractFilterKeywords(config map[string]interface{
 	return nil
 }
 
+// extractURLFilterFlags 解析每个订阅源的过滤开关（与 urls 一一对应）。
+// 返回 []bool：true=该订阅源启用关键词过滤；false=不过滤。
+// 兼容旧配置：flags 缺失或长度不足时按 true（启用过滤）补齐，保持原行为。
+func (s *ConfigUpdateService) extractURLFilterFlags(config map[string]interface{}, urlCount int) []bool {
+	flags := make([]bool, urlCount)
+	for i := range flags {
+		flags[i] = true // 默认启用过滤
+	}
+	if urlCount == 0 {
+		return flags
+	}
+	if raw, ok := config["url_filter_flags"].([]string); ok {
+		for i, v := range raw {
+			if i >= urlCount {
+				break
+			}
+			flags[i] = strings.TrimSpace(v) == "1"
+		}
+		return flags
+	}
+	if raw, ok := config["url_filter_flags"].(string); ok {
+		lines := strings.Split(raw, "\n")
+		for i, line := range lines {
+			if i >= urlCount {
+				break
+			}
+			flags[i] = strings.TrimSpace(line) == "1"
+		}
+	}
+	return flags
+}
+
 func (s *ConfigUpdateService) logUpdateStats(stats updateStats, success int) {
 	if stats.parseFailed > 0 {
 		s.warnf("⚠️ 节点解析失败: %d 个 (格式错误/不兼容)", stats.parseFailed)
@@ -496,7 +530,7 @@ func (s *ConfigUpdateService) logUpdateStats(stats updateStats, success int) {
 	s.successf("✨ 最终成功解析并等待入库节点数: %d 个", success)
 }
 
-func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[string]interface{}, filterKeywords []string) ([]nodeWithOrder, updateStats) {
+func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[string]interface{}, filterKeywords []string, urlFilterFlags []bool) ([]nodeWithOrder, updateStats) {
 	var nodesWithOrder []nodeWithOrder
 	stats := updateStats{}
 	seenKeys, usedNames := make(map[string]bool), make(map[string]bool)
@@ -514,6 +548,15 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 		urlNodes := nodesByURL[url]
 		if len(urlNodes) == 0 {
 			continue
+		}
+
+		// 该订阅源是否启用关键词过滤（勾选=启用；不勾选=不过滤，保留全部节点）
+		urlFilter := len(filterKeywords) > 0
+		if urlIndex < len(urlFilterFlags) && !urlFilterFlags[urlIndex] {
+			urlFilter = false
+		}
+		if !urlFilter && len(filterKeywords) > 0 {
+			s.infof("🔓 订阅源 [%d/%d] 未启用关键词过滤，保留全部节点", urlIndex+1, len(urls))
 		}
 
 		s.infof("⏳ 开始处理订阅源 [%d/%d]: 包含 %d 个链接", urlIndex+1, len(urls), len(urlNodes))
@@ -545,11 +588,13 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 				continue
 			}
 
-			// 修复点：忽略了未使用的 kw 变量
-			if filtered, _ := s.isNodeFiltered(result.Node, filterKeywords); filtered {
-				stats.filtered++
-				counts.Filtered++
-				continue
+			// 仅当该订阅源启用过滤时应用关键词过滤
+			if urlFilter {
+				if filtered, _ := s.isNodeFiltered(result.Node, filterKeywords); filtered {
+					stats.filtered++
+					counts.Filtered++
+					continue
+				}
 			}
 
 			counts.Processed++
@@ -598,7 +643,7 @@ func (s *ConfigUpdateService) getConfig() (map[string]interface{}, error) {
 	}
 
 	res := map[string]interface{}{
-		"urls": []string{}, "filter_keywords": []string{},
+		"urls": []string{}, "filter_keywords": []string{}, "url_filter_flags": []string{},
 		"enable_schedule": false, "schedule_interval": 3600,
 		"manual_node_position": -1,
 	}
@@ -606,6 +651,17 @@ func (s *ConfigUpdateService) getConfig() (map[string]interface{}, error) {
 		switch c.Key {
 		case "urls", "filter_keywords":
 			res[c.Key] = s.splitAndTrim(c.Value)
+		case "url_filter_flags":
+			// 按行解析 1/0；非 1 视为 0
+			var flags []string
+			for _, line := range s.splitAndTrim(c.Value) {
+				if line == "1" {
+					flags = append(flags, "1")
+				} else {
+					flags = append(flags, "0")
+				}
+			}
+			res[c.Key] = flags
 		case "enable_schedule":
 			res[c.Key] = c.Value == "true" || c.Value == "1"
 		case "schedule_interval", "manual_node_position":

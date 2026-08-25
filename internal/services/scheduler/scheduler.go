@@ -20,6 +20,7 @@ import (
 	"cboard-go/internal/services/node_health"
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/services/repo_sync"
+	"cboard-go/internal/services/selfhost"
 	"cboard-go/internal/utils"
 
 	"gorm.io/gorm"
@@ -58,6 +59,7 @@ func (s *Scheduler) Start() {
 	go s.checkExpiringSubscriptions()
 	go s.cleanupExpiredData()
 	go s.checkNodeHealth()
+	go s.checkSelfHostNodes()
 	go s.autoUpdateNodes()
 	go s.autoBackup()
 	go s.syncRepoFiles()
@@ -446,6 +448,116 @@ func (s *Scheduler) checkNodeHealthNow() {
 		utils.LogInfo("节点健康检查完成")
 		if err := utils.CreateSchedulerLog("node_health_check", "success", "节点健康检查完成", nil); err != nil {
 			log.Printf("failed to create scheduler log: %v", err)
+		}
+	}
+}
+
+// checkSelfHostNodes 自建节点守护：心跳超时标记离线，安装令牌过期标记过期。
+func (s *Scheduler) checkSelfHostNodes() {
+	interval := 30 * time.Second
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	s.checkSelfHostNodesNow()
+
+	for {
+		select {
+		case <-s.stopChan:
+			return
+		case <-ticker.C:
+			s.checkSelfHostNodesNow()
+		}
+	}
+}
+
+func (s *Scheduler) checkSelfHostNodesNow() {
+	// 心跳超时 → 离线（阈值 3 分钟，须大于脚本心跳间隔 30s）
+	offline, err := selfhost.MarkOffline(s.db, 3*time.Minute)
+	if err != nil {
+		utils.LogErrorMsg("自建节点离线检测失败: %v", err)
+	} else if offline > 0 {
+		utils.LogInfo("自建节点离线检测: %d 个节点心跳超时已标记离线", offline)
+		// 按"自动屏蔽超时节点"开关（system_configs category=node_health），
+		// 心跳超时离线的自建节点一并屏蔽（is_active=false），
+		// 保证用户订阅中不再出现失效的自建节点；心跳恢复后 Heartbeat 会自动重新启用。
+		var cfg models.SystemConfig
+		disableEnabled := true
+		if err := s.db.Where("key = ? AND category = ?", "auto_disable_timeout", "node_health").First(&cfg).Error; err == nil {
+			disableEnabled = cfg.Value != "false" && cfg.Value != "0"
+		}
+		if disableEnabled {
+			disabled := s.db.Model(&models.CustomNode{}).
+				Where("self_hosted = ? AND status = ? AND is_active = ?", true, selfhost.StatusOffline, true).
+				Update("is_active", false).RowsAffected
+			if disabled > 0 {
+				utils.LogInfo("自建节点自动屏蔽: %d 个离线节点已禁用", disabled)
+			}
+		}
+	}
+
+	// 安装令牌过期且未回传 → 过期
+	expired, err := selfhost.ExpirePending(s.db)
+	if err != nil {
+		utils.LogErrorMsg("自建节点安装令牌过期检测失败: %v", err)
+	} else if expired > 0 {
+		utils.LogInfo("自建节点安装令牌过期检测: %d 个节点已标记过期", expired)
+	}
+
+	// 流量配额检查：启用配额且已用流量 >= 配额的节点自动屏蔽（is_active=false）
+	s.checkTrafficLimitNow()
+}
+
+// checkTrafficLimitNow 检查自建节点的流量配额，超限自动禁用并记录日志。
+// 支持两种配额：节点级（traffic_limit_bytes）与分配级（user_custom_nodes.traffic_limit_bytes，客户独享场景）。
+func (s *Scheduler) checkTrafficLimitNow() {
+	now := utils.GetBeijingTime()
+
+	// 1. 节点级配额
+	var nodes []models.CustomNode
+	if err := s.db.Where("self_hosted = ? AND traffic_limit_enabled = ? AND traffic_limit_bytes > ? AND is_active = ?",
+		true, true, 0, true).Find(&nodes).Error; err != nil {
+		utils.LogErrorMsg("流量配额检查查询失败: %v", err)
+		return
+	}
+	for _, n := range nodes {
+		used := n.TrafficUp + n.TrafficDown
+		if n.TrafficLimitResetAt != nil && now.After(*n.TrafficLimitResetAt) {
+			s.db.Model(&n).Updates(map[string]interface{}{
+				"traffic_up":             0,
+				"traffic_down":           0,
+				"traffic_limit_reset_at": nil,
+			})
+			continue
+		}
+		if used >= n.TrafficLimitBytes {
+			s.db.Model(&n).Update("is_active", false)
+			utils.LogInfo("自建节点流量配额超限: %s 已用 %d 字节 / 配额 %d 字节，已自动屏蔽", n.Name, used, n.TrafficLimitBytes)
+		}
+	}
+
+	// 2. 分配级配额（客户独享节点）：任一分配超限 → 屏蔽该节点（独享场景下节点仅一个客户）
+	var userNodes []models.UserCustomNode
+	if err := s.db.Where("traffic_limit_enabled = ? AND traffic_limit_bytes > ?", true, 0).Find(&userNodes).Error; err == nil && len(userNodes) > 0 {
+		var assignedNodeIDs []uint
+		for _, un := range userNodes {
+			assignedNodeIDs = append(assignedNodeIDs, un.CustomNodeID)
+		}
+		var assignedNodes []models.CustomNode
+		s.db.Where("id IN ? AND self_hosted = ? AND is_active = ?", assignedNodeIDs, true, true).Find(&assignedNodes)
+		nodeMap := make(map[uint]*models.CustomNode, len(assignedNodes))
+		for i := range assignedNodes {
+			nodeMap[assignedNodes[i].ID] = &assignedNodes[i]
+		}
+		for _, un := range userNodes {
+			n, ok := nodeMap[un.CustomNodeID]
+			if !ok {
+				continue
+			}
+			used := n.TrafficUp + n.TrafficDown
+			if used >= un.TrafficLimitBytes {
+				s.db.Model(n).Update("is_active", false)
+				utils.LogInfo("自建节点分配配额超限: 节点 %s 客户配额 %d 字节 / 已用 %d 字节，已自动屏蔽", n.Name, un.TrafficLimitBytes, used)
+			}
 		}
 	}
 }

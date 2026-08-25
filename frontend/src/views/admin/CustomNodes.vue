@@ -395,6 +395,47 @@
               </div>
             </div>
           </el-tab-pane>
+          <el-tab-pane label="VPS自动搭建" name="vps">
+            <div class="import-section">
+              <el-alert
+                title="填写 VPS 的 IP/域名、SSH 端口与 root 密码，系统将 SSH 全自动部署 sing-box 节点并回传，无需手动执行命令。"
+                type="success"
+                :closable="false"
+                show-icon
+              />
+              <el-form :model="vpsForm" label-position="top" class="vps-form">
+                <el-form-item label="节点名称" required>
+                  <el-input v-model="vpsForm.name" placeholder="如: 我的东京VPS" maxlength="50" />
+                </el-form-item>
+                <el-form-item label="协议" required>
+                  <el-select v-model="vpsForm.protocol" class="full-width-control">
+                    <el-option label="VLESS + WebSocket（推荐）" value="vless-ws" />
+                    <el-option label="VMess + WebSocket" value="vmess-ws" />
+                    <el-option label="VLESS + Reality（防封锁强）" value="vless-reality" />
+                    <el-option label="Trojan + WebSocket" value="trojan-ws" />
+                    <el-option label="Shadowsocks" value="ss" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="VPS IP / 域名" required>
+                  <el-input v-model="vpsForm.ssh_host" placeholder="如: 113.20.13.206 或 vps.example.com" />
+                </el-form-item>
+                <div class="inline-fields-row">
+                  <el-form-item label="SSH 端口" class="flex-1">
+                    <el-input-number v-model="vpsForm.ssh_port" :min="1" :max="65535" controls-position="right" class="input-full" />
+                  </el-form-item>
+                  <el-form-item label="SSH 用户" class="flex-1">
+                    <el-input v-model="vpsForm.ssh_user" placeholder="root" />
+                  </el-form-item>
+                </div>
+                <el-form-item label="root 密码" required>
+                  <el-input v-model="vpsForm.ssh_pass" type="password" show-password placeholder="VPS root 密码（AES 加密存储，用于后续远程管理）" />
+                </el-form-item>
+              </el-form>
+              <div class="subscription-tip">
+                部署过程全自动：连接 SSH → 下载 sing-box → 生成节点 → 启动服务 → 自动回传。密码使用 SECRET_KEY 加密保存，仅用于节点管理。
+              </div>
+            </div>
+          </el-tab-pane>
         </el-tabs>
         <el-form 
           v-if="editingNode" 
@@ -472,6 +513,15 @@
           cancel-text="取消"
           @cancel="showAddDialog = false"
           @submit="importSubscription"
+        />
+        <FormActionBar
+          v-if="!editingNode && addNodeTab === 'vps'"
+          :loading="deployingVPS"
+          :disabled="!vpsForm.name || !vpsForm.ssh_host || !vpsForm.ssh_pass"
+          submit-text="一键自动搭建"
+          cancel-text="取消"
+          @cancel="showAddDialog = false"
+          @submit="deploySelfHostVPSNode"
         />
         <FormActionBar
           v-if="editingNode"
@@ -682,14 +732,14 @@
 </template>
 <script>
 import { ref, reactive, onMounted, computed, watch } from 'vue'
-import { ElMessage } from '@/utils/elementPlusServices'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { 
   Plus, Refresh, Search, Connection, Delete, 
   DocumentCopy, Edit, MoreFilled, User, Link,
-  ArrowDown, Close
+  ArrowDown, Close, Setting
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
-import { confirmDelete, confirmWarning } from '@/utils/confirmAction'
+import { confirmDelete, confirmWarning, confirmAction } from '@/utils/confirmAction'
 import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
 import PaginationBar from '@/components/PaginationBar.vue'
 import AppDrawer from '@/components/AppDrawer.vue'
@@ -966,6 +1016,7 @@ export default {
       nodeLinkInput.value = ''
       subUrlInput.value = ''
       parsedNode.value = null
+      Object.assign(vpsForm, { name: '', ssh_host: '', ssh_pass: '' })
       resetNodeForm()
       showAddDialog.value = true
     }
@@ -1221,6 +1272,112 @@ export default {
         importingSubscription.value = false
       }
     }
+    // ==================== VPS 自动搭建 ====================
+    const deployingVPS = ref(false)
+    const vpsForm = reactive({
+      name: '', protocol: 'vless-ws', ssh_host: '', ssh_port: 22, ssh_user: 'root', ssh_pass: ''
+    })
+    const deploySelfHostVPSNode = async () => {
+      deployingVPS.value = true
+      try {
+        const res = await adminAPI.deploySelfHostVPS({ ...vpsForm })
+        if (res.data?.success) {
+          ElMessage.success(res.data.message || 'VPS 自动搭建完成')
+          showAddDialog.value = false
+          Object.assign(vpsForm, { name: '', ssh_host: '', ssh_pass: '' })
+          loadCustomNodes()
+          loadSelfHostNodes()
+        } else {
+          ElMessage.error(res.data?.message || '搭建失败')
+        }
+      } catch (e) {
+        ElMessage.error('搭建失败: ' + (e.response?.data?.message || e.message))
+      } finally {
+        deployingVPS.value = false
+      }
+    }
+    // ==================== 自建节点列表（专线列表下方） ====================
+    const selfHostNodes = ref([])
+    const selfHostLoading = ref(false)
+    const loadSelfHostNodes = async () => {
+      selfHostLoading.value = true
+      try {
+        const res = await adminAPI.getSelfHostNodes()
+        if (res.data?.success) {
+          selfHostNodes.value = res.data.data?.list || []
+        }
+      } catch (e) {
+        console.warn('加载自建节点失败', e)
+      } finally {
+        selfHostLoading.value = false
+      }
+    }
+    const managingSelfHostId = ref(null)
+    const selfHostManage = async (node, action, extra = {}) => {
+      managingSelfHostId.value = node.id
+      try {
+        const res = await adminAPI.selfHostManage(node.id, action, extra)
+        if (res.data?.success) {
+          ElMessage.success(res.data.message || '操作成功')
+          if (action === 'change-port') node.port = extra.new_port
+          loadSelfHostNodes()
+          loadCustomNodes()
+        } else {
+          ElMessage.error(res.data?.message || '操作失败')
+        }
+      } catch (e) {
+        ElMessage.error('操作失败: ' + (e.response?.data?.message || e.message))
+      } finally {
+        managingSelfHostId.value = null
+      }
+    }
+    const onSelfHostManage = async (node, action) => {
+      if (action === 'reset') {
+        const confirmed = await confirmAction(`确认重置节点「${node.name}」的凭据（重新生成 UUID）？重置后需更新订阅。`)
+        if (!confirmed) return
+        await selfHostManage(node, 'reset')
+      } else if (action === 'change-password') {
+        const { value } = await ElMessageBox.prompt('输入新的 UUID（密码）', '更改节点密码', {
+          inputPattern: /^[0-9a-fA-F-]{36}$/,
+          inputErrorMessage: '请输入合法的 UUID（36位，含横线）'
+        }).catch(() => ({}))
+        if (!value) return
+        await selfHostManage(node, 'change-password', { new_pass: value })
+      } else if (action === 'change-port') {
+        const { value } = await ElMessageBox.prompt('输入新的监听端口', '更改端口', {
+          inputPattern: /^\d+$/,
+          inputValidator: (v) => (v >= 1 && v <= 65535) ? true : '端口需在 1-65535',
+          inputErrorMessage: '端口需在 1-65535'
+        }).catch(() => ({}))
+        if (!value) return
+        await selfHostManage(node, 'change-port', { new_port: parseInt(value, 10) })
+      } else if (action === 'reinstall') {
+        const confirmed = await confirmAction(`确认在 VPS「${node.ssh_host || node.name}」上重新搭建节点？会重新安装 sing-box。`)
+        if (!confirmed) return
+        await selfHostManage(node, 'reinstall')
+      } else if (action === 'status') {
+        const res = await adminAPI.selfHostManage(node.id, 'status').catch(() => null)
+        if (res?.data?.success) {
+          ElMessageBox.alert(`<pre style="white-space:pre-wrap;font-size:12px">${res.data.data?.status || '无输出'}</pre>`, `节点「${node.name}」远程状态`, { dangerouslyUseHTMLString: true })
+        }
+      }
+    }
+    const selfHostStatusMap = { pending: '等待安装', online: '在线', offline: '离线', expired: '已过期', canceled: '已取消' }
+    const selfHostStatusTypeMap = { pending: 'warning', online: 'success', offline: 'danger', expired: 'info', canceled: 'info' }
+    const formatBytes2 = (b) => {
+      if (b === undefined || b === null || isNaN(b)) return '-'
+      if (b === 0) return '0 B'
+      const u = ['B', 'KB', 'MB', 'GB', 'TB']
+      const i = Math.floor(Math.log(b) / Math.log(1024))
+      return (b / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 2) + ' ' + u[i]
+    }
+    const formatTime2 = (t) => {
+      if (!t) return '-'
+      const d = new Date(t)
+      if (isNaN(d.getTime())) return '-'
+      const p = (n) => String(n).padStart(2, '0')
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+    }
     const viewLink = async (node) => {
       try {
         const res = await adminAPI.getCustomNodeLink(node.id)
@@ -1400,6 +1557,7 @@ export default {
     onMounted(() => {
       loadSettings() // 先加载保存的设置
       loadCustomNodes()
+      loadSelfHostNodes()
     })
     return {
       isMobile, viewMode, gridOrientation, gridColumns, gridSize, tableRef, columnWidths, loading, saving, parsing, customNodes, selectedNodes,
@@ -1408,6 +1566,9 @@ export default {
       searchKeyword, filters, pagination, nodeForm, nodeFormRef, rules,
       nodeTypeGroups,
       nodeLinkInput, parsedNode, nodeLink, testingFromLink, subUrlInput, importingSubscription,
+      deployingVPS, vpsForm, deploySelfHostVPSNode,
+      selfHostNodes, selfHostLoading, loadSelfHostNodes, onSelfHostManage, managingSelfHostId,
+      selfHostStatusMap, selfHostStatusTypeMap, formatBytes2, formatTime2,
       assignMode, assignedUsers, userSearchKeyword, searchedUsers, selectedUserIds,
       loadingUsers, batchAssigning, assignExtraData, subscriptionTypeDesc, deviceLimitDesc,
       batchTesting, batchDeleting, batchUnassigning,
@@ -1860,6 +2021,80 @@ export default {
         margin-right: 4px;
       }
     }
+  }
+}
+/* ==================== 自建节点分区 ==================== */
+.selfhost-section-card {
+  margin-top: 14px;
+}
+.selfhost-section-body {
+  min-height: 60px;
+}
+.selfhost-node-card {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  background: var(--el-bg-color);
+}
+.selfhost-node-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.selfhost-node-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.selfhost-node-name {
+  font-weight: 600;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.selfhost-node-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+.selfhost-node-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.detail-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.detail-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  word-break: break-all;
+}
+.vps-form {
+  margin-top: 8px;
+}
+.inline-fields-row {
+  display: flex;
+  gap: 12px;
+}
+.inline-fields-row .flex-1 {
+  flex: 1;
+}
+@media (max-width: 768px) {
+  .selfhost-node-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .inline-fields-row {
+    flex-direction: column;
+    gap: 0;
   }
 }
 </style>

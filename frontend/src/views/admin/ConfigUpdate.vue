@@ -126,6 +126,15 @@
                       <span class="index-badge">{{ index + 1 }}</span>
                     </template>
                   </el-input>
+                  <!-- 过滤开关：勾选=该订阅源应用关键词过滤；不勾选=不过滤保留全部节点 -->
+                  <el-tooltip content="勾选=该订阅源应用过滤关键词；不勾选=不过滤，保留全部节点" placement="top">
+                    <el-checkbox
+                      v-model="item.filterEnabled"
+                      class="url-filter-check"
+                    >
+                      <span class="filter-label" v-if="!isMobile">过滤</span>
+                    </el-checkbox>
+                  </el-tooltip>
                 </template>
                 <el-button
                   v-if="!item.isManual"
@@ -311,7 +320,7 @@ export default {
     })
     
     const config = reactive({
-      urls: [], // [{ uid: string, value: string }]
+      urls: [], // [{ uid: string, value: string, filterEnabled: boolean }] filterEnabled=是否应用关键词过滤
       update_interval: 3600,
       enable_schedule: false,
       filter_keywords: []
@@ -443,7 +452,13 @@ export default {
           const interval = typeof rawInterval === 'number' ? rawInterval : (parseInt(rawInterval) || 3600)
 
           const rawUrls = Array.isArray(data.urls) ? (data.urls.length ? data.urls : ['']) : ['']
-          config.urls = rawUrls.map(url => ({ uid: generateUid(), value: url }))
+          // 过滤开关与 urls 一一对应；缺省（旧配置）默认启用过滤
+          const rawFlags = Array.isArray(data.url_filter_flags) ? data.url_filter_flags : []
+          config.urls = rawUrls.map((url, idx) => ({
+            uid: generateUid(),
+            value: url,
+            filterEnabled: rawFlags.length > idx ? String(rawFlags[idx]) === '1' : true
+          }))
 
           // 插入手动节点固定项
           const manualPos = typeof data.manual_node_position === 'number' ? data.manual_node_position : config.urls.length
@@ -583,7 +598,12 @@ export default {
       loading.save = true
       try {
         updateInterval()
-        const urls = (config.urls || []).filter(item => !item.isManual).map(item => item.value).filter(val => val && String(val).trim())
+        const urlItems = (config.urls || []).filter(item => !item.isManual)
+        const urls = urlItems.map(item => item.value).filter(val => val && String(val).trim())
+        // 过滤开关与 urls 一一对应（跳过空 URL 的标记，保持对齐）
+        const url_filter_flags = urlItems
+          .filter(item => item.value && String(item.value).trim())
+          .map(item => item.filterEnabled ? '1' : '0')
         const filter_keywords = (config.filter_keywords || []).filter(keyword => keyword && String(keyword).trim())
 
         // 计算手动节点在纯URL列表中的位置
@@ -599,6 +619,7 @@ export default {
         const configToSave = {
           urls,
           filter_keywords,
+          url_filter_flags,
           enable_schedule: config.enable_schedule,
           schedule_interval: config.update_interval,
           manual_node_position
@@ -637,7 +658,7 @@ export default {
     // ========== 列表维护 ==========
     const addUrl = () => {
       if (!config.urls) config.urls = []
-      config.urls.push({ uid: generateUid(), value: '' })
+      config.urls.push({ uid: generateUid(), value: '', filterEnabled: true }) // 新增订阅源默认启用过滤
     }
     const removeUrl = (index) => {
       if (config.urls[index]?.isManual) return
@@ -800,6 +821,13 @@ $primary-color: #409eff;
         .index-badge { color: #909399; font-size: 12px; margin-right: 4px; font-weight: 600; }
       }
       .action-btn-side { width: 44px; flex-shrink: 0; border-radius: 0; border-left: 1px solid #dcdfe6; }
+      .url-filter-check {
+        flex-shrink: 0; display: flex; align-items: center; padding: 0 10px;
+        border-left: 1px solid #dcdfe6; margin-right: 0;
+        :deep(.el-checkbox__label) { font-size: 12px; color: #606266; padding-left: 4px; }
+        .filter-label { font-size: 12px; color: #606266; }
+      }
+      .manual-node-item .url-filter-check { border-left: none; }
     }
   }
   

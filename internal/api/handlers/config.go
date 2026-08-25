@@ -305,6 +305,7 @@ func GetAdminSettings(c *gin.Context) {
 		},
 		"node_health": {
 			"node_health_check_interval": "300", "node_max_latency": "3000", "node_test_timeout": "5", "test_url": "https://ping.pe",
+			"auto_disable_timeout": "true",
 		},
 		"protocol_filter": {
 			"clash_protocols":     []string{"vmess", "vless", "trojan", "ss", "ssr", "hysteria", "hysteria2", "tuic", "anytls", "socks5", "http", "wireguard"},

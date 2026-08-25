@@ -11,6 +11,12 @@
             <el-button type="primary" @click="handleAdd">
               <el-icon><Plus /></el-icon>添加节点
             </el-button>
+            <el-button type="warning" plain @click="openSelfHostDrawer">
+              <el-icon><Promotion /></el-icon>自建节点
+            </el-button>
+            <el-button type="info" plain @click="openSelfHostListView">
+              <el-icon><Monitor /></el-icon>自建节点列表
+            </el-button>
             <el-button type="success" @click="batchTest" :loading="testing" :disabled="!selectedNodes.length">
               <el-icon><Connection /></el-icon>批量测试
             </el-button>
@@ -25,6 +31,9 @@
             <el-button type="primary" circle @click="handleAdd" size="small">
               <el-icon><Plus /></el-icon>
             </el-button>
+            <el-button type="warning" plain circle @click="openSelfHostDrawer" size="small" title="自建节点">
+              <el-icon><Promotion /></el-icon>
+            </el-button>
             <el-dropdown trigger="click" @command="handleCommand">
               <el-button circle size="small">
                 <el-icon><MoreFilled /></el-icon>
@@ -32,6 +41,8 @@
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="refresh" :icon="Refresh">刷新列表</el-dropdown-item>
+                  <el-dropdown-item command="selfhost" :icon="Promotion">自建节点</el-dropdown-item>
+                  <el-dropdown-item command="selfhost-list" :icon="Monitor">自建节点列表</el-dropdown-item>
                   <el-dropdown-item command="test" :icon="Connection" :disabled="!selectedNodes.length">批量测试</el-dropdown-item>
                   <el-dropdown-item command="delete" :icon="Delete" :disabled="!selectedNodes.length" divided class="danger-menu-item">批量删除</el-dropdown-item>
                 </el-dropdown-menu>
@@ -118,9 +129,10 @@
               <el-table-column type="selection" width="50" />
               <el-table-column prop="name" label="节点名称" min-width="180" show-overflow-tooltip />
               <el-table-column prop="region" label="地区" width="100" />
-              <el-table-column label="来源" width="80">
+              <el-table-column label="来源" width="90">
                 <template #default="{ row }">
-                  <el-tag :type="row.is_manual ? 'warning' : 'success'" size="small" effect="light">{{ row.is_manual ? '手动' : '采集' }}</el-tag>
+                  <el-tag v-if="row.self_hosted" type="danger" size="small" effect="light">自建</el-tag>
+                  <el-tag v-else :type="row.is_manual ? 'warning' : 'success'" size="small" effect="light">{{ row.is_manual ? '手动' : '采集' }}</el-tag>
                 </template>
               </el-table-column>
               <el-table-column label="订阅#" width="70">
@@ -185,7 +197,8 @@
             <el-tag effect="plain" size="small">{{ item.type?.toUpperCase() || '-' }}</el-tag>
           </template>
           <template #field-source="{ item }">
-            <el-tag :type="item.is_manual ? 'warning' : 'success'" size="small" effect="light">
+            <el-tag v-if="item.self_hosted" type="danger" size="small" effect="light">自建</el-tag>
+            <el-tag v-else :type="item.is_manual ? 'warning' : 'success'" size="small" effect="light">
               {{ item.is_manual ? '手动' : '采集' }}
               <span v-if="!item.is_manual && item.source_index"> #{{ item.source_index }}</span>
             </el-tag>
@@ -364,6 +377,182 @@
         </FormActionBar>
       </template>
     </AppDrawer>
+    <AppDrawer
+      v-model="showSelfHostDrawer"
+      title="自建节点"
+      size="640px"
+      mobile-size="100%"
+      class="selfhost-drawer"
+      @closed="stopSelfHostPolling"
+    >
+      <div class="dialog-scroll-content">
+        <!-- 第一步：填写节点信息 -->
+        <div v-if="!selfHostInfo" class="selfhost-section">
+          <el-alert
+            title="在您的 VPS / 服务器上执行一条命令，即可自动部署 sing-box 节点并回传到本面板。无需手动填写服务器地址、端口和密钥。"
+            type="info"
+            :closable="false"
+            show-icon
+            class="selfhost-alert"
+          />
+          <el-form :model="selfHostForm" label-position="top" class="node-form">
+            <el-form-item label="节点名称" required>
+              <el-input v-model="selfHostForm.name" placeholder="如: 我的香港 VPS" maxlength="50" show-word-limit />
+            </el-form-item>
+            <el-form-item label="协议" required>
+              <el-select v-model="selfHostForm.protocol" class="full-width-control">
+                <el-option label="VLESS + WebSocket（推荐，兼容性最好）" value="vless-ws" />
+                <el-option label="VMess + WebSocket" value="vmess-ws" />
+                <el-option label="VLESS + Reality（防封锁强，需服务器能访问外网）" value="vless-reality" />
+                <el-option label="Trojan + WebSocket" value="trojan-ws" />
+                <el-option label="Shadowsocks" value="ss" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="监听端口" v-if="false">
+              <el-input v-model="selfHostForm.port" placeholder="443" />
+            </el-form-item>
+          </el-form>
+          <div class="selfhost-tip">
+            <el-icon><InfoFilled /></el-icon>
+            <span>脚本会自动检测系统架构、下载 sing-box（内置多镜像源）、生成随机密钥并启动服务，安装完成后节点自动出现在列表中。</span>
+          </div>
+        </div>
+        <!-- 第二步：显示安装命令 -->
+        <div v-else class="selfhost-section">
+          <div class="selfhost-status-row">
+            <span class="selfhost-status-label">安装状态</span>
+            <el-tag :type="selfHostStatusType" effect="light" size="default">{{ selfHostStatusText }}</el-tag>
+            <el-tag type="info" effect="plain" size="small" v-if="selfHostInfo.protocol_display">{{ selfHostInfo.protocol_display }}</el-tag>
+          </div>
+          <!-- 节点详情卡片（状态/协议/流量/心跳） -->
+          <div class="selfhost-detail-grid" v-if="selfHostInfo">
+            <div class="selfhost-detail-item">
+              <span class="detail-label">节点名称</span>
+              <span class="detail-value">{{ selfHostInfo.name || '-' }}</span>
+            </div>
+            <div class="selfhost-detail-item">
+              <span class="detail-label">协议</span>
+              <span class="detail-value">{{ selfHostInfo.protocol_display || '-' }}</span>
+            </div>
+            <div class="selfhost-detail-item">
+              <span class="detail-label">上行流量</span>
+              <span class="detail-value">{{ formatBytes(selfHostInfo.traffic_up || 0) }}</span>
+            </div>
+            <div class="selfhost-detail-item">
+              <span class="detail-label">下行流量</span>
+              <span class="detail-value">{{ formatBytes(selfHostInfo.traffic_down || 0) }}</span>
+            </div>
+            <div class="selfhost-detail-item">
+              <span class="detail-label">最近心跳</span>
+              <span class="detail-value">{{ formatTime(selfHostInfo.last_heartbeat_at) }}</span>
+            </div>
+            <div class="selfhost-detail-item">
+              <span class="detail-label">流量统计时间</span>
+              <span class="detail-value">{{ formatTime(selfHostInfo.traffic_updated_at) }}</span>
+            </div>
+          </div>
+          <div class="selfhost-install-title">复制以下命令到您的服务器执行（需要 root 权限）：</div>
+          <div class="selfhost-cmd-box">
+            <div class="selfhost-cmd-text">{{ selfHostInfo.install_cmd }}</div>
+            <el-button class="selfhost-copy-btn" type="primary" link @click="copyInstallCmd">
+              <el-icon><DocumentCopy /></el-icon>
+            </el-button>
+          </div>
+          <el-alert
+            v-if="selfHostStatus === 'pending'"
+            title="等待服务器执行安装命令… 节点回传后此处会自动变为在线状态。"
+            type="warning"
+            :closable="false"
+            show-icon
+          />
+          <el-alert
+            v-else-if="selfHostStatus === 'online'"
+            :title="`节点已上线！地址: ${selfHostInfo.link || '已配置'}`"
+            type="success"
+            :closable="false"
+            show-icon
+          />
+          <el-alert
+            v-else-if="selfHostStatus === 'offline'"
+            title="节点已离线（心跳超时）。请检查服务器上的 sing-box 与心跳服务是否正常运行。"
+            type="error"
+            :closable="false"
+            show-icon
+          />
+          <el-alert
+            v-else-if="selfHostStatus === 'expired' || selfHostStatus === 'canceled'"
+            title="安装令牌已失效。请关闭此窗口后重新创建一个自建节点。"
+            type="error"
+            :closable="false"
+            show-icon
+          />
+          <div class="selfhost-actions">
+            <el-button @click="closeSelfHostDrawer">关闭</el-button>
+            <el-button v-if="selfHostStatus === 'online'" type="primary" @click="refreshSelfHostStatus">刷新状态</el-button>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <template v-if="!selfHostInfo">
+          <FormActionBar :loading="creatingSelfHost">
+            <el-button :disabled="creatingSelfHost" @click="showSelfHostDrawer = false">取消</el-button>
+            <el-button type="primary" :loading="creatingSelfHost" :disabled="!selfHostForm.name || !selfHostForm.protocol" @click="createSelfHostNode">
+              生成安装命令
+            </el-button>
+          </FormActionBar>
+        </template>
+      </template>
+    </AppDrawer>
+    <!-- 自建节点列表视图 -->
+    <AppDrawer
+      v-model="showSelfHostList"
+      title="自建节点列表"
+      size="720px"
+      mobile-size="100%"
+      class="selfhost-list-drawer"
+    >
+      <div class="dialog-scroll-content">
+        <div v-loading="selfHostListLoading" class="selfhost-list-body">
+          <el-empty v-if="!selfHostListLoading && selfHostList.length === 0" description="暂无自建节点，点击右上角「自建节点」创建" />
+          <div v-for="n in selfHostList" :key="n.id" class="selfhost-list-card">
+            <div class="selfhost-card-header">
+              <span class="selfhost-card-name">{{ n.name || '-' }}</span>
+              <el-tag :type="selfHostStatusTypeMap[n.status]" effect="light" size="small">{{ selfHostStatusTextMap[n.status] || n.status }}</el-tag>
+            </div>
+            <div class="selfhost-card-grid">
+              <div class="selfhost-card-item">
+                <span class="detail-label">协议</span>
+                <span class="detail-value">{{ n.protocol_display || n.protocol || '-' }}</span>
+              </div>
+              <div class="selfhost-card-item">
+                <span class="detail-label">上行流量</span>
+                <span class="detail-value">{{ formatBytes(n.traffic_up) }}</span>
+              </div>
+              <div class="selfhost-card-item">
+                <span class="detail-label">下行流量</span>
+                <span class="detail-value">{{ formatBytes(n.traffic_down) }}</span>
+              </div>
+              <div class="selfhost-card-item">
+                <span class="detail-label">最近心跳</span>
+                <span class="detail-value">{{ formatTime(n.last_heartbeat_at) }}</span>
+              </div>
+              <div class="selfhost-card-item">
+                <span class="detail-label">创建时间</span>
+                <span class="detail-value">{{ formatTime(n.created_at) }}</span>
+              </div>
+              <div class="selfhost-card-item">
+                <span class="detail-label">状态</span>
+                <span class="detail-value">{{ selfHostStatusTextMap[n.status] || n.status }}</span>
+              </div>
+            </div>
+            <div class="selfhost-card-actions">
+              <el-button size="small" @click="openSelfHostFromList(n)">详情</el-button>
+              <el-button size="small" type="primary" @click="refreshSelfHostList">刷新</el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </AppDrawer>
   </div>
 </template>
 <script>
@@ -371,7 +560,7 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { 
   Plus, Refresh, Search, Connection, Delete, 
-  DocumentCopy, Edit, MoreFilled 
+  DocumentCopy, Edit, MoreFilled, Promotion, InfoFilled, Monitor 
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import AppDrawer from '@/components/AppDrawer.vue'
@@ -386,7 +575,7 @@ export default {
   name: 'AdminNodes',
   components: { 
     Plus, Refresh, Search, Connection, Delete, 
-    DocumentCopy, Edit, MoreFilled, AppDrawer, FormActionBar, PaginationBar, EmptyState, ResponsiveDataView
+    DocumentCopy, Edit, MoreFilled, Promotion, InfoFilled, Monitor, AppDrawer, FormActionBar, PaginationBar, EmptyState, ResponsiveDataView
   },
   setup() {
     // 所有支持的节点类型（完整列表）
@@ -496,7 +685,13 @@ export default {
       showAddDialog.value = true
     }
     const handleCommand = (cmd) => {
-      const actions = { refresh: loadNodes, test: batchTest, delete: batchDelete }
+      const actions = {
+        refresh: loadNodes,
+        test: batchTest,
+        delete: batchDelete,
+        selfhost: openSelfHostDrawer,
+        'selfhost-list': openSelfHostListView
+      }
       actions[cmd] && actions[cmd]()
     }
     const editNode = async (node) => {
@@ -588,6 +783,160 @@ export default {
       } finally {
         importingSubscription.value = false
       }
+    }
+
+    // ==================== 自建节点 ====================
+    const showSelfHostDrawer = ref(false)
+    const creatingSelfHost = ref(false)
+    const selfHostInfo = ref(null)
+    const selfHostForm = reactive({ name: '', protocol: 'vless-ws', port: 443 })
+    let selfHostPollTimer = null
+
+    const openSelfHostDrawer = () => {
+      selfHostInfo.value = null
+      showSelfHostDrawer.value = true
+    }
+    const closeSelfHostDrawer = () => {
+      showSelfHostDrawer.value = false
+      stopSelfHostPolling()
+      loadNodes()
+    }
+    const createSelfHostNode = async () => {
+      const name = (selfHostForm.name || '').trim()
+      if (!name) {
+        ElMessage.warning('请填写节点名称')
+        return
+      }
+      creatingSelfHost.value = true
+      try {
+        const res = await adminAPI.createSelfHostNode({
+          name,
+          protocol: selfHostForm.protocol
+        })
+        if (res.data?.success) {
+          selfHostInfo.value = res.data.data
+          ElMessage.success('安装命令已生成，请复制到您的服务器执行')
+          startSelfHostPolling(res.data.data.node?.id)
+        } else {
+          ElMessage.error(res.data?.message || '创建自建节点失败')
+        }
+      } catch (e) {
+        ElMessage.error('创建失败: ' + (e.response?.data?.message || e.message))
+      } finally {
+        creatingSelfHost.value = false
+      }
+    }
+    const startSelfHostPolling = (nodeId) => {
+      stopSelfHostPolling()
+      if (!nodeId) return
+      selfHostPollTimer = setInterval(async () => {
+        try {
+          const res = await adminAPI.getSelfHostNodeStatus(nodeId)
+          if (res.data?.success) {
+            selfHostInfo.value = { ...selfHostInfo.value, ...res.data.data }
+            if (res.data.data?.status === 'online') {
+              stopSelfHostPolling()
+              loadNodes()
+            }
+          }
+        } catch (e) {
+          // 轮询失败静默，下次继续
+        }
+      }, 3000)
+    }
+    const stopSelfHostPolling = () => {
+      if (selfHostPollTimer) {
+        clearInterval(selfHostPollTimer)
+        selfHostPollTimer = null
+      }
+    }
+    const refreshSelfHostStatus = async () => {
+      if (!selfHostInfo.value?.id) return
+      try {
+        const res = await adminAPI.getSelfHostNodeStatus(selfHostInfo.value.id)
+        if (res.data?.success) {
+          selfHostInfo.value = { ...selfHostInfo.value, ...res.data.data }
+          if (res.data.data?.status === 'online') {
+            stopSelfHostPolling()
+            loadNodes()
+          }
+        }
+      } catch (e) {
+        ElMessage.error('刷新状态失败')
+      }
+    }
+    const copyInstallCmd = () => {
+      if (selfHostInfo.value?.install_cmd) {
+        navigator.clipboard.writeText(selfHostInfo.value.install_cmd)
+        ElMessage.success('安装命令已复制')
+      }
+    }
+    const selfHostStatus = computed(() => selfHostInfo.value?.status || 'pending')
+    const selfHostStatusText = computed(() => ({
+      pending: '等待安装',
+      online: '在线',
+      offline: '离线',
+      expired: '已过期',
+      canceled: '已取消'
+    }[selfHostStatus.value] || '未知'))
+    const selfHostStatusType = computed(() => ({
+      pending: 'warning',
+      online: 'success',
+      offline: 'danger',
+      expired: 'info',
+      canceled: 'info'
+    }[selfHostStatus.value] || 'info'))
+    const formatTime = (t) => {
+      if (!t) return '-'
+      const d = new Date(t)
+      if (isNaN(d.getTime())) return '-'
+      const pad = (n) => String(n).padStart(2, '0')
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+    }
+    const formatBytes = (bytes) => {
+      if (bytes === undefined || bytes === null || isNaN(bytes)) return '-'
+      if (bytes === 0) return '0 B'
+      const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+      const i = Math.floor(Math.log(bytes) / Math.log(1024))
+      return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 2) + ' ' + units[i]
+    }
+
+    // ==================== 自建节点列表视图 ====================
+    const showSelfHostList = ref(false)
+    const selfHostList = ref([])
+    const selfHostListLoading = ref(false)
+    const selfHostStatusTypeMap = {
+      pending: 'warning', online: 'success', offline: 'danger', expired: 'info', canceled: 'info'
+    }
+    const selfHostStatusTextMap = {
+      pending: '等待安装', online: '在线', offline: '离线', expired: '已过期', canceled: '已取消'
+    }
+    const loadSelfHostList = async () => {
+      selfHostListLoading.value = true
+      try {
+        const res = await adminAPI.getSelfHostNodes()
+        if (res.data?.success) {
+          selfHostList.value = res.data.data?.list || []
+        }
+      } catch (e) {
+        ElMessage.error('加载自建节点列表失败: ' + (e.response?.data?.message || e.message))
+      } finally {
+        selfHostListLoading.value = false
+      }
+    }
+    const openSelfHostListView = () => {
+      showSelfHostList.value = true
+      loadSelfHostList()
+    }
+    const refreshSelfHostList = () => {
+      loadSelfHostList()
+    }
+    const openSelfHostFromList = (n) => {
+      showSelfHostList.value = false
+      selfHostInfo.value = n
+      selfHostForm.name = n.name || ''
+      showSelfHostDrawer.value = true
+      startSelfHostPolling(n.id)
     }
 
     const batchTest = async () => {
@@ -713,8 +1062,8 @@ export default {
       nodeLinkValue.value = ''
       parsedNode.value = null
     }
-    const getStatusType = (s) => ({ online: 'success', offline: 'danger', timeout: 'warning' }[s] || 'info')
-    const getStatusText = (s) => ({ online: '在线', offline: '离线', timeout: '超时' }[s] || '未知')
+    const getStatusType = (s) => ({ online: 'success', offline: 'danger', timeout: 'warning', pending: 'warning', expired: 'info', canceled: 'info' }[s] || 'info')
+    const getStatusText = (s) => ({ online: '在线', offline: '离线', timeout: '超时', pending: '安装中', expired: '已过期', canceled: '已取消' }[s] || '未知')
     const formatLatency = (l) => l > 0 ? `${l}ms` : '-'
     const getLatencyClass = (l) => l <= 0 ? '' : l < 200 ? 'text-green' : l < 500 ? 'text-orange' : 'text-red'
     const nodeLink = computed(() => {
@@ -739,7 +1088,14 @@ export default {
       parseNodeLink, batchImportLinks, copyNodeLink, nodeLink,
       getStatusType, getStatusText, getLatencyClass, formatLatency,
       isSelected, isAllSelected, isIndeterminate, toggleMobileSelectAll,
-      Plus, Refresh, Search, Connection, Delete, DocumentCopy, Edit, MoreFilled
+      showSelfHostDrawer, creatingSelfHost, selfHostInfo, selfHostForm,
+      openSelfHostDrawer, closeSelfHostDrawer, createSelfHostNode,
+      copyInstallCmd, refreshSelfHostStatus, stopSelfHostPolling,
+      selfHostStatus, selfHostStatusText, selfHostStatusType, formatTime, formatBytes,
+      showSelfHostList, selfHostList, selfHostListLoading,
+      selfHostStatusTypeMap, selfHostStatusTextMap,
+      openSelfHostListView, refreshSelfHostList, openSelfHostFromList,
+      Plus, Refresh, Search, Connection, Delete, DocumentCopy, Edit, MoreFilled, Promotion, InfoFilled, Monitor
     }
   }
 }
@@ -892,5 +1248,160 @@ export default {
   font-size: 12px;
   color: var(--el-text-color-placeholder);
   padding: 4px 0;
+}
+/* ===== 自建节点 ===== */
+.selfhost-alert {
+  margin-bottom: 16px;
+}
+.selfhost-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.6;
+}
+.selfhost-tip .el-icon {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+.selfhost-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.selfhost-status-label {
+  font-weight: 600;
+  font-size: 14px;
+}
+/* 自建节点详情网格 */
+.selfhost-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+}
+.selfhost-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.detail-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.detail-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  word-break: break-all;
+}
+@media (max-width: 768px) {
+  .selfhost-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.selfhost-install-title {
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+  margin-bottom: 8px;
+}
+.selfhost-cmd-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: #1e1e1e;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+.selfhost-cmd-text {
+  flex: 1;
+  min-width: 0;
+  font-family: monospace;
+  font-size: 12px;
+  color: #d4d4d4;
+  word-break: break-all;
+  line-height: 1.6;
+  user-select: all;
+}
+.selfhost-copy-btn {
+  flex-shrink: 0;
+}
+.selfhost-meta {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+}
+.selfhost-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+@media (max-width: 768px) {
+  .selfhost-section {
+    padding: 4px 2px;
+  }
+  .selfhost-cmd-text {
+    font-size: 11px;
+  }
+}
+/* ===== 自建节点列表视图 ===== */
+.selfhost-list-body {
+  min-height: 200px;
+}
+.selfhost-list-card {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  background: var(--el-bg-color);
+}
+.selfhost-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.selfhost-card-name {
+  font-weight: 600;
+  font-size: 15px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.selfhost-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+.selfhost-card-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.selfhost-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+@media (max-width: 768px) {
+  .selfhost-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>

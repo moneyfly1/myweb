@@ -2074,10 +2074,11 @@ func GetConfigUpdateConfig(c *gin.Context) {
 
 	configMap := make(map[string]interface{})
 	defaultConfig := map[string]interface{}{
-		"urls":                 []string{},
-		"filter_keywords":      []string{},
-		"enable_schedule":      false,
-		"schedule_interval":    3600,
+		"urls":              []string{},
+		"filter_keywords":   []string{},
+		"url_filter_flags":  []string{}, // 与 urls 一一对应："1"=启用过滤关键词 "0"=不过滤
+		"enable_schedule":   false,
+		"schedule_interval": 3600,
 		"manual_node_position": -1,
 	}
 
@@ -2099,6 +2100,21 @@ func GetConfigUpdateConfig(c *gin.Context) {
 				}
 			}
 			configMap[key] = filtered
+		case "url_filter_flags":
+			// 按行解析 1/0 标记；非 1 视为 0（不过滤）
+			raw := strings.Split(value, "\n")
+			flags := make([]string, 0, len(raw))
+			for _, line := range raw {
+				if strings.TrimSpace(line) == "" {
+					continue
+				}
+				if strings.TrimSpace(line) == "1" {
+					flags = append(flags, "1")
+				} else {
+					flags = append(flags, "0")
+				}
+			}
+			configMap[key] = flags
 		case "enable_schedule":
 			configMap[key] = value == "true" || value == "1"
 		case "schedule_interval":
@@ -2123,6 +2139,23 @@ func GetConfigUpdateConfig(c *gin.Context) {
 			}
 		}
 		configMap["urls"] = filtered
+	}
+
+	// url_filter_flags 与 urls 对齐：旧配置没有 flags 时默认全 "1"（启用过滤，保持原行为）
+	urlsList, _ := configMap["urls"].([]string)
+	flagsList, _ := configMap["url_filter_flags"].([]string)
+	if len(flagsList) < len(urlsList) {
+		aligned := make([]string, len(urlsList))
+		for i := range urlsList {
+			if i < len(flagsList) && flagsList[i] == "1" {
+				aligned[i] = "1"
+			} else if i < len(flagsList) {
+				aligned[i] = "0"
+			} else {
+				aligned[i] = "1" // 缺省启用过滤
+			}
+		}
+		configMap["url_filter_flags"] = aligned
 	}
 
 	for key, defaultValue := range defaultConfig {
