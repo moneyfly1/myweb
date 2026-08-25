@@ -429,6 +429,7 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/custom-nodes/enable-all", handlers.EnableAllCustomNodes)
 			admin.POST("/custom-nodes/selfhost/deploy", handlers.DeploySelfHostVPS)
 			admin.POST("/custom-nodes/selfhost/deploy-domain", handlers.DeploySelfHostVPSDomain)
+			admin.GET("/custom-nodes/selfhost/saved-vps", handlers.GetSavedSelfHostVPS)
 			admin.POST("/custom-nodes/selfhost/:id/manage", handlers.SelfHostBatchManage)
 			admin.POST("/custom-nodes/selfhost/batch-manage", handlers.SelfHostBatchManageMany)
 			admin.POST("/custom-nodes/selfhost/:id/traffic-limit", handlers.SelfHostTrafficLimit)
