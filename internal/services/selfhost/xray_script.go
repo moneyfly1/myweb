@@ -142,7 +142,7 @@ info "系统: $OS | 架构: $ARCH | init: $INIT"
 # ---------- 下载 sing-box ----------
 SB_DIR="/usr/local/bin"
 SB_BIN="${SB_DIR}/sing-box"
-SB_VER="1.11.3"
+SB_VER="1.12.2"
 install_singbox() {
     local tmpdir="/tmp/sb-install-$$"
     mkdir -p "$tmpdir"

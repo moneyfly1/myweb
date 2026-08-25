@@ -93,7 +93,7 @@ info "系统: $OS | 架构: $ARCH | init: $INIT"
 # ---------- sing-box 下载（多镜像源 fallback） ----------
 SINGBOX_DIR="/usr/local/bin"
 SINGBOX_BIN="${SINGBOX_DIR}/sing-box"
-SINGBOX_VER="1.11.3"
+SINGBOX_VER="1.12.2"
 
 # 镜像前缀列表（面板下发，运行时按架构拼装完整 URL）
 MIRROR_PREFIXES="${DOWNLOAD_PREFIXES}"
