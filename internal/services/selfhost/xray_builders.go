@@ -96,53 +96,53 @@ func buildXrayLinks(protocols []XrayProtocol) string {
 		key := sanitizeKey(p.Key)
 		switch p.Key {
 		case "vless-ws":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${IP}:%d?type=ws&path=%%2F${WS_%s}&security=none&host=${DOMAIN}#${DOMAIN:-${IP}}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?type=ws&path=%%2F${WS_%s}&security=none&host=${DOMAIN}#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, key, protoLabel(p.Key), key))
 		case "vmess-ws":
-			sb.WriteString(fmt.Sprintf(`VJSON_%s="{\"v\":2,\"ps\":\"${DOMAIN:-${IP}}-%s\",\"add\":\"${IP}\",\"port\":\"%d\",\"id\":\"${UUID_%s}\",\"aid\":\"0\",\"net\":\"ws\",\"host\":\"${DOMAIN}\",\"path\":\"/${WS_%s}\",\"tls\":\"tls\"}"
+			sb.WriteString(fmt.Sprintf(`VJSON_%s="{\"v\":2,\"ps\":\"${SERVER_ADDR}-%s\",\"add\":\"${SERVER_ADDR}\",\"port\":\"%d\",\"id\":\"${UUID_%s}\",\"aid\":\"0\",\"net\":\"ws\",\"host\":\"${DOMAIN}\",\"path\":\"/${WS_%s}\",\"tls\":\"tls\"}"
 LINK_%s="vmess://$(echo -n "$VJSON_%s" | base64 -w0 | tr -d '=')"
 LINKS+=("$LINK_%s")
 `+"\n", key, protoLabel(p.Key), p.Port, key, key, key, key, key))
 		case "vless-reality":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${IP}:%d?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=tcp#${IP}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=tcp#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, defaultRealitySNI(p), protoLabel(p.Key), key))
 		case "vless-reality-grpc":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${IP}:%d?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=grpc&serviceName=%%2F${WS_%s}#${IP}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=grpc&serviceName=%%2F${WS_%s}#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, defaultRealitySNI(p), key, protoLabel(p.Key), key))
 		case "vless-reality-xhttp":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${IP}:%d?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=httpupgrade&path=%%2F${WS_%s}#${IP}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=httpupgrade&path=%%2F${WS_%s}#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, defaultRealitySNI(p), key, protoLabel(p.Key), key))
 		case "vless-grpc-tls":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${IP}:%d?encryption=none&security=tls&sni=${DOMAIN}&fp=chrome&type=grpc&serviceName=%%2F${WS_%s}&host=${DOMAIN}#${DOMAIN:-${IP}}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?encryption=none&security=tls&sni=${DOMAIN}&fp=chrome&type=grpc&serviceName=%%2F${WS_%s}&host=${DOMAIN}#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, key, protoLabel(p.Key), key))
 		case "trojan-tcp-tls":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="trojan://${PASS_%s}@${IP}:%d?security=tls&sni=${DOMAIN}&type=tcp#${DOMAIN:-${IP}}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="trojan://${PASS_%s}@${SERVER_ADDR}:%d?security=tls&sni=${DOMAIN}&type=tcp#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, protoLabel(p.Key), key))
 		case "trojan-ws":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="trojan://${PASS_%s}@${IP}:%d?type=ws&path=%%2F${WS_%s}&security=tls&sni=${DOMAIN}&host=${DOMAIN}#${DOMAIN:-${IP}}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="trojan://${PASS_%s}@${SERVER_ADDR}:%d?type=ws&path=%%2F${WS_%s}&security=tls&sni=${DOMAIN}&host=${DOMAIN}#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, key, protoLabel(p.Key), key))
 		case "trojan-grpc-tls":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="trojan://${PASS_%s}@${IP}:%d?security=tls&sni=${DOMAIN}&type=grpc&serviceName=%%2F${WS_%s}&host=${DOMAIN}#${DOMAIN:-${IP}}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="trojan://${PASS_%s}@${SERVER_ADDR}:%d?security=tls&sni=${DOMAIN}&type=grpc&serviceName=%%2F${WS_%s}&host=${DOMAIN}#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, key, protoLabel(p.Key), key))
 		case "ss":
 			sb.WriteString(fmt.Sprintf(`SSB64_%s="$(echo -n "aes-128-gcm:${PASS_%s}" | base64 -w0 | tr -d '=')"
-LINK_%s="ss://${SSB64_%s}@${IP}:%d#${IP}-%s"
+LINK_%s="ss://${SSB64_%s}@${SERVER_ADDR}:%d#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, key, key, p.Port, protoLabel(p.Key), key))
 		case "hysteria2":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="hysteria2://${PASS_%s}@${IP}:%d?insecure=1&sni=${DOMAIN}&alpn=h3#${DOMAIN:-${IP}}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="hysteria2://${PASS_%s}@${SERVER_ADDR}:%d?insecure=1&sni=${DOMAIN}&alpn=h3#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, protoLabel(p.Key), key))
 		case "tuic":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="tuic://${UUID_%s}:${PASS_%s}@${IP}:%d?sni=${DOMAIN}&alpn=h3&congestion_control=bbr#${DOMAIN:-${IP}}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="tuic://${UUID_%s}:${PASS_%s}@${SERVER_ADDR}:%d?sni=${DOMAIN}&alpn=h3&congestion_control=bbr#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, key, p.Port, protoLabel(p.Key), key))
 		}
