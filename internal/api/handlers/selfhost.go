@@ -490,7 +490,8 @@ func AgentHeartbeat(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusNotFound, "自建节点不存在", err)
 		return
 	}
-	if err := selfhost.VerifyToken(node, req.Token); err != nil {
+	// 心跳不校验令牌过期（安装令牌过期只阻止安装回传，不应中断已上线节点的心跳）
+	if err := selfhost.VerifyTokenAllowExpired(node, req.Token); err != nil {
 		utils.ErrorResponse(c, http.StatusForbidden, "令牌无效或已过期", err)
 		return
 	}
