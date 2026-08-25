@@ -47,9 +47,13 @@ func buildXrayConfig(protocols []XrayProtocol) string {
 		}
 		switch p.Key {
 		case "vless-ws":
-			sb.WriteString(fmt.Sprintf(`    { "type": "vless", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}" } ], "transport": { "type": "ws", "path": "/${WS_%s}" } }%s`+"\n", key, p.Port, key, key, comma))
+			// WS 类协议在域名模式下走 TLS（acme 证书），与客户端链接 security=tls 一致；
+			// 无域名时后端已过滤掉 WS 类协议，不会走到这里。
+			sb.WriteString(fmt.Sprintf(`    { "type": "vless", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}" } ], "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem", "server_name": "%s" }, "transport": { "type": "ws", "path": "/${WS_%s}" } }%s`+"\n", key, p.Port, key, tlsServerName(p), key, comma))
 		case "vmess-ws":
-			sb.WriteString(fmt.Sprintf(`    { "type": "vmess", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}" } ], "transport": { "type": "ws", "path": "/${WS_%s}" } }%s`+"\n", key, p.Port, key, key, comma))
+			// 修复：之前链接声称 tls:tls 但服务端没有 TLS 块 → 握手失败连不上。
+			// 现在域名模式下服务端补 TLS（acme 证书），与链接一致。
+			sb.WriteString(fmt.Sprintf(`    { "type": "vmess", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}" } ], "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem", "server_name": "%s" }, "transport": { "type": "ws", "path": "/${WS_%s}" } }%s`+"\n", key, p.Port, key, tlsServerName(p), key, comma))
 		case "vless-reality", "vless-reality-grpc", "vless-reality-xhttp":
 			flow := "xtls-rprx-vision"
 			transport := ""
@@ -66,6 +70,15 @@ func buildXrayConfig(protocols []XrayProtocol) string {
 			sb.WriteString(fmt.Sprintf(`    { "type": "vless", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}", "flow": "%s" } ], "tls": { "enabled": true, "server_name": "%s", "reality": { "enabled": true, "handshake": { "server": "%s", "server_port": 443 }, "private_key": "${REALITY_PRIVATE_KEY}", "short_id": [ "${REALITY_SHORT_ID}" ] } }%s }%s`+"\n", key, p.Port, key, flow, defaultRealitySNI(p), defaultRealitySNI(p), transportStr, comma))
 		case "vless-grpc-tls":
 			sb.WriteString(fmt.Sprintf(`    { "type": "vless", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}" } ], "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem", "server_name": "%s" }, "transport": { "type": "grpc", "service_name": "/${WS_%s}" } }%s`+"\n", key, p.Port, key, tlsServerName(p), key, comma))
+		case "vless-tcp-tls":
+			// VLESS + TCP + TLS + Vision（对齐 v2ray-agent VLESS_TCP/TLS_Vision）
+			sb.WriteString(fmt.Sprintf(`    { "type": "vless", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}", "flow": "xtls-rprx-vision" } ], "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem", "server_name": "%s" } }%s`+"\n", key, p.Port, key, tlsServerName(p), comma))
+		case "anytls":
+			// AnyTLS + TLS（sing-box 1.10+；users 用 password 字段，对齐 v2ray-agent）
+			sb.WriteString(fmt.Sprintf(`    { "type": "anytls", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "password": "${PASS_%s}" } ], "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem", "server_name": "%s" } }%s`+"\n", key, p.Port, key, tlsServerName(p), comma))
+		case "vmess-httpupgrade":
+			// VMess + HTTPUpgrade + TLS（对齐 v2ray-agent VMess_HTTPUpgrade）
+			sb.WriteString(fmt.Sprintf(`    { "type": "vmess", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}" } ], "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem", "server_name": "%s" }, "transport": { "type": "httpupgrade", "path": "/${WS_%s}" } }%s`+"\n", key, p.Port, key, tlsServerName(p), key, comma))
 		case "trojan-tcp-tls":
 			sb.WriteString(fmt.Sprintf(`    { "type": "trojan", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "password": "${PASS_%s}" } ], "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem", "server_name": "%s" } }%s`+"\n", key, p.Port, key, tlsServerName(p), comma))
 		case "trojan-ws":
@@ -96,11 +109,13 @@ func buildXrayLinks(protocols []XrayProtocol) string {
 		key := sanitizeKey(p.Key)
 		switch p.Key {
 		case "vless-ws":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?type=ws&path=%%2F${WS_%s}&security=none&host=${DOMAIN}#${SERVER_ADDR}-%s"
+			// 域名模式下 WS 走 TLS：security=tls + sni + fp（与 v2ray-agent VLESS_WS 对齐）
+			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?encryption=none&security=tls&sni=${DOMAIN}&fp=chrome&type=ws&host=${DOMAIN}&path=%%2F${WS_%s}#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, key, protoLabel(p.Key), key))
 		case "vmess-ws":
-			sb.WriteString(fmt.Sprintf(`VJSON_%s="{\"v\":2,\"ps\":\"${SERVER_ADDR}-%s\",\"add\":\"${SERVER_ADDR}\",\"port\":\"%d\",\"id\":\"${UUID_%s}\",\"aid\":\"0\",\"net\":\"ws\",\"host\":\"${DOMAIN}\",\"path\":\"/${WS_%s}\",\"tls\":\"tls\"}"
+			// 修复：链接 tls:tls 与服务端 TLS 一致；补 scy/sni/fp 字段（对齐 v2ray-agent VMess_WS）
+			sb.WriteString(fmt.Sprintf(`VJSON_%s="{\"v\":2,\"ps\":\"${SERVER_ADDR}-%s\",\"add\":\"${SERVER_ADDR}\",\"port\":\"%d\",\"id\":\"${UUID_%s}\",\"aid\":\"0\",\"scy\":\"auto\",\"net\":\"ws\",\"host\":\"${DOMAIN}\",\"path\":\"/${WS_%s}\",\"tls\":\"tls\",\"sni\":\"${DOMAIN}\",\"fp\":\"chrome\",\"alpn\":\"\"}"
 LINK_%s="vmess://$(echo -n "$VJSON_%s" | base64 -w0 | tr -d '=')"
 LINKS+=("$LINK_%s")
 `+"\n", key, protoLabel(p.Key), p.Port, key, key, key, key, key))
@@ -121,24 +136,42 @@ LINKS+=("$LINK_%s")
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, key, protoLabel(p.Key), key))
 		case "trojan-tcp-tls":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="trojan://${PASS_%s}@${SERVER_ADDR}:%d?security=tls&sni=${DOMAIN}&type=tcp#${SERVER_ADDR}-%s"
+			// 补 fp=chrome&alpn=http/1.1（对齐 v2ray-agent Trojan_TCP，提升握手兼容性）
+			sb.WriteString(fmt.Sprintf(`LINK_%s="trojan://${PASS_%s}@${SERVER_ADDR}:%d?security=tls&sni=${DOMAIN}&fp=chrome&alpn=http%%2F1.1&type=tcp#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, protoLabel(p.Key), key))
 		case "trojan-ws":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="trojan://${PASS_%s}@${SERVER_ADDR}:%d?type=ws&path=%%2F${WS_%s}&security=tls&sni=${DOMAIN}&host=${DOMAIN}#${SERVER_ADDR}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="trojan://${PASS_%s}@${SERVER_ADDR}:%d?type=ws&path=%%2F${WS_%s}&security=tls&sni=${DOMAIN}&fp=chrome&host=${DOMAIN}#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, key, protoLabel(p.Key), key))
 		case "trojan-grpc-tls":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="trojan://${PASS_%s}@${SERVER_ADDR}:%d?security=tls&sni=${DOMAIN}&type=grpc&serviceName=%%2F${WS_%s}&host=${DOMAIN}#${SERVER_ADDR}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="trojan://${PASS_%s}@${SERVER_ADDR}:%d?security=tls&sni=${DOMAIN}&fp=chrome&type=grpc&serviceName=%%2F${WS_%s}&host=${DOMAIN}#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, key, protoLabel(p.Key), key))
+		case "vless-tcp-tls":
+			// VLESS + TCP + TLS + Vision（对齐 v2ray-agent VLESS_TCP/TLS_Vision）
+			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?encryption=none&flow=xtls-rprx-vision&security=tls&sni=${DOMAIN}&fp=chrome&type=tcp&headerType=none&host=${DOMAIN}#${SERVER_ADDR}-%s"
+LINKS+=("$LINK_%s")
+`+"\n", key, key, p.Port, protoLabel(p.Key), key))
+		case "anytls":
+			// AnyTLS + TLS（password 即 UUID，对齐 v2ray-agent anytls 链接格式）
+			sb.WriteString(fmt.Sprintf(`LINK_%s="anytls://${PASS_%s}@${SERVER_ADDR}:%d?security=tls&sni=${DOMAIN}&insecure=0&type=tcp&headerType=none#${SERVER_ADDR}-%s"
+LINKS+=("$LINK_%s")
+`+"\n", key, key, p.Port, protoLabel(p.Key), key))
+		case "vmess-httpupgrade":
+			// VMess + HTTPUpgrade + TLS（对齐 v2ray-agent VMess_HTTPUpgrade）
+			sb.WriteString(fmt.Sprintf(`VJSON_%s="{\"v\":2,\"ps\":\"${SERVER_ADDR}-%s\",\"add\":\"${SERVER_ADDR}\",\"port\":\"%d\",\"id\":\"${UUID_%s}\",\"aid\":\"0\",\"scy\":\"auto\",\"net\":\"httpupgrade\",\"host\":\"${DOMAIN}\",\"path\":\"/${WS_%s}\",\"tls\":\"tls\",\"sni\":\"${DOMAIN}\",\"fp\":\"chrome\",\"alpn\":\"\"}"
+LINK_%s="vmess://$(echo -n "$VJSON_%s" | base64 -w0 | tr -d '=')"
+LINKS+=("$LINK_%s")
+`+"\n", key, protoLabel(p.Key), p.Port, key, key, key, key, key))
 		case "ss":
 			sb.WriteString(fmt.Sprintf(`SSB64_%s="$(echo -n "aes-128-gcm:${PASS_%s}" | base64 -w0 | tr -d '=')"
 LINK_%s="ss://${SSB64_%s}@${SERVER_ADDR}:%d#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, key, key, p.Port, protoLabel(p.Key), key))
 		case "hysteria2":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="hysteria2://${PASS_%s}@${SERVER_ADDR}:%d?insecure=1&sni=${DOMAIN}&alpn=h3#${SERVER_ADDR}-%s"
+			// 有 acme 真证书，insecure=0 校验证书（对齐 v2ray-agent）
+			sb.WriteString(fmt.Sprintf(`LINK_%s="hysteria2://${PASS_%s}@${SERVER_ADDR}:%d?sni=${DOMAIN}&insecure=0&alpn=h3#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, protoLabel(p.Key), key))
 		case "tuic":
@@ -205,6 +238,12 @@ func protoLabel(k string) string {
 		return "Trojan-WS"
 	case "trojan-grpc-tls":
 		return "Trojan-gRPC-TLS"
+	case "vless-tcp-tls":
+		return "VLESS-TCP-TLS-Vision"
+	case "anytls":
+		return "AnyTLS"
+	case "vmess-httpupgrade":
+		return "VMess-HTTPUpgrade"
 	case "ss":
 		return "SS"
 	case "hysteria2":

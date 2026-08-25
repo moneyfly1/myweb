@@ -350,12 +350,18 @@ func DeploySelfHostVPSDomain(c *gin.Context) {
 			protoList = append(protoList, selfhost.XrayProtocol{Key: "vless-reality-xhttp", Port: 8446})
 		case "vless-grpc-tls":
 			protoList = append(protoList, selfhost.XrayProtocol{Key: "vless-grpc-tls", Port: 2053, Domain: domain})
+		case "vless-tcp-tls":
+			protoList = append(protoList, selfhost.XrayProtocol{Key: "vless-tcp-tls", Port: 2056, Domain: domain})
 		case "trojan-tcp-tls":
 			protoList = append(protoList, selfhost.XrayProtocol{Key: "trojan-tcp-tls", Port: 2083, Domain: domain})
 		case "trojan-ws":
 			protoList = append(protoList, selfhost.XrayProtocol{Key: "trojan-ws", Port: 2055, Domain: domain})
 		case "trojan-grpc-tls":
 			protoList = append(protoList, selfhost.XrayProtocol{Key: "trojan-grpc-tls", Port: 2087, Domain: domain})
+		case "anytls":
+			protoList = append(protoList, selfhost.XrayProtocol{Key: "anytls", Port: 2089, Domain: domain})
+		case "vmess-httpupgrade":
+			protoList = append(protoList, selfhost.XrayProtocol{Key: "vmess-httpupgrade", Port: 2091, Domain: domain})
 		case "ss":
 			protoList = append(protoList, selfhost.XrayProtocol{Key: "ss", Port: 8388})
 		case "hysteria2":
@@ -494,12 +500,18 @@ func defaultProtocolPort(key string) int {
 		return 8446
 	case "vless-grpc-tls":
 		return 2053
+	case "vless-tcp-tls":
+		return 2056
 	case "trojan-tcp-tls":
 		return 2083
 	case "trojan-ws":
 		return 2055
 	case "trojan-grpc-tls":
 		return 2087
+	case "anytls":
+		return 2089
+	case "vmess-httpupgrade":
+		return 2091
 	case "hysteria2":
 		return 36712
 	case "tuic":
