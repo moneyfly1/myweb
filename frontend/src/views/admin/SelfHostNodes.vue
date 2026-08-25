@@ -282,13 +282,17 @@
               <el-checkbox value="vless-reality-grpc">VLESS + Reality + gRPC</el-checkbox>
               <el-checkbox value="vless-reality-xhttp">VLESS + Reality + XHTTP</el-checkbox>
               <el-checkbox value="vless-grpc-tls">VLESS + gRPC + TLS</el-checkbox>
+              <el-checkbox value="vless-tcp-tls">VLESS + TCP + TLS + Vision</el-checkbox>
               <el-checkbox value="trojan-tcp-tls">Trojan + TCP + TLS</el-checkbox>
               <el-checkbox value="trojan-ws">Trojan + WS + TLS</el-checkbox>
               <el-checkbox value="trojan-grpc-tls">Trojan + gRPC + TLS</el-checkbox>
+              <el-checkbox value="anytls">AnyTLS</el-checkbox>
+              <el-checkbox value="vmess-httpupgrade">VMess + HTTPUpgrade + TLS</el-checkbox>
               <el-checkbox value="hysteria2">Hysteria2</el-checkbox>
               <el-checkbox value="tuic">TUIC</el-checkbox>
               <el-checkbox value="ss">Shadowsocks</el-checkbox>
             </el-checkbox-group>
+            <div class="form-tip">带 TLS 的协议需要域名（自动申请证书）；Reality 系列与 Shadowsocks 无域名也可用</div>
           </el-form-item>
         </template>
         <el-form-item v-else label="协议" required>
@@ -565,9 +569,11 @@ const savedVpsNodeIdMap = ref({})
 const protocolDisplayMap = {
   'vless-ws': 'VLESS+WS', 'vmess-ws': 'VMess+WS', 'vless-reality': 'VLESS+Reality',
   'vless-reality-grpc': 'Reality+gRPC', 'vless-reality-xhttp': 'Reality+XHTTP',
-  'vless-grpc-tls': 'VLESS+gRPC+TLS', 'trojan-tcp-tls': 'Trojan+TCP+TLS',
+  'vless-grpc-tls': 'VLESS+gRPC+TLS', 'vless-tcp-tls': 'VLESS+TCP+TLS+Vision',
+  'trojan-tcp-tls': 'Trojan+TCP+TLS',
   'trojan-ws': 'Trojan+WS', 'trojan-grpc-tls': 'Trojan+gRPC+TLS',
-  'hysteria2': 'Hysteria2', 'tuic': 'TUIC', 'ss': 'Shadowsocks'
+  'hysteria2': 'Hysteria2', 'tuic': 'TUIC', 'ss': 'Shadowsocks',
+  'anytls': 'AnyTLS', 'vmess-httpupgrade': 'VMess+HTTPUpgrade'
 }
 const formatVpsProtocols = (v) => {
   const keys = (v.protocol_list && v.protocol_list.length) ? v.protocol_list : (v.protocol ? [v.protocol] : [])

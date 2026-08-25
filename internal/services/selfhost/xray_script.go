@@ -28,12 +28,15 @@ var SupportedXrayProtocols = []string{
 	"vless-reality-grpc",  // VLESS + Reality + gRPC
 	"vless-reality-xhttp", // VLESS + Reality + XHTTP
 	"vless-grpc-tls",      // VLESS + gRPC + TLS
+	"vless-tcp-tls",       // VLESS + TCP + TLS + Vision
 	"trojan-tcp-tls",      // Trojan + TCP + TLS
 	"trojan-ws",           // Trojan + WS + TLS
 	"trojan-grpc-tls",     // Trojan + gRPC + TLS
 	"hysteria2",           // Hysteria2
 	"tuic",                // TUIC
 	"ss",                  // Shadowsocks
+	"anytls",              // AnyTLS + TLS
+	"vmess-httpupgrade",   // VMess + HTTPUpgrade + TLS
 }
 
 // XrayProtocolNames 供批量回传 handler 记录协议列表。
