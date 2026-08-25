@@ -202,6 +202,16 @@ func VerifyToken(node *models.CustomNode, token string) error {
 	return nil
 }
 
+// VerifyTokenAllowExpired 校验令牌，但不检查过期时间。
+// 用途：心跳上报。安装令牌过期只应阻止「安装脚本回传」，不应阻止已上线节点的持续心跳——
+// 否则令牌过期后节点心跳被永久拒绝，节点被误判离线并自动禁用，用户订阅中的专线节点消失。
+func VerifyTokenAllowExpired(node *models.CustomNode, token string) error {
+	if node.InstallToken == "" || node.InstallToken != token {
+		return ErrTokenInvalid
+	}
+	return nil
+}
+
 // ReportNode 处理 agent 安装完成后的回传：用解析出的节点链接填充占位记录并激活。
 func ReportNode(db *gorm.DB, node *models.CustomNode, link, serverIP string) (*models.CustomNode, error) {
 	if node.Status == StatusOnline && node.Config != "" {
