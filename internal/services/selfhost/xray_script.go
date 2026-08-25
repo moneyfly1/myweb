@@ -240,6 +240,17 @@ detect_public_ip() {
 IP=""
 detect_public_ip || warn "无法探测公网 IP"
 
+# ---------- 节点地址：有域名用域名（TLS 证书校验/用户可读），无域名回退公网 IP ----------
+if [ -n "$DOMAIN" ]; then
+    SERVER_ADDR="$DOMAIN"
+    info "节点地址使用域名: $SERVER_ADDR"
+elif [ -n "$IP" ]; then
+    SERVER_ADDR="$IP"
+else
+    SERVER_ADDR="127.0.0.1"
+    warn "既无域名也未探测到公网 IP，节点地址暂用 127.0.0.1（回传后可手动修正）"
+fi
+
 # ---------- 构造节点链接 ----------
 %s
 
