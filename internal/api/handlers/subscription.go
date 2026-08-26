@@ -1859,28 +1859,16 @@ func GetSubscriptionConfig(c *gin.Context) {
 	c.Header("Subscription-Title", subscriptionName)
 	c.Header("Profile-Title", subscriptionName)
 
-	// 3. 订阅信息头部（部分客户端显示剩余流量/到期时间）
-	// 设置流量为无限（0 表示无限制）
-	// expire 字段让客户端显示剩余天数倒计时（如"还剩 15 天"），提醒用户及时更新/续费；
-	// 若不设置 expire，客户端会显示"长期有效"
-	userinfoParts := []string{
-		"upload=0",
-		"download=0",
-		"total=0",
-	}
-	if !subscription.ExpireTime.IsZero() {
-		userinfoParts = append(userinfoParts, fmt.Sprintf("expire=%d", subscription.ExpireTime.Unix()))
-	}
-	c.Header("Subscription-Userinfo", strings.Join(userinfoParts, "; "))
+	// 3. 不再发送 Subscription-Userinfo 头（不含流量 upload/download/total 与到期 expire），
+	//    让客户端只显示"更新时间: X 分钟/小时前"，不显示流量与到期时间
 
 	// 4. 更新间隔头部（单位：分钟，Clash/mihomo 系列客户端导入时会据此自动启用定时更新）
-	// 60 分钟 = 1 小时；若为 0/不设置，客户端可能显示"长期有效"或默认 1440 分钟（24 小时）
+	//    60 分钟 = 1 小时
 	c.Header("Profile-Update-Interval", "60")
 
-	// 5. 最后更新时间（Unix 时间戳）
-	if !subscription.UpdatedAt.IsZero() {
-		c.Header("Profile-Update-Time", fmt.Sprintf("%d", subscription.UpdatedAt.Unix()))
-	}
+	// 5. 最后更新时间（Unix 时间戳）= 本次配置生成时间
+	//    客户端据此显示相对更新时间（如"3 分钟前 / 1 小时前"），并随自动更新保持新鲜
+	c.Header("Profile-Update-Time", fmt.Sprintf("%d", time.Now().Unix()))
 
 	c.String(200, config)
 }
