@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
@@ -221,13 +222,11 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename*=UTF-8''%s", encodedName))
 	c.Header("Subscription-Title", subscriptionName)
 	c.Header("Profile-Title", subscriptionName)
-	userinfoParts := []string{"upload=0", "download=0", "total=0"}
-	if !subscription.ExpireTime.IsZero() {
-		userinfoParts = append(userinfoParts, fmt.Sprintf("expire=%d", subscription.ExpireTime.Unix()))
-	}
-	c.Header("Subscription-Userinfo", strings.Join(userinfoParts, "; "))
+	// 不发送 Subscription-Userinfo 头：去掉流量与到期时间显示，客户端只显示"更新时间: X 分钟前"
 	// 更新间隔（单位：分钟）：60 = 1 小时，客户端导入后按此间隔自动更新订阅
 	c.Header("Profile-Update-Interval", "60")
+	// 最后更新时间（Unix 时间戳）= 本次配置生成时间
+	c.Header("Profile-Update-Time", fmt.Sprintf("%d", time.Now().Unix()))
 
 	c.String(200, config)
 }
