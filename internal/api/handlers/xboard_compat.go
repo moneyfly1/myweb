@@ -226,7 +226,8 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 		userinfoParts = append(userinfoParts, fmt.Sprintf("expire=%d", subscription.ExpireTime.Unix()))
 	}
 	c.Header("Subscription-Userinfo", strings.Join(userinfoParts, "; "))
-	c.Header("Profile-Update-Interval", "24")
+	// 更新间隔（单位：分钟）：60 = 1 小时，客户端导入后按此间隔自动更新订阅
+	c.Header("Profile-Update-Interval", "60")
 
 	c.String(200, config)
 }
