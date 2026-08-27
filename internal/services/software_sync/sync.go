@@ -345,6 +345,11 @@ func run(only []string) ([]ReportItem, int) {
 	ali := aliyundrive.New(cfg.AliyunRefreshToken)
 	// token 到期会自动轮换（新 refresh_token 在客户端内存中），
 	// 无论同步结果如何都回存到 DB，避免只有定时同步在跑时轮换丢失导致 90 天后同步断掉。
+	ali.OnRotate = func(newRT string) {
+		if newRT != "" && newRT != cfg.AliyunRefreshToken {
+			_ = saveCfgValue("aliyun_refresh_token", newRT)
+		}
+	}
 	defer func() {
 		if ali.RefreshToken != "" && ali.RefreshToken != cfg.AliyunRefreshToken {
 			_ = saveCfgValue("aliyun_refresh_token", ali.RefreshToken)
