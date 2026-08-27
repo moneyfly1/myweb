@@ -3,6 +3,7 @@ package software_sync
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
@@ -100,6 +102,7 @@ type syncConfig struct {
 	Enabled            bool
 	Interval           time.Duration
 	AliyunRefreshToken string
+	Folder             string // 云盘上传目录（/ 分隔多级；空 = 根目录）
 }
 
 func loadSyncConfig() (syncConfig, error) {
@@ -122,6 +125,8 @@ func loadSyncConfig() (syncConfig, error) {
 			}
 		case "aliyun_refresh_token":
 			cfg.AliyunRefreshToken = strings.TrimSpace(c.Value)
+		case "aliyun_folder":
+			cfg.Folder = strings.TrimSpace(c.Value)
 		}
 	}
 	return cfg, nil
@@ -339,6 +344,15 @@ func run(only []string) ([]ReportItem, int) {
 	}
 	ali := aliyundrive.New(cfg.AliyunRefreshToken)
 
+	// 解析上传目录（可配置，支持多级路径；空 = 根目录）
+	folderID := "root"
+	if cfg.Folder != "" {
+		folderID, err = ali.EnsureDir(cfg.Folder)
+		if err != nil {
+			return append(report, ReportItem{Status: "error", Message: "创建/解析云盘上传目录失败: " + err.Error()}), 0
+		}
+	}
+
 	fileIDMap, err := LoadFileIDMap()
 	if err != nil {
 		return append(report, ReportItem{Status: "error", Message: "读取文件映射失败: " + err.Error()}), 0
@@ -365,6 +379,16 @@ func run(only []string) ([]ReportItem, int) {
 			releaseCache[sw.Repo] = release
 		}
 		version := release.Version()
+
+		// 每个软件一个子文件夹（如 软件下载/v2rayN/），失败时回退到上传目录
+		swFolderID := folderID
+		subID, ferr := ali.EnsureFolder(folderID, sanitizeFolderName(sw.Name))
+		if ferr != nil {
+			// 子文件夹创建失败不阻断同步，回退到上传目录
+			log.Printf("软件 %s 子文件夹创建失败（回退到上传目录）: %v", sw.Name, ferr)
+		} else {
+			swFolderID = subID
+		}
 
 		for _, t := range sw.Targets {
 			if len(onlySet) > 0 && !onlySet[t.ConfigKey] {
@@ -406,7 +430,7 @@ func run(only []string) ([]ReportItem, int) {
 				continue
 			}
 
-			aliFileID, uerr := ali.Upload(localPath, asset.Name, "root")
+			aliFileID, uerr := ali.Upload(localPath, asset.Name, swFolderID)
 			if uerr != nil {
 				item.Status = "error"
 				item.Message = "上传阿里云盘失败: " + uerr.Error()
@@ -476,6 +500,24 @@ func findAsset(release *ghrelease.Release, t *Target) (*ghrelease.Asset, error) 
 		}
 	}
 	return release.FindAsset(t.Patterns)
+}
+
+// sanitizeFolderName 清理文件夹名中的非法字符（云盘禁止 / \ : * ? " < > | 等）
+func sanitizeFolderName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "软件下载"
+	}
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case '/', '\\', ':', '*', '?', '"', '<', '>', '|':
+			return '_'
+		}
+		if unicode.IsControl(r) {
+			return '_'
+		}
+		return r
+	}, name)
 }
 
 // FindAssetFor 供外部（校验/测试）按目标匹配资产

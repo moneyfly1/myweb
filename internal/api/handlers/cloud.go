@@ -62,6 +62,7 @@ type cloudConfig struct {
 	AliyunRefreshToken string
 	SyncEnabled        bool
 	SyncIntervalHours  int
+	Folder             string // 云盘上传目录（/ 分隔多级；空 = 根目录）
 }
 
 func loadCloudConfig() (cloudConfig, error) {
@@ -83,6 +84,8 @@ func loadCloudConfig() (cloudConfig, error) {
 			if v, err2 := strconv.Atoi(c.Value); err2 == nil && v >= 1 {
 				cfg.SyncIntervalHours = v
 			}
+		case "aliyun_folder":
+			cfg.Folder = strings.TrimSpace(c.Value)
 		}
 	}
 	return cfg, nil
@@ -117,6 +120,7 @@ func GetCloudConfig(c *gin.Context) {
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"aliyun_refresh_token": maskIfNonEmpty(cfg.AliyunRefreshToken),
+		"aliyun_folder":        cfg.Folder,
 		"sync_enabled":         cfg.SyncEnabled,
 		"sync_interval_hours":  cfg.SyncIntervalHours,
 		"synced_files":         syncedFiles,
@@ -128,6 +132,7 @@ func GetCloudConfig(c *gin.Context) {
 func SaveCloudConfig(c *gin.Context) {
 	var req struct {
 		AliyunRefreshToken string `json:"aliyun_refresh_token"`
+		AliyunFolder       string `json:"aliyun_folder"`
 		SyncEnabled        *bool  `json:"sync_enabled"`
 		SyncIntervalHours  *int   `json:"sync_interval_hours"`
 	}
@@ -145,6 +150,8 @@ func SaveCloudConfig(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "保存失败", err)
 		return
 	}
+	folder := strings.Trim(strings.TrimSpace(req.AliyunFolder), "/")
+	_ = saveCloudConfigValue("aliyun_folder", folder)
 	if req.SyncEnabled != nil {
 		_ = saveCloudConfigValue("sync_enabled", strconv.FormatBool(*req.SyncEnabled))
 	}
@@ -189,7 +196,19 @@ func CloudAliyunTest(c *gin.Context) {
 			cfg.AliyunRefreshToken = newRT
 		}
 	}
-	files, lerr := ali.List("root", 5)
+	// 解析上传目录（不存在会自动创建），未配置则列根目录
+	folderID := "root"
+	folderName := "根目录"
+	if cfg.Folder != "" {
+		fid, derr := ali.EnsureDir(cfg.Folder)
+		if derr != nil {
+			utils.ErrorResponse(c, http.StatusBadGateway, "连接成功但解析上传目录失败: "+derr.Error(), nil)
+			return
+		}
+		folderID = fid
+		folderName = cfg.Folder
+	}
+	files, lerr := ali.List(folderID, 5)
 	if lerr != nil {
 		utils.ErrorResponse(c, http.StatusBadGateway, "连接成功但列目录失败: "+lerr.Error(), nil)
 		return
@@ -200,6 +219,7 @@ func CloudAliyunTest(c *gin.Context) {
 	}
 	utils.SuccessResponse(c, http.StatusOK, "阿里云盘连接成功", gin.H{
 		"refresh_token_rotated": newRT != "",
+		"folder":                folderName,
 		"root_files":            len(files),
 		"first":                 firstName,
 	})

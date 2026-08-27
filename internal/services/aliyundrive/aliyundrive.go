@@ -136,6 +136,71 @@ func (c *Client) List(parentFileID string, limit int) ([]File, error) {
 	return out.Items, nil
 }
 
+// EnsureFolder 确保父目录下存在指定名称的文件夹，不存在则创建，返回其 file_id。
+// 供同步任务把安装包上传到指定目录 / 按软件建子文件夹使用。
+func (c *Client) EnsureFolder(parentFileID, name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || name == "/" {
+		return "root", nil
+	}
+	if parentFileID == "" {
+		parentFileID = "root"
+	}
+	files, err := c.List(parentFileID, 200)
+	if err != nil {
+		return "", fmt.Errorf("列出目录失败: %w", err)
+	}
+	for _, f := range files {
+		if f.Type == "folder" && f.Name == name {
+			return f.FileID, nil
+		}
+	}
+	// 不存在 → 创建（refuse：重名即报错，避免误吞冲突）
+	body := map[string]interface{}{
+		"drive_id":        c.DriveID,
+		"parent_file_id":  parentFileID,
+		"name":            name,
+		"type":            "folder",
+		"check_name_mode": "refuse",
+	}
+	payload, err := c.request("/adrive/v1.0/openFile/create", body)
+	if err != nil {
+		return "", fmt.Errorf("创建文件夹失败: %w", err)
+	}
+	var out struct {
+		FileID string `json:"file_id"`
+	}
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return "", fmt.Errorf("创建文件夹响应解析失败: %w", err)
+	}
+	if out.FileID == "" {
+		return "", errors.New("创建文件夹失败：未返回 file_id")
+	}
+	return out.FileID, nil
+}
+
+// EnsureDir 按路径（/ 分隔，支持多级，如 软件下载/客户端）确保目录存在，返回最终目录 file_id。
+// 空路径返回 "root"。
+func (c *Client) EnsureDir(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" || path == "/" {
+		return "root", nil
+	}
+	parent := "root"
+	for _, seg := range strings.Split(path, "/") {
+		seg = strings.TrimSpace(seg)
+		if seg == "" {
+			continue
+		}
+		id, err := c.EnsureFolder(parent, seg)
+		if err != nil {
+			return "", err
+		}
+		parent = id
+	}
+	return parent, nil
+}
+
 // Search 按文件名关键词搜索
 func (c *Client) Search(keyword string, limit int) ([]File, error) {
 	if limit <= 0 || limit > 100 {
