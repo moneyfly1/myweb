@@ -572,8 +572,6 @@ manage_admin() {
     fi
 }
 
-# 升级前备份数据库：服务已停止时调用，保证快照一致。
-# 支持 SQLite（复制库文件）与 MySQL（mysqldump，如可用）。
 # 升级环境预检：Go 版本 / 磁盘空间。任何一项不满足立即中止（不影响现有服务）。
 preflight_environment() {
     local failed=0
@@ -614,48 +612,8 @@ preflight_environment() {
     return 0
 }
 
-backup_database_before_upgrade() {
-    local backup_dir="${PROJECT_DIR}/uploads/backups"
-    mkdir -p "$backup_dir" || { warn "创建备份目录失败: $backup_dir"; return 1; }
-    local stamp
-    stamp="$(date +%Y%m%d_%H%M%S)"
 
-    local db_url
-    db_url="$(grep "^DATABASE_URL=" "${PROJECT_DIR}/.env" 2>/dev/null | head -1 | cut -d'=' -f2-)"
-
-    # SQLite 检测：DATABASE_URL 含 sqlite，或未配置且未启用 MySQL
-    if [[ "$db_url" == sqlite* ]] || { [[ -z "$db_url" ]] && [[ "$USE_MYSQL" != "true" ]] && [[ -z "$MYSQL_DATABASE" ]]; }; then
-        local db_path="${db_url#sqlite:///}"
-        db_path="${db_path#./}"
-        if [[ "$db_path" != /* ]]; then
-            db_path="${PROJECT_DIR}/${db_path}"
-        fi
-        if [[ -f "$db_path" ]]; then
-            local dest="${backup_dir}/upgrade_pre_${stamp}.db"
-            cp "$db_path" "$dest"
-            [[ -f "${db_path}-wal" ]] && cp "${db_path}-wal" "${dest}-wal"
-            [[ -f "${db_path}-shm" ]] && cp "${db_path}-shm" "${dest}-shm"
-            log "✅ 升级前数据库已备份: ${dest} ($(du -h "$dest" | cut -f1))"
-        else
-            warn "未找到 SQLite 数据库文件: $db_path（跳过备份，请确认 DATABASE_URL）"
-        fi
-    elif [[ "$db_url" == mysql* ]] || [[ "$USE_MYSQL" == "true" ]] || [[ -n "$MYSQL_DATABASE" ]]; then
-        if command -v mysqldump &>/dev/null && [[ -n "$MYSQL_USER" ]] && [[ -n "$MYSQL_DATABASE" ]]; then
-            local dest="${backup_dir}/upgrade_pre_${stamp}.sql"
-            if mysqldump -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" > "$dest" 2>/dev/null; then
-                log "✅ 升级前 MySQL 数据库已备份: $dest ($(du -h "$dest" | cut -f1))"
-            else
-                warn "mysqldump 备份失败，请手动备份后再升级！"
-            fi
-        else
-            warn "检测到 MySQL 数据库但缺少 mysqldump/凭据，请手动备份后再升级！"
-        fi
-    else
-        warn "未能识别数据库类型，请手动备份后再升级！"
-    fi
-}
-
-# 从 .env 推导 SQLite 数据库文件路径（与 backup_database_before_upgrade 一致）
+# 从 .env 推导 SQLite 数据库文件路径
 detect_db_path() {
     local db_url
     db_url="$(grep "^DATABASE_URL=" "${PROJECT_DIR}/.env" 2>/dev/null | head -1 | cut -d'=' -f2-)"
@@ -667,6 +625,63 @@ detect_db_path() {
     else
         echo ""
     fi
+}
+
+# ===== 数据库安全守卫 =====
+# 原则：install.sh 不做任何数据库备份，也绝不把 GitHub 上的任何数据库文件带到生产环境。
+# db_guard_pre  ：同步前检查仓库没有跟踪数据库文件，并记录生产库指纹（仅内存，不产生文件）。
+# db_guard_post ：同步后校验生产库原封未动；任何异常立即中止，不进入构建/重启。
+DB_GUARD_PATH=""
+DB_GUARD_HASH=""
+DB_GUARD_EXISTS="no"
+
+db_guard_pre() {
+    # 1) 仓库绝不允许跟踪任何数据库文件：
+    #    一旦有人误把 cboard.db 提交进 GitHub，git reset --hard 会用 GitHub 的库覆盖生产库，
+    #    这里直接拒绝同步。
+    local tracked_db
+    tracked_db="$(git ls-files | grep -E '\.(db|sqlite|sqlite3)(\.|$)' || true)"
+    if [[ -n "$tracked_db" ]]; then
+        error "【数据库安全】仓库中检测到被跟踪的数据库文件，禁止同步（可能用 GitHub 的库覆盖生产库）："
+        echo "$tracked_db" | sed 's/^/    /'
+        return 1
+    fi
+    # 2) 记录生产库指纹（md5 只做比对，不留备份文件）
+    DB_GUARD_PATH="$(detect_db_path)"
+    DB_GUARD_HASH=""
+    DB_GUARD_EXISTS="no"
+    if [[ -n "$DB_GUARD_PATH" ]]; then
+        if [[ -f "$DB_GUARD_PATH" ]]; then
+            DB_GUARD_EXISTS="yes"
+            DB_GUARD_HASH="$(md5sum "$DB_GUARD_PATH" 2>/dev/null | cut -d' ' -f1)"
+        fi
+        log "数据库指纹已记录: $DB_GUARD_PATH"
+    fi
+    return 0
+}
+
+db_guard_post() {
+    [[ -z "$DB_GUARD_PATH" ]] && return 0
+    if [[ "$DB_GUARD_EXISTS" == "yes" ]]; then
+        if [[ ! -f "$DB_GUARD_PATH" ]]; then
+            error "【数据库安全】生产数据库文件丢失！同步操作可能误删了数据库，已中止升级（服务未重启，原进程仍在运行）。"
+            return 1
+        fi
+        local now_hash
+        now_hash="$(md5sum "$DB_GUARD_PATH" 2>/dev/null | cut -d' ' -f1)"
+        if [[ -n "$now_hash" && "$now_hash" != "$DB_GUARD_HASH" ]]; then
+            error "【数据库安全】生产数据库文件内容发生变化！同步操作可能覆盖了数据库，已中止升级（服务未重启）。"
+            return 1
+        fi
+        log "✅ 数据库完整性校验通过（git 同步未触碰生产库）"
+    else
+        # 同步前不存在（首次部署场景），同步后也不允许出现来自仓库的库文件
+        if [[ -f "$DB_GUARD_PATH" ]]; then
+            error "【数据库安全】同步后出现了数据库文件（$DB_GUARD_PATH），可能来自 GitHub，已中止升级。"
+            return 1
+        fi
+    fi
+    return 0
 }
 
 force_kill() {
@@ -932,6 +947,11 @@ sync_from_github() {
     fi
     cd "$PROJECT_DIR" || { error "无法进入项目目录"; return 1; }
 
+    # ===== 数据库安全守卫（前置）：拒绝含数据库文件的仓库 + 记录生产库指纹 =====
+    if ! db_guard_pre; then
+        error "数据库安全守卫未通过，同步已中止（现有服务与数据库不受影响）"
+        return 1
+    fi
 
     # 检查是否是 git 仓库，不是则自动初始化
     if [ ! -d ".git" ]; then
@@ -941,6 +961,10 @@ sync_from_github() {
         git fetch origin || { error "拉取代码失败，请检查网络"; return 1; }
         git checkout -b main
         git reset --hard origin/main
+        # 首次初始化后同样校验生产库未被触碰
+        if ! db_guard_post; then
+            return 1
+        fi
         log "✅ Git 仓库初始化完成"
     fi
 
@@ -956,8 +980,15 @@ sync_from_github() {
         git --no-pager diff --name-status HEAD "origin/$branch"
 
         # 强制同步：完全匹配 GitHub 状态，删除多余文件
+        # （*.db / .env / uploads 已在 .gitignore；这里再用 -e 显式排除，双保险，
+        #   即使 .gitignore 缺失也不会删到数据库/配置文件）
         git reset --hard "origin/$branch"
-        git clean -fd
+        git clean -fd -e '*.db' -e '*.db-*' -e '*.sqlite' -e '*.sqlite3' -e '.env' -e '.env.*' -e 'uploads/'
+        # ===== 数据库安全守卫（后置）：校验生产库原封未动，异常立即中止 =====
+        if ! db_guard_post; then
+            error "数据库完整性校验未通过，已中止升级（服务未重启，原进程仍在运行）"
+            return 1
+        fi
         log "✅ 代码同步成功（已完全匹配 GitHub）"
     else
         log "代码已是最新，跳过拉取，继续构建和重启..."
@@ -1041,9 +1072,6 @@ sync_from_github() {
         systemctl stop cboard 2>/dev/null
         pkill -9 -f "${PROJECT_DIR}/server" 2>/dev/null
         sleep 1
-
-        # ===== 升级前数据库自动备份（服务已停止，快照一致）=====
-        backup_database_before_upgrade
 
         if systemctl start cboard; then
             sleep 2
