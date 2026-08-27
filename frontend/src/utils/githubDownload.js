@@ -287,12 +287,12 @@ function toResolverURL(target) {
   return `/api/v1/download/resolve?target=${encodeURIComponent(target)}`
 }
 
-// resolvePanDownloadUrl 识别 123 云盘动态链接标记（pan://<关键词或配置键>），
+// resolvePanDownloadUrl 识别阿里云盘动态链接标记（pan://<配置键>），
 // 转换为后端实时解析接口地址；普通 URL 原样返回。
 export function resolvePanDownloadUrl(url) {
   if (typeof url === 'string' && url.startsWith('pan://')) {
     const value = url.slice('pan://'.length)
-    return `/api/v1/download/pan?key=${encodeURIComponent(value)}&q=${encodeURIComponent(value)}`
+    return `/api/v1/download/cloud?key=${encodeURIComponent(value)}&q=${encodeURIComponent(value)}`
   }
   return url
 }

@@ -923,7 +923,7 @@ func (s *Scheduler) syncSoftwareLibrary() {
 func (s *Scheduler) maybeRunSoftwareSync() {
 	if software_sync.Due() {
 		if !software_sync.IsRunning() {
-			log.Println("定时任务: 开始 GitHub→123云盘 软件库同步")
+			log.Println("定时任务: 开始 GitHub→阿里云盘 软件库同步")
 			software_sync.TriggerAsync()
 		}
 	}
