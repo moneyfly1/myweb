@@ -108,8 +108,14 @@ func (c *Client) ensureToken() error {
 	return err
 }
 
-// List 列出目录文件
+// List 列出目录文件（单页，最多 200 条）
 func (c *Client) List(parentFileID string, limit int) ([]File, error) {
+	items, _, err := c.listPage(parentFileID, limit, "")
+	return items, err
+}
+
+// listPage 列出目录文件一页，返回 items 与 next_marker（供分页续取）
+func (c *Client) listPage(parentFileID string, limit int, marker string) ([]File, string, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 100
 	}
@@ -117,23 +123,59 @@ func (c *Client) List(parentFileID string, limit int) ([]File, error) {
 		parentFileID = "root"
 	}
 	body := map[string]interface{}{
-		"drive_id":         c.DriveID,
-		"parent_file_id":   parentFileID,
-		"limit":            limit,
-		"order_by":         "updated_at",
-		"order_direction":  "DESC",
+		"drive_id":        c.DriveID,
+		"parent_file_id":  parentFileID,
+		"limit":           limit,
+		"order_by":        "updated_at",
+		"order_direction": "DESC",
+	}
+	if marker != "" {
+		body["marker"] = marker
 	}
 	payload, err := c.request("/adrive/v1.0/openFile/list", body)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	var out struct {
-		Items []File `json:"items"`
+		Items      []File `json:"items"`
+		NextMarker string `json:"next_marker"`
 	}
 	if err := json.Unmarshal(payload, &out); err != nil {
-		return nil, fmt.Errorf("列表响应解析失败: %w", err)
+		return nil, "", fmt.Errorf("列表响应解析失败: %w", err)
 	}
-	return out.Items, nil
+	return out.Items, out.NextMarker, nil
+}
+
+// GetFile 获取文件信息（用于校验文件是否仍存在；文件不存在时返回错误）
+func (c *Client) GetFile(fileID string) (*File, error) {
+	body := map[string]interface{}{
+		"drive_id": c.DriveID,
+		"file_id":  fileID,
+	}
+	payload, err := c.request("/adrive/v1.0/openFile/get", body)
+	if err != nil {
+		return nil, err
+	}
+	var f File
+	if err := json.Unmarshal(payload, &f); err != nil {
+		return nil, fmt.Errorf("文件信息响应解析失败: %w", err)
+	}
+	if f.FileID == "" {
+		return nil, errors.New("文件信息为空")
+	}
+	return &f, nil
+}
+
+// IsFileNotFound 判断错误是否为"文件不存在"（用户手动删除等场景）
+func IsFileNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "notfound") ||
+		strings.Contains(msg, "not_found") ||
+		strings.Contains(msg, "not exist") ||
+		strings.Contains(msg, "不存在")
 }
 
 // EnsureFolder 确保父目录下存在指定名称的文件夹，不存在则创建，返回其 file_id。
@@ -146,14 +188,22 @@ func (c *Client) EnsureFolder(parentFileID, name string) (string, error) {
 	if parentFileID == "" {
 		parentFileID = "root"
 	}
-	files, err := c.List(parentFileID, 200)
-	if err != nil {
-		return "", fmt.Errorf("列出目录失败: %w", err)
-	}
-	for _, f := range files {
-		if f.Type == "folder" && f.Name == name {
-			return f.FileID, nil
+	// 分页查找同名文件夹（最多翻 10 页，2000 条）
+	marker := ""
+	for page := 0; page < 10; page++ {
+		files, next, err := c.listPage(parentFileID, 200, marker)
+		if err != nil {
+			return "", fmt.Errorf("列出目录失败: %w", err)
 		}
+		for _, f := range files {
+			if f.Type == "folder" && f.Name == name {
+				return f.FileID, nil
+			}
+		}
+		if next == "" {
+			break
+		}
+		marker = next
 	}
 	// 不存在 → 创建（refuse：重名即报错，避免误吞冲突）
 	body := map[string]interface{}{
