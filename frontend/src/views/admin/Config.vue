@@ -225,8 +225,8 @@
                 type="warning"
                 show-icon
                 :closable="false"
-                title="请在下方完成滑块验证后自动发送验证码"
-                description="拖动滑块完成验证，验证码将自动发送到你的手机"
+                title="滑块验证后自动发送验证码"
+                description="若下方滑块未显示：请打开 yun.123pan.cn 登录页 → 用该手机号获取验证码（浏览器内滑动）→ 把收到的验证码填到下方完成登录"
                 style="margin-bottom: 8px"
               />
               <div v-if="smsMode && smsNeedsCaptcha" id="pan-captcha" style="margin-bottom: 8px; max-width: 340px"></div>

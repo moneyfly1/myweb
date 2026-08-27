@@ -898,13 +898,28 @@ func Pan123SmsLogin(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请输入短信验证码", nil)
 		return
 	}
-	if req.HashCode == "" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "缺少 hashCode，请先发送验证码", nil)
+	client := pan123.New(username, "", "")
+	hashCode := strings.TrimSpace(req.HashCode)
+	if hashCode == "" {
+		// 自动探测 hashCode（账号密码登录被风控时返回 7012 + hashCode）
+		password := ""
+		cfg, _ := loadPan123Config()
+		password = cfg.Password
+		if hc, err := client.GetLoginHashCode(username, password); err == nil {
+			hashCode = hc
+		} else {
+			var riskErr *pan123.RiskError
+			if errors.As(err, &riskErr) {
+				hashCode = riskErr.HashCode
+			}
+		}
+	}
+	if hashCode == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "缺少 hashCode，请先点击「短信验证码登录」获取", nil)
 		return
 	}
 
-	client := pan123.New(username, "", "")
-	token, err := client.LoginWithSmsCode(username, smsCode, req.TimeStamp, req.HashCode)
+	token, err := client.LoginWithSmsCode(username, smsCode, req.TimeStamp, hashCode)
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusBadGateway, err.Error(), nil)
 		return
