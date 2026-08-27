@@ -185,8 +185,8 @@
                     type="warning"
                     show-icon
                     :closable="false"
-                    title="提示"
-                    description="refresh_token 约 90 天有效；测试连接 / 同步时会自动轮换并回存新 token，平时无需手动更新。保存后输入框会显示为 ******（脱敏），再次保存请保持原样即可，不会覆盖原 token。"
+                    title="重要提示"
+                    description="① refresh_token 是「一次性轮换」的：测试连接 / 同步 / 浏览目录成功后，系统会自动保存新 token，旧 token 立即作废。请勿把旧 token 再次粘贴保存（会覆盖掉好用的新 token）。② 同一个 token 不要在其他工具（alist、其他服务器等）使用，谁先用谁就把它消耗掉。③ 若提示「refresh_token 无效」，请重新登录 www.alipan.com 复制最新的 token。"
                   />
                 </div>
               </el-collapse-item>

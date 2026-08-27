@@ -170,6 +170,40 @@ func newAliyunClientFromConfig(cfg cloudConfig) (*aliyundrive.Client, error) {
 	return aliyundrive.New(cfg.AliyunRefreshToken), nil
 }
 
+// newAliyunClientPersist 创建客户端并挂上"刷新成功即回存"钩子。
+// 阿里云盘 refresh_token 一次性轮换：每次刷新旧 token 立即作废，
+// 若不及时写库，下一次任何接口调用都会因旧 token 失效而失败。
+func newAliyunClientPersist(cfg cloudConfig) (*aliyundrive.Client, error) {
+	ali, err := newAliyunClientFromConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	ali.OnRotate = func(newRT string) {
+		if newRT != "" && newRT != cfg.AliyunRefreshToken {
+			if serr := saveCloudConfigValue("aliyun_refresh_token", newRT); serr == nil {
+				cfg.AliyunRefreshToken = newRT
+			}
+		}
+	}
+	return ali, nil
+}
+
+// friendlyAliyunErr 把阿里云盘原始错误映射为可操作的中文提示
+func friendlyAliyunErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "InvalidParameter.RefreshToken") || strings.Contains(msg, "RefreshTokenInvalid"):
+		return fmt.Errorf("refresh_token 无效或已被轮换/在其他工具中使用过（阿里云盘 token 为一次性轮换）。请重新登录 www.alipan.com 复制最新 refresh_token 并保存，且不要在其他工具（alist 等）重复使用同一 token")
+	case strings.Contains(msg, "AccessTokenInvalid") || strings.Contains(msg, "AccessTokenExpired"):
+		return fmt.Errorf("访问令牌失效（已自动刷新重试），若仍失败请重新复制 refresh_token")
+	default:
+		return err
+	}
+}
+
 // sanitizeFolderPath 净化上传目录路径：去掉首尾 /，逐段替换云盘非法字符（/ \ : * ? " < > |）
 func sanitizeFolderPath(path string) string {
 	segments := strings.Split(strings.TrimSpace(path), "/")
@@ -205,20 +239,15 @@ func CloudAliyunTest(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "读取配置失败", err)
 		return
 	}
-	ali, cerr := newAliyunClientFromConfig(cfg)
+	ali, cerr := newAliyunClientPersist(cfg)
 	if cerr != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, cerr.Error(), nil)
 		return
 	}
 	newRT, rerr := ali.Refresh()
 	if rerr != nil {
-		utils.ErrorResponse(c, http.StatusBadGateway, "刷新 token 失败: "+rerr.Error(), nil)
+		utils.ErrorResponse(c, http.StatusBadGateway, "刷新 token 失败: "+friendlyAliyunErr(rerr).Error(), nil)
 		return
-	}
-	if newRT != "" && newRT != cfg.AliyunRefreshToken {
-		if err := saveCloudConfigValue("aliyun_refresh_token", newRT); err == nil {
-			cfg.AliyunRefreshToken = newRT
-		}
 	}
 	// 解析上传目录（不存在会自动创建），未配置则列根目录
 	folderID := "root"
@@ -261,7 +290,7 @@ func CloudAliyunFolders(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请先配置并测试阿里云盘连接", nil)
 		return
 	}
-	ali, cerr := newAliyunClientFromConfig(cfg)
+	ali, cerr := newAliyunClientPersist(cfg)
 	if cerr != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, cerr.Error(), nil)
 		return
@@ -272,7 +301,7 @@ func CloudAliyunFolders(c *gin.Context) {
 	}
 	files, lerr := ali.List(parent, 200)
 	if lerr != nil {
-		utils.ErrorResponse(c, http.StatusBadGateway, "列目录失败: "+lerr.Error(), nil)
+		utils.ErrorResponse(c, http.StatusBadGateway, "列目录失败: "+friendlyAliyunErr(lerr).Error(), nil)
 		return
 	}
 	folders := make([]gin.H, 0, len(files))
@@ -296,14 +325,14 @@ func CloudAliyunSearch(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "读取配置失败", err)
 		return
 	}
-	ali, cerr := newAliyunClientFromConfig(cfg)
+	ali, cerr := newAliyunClientPersist(cfg)
 	if cerr != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, cerr.Error(), nil)
 		return
 	}
 	files, serr := ali.Search(keyword, 20)
 	if serr != nil {
-		utils.ErrorResponse(c, http.StatusBadGateway, "搜索失败: "+serr.Error(), nil)
+		utils.ErrorResponse(c, http.StatusBadGateway, "搜索失败: "+friendlyAliyunErr(serr).Error(), nil)
 		return
 	}
 	list := make([]gin.H, 0, len(files))
@@ -369,7 +398,7 @@ func CloudResolve(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "管理员尚未配置阿里云盘", nil)
 		return
 	}
-	ali, cerr := newAliyunClientFromConfig(cfg)
+	ali, cerr := newAliyunClientPersist(cfg)
 	if cerr != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, cerr.Error(), nil)
 		return
