@@ -98,3 +98,7 @@ cboard
 
 .pantest/
 
+
+# linux 交叉编译产物（部署用，不入库）
+server-linux
+

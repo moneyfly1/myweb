@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -159,6 +160,13 @@ func GetPan123Config(c *gin.Context) {
 			syncedFiles[key] = entry.FileName
 		}
 	}
+	tokenExpiry := pan123.ParseTokenExpiry(cfg.Token)
+	expiryText := ""
+	daysLeft := 0
+	if !tokenExpiry.IsZero() {
+		expiryText = tokenExpiry.Format(time.RFC3339)
+		daysLeft = int(time.Until(tokenExpiry).Hours() / 24)
+	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"username":   cfg.Username,
 		"password":   maskIfNonEmpty(cfg.Password),
@@ -171,6 +179,8 @@ func GetPan123Config(c *gin.Context) {
 		"sync_enabled":        syncEnabled,
 		"sync_interval_hours": syncInterval,
 		"synced_files":        syncedFiles,
+		"token_expiry":        expiryText,
+		"token_days_left":     daysLeft,
 		"configured": pan123AuthConfigured(cfg),
 	})
 }
@@ -794,4 +804,110 @@ func GetSoftwareVersions(c *gin.Context) {
 		return out[i]["key"].(string) < out[j]["key"].(string)
 	})
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"list": out})
+}
+
+// ---------------------------------------------------------------------------
+// 短信验证码登录（海外/风控场景）
+// ---------------------------------------------------------------------------
+
+// Pan123SmsSend 发送登录短信验证码：先探测是否触发境外风控（7012），是则发送验证码
+func Pan123SmsSend(c *gin.Context) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
+		return
+	}
+	username := strings.TrimSpace(req.Username)
+	if username == "" {
+		cfg, _ := loadPan123Config()
+		username = strings.TrimSpace(cfg.Username)
+	}
+	password := req.Password
+	if password == "" {
+		cfg, _ := loadPan123Config()
+		password = cfg.Password
+	}
+	if username == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "缺少账号，请先填写 123 云盘账号", nil)
+		return
+	}
+
+	client := pan123.New(username, password, "")
+	hashCode, err := client.GetLoginHashCode(username, password)
+	if err == nil && hashCode == "" {
+		utils.SuccessResponse(c, http.StatusOK, "账号密码登录成功，无需短信验证", gin.H{"need_sms": false})
+		return
+	}
+	var riskErr *pan123.RiskError
+	if err != nil && !errors.As(err, &riskErr) {
+		utils.ErrorResponse(c, http.StatusBadRequest, "登录探测失败: "+err.Error(), nil)
+		return
+	}
+	if riskErr == nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "未知错误", nil)
+		return
+	}
+	needsCaptcha, err := client.SendSmsCode(username, riskErr.HashCode)
+	if err != nil {
+		if needsCaptcha {
+			// 被滑块验证拦截：提示用户到浏览器完成滑块后把验证码填回面板
+			utils.SuccessResponse(c, http.StatusOK, "服务器无法直接发送验证码（需滑块验证），请在浏览器登录页获取验证码后填回", gin.H{
+				"need_sms":       true,
+				"needs_captcha":  true,
+				"hash_code":      riskErr.HashCode,
+				"guidance":       "请打开 yun.123pan.cn 登录页，用该手机号获取验证码（需滑动验证），再把收到的验证码填到这里",
+			})
+			return
+		}
+		utils.ErrorResponse(c, http.StatusBadGateway, err.Error(), nil)
+		return
+	}
+	utils.SuccessResponse(c, http.StatusOK, "验证码已发送，请注意查收短信", gin.H{"need_sms": true, "needs_captcha": false, "hash_code": riskErr.HashCode})
+}
+
+// Pan123SmsLogin 用短信验证码完成登录，成功后自动把 token 保存到配置
+func Pan123SmsLogin(c *gin.Context) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		HashCode string `json:"hash_code"`
+		SmsCode  string `json:"sms_code"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
+		return
+	}
+	username := strings.TrimSpace(req.Username)
+	if username == "" {
+		cfg, _ := loadPan123Config()
+		username = strings.TrimSpace(cfg.Username)
+	}
+	smsCode := strings.TrimSpace(req.SmsCode)
+	if smsCode == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请输入短信验证码", nil)
+		return
+	}
+	if req.HashCode == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "缺少 hashCode，请先发送验证码", nil)
+		return
+	}
+
+	client := pan123.New(username, "", "")
+	token, err := client.LoginWithSmsCode(username, smsCode, req.HashCode)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadGateway, err.Error(), nil)
+		return
+	}
+
+	// 自动保存 token（绕过风控的登录凭证）
+	if err := savePan123ConfigValue("token", token); err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "登录成功但保存 token 失败", err)
+		return
+	}
+	utils.InvalidateAllSettingCache()
+	utils.CreateAuditLogSimple(c, "pan123_sms_login", "settings", 0, "管理员操作: 通过短信验证码完成 123 云盘登录")
+	utils.SuccessResponse(c, http.StatusOK, "登录成功，token 已自动保存", gin.H{"token_masked": maskIfNonEmpty(token)})
 }
