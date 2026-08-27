@@ -746,6 +746,21 @@ export const softwareConfigAPI = {
   getSoftwareConfig: () => api.get('/software-config/'),
   updateSoftwareConfig: (data) => api.put('/software-config/', data)
 }
+// 123云盘自动填充
+export const pan123API = {
+  getConfig: () => api.get('/admin/pan123/config'),
+  saveConfig: (data) => api.post('/admin/pan123/config', data),
+  test: () => api.post('/admin/pan123/test'),
+  search: (params) => api.get('/admin/pan123/search', { params }),
+  refresh: (data) => api.post('/admin/pan123/refresh', data),
+  sync: () => api.post('/admin/pan123/sync'),
+  syncStatus: () => api.get('/admin/pan123/sync/status'),
+  versions: () => api.get('/admin/pan123/versions')
+}
+// 用户端：已同步软件版本信息
+export const softwareVersionsAPI = {
+  get: () => api.get('/software/versions')
+}
 export const configUpdateAPI = {
   getStatus: () => api.get('/admin/config-update/status'),
   startUpdate: () => api.post('/admin/config-update/start'),

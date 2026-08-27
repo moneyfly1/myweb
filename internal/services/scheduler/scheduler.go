@@ -21,6 +21,7 @@ import (
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/services/repo_sync"
 	"cboard-go/internal/services/selfhost"
+	"cboard-go/internal/services/software_sync"
 	"cboard-go/internal/utils"
 
 	"gorm.io/gorm"
@@ -63,6 +64,7 @@ func (s *Scheduler) Start() {
 	go s.autoUpdateNodes()
 	go s.autoBackup()
 	go s.syncRepoFiles()
+	go s.syncSoftwareLibrary()
 }
 
 func (s *Scheduler) Stop() {
@@ -898,4 +900,31 @@ func (s *Scheduler) runAutoBackup() error {
 	}
 
 	return nil
+}
+
+func (s *Scheduler) syncSoftwareLibrary() {
+	// 启动时检查一次（若已到期）
+	s.maybeRunSoftwareSync()
+
+	// 每 10 分钟检查一次是否到期（间隔默认 12 小时，可在云盘配置中调整）
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.stopChan:
+			return
+		case <-ticker.C:
+			s.maybeRunSoftwareSync()
+		}
+	}
+}
+
+func (s *Scheduler) maybeRunSoftwareSync() {
+	if software_sync.Due() {
+		if !software_sync.IsRunning() {
+			log.Println("定时任务: 开始 GitHub→123云盘 软件库同步")
+			software_sync.TriggerAsync()
+		}
+	}
 }

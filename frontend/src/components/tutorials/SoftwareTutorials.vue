@@ -23,7 +23,7 @@
                   :loading="downloadingKey === 'clash_verge_windows_url'"
                   @click="downloadClient('clash_verge_windows_url', 'clash-verge')"
                 >
-                  下载
+                  下载<template v-if="versionFor('clash_verge_windows_url')"> v{{ versionFor('clash_verge_windows_url') }}</template>
                 </el-button>
                 <el-button size="small" @click="copySubscription('clash')">复制订阅</el-button>
               </div>
@@ -43,9 +43,9 @@
                   type="primary"
                   size="small"
                   :loading="downloadingKey === 'clash_verge_macos_url'"
-                  @click="downloadClient('clash_verge_macos_url', 'clash-verge')"
+                  @click="downloadClient(['clash_verge_macos_arm_url', 'clash_verge_macos_url'], 'clash-verge')"
                 >
-                  下载
+                  下载<template v-if="versionFor(['clash_verge_macos_arm_url', 'clash_verge_macos_url'])"> v{{ versionFor(['clash_verge_macos_arm_url', 'clash_verge_macos_url']) }}</template>
                 </el-button>
                 <el-button size="small" @click="copySubscription('clash')">复制订阅</el-button>
               </div>
@@ -87,9 +87,9 @@
                   type="primary"
                   size="small"
                   :loading="downloadingKey === 'clash_meta_android_url'"
-                  @click="downloadClient('clash_meta_android_url', 'clash-verge')"
+                  @click="downloadClient('clash_meta_android_url', 'clash-meta')"
                 >
-                  下载
+                  下载<template v-if="versionFor('clash_android_url')"> v{{ versionFor('clash_android_url') }}</template>
                 </el-button>
                 <el-button size="small" @click="copySubscription('clash')">复制订阅</el-button>
               </div>
@@ -111,12 +111,14 @@ import iOSTutorials from '@/components/tutorials/iOSTutorials.vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { cachedAPI } from '@/utils/api'
 import { safeOpen } from '@/utils/safeOpen'
+import { resolvePanDownloadUrl, pickConfiguredUrl } from '@/utils/githubDownload'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
 
 const router = useRouter()
 const activeTab = ref('windows')
 const softwareConfig = ref({})
 const subscription = ref({})
+const softwareVersions = ref({})
 const downloadingKey = ref('')
 
 const getResponseData = (response) => {
@@ -136,15 +138,28 @@ const loadRuntimeData = async () => {
   if (subscriptionResult.status === 'fulfilled') {
     subscription.value = getResponseData(subscriptionResult.value)
   }
+  try {
+    const vRes = await fetch('/api/v1/software/versions')
+    const vData = await vRes.json()
+    const map = {}
+    ;(vData?.data?.list || []).forEach(item => {
+      map[item.key] = item.version
+    })
+    softwareVersions.value = map
+  } catch (error) {
+    // 版本信息可选
+  }
 }
 
 const downloadClient = async (configKey, githubKey = null, fallbackUrl = '') => {
-  if (!configKey) return
-  downloadingKey.value = configKey
+  const keys = Array.isArray(configKey) ? configKey : [configKey]
+  if (!keys.length) return
+  const primaryKey = keys[0]
+  downloadingKey.value = primaryKey
   try {
-    const configuredUrl = String(softwareConfig.value?.[configKey] || '').trim()
+    const configuredUrl = String(pickConfiguredUrl(keys, softwareConfig.value || {}) || '').trim()
     if (configuredUrl) {
-      safeOpen(configuredUrl)
+      safeOpen(resolvePanDownloadUrl(configuredUrl))
       ElMessage.success('已打开下载页面')
       return
     }
@@ -178,6 +193,13 @@ const downloadClient = async (configKey, githubKey = null, fallbackUrl = '') => 
   } finally {
     downloadingKey.value = ''
   }
+}
+
+// versionFor 返回指定配置键对应的已同步版本号（用于下载按钮旁展示）
+const versionFor = (configKey) => {
+  const keys = Array.isArray(configKey) ? configKey : [configKey]
+  const key = keys.find(k => softwareVersions.value?.[k])
+  return key ? softwareVersions.value[key] || '' : ''
 }
 
 const copySubscription = async (type = 'universal') => {

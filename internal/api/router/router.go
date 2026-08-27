@@ -310,7 +310,9 @@ func SetupRouter() *gin.Engine {
 		api.GET("/promotions/available-discounts", middleware.AuthMiddleware(), handlers.GetAvailablePromotionDiscounts)
 
 		api.GET("/software-config", handlers.GetSoftwareConfig)
+		api.GET("/software/versions", handlers.GetSoftwareVersions)
 		api.GET("/download/resolve", handlers.ResolveDownload)
+		api.GET("/download/pan", handlers.Pan123Resolve)
 
 		api.GET("/mobile-config", handlers.GetMobileConfig)
 		softwareConfig := api.Group("/software-config")
@@ -602,6 +604,16 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/logs/commission", handlers.GetCommissionLogs)
 			admin.GET("/logs/subscription-reset", handlers.GetSubscriptionResetLogs)
 			admin.GET("/logs/email", handlers.GetEmailLogs)
+
+			// 123云盘自动填充
+			admin.GET("/pan123/config", handlers.GetPan123Config)
+			admin.POST("/pan123/config", handlers.SavePan123Config)
+			admin.POST("/pan123/test", handlers.Pan123Test)
+			admin.GET("/pan123/search", handlers.Pan123Search)
+			admin.POST("/pan123/refresh", handlers.Pan123Refresh)
+			admin.POST("/pan123/sync", handlers.Pan123Sync)
+			admin.GET("/pan123/sync/status", handlers.Pan123SyncStatus)
+			admin.GET("/pan123/versions", handlers.Pan123Versions)
 		}
 	}
 
@@ -611,6 +623,8 @@ func SetupRouter() *gin.Engine {
 			utils.ErrorResponse(c, http.StatusNotFound, "API endpoint not found", nil)
 			return
 		}
+		// SPA 入口不缓存：资源文件本身带 hash 可长缓存，但 index.html 必须总是最新的
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
 		c.File("./frontend/dist/index.html")
 	})
 
