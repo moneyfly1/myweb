@@ -25,6 +25,34 @@ const (
 	panLinkTTL     = 10 * time.Minute
 )
 
+func init() {
+	// 同步完成后清理直链缓存，避免旧链接（指向已删除文件）在缓存期内继续生效
+	software_sync.SetOnSyncComplete(clearPanLinkCache)
+}
+
+// 公共解析接口全局限流：防止滥用（每次请求会消耗管理员的云盘接口额度）
+var resolveGate = struct {
+	mu   sync.Mutex
+	last time.Time
+}{}
+
+// resolveThrottled 全局限流（约 5 次/秒）；超限返回 false
+func resolveThrottled() bool {
+	resolveGate.mu.Lock()
+	defer resolveGate.mu.Unlock()
+	if time.Since(resolveGate.last) < 200*time.Millisecond {
+		return false
+	}
+	resolveGate.last = time.Now()
+	return true
+}
+
+// isPanManagedLink 判断是否为工具写入的 123 云盘直链（静态模式产物）。
+// 用于区分"管理员手工自定义链接"（应保护）与"工具写入的静态直链"（可被重新接管）。
+func isPanManagedLink(u string) bool {
+	return strings.Contains(u, "123295.com") || strings.Contains(u, "cjjd19.com")
+}
+
 // ---------------------------------------------------------------------------
 // 配置读写
 // ---------------------------------------------------------------------------
@@ -361,6 +389,11 @@ func Pan123Refresh(c *gin.Context) {
 	}
 	_ = c.ShouldBindJSON(&req)
 
+	if software_sync.IsRunning() {
+		utils.ErrorResponse(c, http.StatusConflict, "软件库同步正在进行中，请稍后再试", nil)
+		return
+	}
+
 	cfg, err := loadPan123Config()
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "读取配置失败", err)
@@ -400,7 +433,7 @@ func Pan123Refresh(c *gin.Context) {
 	for _, key := range keys {
 		item := panRefreshItem{Key: key, Keyword: strings.TrimSpace(cfg.FileMap[key])}
 		item.Ext = strings.ToLower(strings.TrimSpace(cfg.FileExts[key]))
-		if current := strings.TrimSpace(softwareConfig[key]); current != "" && !strings.HasPrefix(current, "pan://") {
+		if current := strings.TrimSpace(softwareConfig[key]); current != "" && !strings.HasPrefix(current, "pan://") && !isPanManagedLink(current) {
 			item.Error = "该入口使用自定义链接，跳过"
 			report = append(report, item)
 			continue
@@ -529,6 +562,10 @@ func i64s(v int64) string {
 // Pan123Resolve 根据软件配置 key 或关键词，实时生成最新的下载链接并 302 跳转。
 // 支持 ?key=<softwareConfigKey> 或 ?q=<关键词>
 func Pan123Resolve(c *gin.Context) {
+	if !resolveThrottled() {
+		utils.ErrorResponse(c, http.StatusTooManyRequests, "请求过于频繁，请稍后再试", nil)
+		return
+	}
 	cfg, err := loadPan123Config()
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "读取配置失败", err)
@@ -711,8 +748,8 @@ func Pan123Versions(c *gin.Context) {
 				"custom":         false,
 				"gh_error":       ghErr,
 			}
-			// 配置了自定义外部链接的入口：不使用云盘，明确标注
-			if current := strings.TrimSpace(softwareConfig[t.ConfigKey]); current != "" && !strings.HasPrefix(current, "pan://") {
+			// 配置了手工自定义外部链接（非 pan://、非工具写入的云盘直链）的入口：不使用云盘，明确标注
+			if current := strings.TrimSpace(softwareConfig[t.ConfigKey]); current != "" && !strings.HasPrefix(current, "pan://") && !isPanManagedLink(current) {
 				row["custom"] = true
 				row["file_name"] = current
 				rows = append(rows, row)

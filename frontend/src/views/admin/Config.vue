@@ -187,8 +187,7 @@
                 <el-col :span="12">
                   <el-form-item label="链接模式">
                     <el-select v-model="panForm.mode" style="width: 100%">
-                      <el-option label="直链（推荐，已验证可直接下载）" value="direct" />
-                      <el-option label="分享链接（实验性，可能不可用）" value="share" />
+                      <el-option label="直链（已验证可直接下载）" value="direct" />
                     </el-select>
                   </el-form-item>
                 </el-col>
