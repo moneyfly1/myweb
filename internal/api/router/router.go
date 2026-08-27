@@ -610,6 +610,7 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/cloud/config", handlers.SaveCloudConfig)
 			admin.POST("/cloud/aliyun/test", handlers.CloudAliyunTest)
 			admin.GET("/cloud/aliyun/search", handlers.CloudAliyunSearch)
+			admin.GET("/cloud/aliyun/folders", handlers.CloudAliyunFolders)
 			admin.POST("/cloud/sync", handlers.CloudSync)
 			admin.GET("/cloud/sync/status", handlers.CloudSyncStatus)
 			admin.GET("/cloud/versions", handlers.CloudVersions)

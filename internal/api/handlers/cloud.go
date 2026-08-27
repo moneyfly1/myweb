@@ -249,6 +249,41 @@ func CloudAliyunTest(c *gin.Context) {
 	})
 }
 
+// CloudAliyunFolders 列出云盘文件夹（供前端目录选择器使用）
+// parent 为空时列根目录；仅返回文件夹，不含文件。
+func CloudAliyunFolders(c *gin.Context) {
+	cfg, err := loadCloudConfig()
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "读取配置失败", err)
+		return
+	}
+	if cfg.AliyunRefreshToken == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请先配置并测试阿里云盘连接", nil)
+		return
+	}
+	ali, cerr := newAliyunClientFromConfig(cfg)
+	if cerr != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, cerr.Error(), nil)
+		return
+	}
+	parent := strings.TrimSpace(c.Query("parent"))
+	if parent == "" {
+		parent = "root"
+	}
+	files, lerr := ali.List(parent, 200)
+	if lerr != nil {
+		utils.ErrorResponse(c, http.StatusBadGateway, "列目录失败: "+lerr.Error(), nil)
+		return
+	}
+	folders := make([]gin.H, 0, len(files))
+	for _, f := range files {
+		if f.Type == "folder" {
+			folders = append(folders, gin.H{"file_id": f.FileID, "name": f.Name})
+		}
+	}
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"list": folders, "parent": parent})
+}
+
 // CloudAliyunSearch 搜索阿里云盘文件
 func CloudAliyunSearch(c *gin.Context) {
 	keyword := strings.TrimSpace(c.Query("keyword"))

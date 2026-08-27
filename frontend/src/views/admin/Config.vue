@@ -168,8 +168,11 @@
             />
             <el-form :model="panForm" label-width="150px" style="margin-top: 16px">
               <el-form-item label="云盘上传目录">
-                <el-input v-model="panForm.aliyun_folder" placeholder="如：软件下载（支持 软件/下载 多级路径；留空 = 网盘根目录）" />
-                <div class="pan-tip" style="width: 100%">同步时会在该目录下自动为每个软件创建子文件夹（如 软件下载/v2rayN/），安装包按软件分别存放。</div>
+                <div style="display: flex; width: 100%; gap: 8px">
+                  <el-input v-model="panForm.aliyun_folder" placeholder="如：软件下载（支持 软件/下载 多级路径；留空 = 网盘根目录）" />
+                  <el-button type="primary" plain @click="openFolderPicker" :disabled="!folderPickerReady">从云盘选择</el-button>
+                </div>
+                <div class="pan-tip" style="width: 100%">同步时会在该目录下自动为每个软件创建子文件夹（如 软件下载/v2rayN/），安装包按软件分别存放；也可点击「从云盘选择」直接浏览你的云盘目录，无需手填。</div>
               </el-form-item>
               <el-form-item label="阿里云盘 refresh_token">
                 <el-input v-model="panForm.aliyun_refresh_token" type="textarea" :rows="2" placeholder="粘贴 refresh_token" />
@@ -339,6 +342,44 @@
           </el-form>
         </el-tab-pane>
       </el-tabs>
+
+      <el-dialog v-model="folderDialog.visible" title="选择云盘上传目录" width="560px" :close-on-click-modal="false">
+        <el-alert
+          type="info"
+          show-icon
+          :closable="false"
+          title="浏览并选择目录；选中的目录作为同步上传根目录（自动创建 软件下载/子文件夹 结构），留空 = 网盘根目录"
+          style="margin-bottom: 12px"
+        />
+        <div class="folder-crumb">
+          <el-button size="small" text type="primary" :disabled="folderDialog.breadcrumb.length === 0" @click="folderGoUp">← 返回上级</el-button>
+          <el-tag
+            v-for="(f, i) in folderDialog.breadcrumb"
+            :key="f.id"
+            size="small"
+            class="folder-crumb-tag"
+            @click="folderGoTo(i)"
+          >{{ f.name }}</el-tag>
+          <span v-if="folderDialog.breadcrumb.length === 0" class="pan-soft-key">当前：网盘根目录</span>
+        </div>
+        <el-table :data="folderDialog.folders" size="small" max-height="320" border v-loading="folderDialog.loading">
+          <el-table-column label="文件夹" min-width="240">
+            <template #default="{ row }">
+              <el-button size="small" text type="primary" @click="folderEnter(row)">
+                📁 {{ row.name }}
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div v-if="!folderDialog.loading && folderDialog.folders.length === 0" class="pan-tip" style="text-align: center; padding: 12px 0">
+          当前目录没有子文件夹
+        </div>
+        <template #footer>
+          <el-button @click="folderChooseRoot">使用根目录（留空）</el-button>
+          <el-button @click="folderDialog.visible = false">取消</el-button>
+          <el-button type="primary" :disabled="folderDialog.breadcrumb.length === 0" @click="folderChoose">选择当前目录</el-button>
+        </template>
+      </el-dialog>
     </el-card>
   </div>
 </template>
@@ -515,6 +556,7 @@ export default {
           panForm.aliyun_folder = data.aliyun_folder || ''
           panForm.sync_enabled = data.sync_enabled !== false
           panForm.sync_interval_hours = data.sync_interval_hours || 12
+          folderPickerReady.value = data.configured === true
         }
       } catch (error) {
         // 未配置时静默
@@ -557,6 +599,7 @@ export default {
         if (response.data?.success) {
           const d = response.data.data || {}
           aliyunTestResult.value = `连接成功（${d.folder || '根目录'} ${d.root_files} 个文件）${d.refresh_token_rotated ? '，token 已自动轮换' : ''}`
+          folderPickerReady.value = true
         } else {
           aliyunTestResult.value = response.data?.message || '连接失败'
         }
@@ -565,6 +608,59 @@ export default {
       } finally {
         aliyunTesting.value = false
       }
+    }
+    // ---- 云盘目录选择器（从云盘拉取目录树，免手填）----
+    const folderPickerReady = ref(false)
+    const folderDialog = reactive({
+      visible: false,
+      loading: false,
+      breadcrumb: [], // [{ id, name }] 已进入的层级（不含根）
+      folders: []
+    })
+    const openFolderPicker = async () => {
+      if (!folderPickerReady.value) {
+        ElMessage.warning('请先配置 refresh_token 并点击「测试阿里云盘连接」成功后再选择目录')
+        return
+      }
+      folderDialog.breadcrumb = []
+      folderDialog.visible = true
+      await folderLoad('root')
+    }
+    const folderLoad = async (parentId) => {
+      folderDialog.loading = true
+      try {
+        const response = await cloudAPI.aliyunFolders({ parent: parentId || 'root' })
+        folderDialog.folders = (response.data?.data?.list) || []
+      } catch (error) {
+        folderDialog.folders = []
+        ElMessage.error(error.response?.data?.message || '读取云盘目录失败')
+      } finally {
+        folderDialog.loading = false
+      }
+    }
+    const folderEnter = async (folder) => {
+      folderDialog.breadcrumb.push({ id: folder.file_id, name: folder.name })
+      await folderLoad(folder.file_id)
+    }
+    const folderGoUp = async () => {
+      folderDialog.breadcrumb.pop()
+      const parent = folderDialog.breadcrumb.length ? folderDialog.breadcrumb[folderDialog.breadcrumb.length - 1].id : 'root'
+      await folderLoad(parent)
+    }
+    const folderGoTo = async (index) => {
+      folderDialog.breadcrumb = folderDialog.breadcrumb.slice(0, index + 1)
+      const parent = folderDialog.breadcrumb[index].id
+      await folderLoad(parent)
+    }
+    const folderChoose = () => {
+      panForm.aliyun_folder = folderDialog.breadcrumb.map(f => f.name).join('/')
+      folderDialog.visible = false
+      ElMessage.success(`已选择目录：${panForm.aliyun_folder || '网盘根目录'}`)
+    }
+    const folderChooseRoot = () => {
+      panForm.aliyun_folder = ''
+      folderDialog.visible = false
+      ElMessage.success('已使用网盘根目录')
     }
     const panSyncing = ref(false)
     const panVersions = ref([])
@@ -649,6 +745,14 @@ export default {
       aliyunTesting,
       aliyunTestResult,
       testAliyun,
+      folderPickerReady,
+      folderDialog,
+      openFolderPicker,
+      folderEnter,
+      folderGoUp,
+      folderGoTo,
+      folderChoose,
+      folderChooseRoot,
       panSyncing,
       panVersions,
       syncStatusText,
@@ -725,6 +829,17 @@ export default {
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: default;
+}
+.folder-crumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+  min-height: 32px;
+}
+.folder-crumb-tag {
+  cursor: pointer;
 }
 .avatar-uploader {
   text-align: center;

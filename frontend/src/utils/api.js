@@ -752,6 +752,7 @@ export const cloudAPI = {
   saveConfig: (data) => api.post('/admin/cloud/config', data),
   aliyunTest: () => api.post('/admin/cloud/aliyun/test'),
   aliyunSearch: (params) => api.get('/admin/cloud/aliyun/search', { params }),
+  aliyunFolders: (params) => api.get('/admin/cloud/aliyun/folders', { params }),
   sync: () => api.post('/admin/cloud/sync'),
   syncStatus: () => api.get('/admin/cloud/sync/status'),
   versions: () => api.get('/admin/cloud/versions')
