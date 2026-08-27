@@ -150,7 +150,7 @@ func SaveCloudConfig(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "保存失败", err)
 		return
 	}
-	folder := strings.Trim(strings.TrimSpace(req.AliyunFolder), "/")
+	folder := sanitizeFolderPath(req.AliyunFolder)
 	_ = saveCloudConfigValue("aliyun_folder", folder)
 	if req.SyncEnabled != nil {
 		_ = saveCloudConfigValue("sync_enabled", strconv.FormatBool(*req.SyncEnabled))
@@ -168,6 +168,30 @@ func newAliyunClientFromConfig(cfg cloudConfig) (*aliyundrive.Client, error) {
 		return nil, fmt.Errorf("未配置阿里云盘 refresh_token")
 	}
 	return aliyundrive.New(cfg.AliyunRefreshToken), nil
+}
+
+// sanitizeFolderPath 净化上传目录路径：去掉首尾 /，逐段替换云盘非法字符（/ \ : * ? " < > |）
+func sanitizeFolderPath(path string) string {
+	segments := strings.Split(strings.TrimSpace(path), "/")
+	clean := make([]string, 0, len(segments))
+	for _, seg := range segments {
+		seg = strings.TrimSpace(seg)
+		if seg == "" {
+			continue
+		}
+		seg = strings.Map(func(r rune) rune {
+			switch r {
+			case '/', '\\', ':', '*', '?', '"', '<', '>', '|':
+				return '_'
+			}
+			if r < 0x20 {
+				return '_'
+			}
+			return r
+		}, seg)
+		clean = append(clean, seg)
+	}
+	return strings.Join(clean, "/")
 }
 
 // ---------------------------------------------------------------------------
@@ -317,10 +341,9 @@ func CloudResolve(c *gin.Context) {
 	}
 
 	keyword := ""
-	rawKey := ""
-	if key := strings.TrimSpace(c.Query("key")); key != "" {
-		rawKey = key
-		if entry, ok := cloudFileIDMapOf(key); ok && entry.AliyunFileID != "" {
+	rawKey := strings.TrimSpace(c.Query("key"))
+	if rawKey != "" {
+		if entry, ok := cloudFileIDMapOf(rawKey); ok && entry.AliyunFileID != "" {
 			cacheKey := "ali:" + entry.AliyunFileID
 			if cached, ok := getCachedCloudLink(cacheKey); ok {
 				if validateDownloadURL(cached) == nil {
@@ -337,14 +360,19 @@ func CloudResolve(c *gin.Context) {
 					return
 				}
 			}
+			// 直链生成失败：区分"文件被删除"与"临时失败"，给出可操作提示
+			if _, gerr := ali.GetFile(entry.AliyunFileID); gerr != nil && aliyundrive.IsFileNotFound(gerr) {
+				utils.ErrorResponse(c, http.StatusNotFound, "云盘文件已被删除，请稍后重试（后台定时同步会自动重新上传）", nil)
+				return
+			}
+			utils.ErrorResponse(c, http.StatusBadGateway, "生成下载链接失败，请稍后重试", nil)
+			return
 		}
+		// key 不在映射或尚无阿里云盘文件 id：给出可操作的提示，不再走无意义的关键词搜索
+		utils.ErrorResponse(c, http.StatusNotFound, "该软件尚未同步到阿里云盘，请在后台「配置管理 → 软件下载配置」点击「立即同步」", nil)
+		return
 	}
-	if keyword == "" {
-		keyword = strings.TrimSpace(c.Query("q"))
-	}
-	if keyword == "" {
-		keyword = rawKey
-	}
+	keyword = strings.TrimSpace(c.Query("q"))
 	if keyword == "" {
 		utils.ErrorResponse(c, http.StatusBadRequest, "缺少 key 或 q 参数", nil)
 		return
