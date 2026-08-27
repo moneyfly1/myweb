@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -220,4 +221,77 @@ func TokenDaysLeft(token string) int {
 		return 0
 	}
 	return int(time.Until(exp).Hours() / 24)
+}
+
+// GenerateQrCode 生成登录二维码（123pan 手机 App / 微信扫码），返回 QR 内容与 uniID
+func (c *Client) GenerateQrCode() (qrURL, uniID string, err error) {
+	payload, err := getJSON(smsPortalBase+"/user/qr-code/generate", nil)
+	if err != nil {
+		return "", "", err
+	}
+	var out struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			URL   string `json:"url"`
+			UniID string `json:"uniID"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return "", "", fmt.Errorf("二维码响应解析失败: %w", err)
+	}
+	if out.Code != 0 || out.Data.UniID == "" {
+		return "", "", fmt.Errorf("生成二维码失败: %s", firstNonEmpty(out.Message, fmt.Sprintf("code=%d", out.Code)))
+	}
+	return out.Data.URL, out.Data.UniID, nil
+}
+
+// GetQrCodeStatus 轮询扫码登录状态；loginStatus: 0未扫 1已扫 2拒绝 3已确认(含 token) 4过期
+func (c *Client) GetQrCodeStatus(uniID string) (loginStatus int, token string, err error) {
+	rawURL := smsPortalBase + "/user/qr-code/result?uniID=" + url.QueryEscape(uniID) + "&remember=true"
+	payload, err := getJSON(rawURL, nil)
+	if err != nil {
+		return 0, "", err
+	}
+	var out struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			LoginStatus int    `json:"loginStatus"`
+			Token       string `json:"token"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return 0, "", fmt.Errorf("扫码状态解析失败: %w", err)
+	}
+	if out.Code != 0 {
+		return 0, "", fmt.Errorf("查询扫码状态失败: %s", firstNonEmpty(out.Message, fmt.Sprintf("code=%d", out.Code)))
+	}
+	return out.Data.LoginStatus, out.Data.Token, nil
+}
+
+// getJSON 简单 GET JSON（无签名），用于登录门户接口
+func getJSON(rawURL string, headers map[string]string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("user-agent", defaultUserAgent)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	client := &http.Client{Timeout: 20 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	payload, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(payload)))
+	}
+	return payload, nil
 }

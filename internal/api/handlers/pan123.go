@@ -918,3 +918,79 @@ func Pan123SmsLogin(c *gin.Context) {
 	utils.CreateAuditLogSimple(c, "pan123_sms_login", "settings", 0, "管理员操作: 通过短信验证码完成 123 云盘登录")
 	utils.SuccessResponse(c, http.StatusOK, "登录成功，token 已自动保存", gin.H{"token_masked": maskIfNonEmpty(token)})
 }
+
+// ---------------------------------------------------------------------------
+// 二维码扫码登录（123pan 手机 App / 微信）
+// ---------------------------------------------------------------------------
+
+// Pan123QrGenerate 生成登录二维码
+func Pan123QrGenerate(c *gin.Context) {
+	cfg, err := loadPan123Config()
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "读取配置失败", err)
+		return
+	}
+	client, cerr := newPan123ClientFromConfig(cfg)
+	if cerr != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, cerr.Error(), nil)
+		return
+	}
+	qrURL, uniID, gerr := client.GenerateQrCode()
+	if gerr != nil {
+		utils.ErrorResponse(c, http.StatusBadGateway, gerr.Error(), nil)
+		return
+	}
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"qr_value": qrURL + "?uniID=" + uniID, // 二维码编码内容（App 识别）
+		"uni_id":   uniID,
+	})
+}
+
+// Pan123QrStatus 轮询扫码状态；已确认且带 token 时自动保存（token 绑定服务器 IP）
+func Pan123QrStatus(c *gin.Context) {
+	uniID := strings.TrimSpace(c.Query("uni_id"))
+	if uniID == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "缺少 uni_id 参数", nil)
+		return
+	}
+	cfg, err := loadPan123Config()
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "读取配置失败", err)
+		return
+	}
+	client, cerr := newPan123ClientFromConfig(cfg)
+	if cerr != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, cerr.Error(), nil)
+		return
+	}
+	status, token, serr := client.GetQrCodeStatus(uniID)
+	if serr != nil {
+		utils.ErrorResponse(c, http.StatusBadGateway, serr.Error(), nil)
+		return
+	}
+	switch status {
+	case 0:
+		utils.SuccessResponse(c, http.StatusOK, "", gin.H{"status": "waiting"})
+	case 1:
+		utils.SuccessResponse(c, http.StatusOK, "", gin.H{"status": "scanned", "message": "已扫码，请在手机上确认"})
+	case 2:
+		utils.SuccessResponse(c, http.StatusOK, "", gin.H{"status": "rejected", "message": "已拒绝登录"})
+	case 4:
+		utils.SuccessResponse(c, http.StatusOK, "", gin.H{"status": "expired", "message": "二维码已过期，请重新生成"})
+	default:
+		// status 3 = 已确认，带 token
+		if token == "" {
+			utils.SuccessResponse(c, http.StatusOK, "", gin.H{"status": "waiting"})
+			return
+		}
+		if err := savePan123ConfigValue("token", token); err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "登录成功但保存 token 失败", err)
+			return
+		}
+		utils.InvalidateAllSettingCache()
+		utils.CreateAuditLogSimple(c, "pan123_qr_login", "settings", 0, "管理员操作: 通过二维码扫码完成 123 云盘登录")
+		utils.SuccessResponse(c, http.StatusOK, "登录成功，token 已自动保存", gin.H{
+			"status": "success", "token_masked": maskIfNonEmpty(token),
+		})
+	}
+}

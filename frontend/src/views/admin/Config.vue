@@ -244,7 +244,10 @@
               </el-form-item>
               <el-form-item>
                 <el-button type="warning" plain :loading="panSmsSending" @click="smsSend">
-                  海外服务器？短信验证码登录
+                  短信验证码登录
+                </el-button>
+                <el-button type="success" plain :loading="qrLoading" @click="qrLogin">
+                  二维码登录（手机 App 扫码）
                 </el-button>
                 <span v-if="smsStatus" class="pan-test-result" style="margin-left: 8px">{{ smsStatus }}</span>
               </el-form-item>
@@ -460,6 +463,18 @@
         </template>
       </el-dialog>
 
+      <el-dialog v-model="qrDialog.visible" title="123云盘扫码登录" width="340px" :close-on-click-modal="false">
+        <div style="text-align: center">
+          <p class="pan-soft-key" style="margin-bottom: 8px">使用 123云盘 手机 App（或微信）扫码，并在手机上确认登录</p>
+          <img v-if="qrDialog.qrDataUrl" :src="qrDialog.qrDataUrl" alt="登录二维码" style="width: 200px; height: 200px" />
+          <div v-else class="pan-soft-key">二维码生成中...</div>
+          <p class="pan-test-result" style="margin-top: 8px">{{ qrDialog.statusText }}</p>
+        </div>
+        <template #footer>
+          <el-button @click="stopQrPolling">关闭</el-button>
+        </template>
+      </el-dialog>
+
       <el-dialog v-model="refreshReport.visible" title="填充结果" width="720px">
         <el-alert
           v-if="refreshReport.dynamic"
@@ -493,6 +508,7 @@
 import { ref, reactive, onMounted, nextTick } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { configAPI, softwareConfigAPI, pan123API } from '@/utils/api'
+import { createQRCodeDataURL } from '@/utils/qrcode'
 export default {
   name: 'AdminConfig',
   setup() {
@@ -788,6 +804,70 @@ export default {
     const smsTimeStamp = ref('')
     const smsNeedsCaptcha = ref(false)
     let panelCaptchaInstance = null
+    // ---- 二维码扫码登录 ----
+    const qrLoading = ref(false)
+    const qrDialog = reactive({ visible: false, qrDataUrl: '', statusText: '等待扫码...' })
+    let qrPollTimer = null
+    let qrPolling = false
+    const qrLogin = async () => {
+      qrLoading.value = true
+      qrDialog.visible = true
+      qrDialog.statusText = '正在生成二维码...'
+      qrDialog.qrDataUrl = ''
+      try {
+        const response = await pan123API.qrGenerate()
+        if (response.data?.success) {
+          const data = response.data.data || {}
+          qrDialog.qrDataUrl = await createQRCodeDataURL(data.qr_value, { width: 200, margin: 2 })
+          qrDialog.statusText = '等待扫码...'
+          startQrPolling(data.uni_id)
+        } else {
+          qrDialog.statusText = response.data?.message || '生成二维码失败'
+        }
+      } catch (error) {
+        qrDialog.statusText = error.response?.data?.message || '生成二维码失败'
+      } finally {
+        qrLoading.value = false
+      }
+    }
+    const startQrPolling = (uniId) => {
+      stopQrPolling()
+      qrPolling = true
+      const poll = async () => {
+        if (!qrPolling) return
+        try {
+          const response = await pan123API.qrStatus({ uni_id: uniId })
+          const status = response.data?.data?.status || 'waiting'
+          if (status === 'waiting') {
+            qrDialog.statusText = '等待扫码...'
+          } else if (status === 'scanned') {
+            qrDialog.statusText = '已扫码，请在手机上确认'
+          } else if (status === 'success') {
+            qrDialog.statusText = '登录成功，token 已保存'
+            stopQrPolling()
+            setTimeout(() => { qrDialog.visible = false }, 1200)
+            ElMessage.success('登录成功，token 已自动保存')
+            await loadPanConfig()
+            return
+          } else if (status === 'expired' || status === 'rejected') {
+            qrDialog.statusText = response.data?.data?.message || '扫码已失效'
+            stopQrPolling()
+            return
+          }
+        } catch (error) {
+          qrDialog.statusText = '查询状态失败，重试中...'
+        }
+        qrPollTimer = setTimeout(poll, 2000)
+      }
+      poll()
+    }
+    const stopQrPolling = () => {
+      qrPolling = false
+      if (qrPollTimer) {
+        clearTimeout(qrPollTimer)
+        qrPollTimer = null
+      }
+    }
 
     // 加载 123pan 同款阿里云验证码 SDK（含其内置 appKey）
     const loadCaptchaScripts = () => {
@@ -1092,7 +1172,11 @@ export default {
       tokenExpiryText,
       tokenExpiryDanger,
       smsSend,
-      smsLogin
+      smsLogin,
+      qrLoading,
+      qrDialog,
+      qrLogin,
+      stopQrPolling
     }
   }
 }
