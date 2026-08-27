@@ -759,7 +759,9 @@ export const pan123API = {
   smsSend: (data) => api.post('/admin/pan123/sms/send', data),
   smsLogin: (data) => api.post('/admin/pan123/sms/login', data),
   qrGenerate: () => api.post('/admin/pan123/qr/generate'),
-  qrStatus: (params) => api.get('/admin/pan123/qr/status', { params })
+  qrStatus: (params) => api.get('/admin/pan123/qr/status', { params }),
+  aliyunTest: () => api.post('/admin/pan123/aliyun/test'),
+  aliyunSearch: (params) => api.get('/admin/pan123/aliyun/search', { params })
 }
 // 用户端：已同步软件版本信息
 export const softwareVersionsAPI = {

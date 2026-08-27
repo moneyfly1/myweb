@@ -1,0 +1,393 @@
+// Package aliyundrive 封装阿里云盘（阿里云盘 openapi.alipan.com）客户端。
+// 认证基于 refresh_token（OAuth 刷新，不绑定 IP、无境外风控），海外服务器可用。
+// 接口与请求体参照开源 alist（github.com/alist-org/alist，MIT License）aliyundrive_open 驱动。
+package aliyundrive
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+)
+
+const (
+	AuthURL = "https://auth.alipan.com/v2/account/token"
+	APIBase = "https://openapi.alipan.com"
+
+	userAgent = "cboard-aliyundrive"
+	partSize  = 20 << 20 // 20MB 分片（与 alist 一致）
+)
+
+// File 阿里云盘文件信息
+type File struct {
+	FileID       string `json:"file_id"`
+	Name         string `json:"name"`
+	Type         string `json:"type"` // folder / file
+	Size         int64  `json:"size"`
+	ParentFileID string `json:"parent_file_id"`
+	UpdatedAt    string `json:"updated_at"`
+	CreatedAt    string `json:"created_at"`
+}
+
+// DisplaySize 人类可读大小
+func (f File) DisplaySize() string {
+	const unit = 1024
+	if f.Size < unit {
+		return fmt.Sprintf("%d B", f.Size)
+	}
+	div, exp := int64(unit), 0
+	for n := f.Size / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.2f %cB", float64(f.Size)/float64(div), "KMGTPE"[exp])
+}
+
+// Client 阿里云盘客户端
+type Client struct {
+	RefreshToken string
+	AccessToken  string
+	DriveID      string // 默认 "root"
+	http         *http.Client
+}
+
+// New 创建客户端
+func New(refreshToken string) *Client {
+	return &Client{
+		RefreshToken: strings.TrimSpace(refreshToken),
+		DriveID:      "root",
+		http:         &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+// Refresh 用 refresh_token 换取 access_token（并拿到新的 refresh_token，需回存）。
+// 该接口不校验请求 IP，海外服务器可用。
+func (c *Client) Refresh() (newRefreshToken string, err error) {
+	body := map[string]string{
+		"refresh_token": c.RefreshToken,
+		"grant_type":    "refresh_token",
+	}
+	payload, err := postJSON(AuthURL, body, map[string]string{
+		"origin":  "https://www.alipan.com",
+		"referer": "https://www.alipan.com/",
+	})
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		Error        string `json:"error"`
+		ErrorDesc    string `json:"error_description"`
+	}
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return "", fmt.Errorf("token 刷新响应解析失败: %w", err)
+	}
+	if out.AccessToken == "" {
+		return "", fmt.Errorf("token 刷新失败: %s %s", out.Error, out.ErrorDesc)
+	}
+	c.AccessToken = out.AccessToken
+	if out.RefreshToken != "" {
+		c.RefreshToken = out.RefreshToken
+		return out.RefreshToken, nil
+	}
+	return "", nil
+}
+
+// ensureToken 确保有 access_token
+func (c *Client) ensureToken() error {
+	if c.AccessToken != "" {
+		return nil
+	}
+	_, err := c.Refresh()
+	return err
+}
+
+// List 列出目录文件
+func (c *Client) List(parentFileID string, limit int) ([]File, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	if parentFileID == "" {
+		parentFileID = "root"
+	}
+	body := map[string]interface{}{
+		"drive_id":         c.DriveID,
+		"parent_file_id":   parentFileID,
+		"limit":            limit,
+		"order_by":         "updated_at",
+		"order_direction":  "DESC",
+	}
+	payload, err := c.request("/adrive/v1.0/openFile/list", body)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Items []File `json:"items"`
+	}
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return nil, fmt.Errorf("列表响应解析失败: %w", err)
+	}
+	return out.Items, nil
+}
+
+// Search 按文件名关键词搜索
+func (c *Client) Search(keyword string, limit int) ([]File, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	body := map[string]interface{}{
+		"drive_id":        c.DriveID,
+		"query": map[string]interface{}{
+			"name_match_mode": "fuzzy",
+			"name":            keyword,
+		},
+		"limit":           limit,
+		"order_by":        "updated_at",
+		"order_direction": "DESC",
+	}
+	payload, err := c.request("/adrive/v1.0/openFile/search", body)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Items []File `json:"items"`
+	}
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return nil, fmt.Errorf("搜索响应解析失败: %w", err)
+	}
+	return out.Items, nil
+}
+
+// DownloadURL 获取文件直链（4 小时有效，对访客开放）
+func (c *Client) DownloadURL(fileID string) (string, error) {
+	body := map[string]interface{}{
+		"drive_id":   c.DriveID,
+		"file_id":    fileID,
+		"expire_sec": 14400,
+	}
+	payload, err := c.request("/adrive/v1.0/openFile/getDownloadUrl", body)
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return "", fmt.Errorf("直链响应解析失败: %w", err)
+	}
+	if out.URL == "" {
+		return "", errors.New("直链为空")
+	}
+	return out.URL, nil
+}
+
+// Upload 上传本地文件到指定目录，返回 file_id。
+// 流程：create → (可选 getUploadUrl) → 分片 PUT → complete
+func (c *Client) Upload(localPath, fileName, parentFileID string) (string, error) {
+	fi, err := os.Stat(localPath)
+	if err != nil {
+		return "", fmt.Errorf("读取本地文件失败: %w", err)
+	}
+	size := fi.Size()
+	if size == 0 {
+		return "", errors.New("文件大小为 0")
+	}
+	if parentFileID == "" {
+		parentFileID = "root"
+	}
+
+	partCount := int((size + partSize - 1) / partSize)
+	partInfoList := make([]map[string]interface{}, 0, partCount)
+	for i := 1; i <= partCount; i++ {
+		partInfoList = append(partInfoList, map[string]interface{}{"part_number": i})
+	}
+
+	// 1. create
+	createBody := map[string]interface{}{
+		"drive_id":        c.DriveID,
+		"parent_file_id":  parentFileID,
+		"name":            fileName,
+		"type":            "file",
+		"check_name_mode": "ignore",
+		"size":            size,
+		"part_info_list":  partInfoList,
+	}
+	payload, err := c.request("/adrive/v1.0/openFile/create", createBody)
+	if err != nil {
+		return "", fmt.Errorf("创建文件失败: %w", err)
+	}
+	var created struct {
+		FileID     string `json:"file_id"`
+		UploadID   string `json:"upload_id"`
+		RapidUpload bool  `json:"rapid_upload"`
+		PartInfoList []struct {
+			PartNumber int    `json:"part_number"`
+			UploadURL  string `json:"upload_url"`
+		} `json:"part_info_list"`
+	}
+	if err := json.Unmarshal(payload, &created); err != nil {
+		return "", fmt.Errorf("创建文件响应解析失败: %w", err)
+	}
+	if created.FileID == "" {
+		return "", errors.New("创建文件失败：未返回 file_id")
+	}
+	if created.RapidUpload {
+		return created.FileID, nil // 秒传（内容已存在）
+	}
+	if created.UploadID == "" {
+		return "", errors.New("创建文件失败：未返回 upload_id")
+	}
+
+	// 2. 上传分片（优先用 create 返回的 upload_url，缺失时 getUploadUrl 获取）
+	uploadURLs := map[int]string{}
+	for _, p := range created.PartInfoList {
+		uploadURLs[p.PartNumber] = p.UploadURL
+	}
+	if len(uploadURLs) < partCount {
+		upPayload, uerr := c.request("/adrive/v1.0/openFile/getUploadUrl", map[string]interface{}{
+			"drive_id":       c.DriveID,
+			"file_id":        created.FileID,
+			"part_info_list": partInfoList,
+		})
+		if uerr != nil {
+			return "", fmt.Errorf("获取分片上传地址失败: %w", uerr)
+		}
+		var up struct {
+			PartInfoList []struct {
+				PartNumber int    `json:"part_number"`
+				UploadURL  string `json:"upload_url"`
+			} `json:"part_info_list"`
+		}
+		if err := json.Unmarshal(upPayload, &up); err == nil {
+			for _, p := range up.PartInfoList {
+				uploadURLs[p.PartNumber] = p.UploadURL
+			}
+		}
+	}
+
+	f, err := os.Open(localPath)
+	if err != nil {
+		return "", fmt.Errorf("打开本地文件失败: %w", err)
+	}
+	defer f.Close()
+
+	for part := 1; part <= partCount; part++ {
+		uploadURL := uploadURLs[part]
+		if uploadURL == "" {
+			return "", fmt.Errorf("第 %d 片上传地址为空", part)
+		}
+		offset := int64(part-1) * partSize
+		curSize := int64(partSize)
+		if part == partCount {
+			curSize = size - offset
+		}
+		if _, err := f.Seek(offset, io.SeekStart); err != nil {
+			return "", err
+		}
+		req, err := http.NewRequest(http.MethodPut, uploadURL, io.LimitReader(f, curSize))
+		if err != nil {
+			return "", err
+		}
+		req.ContentLength = curSize
+		resp, err := c.http.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("第 %d 片上传失败: %w", part, err)
+		}
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("第 %d 片上传失败: HTTP %d", part, resp.StatusCode)
+		}
+	}
+
+	// 3. complete
+	completeBody := map[string]interface{}{
+		"drive_id":  c.DriveID,
+		"file_id":   created.FileID,
+		"upload_id": created.UploadID,
+	}
+	if _, err := c.request("/adrive/v1.0/openFile/complete", completeBody); err != nil {
+		return "", fmt.Errorf("完成上传失败: %w", err)
+	}
+	return created.FileID, nil
+}
+
+// request 发起带鉴权的 API 请求；401 时自动刷新重试一次
+func (c *Client) request(uri string, body interface{}) ([]byte, error) {
+	if err := c.ensureToken(); err != nil {
+		return nil, err
+	}
+	payload, err := c.do(uri, body)
+	if err != nil {
+		return nil, err
+	}
+	// 401 → 刷新重试
+	var env struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(payload, &env)
+	if env.Code == "AccessTokenInvalid" || env.Code == "AccessTokenExpired" {
+		if _, rerr := c.Refresh(); rerr != nil {
+			return nil, rerr
+		}
+		return c.do(uri, body)
+	}
+	return payload, nil
+}
+
+func (c *Client) do(uri string, body interface{}) ([]byte, error) {
+	b, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPost, APIBase+uri, bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("authorization", "Bearer "+c.AccessToken)
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("user-agent", userAgent)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	payload, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("阿里云盘 API HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(payload)))
+	}
+	return payload, nil
+}
+
+func postJSON(rawURL string, body interface{}, headers map[string]string) ([]byte, error) {
+	b, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPost, rawURL, bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("user-agent", userAgent)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	client := &http.Client{Timeout: 20 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	payload, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(payload)))
+	}
+	return payload, nil
+}

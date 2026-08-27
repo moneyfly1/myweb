@@ -208,6 +208,24 @@
                   placeholder="浏览器 DevTools → Application → Cookies → yun.123pan.cn → 复制 jwt 的值；绕过登录不触发风控（不是 localStorage 的 authorToken）"
                 />
               </el-form-item>
+              <el-divider content-position="left">阿里云盘（海外服务器推荐）</el-divider>
+              <el-alert
+                type="info"
+                show-icon
+                :closable="false"
+                title="阿里云盘 refresh_token 登录：不绑定 IP、无境外风控，海外服务器可用（推荐替代 123 云盘）"
+                description="获取 refresh_token：浏览器登录 www.alipan.com → F12 → Application → Local Storage → https://www.alipan.com → 找到键名 token，复制其中 refresh_token 的值"
+                style="margin-bottom: 8px"
+              />
+              <el-form-item label="阿里云盘 refresh_token">
+                <el-input v-model="panForm.aliyun_refresh_token" type="textarea" :rows="2" placeholder="粘贴 refresh_token（配置后优先使用阿里云盘，同步/直链自动切换）" />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" plain :loading="aliyunTesting" @click="testAliyun">
+                  测试阿里云盘连接
+                </el-button>
+                <span v-if="aliyunTestResult" class="pan-test-result" style="margin-left: 8px">{{ aliyunTestResult }}</span>
+              </el-form-item>
               <el-form-item class="config-buttons-group">
                 <el-button type="primary" @click="savePanConfig" :loading="panSaving" class="config-action-btn">
                   保存云盘配置
@@ -588,6 +606,7 @@ export default {
       mode: 'direct',
       cookies: '',
       token: '',
+      aliyun_refresh_token: '',
       sync_enabled: true,
       sync_interval_hours: 12
     })
@@ -724,6 +743,7 @@ export default {
           panForm.mode = data.mode || 'share'
           panForm.cookies = data.cookies || ''
           panForm.token = data.token || ''
+          panForm.aliyun_refresh_token = data.aliyun_refresh_token || ''
           panForm.sync_enabled = data.sync_enabled !== false
           panForm.sync_interval_hours = data.sync_interval_hours || 12
           const daysLeft = Number(data.token_days_left || 0)
@@ -806,6 +826,31 @@ export default {
       const v = String(softwareForm[key] || '').trim()
       if (v.length <= 24) return v
       return v.slice(0, 24) + '…'
+    }
+    // ---- 阿里云盘连接测试 ----
+    const aliyunTesting = ref(false)
+    const aliyunTestResult = ref('')
+    const testAliyun = async () => {
+      aliyunTesting.value = true
+      aliyunTestResult.value = ''
+      try {
+        const saved = await persistPanConfig()
+        if (!saved) {
+          aliyunTestResult.value = '保存配置失败'
+          return
+        }
+        const response = await pan123API.aliyunTest()
+        if (response.data?.success) {
+          const d = response.data.data || {}
+          aliyunTestResult.value = `连接成功（根目录 ${d.root_files} 个文件）${d.refresh_token_rotated ? '，token 已自动轮换' : ''}`
+        } else {
+          aliyunTestResult.value = response.data?.message || '连接失败'
+        }
+      } catch (error) {
+        aliyunTestResult.value = error.response?.data?.message || '连接失败'
+      } finally {
+        aliyunTesting.value = false
+      }
     }
     // ---- 短信验证码登录（海外服务器风控场景）----
     const smsMode = ref(false)
@@ -1187,6 +1232,9 @@ export default {
       tokenExpiryDanger,
       smsSend,
       smsLogin,
+      aliyunTesting,
+      aliyunTestResult,
+      testAliyun,
       qrLoading,
       qrDialog,
       qrLogin,
