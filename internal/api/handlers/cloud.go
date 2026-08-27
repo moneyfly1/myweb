@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime"
 	"net/http"
 	"sort"
 	"strconv"
@@ -382,7 +384,9 @@ func clearCloudLinkCache() {
 	})
 }
 
-// CloudResolve 根据软件配置 key 实时生成阿里云盘直链并 302 跳转。
+// CloudResolve 根据软件配置 key 实时生成阿里云盘直链并通过服务器代理转发下载。
+// 阿里云盘内部 API 的直链要求 Referer 头，浏览器 302 无法携带，
+// 因此由服务器带上 Referer 拉取后流式转发（支持 Range 断点续传）。
 // 支持 ?key=<softwareConfigKey> 或 ?q=<关键词>
 func CloudResolve(c *gin.Context) {
 	if !resolveThrottled() {
@@ -404,25 +408,25 @@ func CloudResolve(c *gin.Context) {
 		return
 	}
 
-	keyword := ""
 	rawKey := strings.TrimSpace(c.Query("key"))
 	if rawKey != "" {
-		if entry, ok := cloudFileIDMapOf(rawKey); ok && entry.AliyunFileID != "" {
-			cacheKey := "ali:" + entry.AliyunFileID
-			if cached, ok := getCachedCloudLink(cacheKey); ok {
-				if validateDownloadURL(cached) == nil {
-					c.Redirect(http.StatusFound, cached)
-					return
-				}
-				cloudLinkCache.Delete(cacheKey)
+		entry, ok := cloudFileIDMapOf(rawKey)
+		if ok && entry.AliyunFileID != "" {
+			fileName := entry.FileName
+			if fileName == "" {
+				fileName = rawKey
 			}
+			cacheKey := "ali:" + entry.AliyunFileID
+			if cached, ok := getCachedCloudLink(cacheKey); ok && validateDownloadURL(cached) == nil {
+				proxyCloudDownload(c, cached, fileName)
+				return
+			}
+			cloudLinkCache.Delete(cacheKey)
 			link, lerr := ali.DownloadURL(entry.AliyunFileID)
-			if lerr == nil {
-				if verr := validateDownloadURL(link); verr == nil {
-					setCachedCloudLink(cacheKey, link)
-					c.Redirect(http.StatusFound, link)
-					return
-				}
+			if lerr == nil && validateDownloadURL(link) == nil {
+				setCachedCloudLink(cacheKey, link)
+				proxyCloudDownload(c, link, fileName)
+				return
 			}
 			// 直链生成失败：区分"文件被删除"与"临时失败"，给出可操作提示
 			if _, gerr := ali.GetFile(entry.AliyunFileID); gerr != nil && aliyundrive.IsFileNotFound(gerr) {
@@ -432,11 +436,11 @@ func CloudResolve(c *gin.Context) {
 			utils.ErrorResponse(c, http.StatusBadGateway, "生成下载链接失败，请稍后重试", nil)
 			return
 		}
-		// key 不在映射或尚无阿里云盘文件 id：给出可操作的提示，不再走无意义的关键词搜索
+		// key 不在映射或尚无阿里云盘文件 id：给出可操作的提示
 		utils.ErrorResponse(c, http.StatusNotFound, "该软件尚未同步到阿里云盘，请在后台「配置管理 → 软件下载配置」点击「立即同步」", nil)
 		return
 	}
-	keyword = strings.TrimSpace(c.Query("q"))
+	keyword := strings.TrimSpace(c.Query("q"))
 	if keyword == "" {
 		utils.ErrorResponse(c, http.StatusBadRequest, "缺少 key 或 q 参数", nil)
 		return
@@ -460,13 +464,11 @@ func CloudResolve(c *gin.Context) {
 		return
 	}
 	cacheKey := "ali:" + target.FileID
-	if cached, ok := getCachedCloudLink(cacheKey); ok {
-		if validateDownloadURL(cached) == nil {
-			c.Redirect(http.StatusFound, cached)
-			return
-		}
-		cloudLinkCache.Delete(cacheKey)
+	if cached, ok := getCachedCloudLink(cacheKey); ok && validateDownloadURL(cached) == nil {
+		proxyCloudDownload(c, cached, target.Name)
+		return
 	}
+	cloudLinkCache.Delete(cacheKey)
 	link, lerr := ali.DownloadURL(target.FileID)
 	if lerr != nil {
 		utils.ErrorResponse(c, http.StatusBadGateway, "生成下载链接失败: "+lerr.Error(), nil)
@@ -477,7 +479,48 @@ func CloudResolve(c *gin.Context) {
 		return
 	}
 	setCachedCloudLink(cacheKey, link)
-	c.Redirect(http.StatusFound, link)
+	proxyCloudDownload(c, link, target.Name)
+}
+
+// proxyCloudDownload 从阿里云盘 CDN 拉取文件并流式转发给用户
+func proxyCloudDownload(c *gin.Context, rawURL, fileName string) {
+	client := &http.Client{Timeout: 0} // 大文件不限总超时
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadGateway, "构造下载请求失败", nil)
+		return
+	}
+	req.Header.Set("Referer", aliyundrive.Referer())
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36")
+	if r := c.GetHeader("Range"); r != "" {
+		req.Header.Set("Range", r) // 断点续传
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadGateway, "拉取云盘文件失败: "+err.Error(), nil)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		utils.ErrorResponse(c, http.StatusBadGateway, "云盘文件拉取失败: HTTP "+fmt.Sprint(resp.StatusCode), nil)
+		return
+	}
+
+	// 转发关键响应头
+	for _, h := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"} {
+		if v := resp.Header.Get(h); v != "" {
+			c.Header(h, v)
+		}
+	}
+	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": fileName})
+	if disposition == "" {
+		disposition = "attachment"
+	}
+	c.Header("Content-Disposition", disposition)
+	c.Status(resp.StatusCode)
+	_, _ = io.Copy(c.Writer, resp.Body)
 }
 
 func cloudFileIDMapOf(key string) (software_sync.FileEntry, bool) {
