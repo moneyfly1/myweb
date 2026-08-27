@@ -54,6 +54,10 @@ type Client struct {
 	AccessToken  string
 	DriveID      string // 默认 "root"
 	http         *http.Client
+	// OnRotate 刷新成功后回调（传入新的 refresh_token），
+	// 由调用方持久化到数据库。阿里云盘 refresh_token 为一次性轮换制：
+	// 每次刷新旧 token 立即作废，若不及时回存，下一次请求必然失败。
+	OnRotate func(newRefreshToken string)
 }
 
 // New 创建客户端
@@ -94,6 +98,9 @@ func (c *Client) Refresh() (newRefreshToken string, err error) {
 	c.AccessToken = out.AccessToken
 	if out.RefreshToken != "" {
 		c.RefreshToken = out.RefreshToken
+		if c.OnRotate != nil {
+			c.OnRotate(out.RefreshToken)
+		}
 		return out.RefreshToken, nil
 	}
 	return "", nil
