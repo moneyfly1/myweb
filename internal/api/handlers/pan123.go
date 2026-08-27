@@ -13,6 +13,7 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/aliyundrive"
 	"cboard-go/internal/services/ghrelease"
 	"cboard-go/internal/services/pan123"
 	"cboard-go/internal/services/software_sync"
@@ -68,6 +69,8 @@ type pan123Config struct {
 	FileMap  map[string]string `json:"file_map"`
 	// FileExts 每个软件配置键 → 扩展名过滤（如 exe/dmg/apk），空表示不过滤
 	FileExts map[string]string `json:"file_exts"`
+	// AliyunRefreshToken 阿里云盘 refresh_token（海外服务器可用，优先于 123 云盘）
+	AliyunRefreshToken string `json:"aliyun_refresh_token"`
 }
 
 func loadPan123Config() (pan123Config, error) {
@@ -104,6 +107,8 @@ func loadPan123Config() (pan123Config, error) {
 			if strings.TrimSpace(c.Value) != "" {
 				_ = json.Unmarshal([]byte(c.Value), &cfg.FileExts)
 			}
+		case "aliyun_refresh_token":
+			cfg.AliyunRefreshToken = strings.TrimSpace(c.Value)
 		}
 	}
 	return cfg, nil
@@ -181,6 +186,7 @@ func GetPan123Config(c *gin.Context) {
 		"synced_files":        syncedFiles,
 		"token_expiry":        expiryText,
 		"token_days_left":     daysLeft,
+		"aliyun_refresh_token": maskIfNonEmpty(cfg.AliyunRefreshToken),
 		"configured": pan123AuthConfigured(cfg),
 	})
 }
@@ -204,6 +210,7 @@ func SavePan123Config(c *gin.Context) {
 		FileExts          map[string]string `json:"file_exts"`
 		SyncEnabled       *bool             `json:"sync_enabled"`
 		SyncIntervalHours *int              `json:"sync_interval_hours"`
+		AliyunRefreshToken string           `json:"aliyun_refresh_token"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
@@ -228,6 +235,10 @@ func SavePan123Config(c *gin.Context) {
 	token := strings.TrimSpace(req.Token)
 	if token == maskedSecretValue {
 		token = cfg.Token
+	}
+	aliyunRT := strings.TrimSpace(req.AliyunRefreshToken)
+	if aliyunRT == maskedSecretValue {
+		aliyunRT = cfg.AliyunRefreshToken
 	}
 
 	mode := strings.TrimSpace(req.Mode)
@@ -255,6 +266,7 @@ func SavePan123Config(c *gin.Context) {
 	}
 	values["file_map"] = fileMapJSON
 	values["file_exts"] = fileExtsJSON
+	values["aliyun_refresh_token"] = aliyunRT
 
 	if req.SyncEnabled != nil {
 		values["sync_enabled"] = strconv.FormatBool(*req.SyncEnabled)
@@ -596,6 +608,26 @@ func Pan123Resolve(c *gin.Context) {
 		ext = strings.TrimSpace(cfg.FileExts[key])
 		// 优先走同步任务维护的文件映射（fileId 直取，无需搜索）
 		if entry, ok := fileIDMapOf(key); ok {
+			if entry.AliyunFileID != "" && cfg.AliyunRefreshToken != "" {
+				// 阿里云盘直链（refresh_token 刷新不绑定 IP，海外可用）
+				ali := aliyundrive.New(cfg.AliyunRefreshToken)
+				cacheKey := "ali:" + entry.AliyunFileID
+				if cached, ok := getCachedPanLink(cacheKey); ok {
+					if validateDownloadURL(cached) == nil {
+						c.Redirect(http.StatusFound, cached)
+						return
+					}
+					panLinkCache.Delete(cacheKey)
+				}
+				link, lerr := ali.DownloadURL(entry.AliyunFileID)
+				if lerr == nil {
+					if verr := validateDownloadURL(link); verr == nil {
+						setCachedPanLink(cacheKey, link)
+						c.Redirect(http.StatusFound, link)
+						return
+					}
+				}
+			}
 			if entry.HasMeta() {
 				client, cerr := newPan123ClientFromConfig(cfg)
 				if cerr == nil {
@@ -1018,4 +1050,87 @@ func Pan123QrStatus(c *gin.Context) {
 			"claims": pan123.SummaryClaims(token),
 		})
 	}
+}
+
+
+// ---------------------------------------------------------------------------
+// 阿里云盘（海外服务器可用后端）
+// ---------------------------------------------------------------------------
+
+// Pan123AliyunTest 测试阿里云盘 refresh_token（刷新 + 列根目录）
+func Pan123AliyunTest(c *gin.Context) {
+	cfg, err := loadPan123Config()
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "读取配置失败", err)
+		return
+	}
+	if cfg.AliyunRefreshToken == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "未配置阿里云盘 refresh_token", nil)
+		return
+	}
+	ali := aliyundrive.New(cfg.AliyunRefreshToken)
+	newRT, rerr := ali.Refresh()
+	if rerr != nil {
+		utils.ErrorResponse(c, http.StatusBadGateway, "刷新 token 失败: "+rerr.Error(), nil)
+		return
+	}
+	// 保存轮换后的新 refresh_token（避免过期）
+	if newRT != "" && newRT != cfg.AliyunRefreshToken {
+		if err := savePan123ConfigValue("aliyun_refresh_token", newRT); err == nil {
+			cfg.AliyunRefreshToken = newRT
+		}
+	}
+	files, lerr := ali.List("root", 5)
+	if lerr != nil {
+		utils.ErrorResponse(c, http.StatusBadGateway, "连接成功但列目录失败: "+lerr.Error(), nil)
+		return
+	}
+	utils.SuccessResponse(c, http.StatusOK, "阿里云盘连接成功", gin.H{
+		"refresh_token_rotated": newRT != "",
+		"root_files":            len(files),
+		"first":                 firstFileName(files),
+	})
+}
+
+// Pan123AliyunSearch 搜索阿里云盘文件
+func Pan123AliyunSearch(c *gin.Context) {
+	keyword := strings.TrimSpace(c.Query("keyword"))
+	if keyword == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "缺少 keyword 参数", nil)
+		return
+	}
+	cfg, err := loadPan123Config()
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "读取配置失败", err)
+		return
+	}
+	if cfg.AliyunRefreshToken == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "未配置阿里云盘 refresh_token", nil)
+		return
+	}
+	ali := aliyundrive.New(cfg.AliyunRefreshToken)
+	files, serr := ali.Search(keyword, 20)
+	if serr != nil {
+		utils.ErrorResponse(c, http.StatusBadGateway, "搜索失败: "+serr.Error(), nil)
+		return
+	}
+	list := make([]gin.H, 0, len(files))
+	for _, f := range files {
+		list = append(list, gin.H{
+			"file_id":   f.FileID,
+			"file_name": f.Name,
+			"size":      f.Size,
+			"size_text": f.DisplaySize(),
+			"type":      f.Type,
+			"update_at": f.UpdatedAt,
+		})
+	}
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"list": list, "total": len(list)})
+}
+
+func firstFileName(files []aliyundrive.File) string {
+	if len(files) > 0 {
+		return files[0].Name
+	}
+	return ""
 }

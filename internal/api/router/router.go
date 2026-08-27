@@ -618,6 +618,8 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/pan123/sms/login", handlers.Pan123SmsLogin)
 			admin.POST("/pan123/qr/generate", handlers.Pan123QrGenerate)
 			admin.GET("/pan123/qr/status", handlers.Pan123QrStatus)
+			admin.POST("/pan123/aliyun/test", handlers.Pan123AliyunTest)
+			admin.GET("/pan123/aliyun/search", handlers.Pan123AliyunSearch)
 		}
 	}
 

@@ -13,6 +13,7 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/aliyundrive"
 	"cboard-go/internal/services/ghrelease"
 	"cboard-go/internal/services/pan123"
 )
@@ -28,6 +29,8 @@ type FileEntry struct {
 	S3KeyFlag string `json:"s3KeyFlag"`
 	Version   string `json:"version"`
 	UpdatedAt string `json:"updatedAt"`
+	// Provider: "123pan"（默认）或 "aliyundrive"；阿里云盘用文件 id 字符串
+	AliyunFileID string `json:"aliyunFileId,omitempty"`
 }
 
 // HasMeta 是否具备直链所需元数据
@@ -102,6 +105,8 @@ type syncConfig struct {
 	Token    string
 	Enabled  bool
 	Interval time.Duration
+	// 阿里云盘后端（refresh_token 非空时优先使用，海外服务器可用）
+	AliyunRefreshToken string
 }
 
 func loadSyncConfig() (syncConfig, error) {
@@ -132,6 +137,8 @@ func loadSyncConfig() (syncConfig, error) {
 			if n, _ := fmt.Sscanf(c.Value, "%d", &h); n == 1 && h >= 1 {
 				cfg.Interval = time.Duration(h) * time.Hour
 			}
+		case "aliyun_refresh_token":
+			cfg.AliyunRefreshToken = strings.TrimSpace(c.Value)
 		}
 	}
 	return cfg, nil
@@ -351,13 +358,15 @@ func run(only []string) ([]ReportItem, int) {
 	}
 
 	var client *pan123.Client
-	switch {
-	case cfg.Token != "":
-		client = pan123.NewWithToken(cfg.Token, cfg.SharePwd)
-	case cfg.Cookies != "":
-		client = pan123.NewWithCookies(cfg.Cookies, cfg.SharePwd)
-	default:
-		client = pan123.New(cfg.Username, cfg.Password, cfg.SharePwd)
+	if cfg.AliyunRefreshToken == "" {
+		switch {
+		case cfg.Token != "":
+			client = pan123.NewWithToken(cfg.Token, cfg.SharePwd)
+		case cfg.Cookies != "":
+			client = pan123.NewWithCookies(cfg.Cookies, cfg.SharePwd)
+		default:
+			client = pan123.New(cfg.Username, cfg.Password, cfg.SharePwd)
+		}
 	}
 
 	fileIDMap, err := LoadFileIDMap()
@@ -427,28 +436,42 @@ func run(only []string) ([]ReportItem, int) {
 				continue
 			}
 
-			fileId, uerr := client.UploadFile(localPath, asset.Name, 0)
-			if uerr != nil {
-				item.Status = "error"
-				item.Message = "上传云盘失败: " + uerr.Error()
-				report = append(report, item)
-				continue
-			}
-
 			newEntry := FileEntry{
-				FileId:    fileId,
 				FileName:  asset.Name,
 				Size:      asset.Size,
 				Version:   version,
 				UpdatedAt: time.Now().Format(time.RFC3339),
 			}
-			// 补全直链所需元数据（etag/s3KeyFlag）；以列表返回的真实 fileId 为准
-			if meta := findFileMeta(client, asset.Name); meta != nil {
-				newEntry.FileId = meta.FileID
-				newEntry.Etag = meta.Etag
-				newEntry.S3KeyFlag = meta.S3KeyFlag
-				if newEntry.Size == 0 {
-					newEntry.Size = meta.Size
+			if cfg.AliyunRefreshToken != "" {
+				// 阿里云盘后端（海外服务器可用，refresh_token 刷新不绑定 IP）
+				ali := aliyundrive.New(cfg.AliyunRefreshToken)
+				aliFileID, uerr := ali.Upload(localPath, asset.Name, "root")
+				if uerr != nil {
+					item.Status = "error"
+					item.Message = "上传阿里云盘失败: " + uerr.Error()
+					report = append(report, item)
+					continue
+				}
+				newEntry.AliyunFileID = aliFileID
+				newEntry.FileName = asset.Name
+				newEntry.Size = asset.Size
+			} else {
+				fileId, uerr := client.UploadFile(localPath, asset.Name, 0)
+				if uerr != nil {
+					item.Status = "error"
+					item.Message = "上传云盘失败: " + uerr.Error()
+					report = append(report, item)
+					continue
+				}
+				newEntry.FileId = fileId
+				// 补全直链所需元数据（etag/s3KeyFlag）；以列表返回的真实 fileId 为准
+				if meta := findFileMeta(client, asset.Name); meta != nil {
+					newEntry.FileId = meta.FileID
+					newEntry.Etag = meta.Etag
+					newEntry.S3KeyFlag = meta.S3KeyFlag
+					if newEntry.Size == 0 {
+						newEntry.Size = meta.Size
+					}
 				}
 			}
 			fileIDMap[t.ConfigKey] = newEntry
