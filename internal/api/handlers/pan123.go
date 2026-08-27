@@ -308,7 +308,8 @@ func Pan123Test(c *gin.Context) {
 	}
 	info, err := client.Test()
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "连接失败: "+err.Error(), nil)
+		claims := pan123.SummaryClaims(cfg.Token)
+		utils.ErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("连接失败: %s（token claims: %s）", err.Error(), claims), nil)
 		return
 	}
 	utils.SuccessResponse(c, http.StatusOK, "连接成功", gin.H{
@@ -999,6 +1000,7 @@ func Pan123QrStatus(c *gin.Context) {
 		utils.CreateAuditLogSimple(c, "pan123_qr_login", "settings", 0, "管理员操作: 通过二维码扫码完成 123 云盘登录")
 		utils.SuccessResponse(c, http.StatusOK, "登录成功，token 已自动保存", gin.H{
 			"status": "success", "token_masked": maskIfNonEmpty(token),
+			"claims": pan123.SummaryClaims(token),
 		})
 	}
 }

@@ -272,13 +272,19 @@ func (c *Client) WechatLoginByQr(uniID string) (string, error) {
 	if wx.Code != 0 || wx.Data.WxCode == "" {
 		return "", fmt.Errorf("获取微信凭证失败: %s", firstNonEmpty(wx.Message, fmt.Sprintf("code=%d", wx.Code)))
 	}
-	// 微信扫码登录（type=4），与登录中心一致
+	// 微信扫码登录（type=4），与登录中心一致；补充 platform 头与字段，争取签发 platform=2 的可用 token
 	loginPayload, err := postJSON(smsPortalBase+"/user/sign_in", map[string]interface{}{
-		"from":         "web",
-		"wechat_code":  wx.Data.WxCode,
-		"type":         4,
-		"remember":     true,
-	}, nil)
+		"from":        "web",
+		"wechat_code": wx.Data.WxCode,
+		"type":        4,
+		"remember":    true,
+		"platform":    2,
+	}, map[string]string{
+		"origin":      "https://user.123pan.cn",
+		"referer":     "https://user.123pan.cn/",
+		"platform":    "web",
+		"app-version": "3",
+	})
 	if err != nil {
 		return "", err
 	}
@@ -374,4 +380,54 @@ func getJSON(rawURL string, headers map[string]string) ([]byte, error) {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(payload)))
 	}
 	return payload, nil
+}
+
+// SignInWithPlatform 以指定 platform 登录（实验：验证 b/api 是否校验 platform claim）
+func (c *Client) SignInWithPlatform(platform int) (string, error) {
+	body := map[string]interface{}{
+		"passport": c.Username,
+		"password": c.Password,
+		"remember": true,
+		"platform": platform,
+	}
+	payload, err := postJSON(loginAPIBase+"/user/sign_in", body, map[string]string{
+		"origin": "https://yun.123pan.com", "platform": "web", "app-version": "3", "user-agent": defaultUserAgent,
+	})
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		Code int `json:"code"`
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return "", err
+	}
+	if out.Code != 200 || out.Data.Token == "" {
+		return "", fmt.Errorf("登录失败 code=%d", out.Code)
+	}
+	return out.Data.Token, nil
+}
+
+// SummaryClaims 提取 JWT 关键 claims（调试用）
+func SummaryClaims(token string) string {
+	parts := strings.Split(token, ".")
+	if len(parts) < 2 {
+		return "?"
+	}
+	p := parts[1]
+	if b, err := base64.RawURLEncoding.DecodeString(p); err == nil {
+		var d map[string]interface{}
+		if json.Unmarshal(b, &d) == nil {
+			return fmt.Sprintf("login_type=%v platform=%v clientIP=%v", d["login_type"], d["platform"], d["clientIP"])
+		}
+	}
+	return "?"
+}
+
+// RawToken 返回当前 Bearer token（调试/诊断用）
+func (c *Client) RawToken() string {
+	return c.token
 }
