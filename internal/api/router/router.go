@@ -312,7 +312,7 @@ func SetupRouter() *gin.Engine {
 		api.GET("/software-config", handlers.GetSoftwareConfig)
 		api.GET("/software/versions", handlers.GetSoftwareVersions)
 		api.GET("/download/resolve", handlers.ResolveDownload)
-		api.GET("/download/pan", handlers.Pan123Resolve)
+		api.GET("/download/cloud", handlers.CloudResolve)
 
 		api.GET("/mobile-config", handlers.GetMobileConfig)
 		softwareConfig := api.Group("/software-config")
@@ -605,21 +605,14 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/logs/subscription-reset", handlers.GetSubscriptionResetLogs)
 			admin.GET("/logs/email", handlers.GetEmailLogs)
 
-			// 123云盘自动填充
-			admin.GET("/pan123/config", handlers.GetPan123Config)
-			admin.POST("/pan123/config", handlers.SavePan123Config)
-			admin.POST("/pan123/test", handlers.Pan123Test)
-			admin.GET("/pan123/search", handlers.Pan123Search)
-			admin.POST("/pan123/refresh", handlers.Pan123Refresh)
-			admin.POST("/pan123/sync", handlers.Pan123Sync)
-			admin.GET("/pan123/sync/status", handlers.Pan123SyncStatus)
-			admin.GET("/pan123/versions", handlers.Pan123Versions)
-			admin.POST("/pan123/sms/send", handlers.Pan123SmsSend)
-			admin.POST("/pan123/sms/login", handlers.Pan123SmsLogin)
-			admin.POST("/pan123/qr/generate", handlers.Pan123QrGenerate)
-			admin.GET("/pan123/qr/status", handlers.Pan123QrStatus)
-			admin.POST("/pan123/aliyun/test", handlers.Pan123AliyunTest)
-			admin.GET("/pan123/aliyun/search", handlers.Pan123AliyunSearch)
+			// 阿里云盘自动填充
+			admin.GET("/cloud/config", handlers.GetCloudConfig)
+			admin.POST("/cloud/config", handlers.SaveCloudConfig)
+			admin.POST("/cloud/aliyun/test", handlers.CloudAliyunTest)
+			admin.GET("/cloud/aliyun/search", handlers.CloudAliyunSearch)
+			admin.POST("/cloud/sync", handlers.CloudSync)
+			admin.GET("/cloud/sync/status", handlers.CloudSyncStatus)
+			admin.GET("/cloud/versions", handlers.CloudVersions)
 		}
 	}
 

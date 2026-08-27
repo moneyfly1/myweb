@@ -4,7 +4,7 @@
   <template #header>
     <div class="card-header">
       <h2>配置管理</h2>
-      <p>管理软件下载配置和邮件配置</p>
+      <p>管理软件下载配置、云盘自动填充和邮件配置</p>
     </div>
   </template>
   <el-tabs v-model="activeTab" type="border-card">
@@ -158,67 +158,17 @@
             </el-form>
           </div>
           <div class="config-section">
-            <el-divider content-position="left">123云盘自动填充（可选）</el-divider>
+            <el-divider content-position="left">阿里云盘自动填充（可选）</el-divider>
             <el-alert
               type="info"
               show-icon
               :closable="false"
-              title="配置 123 云盘账号后，可一键搜索云盘里的安装包并自动填入上方下载链接。动态模式（pan://）下用户每次点击下载时实时生成新链接，链接永不失效；静态模式则填入当前有效链接，失效后需再次一键填充。"
+              title="配置阿里云盘 refresh_token 后，定时从 GitHub 获取最新安装包上传到你的阿里云盘，并自动把上方软件下载链接填充为 pan:// 动态直链（用户每次点击下载时实时生成新链接，链接永不失效）。阿里云盘 OAuth 不绑定 IP、无境外风控，海外服务器可用。"
+              description="获取 refresh_token：浏览器登录 www.alipan.com → F12 → Application → Local Storage → https://www.alipan.com → 找到键名 token，复制其中 refresh_token 的值（约 90 天有效；测试连接成功后会自动轮换并保存新 token）。"
             />
             <el-form :model="panForm" label-width="150px" style="margin-top: 16px">
-              <el-row :gutter="20">
-                <el-col :span="12">
-                  <el-form-item label="123云盘账号">
-                    <el-input v-model="panForm.username" placeholder="手机号或邮箱" />
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item label="账号密码">
-                    <el-input v-model="panForm.password" type="password" show-password placeholder="密码仅保存在本服务器" />
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              <el-row :gutter="20">
-                <el-col :span="12">
-                  <el-form-item label="分享密码(可选)">
-                    <el-input v-model="panForm.share_pwd" placeholder="生成的分享链接密码，留空为无密码" />
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item label="链接模式">
-                    <el-select v-model="panForm.mode" style="width: 100%">
-                      <el-option label="直链（已验证可直接下载）" value="direct" />
-                    </el-select>
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              <el-form-item label="Cookie（可选）">
-                <el-input
-                  v-model="panForm.cookies"
-                  type="textarea"
-                  :rows="2"
-                  placeholder="从浏览器 DevTools 复制 Cookie 粘贴到此；填写后优先于账号密码。留空则使用账号密码登录"
-                />
-              </el-form-item>
-              <el-form-item label="Token（可选）">
-                <el-input
-                  v-model="panForm.token"
-                  type="textarea"
-                  :rows="1"
-                  placeholder="浏览器 DevTools → Application → Cookies → yun.123pan.cn → 复制 jwt 的值；绕过登录不触发风控（不是 localStorage 的 authorToken）"
-                />
-              </el-form-item>
-              <el-divider content-position="left">阿里云盘（海外服务器推荐）</el-divider>
-              <el-alert
-                type="info"
-                show-icon
-                :closable="false"
-                title="阿里云盘 refresh_token 登录：不绑定 IP、无境外风控，海外服务器可用（推荐替代 123 云盘）"
-                description="获取 refresh_token：浏览器登录 www.alipan.com → F12 → Application → Local Storage → https://www.alipan.com → 找到键名 token，复制其中 refresh_token 的值"
-                style="margin-bottom: 8px"
-              />
               <el-form-item label="阿里云盘 refresh_token">
-                <el-input v-model="panForm.aliyun_refresh_token" type="textarea" :rows="2" placeholder="粘贴 refresh_token（配置后优先使用阿里云盘，同步/直链自动切换）" />
+                <el-input v-model="panForm.aliyun_refresh_token" type="textarea" :rows="2" placeholder="粘贴 refresh_token" />
               </el-form-item>
               <el-form-item>
                 <el-button type="primary" plain :loading="aliyunTesting" @click="testAliyun">
@@ -230,102 +180,11 @@
                 <el-button type="primary" @click="savePanConfig" :loading="panSaving" class="config-action-btn">
                   保存云盘配置
                 </el-button>
-                <el-button @click="testPanConfig" :loading="panTesting" class="config-action-btn">
-                  测试连接
-                </el-button>
                 <el-button @click="loadPanConfig" class="config-action-btn">
                   重新加载
                 </el-button>
-                <span v-if="panTestResult" class="pan-test-result">{{ panTestResult }}</span>
-              </el-form-item>
-              <el-alert
-                v-if="smsMode && smsNeedsCaptcha"
-                type="warning"
-                show-icon
-                :closable="false"
-                title="滑块验证后自动发送验证码"
-                description="若下方滑块未显示：请打开 yun.123pan.cn 登录页 → 用该手机号获取验证码（浏览器内滑动）→ 把收到的验证码填到下方完成登录"
-                style="margin-bottom: 8px"
-              />
-              <div v-if="smsMode && smsNeedsCaptcha" id="pan-captcha" style="margin-bottom: 8px; max-width: 340px"></div>
-              <el-form-item v-if="smsMode" label="短信验证码">
-                <el-input v-model="panSmsCode" placeholder="输入手机收到的验证码" style="max-width: 220px" />
-                <el-button type="success" :loading="panSmsLogging" @click="smsLogin" class="config-action-btn" style="margin-left: 8px">
-                  完成登录（自动保存 token）
-                </el-button>
-              </el-form-item>
-              <el-form-item v-if="tokenExpiryText">
-                <el-tag :type="tokenExpiryDanger ? 'danger' : 'success'" size="small">
-                  {{ tokenExpiryText }}
-                </el-tag>
-                <span class="pan-soft-key" style="margin-left: 8px">token 过期后需重新短信登录</span>
-              </el-form-item>
-              <el-form-item>
-                <el-button type="warning" plain :loading="panSmsSending" @click="smsSend">
-                  短信验证码登录
-                </el-button>
-                <el-button type="success" plain :loading="qrLoading" @click="qrLogin">
-                  二维码登录（手机 App 扫码）
-                </el-button>
-                <span v-if="smsStatus" class="pan-test-result" style="margin-left: 8px">{{ smsStatus }}</span>
               </el-form-item>
             </el-form>
-
-            <h4 class="pan-mapping-title">软件 ↔ 云盘文件名关键词</h4>
-            <p class="pan-tip">
-              每个软件填一个能在云盘里搜到安装包的关键词（如 v2rayN）。<strong>留空 = 该软件不用云盘</strong>，
-              继续使用上方手动填的外部链接（官网 / App Store / GitHub 等均可），一键生成时会跳过留空的行，不会覆盖外部链接。
-              同一软件云盘里有多个平台安装包（exe / dmg / apk）时，用<strong>扩展名过滤</strong>精确锁定，并自动取最新版本。
-            </p>
-            <el-table :data="panMapRows" size="small" border>
-              <el-table-column label="软件" width="200">
-                <template #default="{ row }">
-                  <div class="pan-soft-name">{{ row.label }}</div>
-                  <div class="pan-soft-key">{{ row.key }}</div>
-                </template>
-              </el-table-column>
-              <el-table-column label="云盘文件名关键词">
-                <template #default="{ row }">
-                  <el-input v-model="panMap[row.key]" size="small" placeholder="留空 = 使用外部链接" clearable />
-                </template>
-              </el-table-column>
-              <el-table-column label="扩展名过滤" width="110">
-                <template #default="{ row }">
-                  <el-select v-model="panExts[row.key]" size="small" clearable placeholder="不限">
-                    <el-option v-for="e in PAN_EXT_OPTIONS" :key="e" :label="e" :value="e" />
-                  </el-select>
-                </template>
-              </el-table-column>
-              <el-table-column label="当前配置" width="170">
-                <template #default="{ row }">
-                  <el-tag v-if="isPanDynamic(row.key)" type="success" size="small">云盘动态</el-tag>
-                  <el-tag v-else-if="softwareForm[row.key]" type="info" size="small">外部链接</el-tag>
-                  <el-tag v-else type="warning" size="small">未配置</el-tag>
-                  <el-tooltip
-                    v-if="softwareForm[row.key]"
-                    :content="softwareForm[row.key]"
-                    placement="top"
-                    :show-after="300"
-                  >
-                    <div class="pan-soft-key pan-current-value">{{ shortUrl(row.key) }}</div>
-                  </el-tooltip>
-                </template>
-              </el-table-column>
-              <el-table-column label="搜索验证" width="100" align="center">
-                <template #default="{ row }">
-                  <el-button size="small" :loading="panTestingKey === row.key" @click="testPanKeyword(row)">测试</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-
-            <el-form-item class="config-buttons-group" style="margin-top: 16px">
-              <el-button type="primary" @click="panRefresh(true)" :loading="panRefreshing" class="config-action-btn">
-                一键生成并填充（动态 · 实时解析）
-              </el-button>
-              <el-button @click="panRefresh(false)" :loading="panRefreshing" class="config-action-btn">
-                一键生成并填充（静态链接）
-              </el-button>
-            </el-form-item>
           </div>
 
           <div class="config-section">
@@ -334,7 +193,7 @@
               type="info"
               show-icon
               :closable="false"
-              title="自动从 GitHub 获取 v2rayN / Hiddify / Clash Verge / Clash Part / V2rayNG / Clash Meta 的最新版本，下载安装包上传到你的 123 云盘，并自动设置直链（pan://）。仅当 GitHub 有新版本时才会下载上传，其余时间跳过。"
+              title="自动从 GitHub 获取 v2rayN / Hiddify / Clash Verge / Clash Part / V2rayNG / Clash Meta / FlClash 的最新版本，下载安装包上传到你的阿里云盘，并自动设置为动态直链（pan://）。仅当 GitHub 有新版本时才会下载上传，其余时间跳过。"
             />
             <el-form label-width="150px" style="margin-top: 16px">
               <el-row :gutter="20">
@@ -476,64 +335,13 @@
           </el-form>
         </el-tab-pane>
       </el-tabs>
-
-      <el-dialog v-model="searchDialog.visible" :title="searchDialog.title" width="640px">
-        <el-table :data="searchDialog.list" size="small" max-height="360" border>
-          <el-table-column prop="file_name" label="文件名" min-width="240" show-overflow-tooltip />
-          <el-table-column prop="size_text" label="大小" width="110" />
-          <el-table-column prop="update_at" label="更新时间" width="170" />
-        </el-table>
-        <template #footer>
-          <el-button @click="searchDialog.visible = false">关闭</el-button>
-        </template>
-      </el-dialog>
-
-      <el-dialog v-model="qrDialog.visible" title="123云盘扫码登录" width="340px" :close-on-click-modal="false">
-        <div style="text-align: center">
-          <p class="pan-soft-key" style="margin-bottom: 8px">使用 123云盘 手机 App（或微信）扫码，并在手机上确认登录</p>
-          <img v-if="qrDialog.qrDataUrl" :src="qrDialog.qrDataUrl" alt="登录二维码" style="width: 200px; height: 200px" />
-          <div v-else class="pan-soft-key">二维码生成中...</div>
-          <p class="pan-test-result" style="margin-top: 8px">{{ qrDialog.statusText }}</p>
-        </div>
-        <template #footer>
-          <el-button @click="stopQrPolling">关闭</el-button>
-        </template>
-      </el-dialog>
-
-      <el-dialog v-model="refreshReport.visible" title="填充结果" width="720px">
-        <el-alert
-          v-if="refreshReport.dynamic"
-          type="success"
-          show-icon
-          :closable="false"
-          title="已写入动态标记 pan://，用户点击下载时将实时获取最新链接，链接永不失效"
-          style="margin-bottom: 12px"
-        />
-        <el-table :data="refreshReport.list" size="small" max-height="420" border>
-          <el-table-column prop="key" label="配置键" width="200" show-overflow-tooltip />
-          <el-table-column prop="keyword" label="关键词" width="110" />
-          <el-table-column label="状态" width="90" align="center">
-            <template #default="{ row }">
-              <el-tag v-if="row.ok" type="success" size="small">成功</el-tag>
-              <el-tag v-else type="danger" size="small">失败</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="file_name" label="匹配文件" min-width="150" show-overflow-tooltip />
-          <el-table-column prop="size_text" label="大小" width="95" />
-          <el-table-column prop="error" label="错误" min-width="130" show-overflow-tooltip />
-        </el-table>
-        <template #footer>
-          <el-button @click="refreshReport.visible = false">关闭</el-button>
-        </template>
-      </el-dialog>
     </el-card>
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, nextTick } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { configAPI, softwareConfigAPI, pan123API } from '@/utils/api'
-import { createQRCodeDataURL } from '@/utils/qrcode'
+import { configAPI, softwareConfigAPI, cloudAPI } from '@/utils/api'
 export default {
   name: 'AdminConfig',
   setup() {
@@ -576,51 +384,12 @@ export default {
     const subscriptionAccessForm = reactive({
       block_browser_subscription_access: false
     })
-    const PAN_SOFTWARE_KEYS = [
-      { key: 'clash_windows_url', label: 'Clash for Windows' },
-      { key: 'v2rayn_url', label: 'V2rayN (Win)' },
-      { key: 'clash_party_windows_url', label: 'Clash Part (Win)' },
-      { key: 'clash_verge_windows_url', label: 'Clash Verge (Win)' },
-      { key: 'hiddify_windows_url', label: 'Hiddify (Win)' },
-      { key: 'flash_windows_url', label: 'FlClash (Win)' },
-      { key: 'clash_android_url', label: 'Clash Meta (Android)' },
-      { key: 'v2rayng_url', label: 'V2rayNG (Android)' },
-      { key: 'hiddify_android_url', label: 'Hiddify (Android)' },
-      { key: 'flash_android_url', label: 'FlClash (Android)' },
-      { key: 'flash_macos_url', label: 'FlClash (macOS Intel)' },
-      { key: 'flash_macos_arm_url', label: 'FlClash (macOS Apple)' },
-      { key: 'clash_party_macos_url', label: 'Clash Part (macOS Intel)' },
-      { key: 'clash_party_macos_arm_url', label: 'Clash Part (macOS Apple)' },
-      { key: 'clash_verge_macos_url', label: 'Clash Verge (macOS Intel)' },
-      { key: 'clash_verge_macos_arm_url', label: 'Clash Verge (macOS Apple)' },
-      { key: 'v2rayn_macos_url', label: 'V2rayN (macOS Intel)' },
-      { key: 'v2rayn_macos_arm_url', label: 'V2rayN (macOS Apple)' },
-      { key: 'hiddify_macos_url', label: 'Hiddify (macOS Intel)' },
-      { key: 'hiddify_macos_arm_url', label: 'Hiddify (macOS Apple)' },
-      { key: 'shadowrocket_url', label: 'Shadowrocket (iOS)' }
-    ]
     const panForm = reactive({
-      username: '',
-      password: '',
-      share_pwd: '',
-      mode: 'direct',
-      cookies: '',
-      token: '',
       aliyun_refresh_token: '',
       sync_enabled: true,
       sync_interval_hours: 12
     })
-    const panMap = reactive({})
-    const panExts = reactive({})
-    const PAN_EXT_OPTIONS = ['exe', 'msi', 'dmg', 'pkg', 'apk', 'zip', '7z']
-    const panMapRows = PAN_SOFTWARE_KEYS
     const panSaving = ref(false)
-    const panTesting = ref(false)
-    const panTestingKey = ref('')
-    const panRefreshing = ref(false)
-    const panTestResult = ref('')
-    const searchDialog = reactive({ visible: false, title: '搜索结果', list: [] })
-    const refreshReport = reactive({ visible: false, dynamic: true, list: [] })
     const saveSoftwareConfig = async () => {
       softwareLoading.value = true
       try {
@@ -734,98 +503,36 @@ export default {
     }
     const loadPanConfig = async () => {
       try {
-        const response = await pan123API.getConfig()
+        const response = await cloudAPI.getConfig()
         if (response.data && response.data.success) {
           const data = response.data.data || {}
-          panForm.username = data.username || ''
-          panForm.password = data.password || ''
-          panForm.share_pwd = data.share_pwd || ''
-          panForm.mode = data.mode || 'share'
-          panForm.cookies = data.cookies || ''
-          panForm.token = data.token || ''
           panForm.aliyun_refresh_token = data.aliyun_refresh_token || ''
           panForm.sync_enabled = data.sync_enabled !== false
           panForm.sync_interval_hours = data.sync_interval_hours || 12
-          const daysLeft = Number(data.token_days_left || 0)
-          if (data.token_expiry && !isNaN(daysLeft)) {
-            tokenExpiryText.value = daysLeft >= 0 ? `Token 剩余 ${daysLeft} 天（${(data.token_expiry || '').replace('T', ' ').slice(0, 10)} 到期）` : `Token 已过期，请重新短信登录`
-            tokenExpiryDanger.value = daysLeft < 7
-          } else {
-            tokenExpiryText.value = ''
-          }
-          const map = data.file_map || {}
-          PAN_SOFTWARE_KEYS.forEach(({ key }) => {
-            panMap[key] = map[key] || ''
-          })
-          // 已同步的软件自动回填关键词（取云盘文件名），避免输入框为空
-          const syncedFiles = data.synced_files || {}
-          PAN_SOFTWARE_KEYS.forEach(({ key }) => {
-            if (!panMap[key] && syncedFiles[key]) {
-              panMap[key] = syncedFiles[key]
-            }
-          })
-          const extMap = data.file_exts || {}
-          PAN_SOFTWARE_KEYS.forEach(({ key }) => {
-            panExts[key] = extMap[key] || ''
-          })
         }
       } catch (error) {
         // 未配置时静默
       }
     }
-    // persistPanConfig 把当前表单（凭证 + 关键词 + 扩展名）保存到后端，不弹提示
-    const persistPanConfig = async () => {
-      try {
-        const response = await pan123API.saveConfig({
-          ...panForm,
-          file_map: { ...panMap },
-          file_exts: { ...panExts }
-        })
-        return !!(response.data && response.data.success)
-      } catch (error) {
-        return false
-      }
-    }
     const savePanConfig = async () => {
       panSaving.value = true
       try {
-        const ok = await persistPanConfig()
-        if (ok) {
+        const response = await cloudAPI.saveConfig({
+          aliyun_refresh_token: panForm.aliyun_refresh_token,
+          sync_enabled: panForm.sync_enabled,
+          sync_interval_hours: panForm.sync_interval_hours
+        })
+        if (response.data && response.data.success) {
           ElMessage.success('云盘配置已保存')
           await loadPanConfig()
         } else {
-          ElMessage.error('保存失败，请检查网络或配置')
+          ElMessage.error(response.data?.message || '保存失败，请检查网络或配置')
         }
       } catch (error) {
         ElMessage.error(error.response?.data?.message || '保存失败')
       } finally {
         panSaving.value = false
       }
-    }
-    const testPanConfig = async () => {
-      panTesting.value = true
-      panTestResult.value = ''
-      try {
-        const response = await pan123API.test()
-        if (response.data && response.data.success) {
-          const data = response.data.data || {}
-          const modeText = data.mode === 'direct' ? '直链' : '分享链接'
-          panTestResult.value = `连接成功：${data.nickname || '已登录'}（当前模式：${modeText}）`
-        } else {
-          panTestResult.value = `失败：${response.data?.message || '未知错误'}`
-        }
-      } catch (error) {
-        panTestResult.value = `失败：${error.response?.data?.message || error.message || '网络错误'}`
-      } finally {
-        panTesting.value = false
-      }
-    }
-    const isPanDynamic = (key) => String(softwareForm[key] || '').startsWith('pan://')
-    // 当前配置列：超长链接截断显示，悬停查看完整
-    const shortUrl = (key) => {
-      const v = String(softwareForm[key] || '').trim()
-      if (v.length <= 24) return v
-      return v.slice(0, 24) + '…'
     }
     // ---- 阿里云盘连接测试 ----
     const aliyunTesting = ref(false)
@@ -834,12 +541,12 @@ export default {
       aliyunTesting.value = true
       aliyunTestResult.value = ''
       try {
-        const saved = await persistPanConfig()
+        const saved = await savePanConfig()
         if (!saved) {
           aliyunTestResult.value = '保存配置失败'
           return
         }
-        const response = await pan123API.aliyunTest()
+        const response = await cloudAPI.aliyunTest()
         if (response.data?.success) {
           const d = response.data.data || {}
           aliyunTestResult.value = `连接成功（根目录 ${d.root_files} 个文件）${d.refresh_token_rotated ? '，token 已自动轮换' : ''}`
@@ -852,272 +559,6 @@ export default {
         aliyunTesting.value = false
       }
     }
-    // ---- 短信验证码登录（海外服务器风控场景）----
-    const smsMode = ref(false)
-    const panSmsCode = ref('')
-    const panSmsSending = ref(false)
-    const panSmsLogging = ref(false)
-    const smsStatus = ref('')
-    const smsHashCode = ref('')
-    const smsTimeStamp = ref('')
-    const smsNeedsCaptcha = ref(false)
-    let panelCaptchaInstance = null
-    // ---- 二维码扫码登录 ----
-    const qrLoading = ref(false)
-    const qrDialog = reactive({ visible: false, qrDataUrl: '', statusText: '等待扫码...' })
-    let qrPollTimer = null
-    let qrPolling = false
-    const qrLogin = async () => {
-      qrLoading.value = true
-      qrDialog.visible = true
-      qrDialog.statusText = '正在生成二维码...'
-      qrDialog.qrDataUrl = ''
-      try {
-        const response = await pan123API.qrGenerate()
-        if (response.data?.success) {
-          const data = response.data.data || {}
-          qrDialog.qrDataUrl = await createQRCodeDataURL(data.qr_value, { width: 200, margin: 2 })
-          qrDialog.statusText = '等待扫码...'
-          startQrPolling(data.uni_id)
-        } else {
-          qrDialog.statusText = response.data?.message || '生成二维码失败'
-        }
-      } catch (error) {
-        qrDialog.statusText = error.response?.data?.message || '生成二维码失败'
-      } finally {
-        qrLoading.value = false
-      }
-    }
-    const startQrPolling = (uniId) => {
-      stopQrPolling()
-      qrPolling = true
-      const poll = async () => {
-        if (!qrPolling) return
-        try {
-          const response = await pan123API.qrStatus({ uni_id: uniId })
-          const status = response.data?.data?.status || 'waiting'
-          if (status === 'waiting') {
-            qrDialog.statusText = '等待扫码...'
-          } else if (status === 'scanned') {
-            qrDialog.statusText = '已扫码，请在手机上确认'
-          } else if (status === 'success') {
-            qrDialog.statusText = '登录成功，token 已保存'
-            stopQrPolling()
-            setTimeout(() => { qrDialog.visible = false }, 1200)
-            ElMessage.success('登录成功，token 已自动保存')
-            await loadPanConfig()
-            return
-          } else if (status === 'expired' || status === 'rejected') {
-            qrDialog.statusText = response.data?.data?.message || '扫码已失效'
-            stopQrPolling()
-            return
-          }
-        } catch (error) {
-          qrDialog.statusText = '查询状态失败，重试中...'
-        }
-        qrPollTimer = setTimeout(poll, 2000)
-      }
-      poll()
-    }
-    const stopQrPolling = () => {
-      qrPolling = false
-      if (qrPollTimer) {
-        clearTimeout(qrPollTimer)
-        qrPollTimer = null
-      }
-    }
-
-    // 加载 123pan 同款阿里云验证码 SDK（含其内置 appKey）
-    const loadCaptchaScripts = () => {
-      return new Promise((resolve) => {
-        if (window.initAliyunCaptcha) return resolve(true)
-        const s = document.createElement('script')
-        s.src = 'https://o.alicdn.com/captcha-frontend/aliyunCaptcha/AliyunCaptcha.js'
-        s.onload = () => {
-          const s2 = document.createElement('script')
-          s2.src = 'https://statics.123957.com/static/sliderAli.js'
-          s2.onload = () => resolve(true)
-          s2.onerror = () => resolve(true)
-          document.head.appendChild(s2)
-        }
-        s.onerror = () => resolve(false)
-        document.head.appendChild(s)
-      })
-    }
-
-    // 初始化面板内嵌滑块（场景与 123pan 登录中心一致）
-    const initPanelCaptcha = async () => {
-      const ok = await loadCaptchaScripts()
-      if (!ok || !window.initAliyunCaptcha) {
-        smsStatus.value = '滑块组件加载失败，请检查网络后重试'
-        return
-      }
-      window.AliyunCaptchaConfig = { region: 'cn', prefix: '1gkapk' }
-      await nextTick()
-      try {
-        window.initAliyunCaptcha({
-          SceneId: 'unts8f61',
-          mode: 'embed',
-          element: '#pan-captcha',
-          captchaVerifyCallback: async (traceless) => {
-            // 滑块完成 → 带 traceless 重发验证码（服务器发码）
-            try {
-              const response = await pan123API.smsSend({
-                username: panForm.username,
-                password: panForm.password,
-                traceless
-              })
-              if (response.data?.success) {
-                const d = response.data.data || {}
-                if (d.needs_captcha) {
-                  smsStatus.value = '滑块验证未通过，请重新滑动'
-                  return { captchaResult: false }
-                }
-                smsHashCode.value = d.hash_code || smsHashCode.value
-                smsTimeStamp.value = d.time_stamp || ''
-                smsNeedsCaptcha.value = false
-                smsStatus.value = '验证码已发送，请查收短信'
-                return { captchaResult: true }
-              }
-              smsStatus.value = response.data?.message || '发送失败'
-              return { captchaResult: false }
-            } catch (error) {
-              smsStatus.value = error.response?.data?.message || '发送失败'
-              return { captchaResult: false }
-            }
-          },
-          getInstance: (inst) => { panelCaptchaInstance = inst || null },
-          onError: (err) => { console.error('滑块初始化失败', err); smsStatus.value = '滑块初始化失败，请刷新重试' },
-          slideStyle: { width: 320, height: 40 },
-          language: 'cn'
-        })
-      } catch (error) {
-        console.error('init captcha error', error)
-        smsStatus.value = '滑块初始化失败，请刷新重试'
-      }
-    }
-    const tokenExpiryText = ref('')
-    const tokenExpiryDanger = ref(false)
-    const smsSend = async () => {
-      panSmsSending.value = true
-      smsStatus.value = ''
-      try {
-        const response = await pan123API.smsSend({
-          username: panForm.username,
-          password: panForm.password
-        })
-        if (response.data?.success) {
-          const data = response.data.data || {}
-          if (data.need_sms === false) {
-            smsStatus.value = '账号密码登录成功，无需短信验证'
-            return
-          }
-          smsHashCode.value = data.hash_code || ''
-          smsTimeStamp.value = data.time_stamp || ''
-          smsNeedsCaptcha.value = !!data.needs_captcha
-          smsMode.value = true
-          smsStatus.value = response.data.message || (data.needs_captcha ? '请完成下方滑块验证' : '验证码已发送')
-          if (data.needs_captcha) {
-            await initPanelCaptcha()
-          }
-        } else {
-          smsStatus.value = response.data?.message || '发送失败'
-        }
-      } catch (error) {
-        smsStatus.value = error.response?.data?.message || '发送失败'
-      } finally {
-        panSmsSending.value = false
-      }
-    }
-    const smsLogin = async () => {
-      if (!panSmsCode.value.trim()) {
-        ElMessage.warning('请输入验证码')
-        return
-      }
-      panSmsLogging.value = true
-      smsStatus.value = ''
-      try {
-        const response = await pan123API.smsLogin({
-          username: panForm.username,
-          password: panForm.password,
-          hash_code: smsHashCode.value,
-          sms_code: panSmsCode.value.trim(),
-          time_stamp: smsTimeStamp.value
-        })
-        if (response.data?.success) {
-          ElMessage.success('登录成功，token 已自动保存')
-          smsMode.value = false
-          smsNeedsCaptcha.value = false
-          smsTimeStamp.value = ''
-          panSmsCode.value = ''
-          smsStatus.value = '登录成功，token 已保存'
-          await loadPanConfig()
-        } else {
-          smsStatus.value = response.data?.message || '登录失败'
-        }
-      } catch (error) {
-        smsStatus.value = error.response?.data?.message || '登录失败'
-      } finally {
-        panSmsLogging.value = false
-      }
-    }
-    const testPanKeyword = async (row) => {
-      const keyword = String(panMap[row.key] || '').trim()
-      if (!keyword) {
-        ElMessage.warning('请先填写关键词')
-        return
-      }
-      panTestingKey.value = row.key
-      try {
-        const response = await pan123API.search({ keyword, ext: panExts[row.key] || '' })
-        if (response.data && response.data.success) {
-          const list = response.data.data?.list || []
-          searchDialog.list = list
-          searchDialog.title = `“${keyword}” 搜索结果（共 ${list.length} 个）`
-          searchDialog.visible = true
-          if (!list.length) {
-            ElMessage.warning('未找到匹配文件，请调整关键词')
-          }
-        } else {
-          ElMessage.error(response.data?.message || '搜索失败')
-        }
-      } catch (error) {
-        ElMessage.error(error.response?.data?.message || '搜索失败')
-      } finally {
-        panTestingKey.value = ''
-      }
-    }
-    const panRefresh = async (dynamic) => {
-      panRefreshing.value = true
-      try {
-        // 先把当前表格里的关键词/扩展名和凭证落库，避免刷新读到旧配置（旧配置关键词为空导致 0 个软件）
-        const saved = await persistPanConfig()
-        if (!saved) {
-          ElMessage.error('保存云盘配置失败，无法执行一键生成')
-          return
-        }
-        const response = await pan123API.refresh({
-          dynamic,
-          mode: panForm.mode,
-          file_map: { ...panMap },
-          file_exts: { ...panExts }
-        })
-        if (response.data && response.data.success) {
-          const data = response.data.data || {}
-          ElMessage.success(response.data.message || '填充完成')
-          await loadSoftwareConfig()
-          refreshReport.list = data.report || []
-          refreshReport.dynamic = data.dynamic !== false
-          refreshReport.visible = true
-        } else {
-          ElMessage.error(response.data?.message || '填充失败')
-        }
-      } catch (error) {
-        ElMessage.error(error.response?.data?.message || '填充失败')
-      } finally {
-        panRefreshing.value = false
-      }
-    }
     const panSyncing = ref(false)
     const panVersions = ref([])
     const syncStatusText = ref('')
@@ -1125,8 +566,8 @@ export default {
     const loadPanSyncStatus = async () => {
       try {
         const [statusRes, versionsRes] = await Promise.all([
-          pan123API.syncStatus(),
-          pan123API.versions()
+          cloudAPI.syncStatus(),
+          cloudAPI.versions()
         ])
         const status = statusRes.data?.data || {}
         if (versionsRes.data?.success) {
@@ -1145,10 +586,6 @@ export default {
         } else {
           syncStatusText.value = '尚未运行过同步'
         }
-        // 同步完成后刷新版本对照与软件配置
-        if (versionsRes.data?.success) {
-          panVersions.value = versionsRes.data.data?.list || []
-        }
         await loadSoftwareConfig()
       } catch (error) {
         syncStatusText.value = '获取同步状态失败'
@@ -1157,12 +594,12 @@ export default {
     const runPanSync = async () => {
       panSyncing.value = true
       try {
-        const saved = await persistPanConfig()
+        const saved = await savePanConfig()
         if (!saved) {
           ElMessage.error('保存云盘配置失败，无法执行同步')
           return
         }
-        const response = await pan123API.sync()
+        const response = await cloudAPI.sync()
         if (response.data?.success) {
           ElMessage.success('同步已开始（首次可能需下载上传多个安装包，耗时较长）')
           syncStatusText.value = '同步进行中，请稍候…'
@@ -1199,46 +636,17 @@ export default {
       loadSubscriptionAccessConfig,
       saveSubscriptionAccessConfig,
       panForm,
-      panMap,
-      panExts,
-      PAN_EXT_OPTIONS,
-      panMapRows,
       panSaving,
-      panTesting,
-      panTestingKey,
-      panRefreshing,
-      panTestResult,
-      searchDialog,
-      refreshReport,
       loadPanConfig,
       savePanConfig,
-      testPanConfig,
-      testPanKeyword,
-      isPanDynamic,
-      shortUrl,
-      panRefresh,
+      aliyunTesting,
+      aliyunTestResult,
+      testAliyun,
       panSyncing,
       panVersions,
       syncStatusText,
       loadPanSyncStatus,
-      runPanSync,
-      smsMode,
-      panSmsCode,
-      panSmsSending,
-      panSmsLogging,
-      smsStatus,
-      smsNeedsCaptcha,
-      tokenExpiryText,
-      tokenExpiryDanger,
-      smsSend,
-      smsLogin,
-      aliyunTesting,
-      aliyunTestResult,
-      testAliyun,
-      qrLoading,
-      qrDialog,
-      qrLogin,
-      stopQrPolling
+      runPanSync
     }
   }
 }
@@ -1658,4 +1066,4 @@ export default {
 .payment-form .el-divider:first-child {
   margin-top: 0;
 }
-</style> 
+</style>

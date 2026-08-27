@@ -746,22 +746,15 @@ export const softwareConfigAPI = {
   getSoftwareConfig: () => api.get('/software-config/'),
   updateSoftwareConfig: (data) => api.put('/software-config/', data)
 }
-// 123云盘自动填充
-export const pan123API = {
-  getConfig: () => api.get('/admin/pan123/config'),
-  saveConfig: (data) => api.post('/admin/pan123/config', data),
-  test: () => api.post('/admin/pan123/test'),
-  search: (params) => api.get('/admin/pan123/search', { params }),
-  refresh: (data) => api.post('/admin/pan123/refresh', data),
-  sync: () => api.post('/admin/pan123/sync'),
-  syncStatus: () => api.get('/admin/pan123/sync/status'),
-  versions: () => api.get('/admin/pan123/versions'),
-  smsSend: (data) => api.post('/admin/pan123/sms/send', data),
-  smsLogin: (data) => api.post('/admin/pan123/sms/login', data),
-  qrGenerate: () => api.post('/admin/pan123/qr/generate'),
-  qrStatus: (params) => api.get('/admin/pan123/qr/status', { params }),
-  aliyunTest: () => api.post('/admin/pan123/aliyun/test'),
-  aliyunSearch: (params) => api.get('/admin/pan123/aliyun/search', { params })
+// 阿里云盘自动填充
+export const cloudAPI = {
+  getConfig: () => api.get('/admin/cloud/config'),
+  saveConfig: (data) => api.post('/admin/cloud/config', data),
+  aliyunTest: () => api.post('/admin/cloud/aliyun/test'),
+  aliyunSearch: (params) => api.get('/admin/cloud/aliyun/search', { params }),
+  sync: () => api.post('/admin/cloud/sync'),
+  syncStatus: () => api.get('/admin/cloud/sync/status'),
+  versions: () => api.get('/admin/cloud/versions')
 }
 // 用户端：已同步软件版本信息
 export const softwareVersionsAPI = {

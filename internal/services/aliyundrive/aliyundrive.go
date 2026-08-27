@@ -391,3 +391,15 @@ func postJSON(rawURL string, body interface{}, headers map[string]string) ([]byt
 	}
 	return payload, nil
 }
+
+// Trash 删除文件（移入回收站），用于替换旧版本时清理
+func (c *Client) Trash(fileID string) error {
+	body := map[string]interface{}{
+		"drive_id": c.DriveID,
+		"file_id":  fileID,
+	}
+	if _, err := c.request("/adrive/v1.0/openFile/delete", body); err != nil {
+		return fmt.Errorf("删除文件失败: %w", err)
+	}
+	return nil
+}
