@@ -167,6 +167,10 @@
               description="获取 refresh_token：浏览器登录 www.alipan.com → F12 → Application → Local Storage → https://www.alipan.com → 找到键名 token，复制其中 refresh_token 的值（约 90 天有效；测试连接成功后会自动轮换并保存新 token）。"
             />
             <el-form :model="panForm" label-width="150px" style="margin-top: 16px">
+              <el-form-item label="云盘上传目录">
+                <el-input v-model="panForm.aliyun_folder" placeholder="如：软件下载（支持 软件/下载 多级路径；留空 = 网盘根目录）" />
+                <div class="pan-tip" style="width: 100%">同步时会在该目录下自动为每个软件创建子文件夹（如 软件下载/v2rayN/），安装包按软件分别存放。</div>
+              </el-form-item>
               <el-form-item label="阿里云盘 refresh_token">
                 <el-input v-model="panForm.aliyun_refresh_token" type="textarea" :rows="2" placeholder="粘贴 refresh_token" />
               </el-form-item>
@@ -386,6 +390,7 @@ export default {
     })
     const panForm = reactive({
       aliyun_refresh_token: '',
+      aliyun_folder: '',
       sync_enabled: true,
       sync_interval_hours: 12
     })
@@ -507,6 +512,7 @@ export default {
         if (response.data && response.data.success) {
           const data = response.data.data || {}
           panForm.aliyun_refresh_token = data.aliyun_refresh_token || ''
+          panForm.aliyun_folder = data.aliyun_folder || ''
           panForm.sync_enabled = data.sync_enabled !== false
           panForm.sync_interval_hours = data.sync_interval_hours || 12
         }
@@ -519,6 +525,7 @@ export default {
       try {
         const response = await cloudAPI.saveConfig({
           aliyun_refresh_token: panForm.aliyun_refresh_token,
+          aliyun_folder: panForm.aliyun_folder,
           sync_enabled: panForm.sync_enabled,
           sync_interval_hours: panForm.sync_interval_hours
         })
@@ -549,7 +556,7 @@ export default {
         const response = await cloudAPI.aliyunTest()
         if (response.data?.success) {
           const d = response.data.data || {}
-          aliyunTestResult.value = `连接成功（根目录 ${d.root_files} 个文件）${d.refresh_token_rotated ? '，token 已自动轮换' : ''}`
+          aliyunTestResult.value = `连接成功（${d.folder || '根目录'} ${d.root_files} 个文件）${d.refresh_token_rotated ? '，token 已自动轮换' : ''}`
         } else {
           aliyunTestResult.value = response.data?.message || '连接失败'
         }
