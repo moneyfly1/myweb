@@ -372,9 +372,12 @@ func run(only []string) ([]ReportItem, int) {
 	prefixes := loadProxyPrefixes()
 	ghToken := LoadGitHubToken()
 	releaseCache := map[string]*ghrelease.Release{}
-	tmpDir, err := os.MkdirTemp("", "cboard-sync-*")
+	// 下载暂存目录：放在项目 uploads/synctmp 下（与数据库同盘、容量可预测），
+	// 避免系统 /tmp 若是 tmpfs（内存盘）时大文件安装包占满内存导致生产不稳定。
+	cleanStaleSyncTemp()
+	tmpDir, err := newSyncTempDir()
 	if err != nil {
-		return append(report, ReportItem{Status: "error", Message: "创建临时目录失败: " + err.Error()}), 0
+		return append(report, ReportItem{Status: "error", Message: "创建下载暂存目录失败: " + err.Error()}), 0
 	}
 	defer os.RemoveAll(tmpDir)
 
@@ -538,6 +541,37 @@ func trashOldVersion(ali *aliyundrive.Client, entry FileEntry, hasEntry bool, ne
 	}
 	trashedIDs[entry.AliyunFileID] = true
 	item.Message = "已上传阿里云盘并替换删除旧版本"
+}
+
+// syncTempBase 下载暂存根目录（相对项目工作目录；uploads 已 gitignore，与数据库同盘）
+const syncTempBase = "uploads/synctmp"
+
+// newSyncTempDir 创建本次同步的下载暂存目录
+func newSyncTempDir() (string, error) {
+	if err := os.MkdirAll(syncTempBase, 0o755); err != nil {
+		return "", err
+	}
+	return os.MkdirTemp(syncTempBase, "sync-*")
+}
+
+// cleanStaleSyncTemp 清理超过 24 小时的遗留暂存目录（同步异常中断时防止堆积占空间）
+func cleanStaleSyncTemp() {
+	entries, err := os.ReadDir(syncTempBase)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		info, ierr := e.Info()
+		if ierr != nil {
+			continue
+		}
+		if time.Since(info.ModTime()) > 24*time.Hour {
+			_ = os.RemoveAll(filepath.Join(syncTempBase, e.Name()))
+		}
+	}
 }
 
 // ensurePanManagedURL 若该键当前为空或已是 pan://，则写入 pan://<键>；手工外部链接不覆盖
