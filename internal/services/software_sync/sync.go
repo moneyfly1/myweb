@@ -3,40 +3,31 @@ package software_sync
 import (
 	"encoding/json"
 	"fmt"
-	"log"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
-	"cboard-go/internal/services/aliyundrive"
 	"cboard-go/internal/services/ghrelease"
 )
 
 // cfgCategory 云盘配置存储分类（沿用旧库分类名，避免迁移；与 123 云盘已无任何关联）
 const cfgCategory = "pan123"
 
-// FileEntry 云盘文件映射条目（存于 file_id_map 配置）
+// FileEntry 版本记录条目（存于 file_id_map 配置，记录各目标已检出的最新版本与资产名）
 type FileEntry struct {
-	// FileId 旧版（123 云盘）遗留字段，已不使用
-	FileId    int64  `json:"fileId,omitempty"`
 	FileName  string `json:"fileName"`
 	Size      int64  `json:"size"`
 	Version   string `json:"version"`
 	UpdatedAt string `json:"updatedAt"`
-	// AliyunFileID 阿里云盘文件 id（当前唯一存储后端）
-	AliyunFileID string `json:"aliyunFileId,omitempty"`
 }
 
-// HasMeta 是否已具备可用文件 id
+// HasMeta 是否已具备版本信息
 func (e FileEntry) HasMeta() bool {
-	return e.AliyunFileID != ""
+	return e.Version != ""
 }
 
 // ReportItem 单目标同步结果
@@ -60,6 +51,18 @@ type SyncStatus struct {
 	LastRun       string       `json:"last_run"`
 	LastReport    []ReportItem `json:"last_report"`
 	TotalUploaded int          `json:"total_uploaded"`
+	// 实时进度（同步运行中有效）
+	Progress      SyncProgress `json:"progress"`
+}
+
+// SyncProgress 同步实时进度
+type SyncProgress struct {
+	Done        int    `json:"done"`         // 已处理目标数
+	Total       int    `json:"total"`        // 总目标数
+	Item        string `json:"item"`         // 当前处理目标，如 "v2rayN (macOS Apple 芯片)"
+	Stage       string `json:"stage"`        // 阶段：获取版本 / 下载中 / 上传中
+	CurrentFile string `json:"current_file"` // 当前文件（下载/上传中的安装包名）
+	Folder      string `json:"folder"`       // 上传目录（云盘路径）
 }
 
 var (
@@ -69,9 +72,51 @@ var (
 	lastReport   []ReportItem
 	lastUploaded int
 
+	// 实时进度
+	progressDone    int
+	progressTotal   int
+	progressItem    string
+	progressStage   string
+	progressFile    string
+	progressFolder  string
+
 	// OnSyncComplete 同步结束后回调（由 handlers 注册用于清理直链缓存等）
 	OnSyncComplete func()
 )
+
+// SetProgress 更新实时进度（由 run 主流程调用）
+func SetProgress(done int, item, stage, file string) {
+	statusMu.Lock()
+	defer statusMu.Unlock()
+	if done >= 0 {
+		progressDone = done
+	}
+	progressItem = item
+	progressStage = stage
+	progressFile = file
+}
+
+func SetProgressTotal(total int) {
+	statusMu.Lock()
+	defer statusMu.Unlock()
+	progressTotal = total
+}
+
+func SetProgressFolder(folder string) {
+	statusMu.Lock()
+	defer statusMu.Unlock()
+	progressFolder = folder
+}
+
+func ResetProgress() {
+	statusMu.Lock()
+	defer statusMu.Unlock()
+	progressDone = 0
+	progressTotal = 0
+	progressItem = ""
+	progressStage = ""
+	progressFile = ""
+}
 
 // SetOnSyncComplete 注册同步完成回调（幂等，重复注册以最后一次为准）
 func SetOnSyncComplete(fn func()) {
@@ -99,10 +144,8 @@ func fireOnSyncComplete() {
 // ---------------------------------------------------------------------------
 
 type syncConfig struct {
-	Enabled            bool
-	Interval           time.Duration
-	AliyunRefreshToken string
-	Folder             string // 云盘上传目录（/ 分隔多级；空 = 根目录）
+	Enabled  bool
+	Interval time.Duration
 }
 
 func loadSyncConfig() (syncConfig, error) {
@@ -123,10 +166,6 @@ func loadSyncConfig() (syncConfig, error) {
 			if n, _ := fmt.Sscanf(c.Value, "%d", &h); n == 1 && h >= 1 {
 				cfg.Interval = time.Duration(h) * time.Hour
 			}
-		case "aliyun_refresh_token":
-			cfg.AliyunRefreshToken = strings.TrimSpace(c.Value)
-		case "aliyun_folder":
-			cfg.Folder = strings.TrimSpace(c.Value)
 		}
 	}
 	return cfg, nil
@@ -243,6 +282,17 @@ func GetStatus() SyncStatus {
 			_ = json.Unmarshal([]byte(conf.Value), &report)
 		}
 	}
+	statusMu.Lock()
+	pr := SyncProgress{
+		Done:        progressDone,
+		Total:       progressTotal,
+		Item:        progressItem,
+		Stage:       progressStage,
+		CurrentFile: progressFile,
+		Folder:      progressFolder,
+	}
+	statusMu.Unlock()
+
 	return SyncStatus{
 		Running:       IsRunning(),
 		Enabled:       cfg.Enabled,
@@ -250,6 +300,7 @@ func GetStatus() SyncStatus {
 		LastRun:       runAt,
 		LastReport:    report,
 		TotalUploaded: uploaded,
+		Progress:      pr,
 	}
 }
 
@@ -329,64 +380,45 @@ func RunSync(only []string) ([]ReportItem, error) {
 
 func run(only []string) ([]ReportItem, int) {
 	report := make([]ReportItem, 0)
-	uploaded := 0
+	newVersions := 0
+	ResetProgress()
+	defer ResetProgress()
 	onlySet := map[string]bool{}
 	for _, k := range only {
 		onlySet[k] = true
 	}
 
-	cfg, err := loadSyncConfig()
-	if err != nil {
-		return append(report, ReportItem{Status: "error", Message: "读取配置失败: " + err.Error()}), 0
-	}
-	if cfg.AliyunRefreshToken == "" {
-		return append(report, ReportItem{Status: "error", Message: "未配置阿里云盘 refresh_token，无法同步"}), 0
-	}
-	ali := aliyundrive.New(cfg.AliyunRefreshToken)
-	// token 到期会自动轮换（新 refresh_token 在客户端内存中），
-	// 无论同步结果如何都回存到 DB，避免只有定时同步在跑时轮换丢失导致 90 天后同步断掉。
-	ali.OnRotate = func(newRT string) {
-		if newRT != "" && newRT != cfg.AliyunRefreshToken {
-			_ = saveCfgValue("aliyun_refresh_token", newRT)
-		}
-	}
-	defer func() {
-		if ali.RefreshToken != "" && ali.RefreshToken != cfg.AliyunRefreshToken {
-			_ = saveCfgValue("aliyun_refresh_token", ali.RefreshToken)
-		}
-	}()
-
-	// 解析上传目录（可配置，支持多级路径；空 = 根目录）
-	folderID := "root"
-	if cfg.Folder != "" {
-		folderID, err = ali.EnsureDir(cfg.Folder)
-		if err != nil {
-			return append(report, ReportItem{Status: "error", Message: "创建/解析云盘上传目录失败: " + err.Error()}), 0
-		}
-	}
-
-	fileIDMap, err := LoadFileIDMap()
-	if err != nil {
-		return append(report, ReportItem{Status: "error", Message: "读取文件映射失败: " + err.Error()}), 0
-	}
 	prefixes := loadProxyPrefixes()
 	ghToken := LoadGitHubToken()
 	releaseCache := map[string]*ghrelease.Release{}
-	// 下载暂存目录：放在项目 uploads/synctmp 下（与数据库同盘、容量可预测），
-	// 避免系统 /tmp 若是 tmpfs（内存盘）时大文件安装包占满内存导致生产不稳定。
-	cleanStaleSyncTemp()
-	tmpDir, err := newSyncTempDir()
-	if err != nil {
-		return append(report, ReportItem{Status: "error", Message: "创建下载暂存目录失败: " + err.Error()}), 0
-	}
-	defer os.RemoveAll(tmpDir)
 
+	fileIDMap, err := LoadFileIDMap()
+	if err != nil {
+		return append(report, ReportItem{Status: "error", Message: "读取版本记录失败: " + err.Error()}), 0
+	}
+
+	// 计算本次将检查的目标总数（用于进度显示）
+	totalTargets := 0
+	for _, sw := range Catalog {
+		for _, t := range sw.Targets {
+			if len(onlySet) == 0 || onlySet[t.ConfigKey] {
+				totalTargets++
+			}
+		}
+	}
+	SetProgressTotal(totalTargets)
+
+	done := 0
 	for _, sw := range Catalog {
 		release, ok := releaseCache[sw.Repo]
 		if !ok {
 			release, err = ghrelease.Latest(sw.Repo, prefixes, ghToken)
 			if err != nil {
 				for _, t := range sw.Targets {
+					if len(onlySet) > 0 && !onlySet[t.ConfigKey] {
+						continue
+					}
+					done++
 					report = append(report, ReportItem{Key: t.ConfigKey, Name: sw.Name, Label: t.Label, OS: t.OS, Arch: t.Arch, Status: "error", Message: "获取 GitHub 版本失败: " + err.Error()})
 				}
 				continue
@@ -395,30 +427,18 @@ func run(only []string) ([]ReportItem, int) {
 		}
 		version := release.Version()
 
-		// 每个软件一个子文件夹（如 软件下载/v2rayN/），失败时回退到上传目录
-		swFolderID := folderID
-		subID, ferr := ali.EnsureFolder(folderID, sanitizeFolderName(sw.Name))
-		if ferr != nil {
-			// 子文件夹创建失败不阻断同步，回退到上传目录
-			log.Printf("软件 %s 子文件夹创建失败（回退到上传目录）: %v", sw.Name, ferr)
-		} else {
-			swFolderID = subID
-		}
-
-		// 同一软件内同名资产（如 Hiddify 官方 macOS 通用包 Intel/Apple 同一文件）只上传一次，第二个目标复用
-		uploadedByName := map[string]string{} // asset.Name → 本次已就绪的 file_id
-		trashedIDs := map[string]bool{}       // 本次已删除的旧文件 id（多个目标共享同一旧 id 时避免重复删除）
-
 		for _, t := range sw.Targets {
 			if len(onlySet) > 0 && !onlySet[t.ConfigKey] {
 				continue
 			}
 			item := ReportItem{Key: t.ConfigKey, Name: sw.Name, Label: t.Label, OS: t.OS, Arch: t.Arch, Version: version}
+			SetProgress(done, sw.Name+" "+t.Label, "检查中", "")
 
-			// 该入口配置了手工自定义外部链接（非 pan://）→ 不使用云盘，整项跳过
+			// 该入口配置了手工自定义外部链接（非 pan://）→ 不使用自动分发，整项跳过
 			if current := loadSoftwareValue(t.ConfigKey); current != "" && !strings.HasPrefix(current, "pan://") {
 				item.Status = "skip"
-				item.Message = "该入口使用自定义链接，跳过云盘同步"
+				item.Message = "该入口使用自定义链接，跳过自动分发"
+				done++
 				report = append(report, item)
 				continue
 			}
@@ -427,94 +447,45 @@ func run(only []string) ([]ReportItem, int) {
 			if aerr != nil {
 				item.Status = "error"
 				item.Message = aerr.Error()
+				done++
 				report = append(report, item)
 				continue
 			}
+			SetProgress(done, sw.Name+" "+t.Label, "比对版本", asset.Name)
 
-			// 版本与匹配到的安装包名都一致才跳过（同版本更换构建/命名时仍会更新）
+			// 版本与资产名一致 → 已是最新，跳过
 			entry, hasEntry := fileIDMap[t.ConfigKey]
-			if hasEntry && entry.AliyunFileID != "" && entry.Version == version && entry.FileName == asset.Name {
-				// 校验云盘文件仍存在（用户可能手动删除）：文件不存在时不跳过，走重新上传
-				_, gerr := ali.GetFile(entry.AliyunFileID)
-				if gerr == nil || !aliyundrive.IsFileNotFound(gerr) {
-					item.Status = "skip"
-					item.FileName = entry.FileName
-					if gerr != nil {
-						item.Message = "已是最新版本（云盘文件校验暂时不可用）"
-					} else {
-						item.Message = "已是最新版本"
-					}
-					report = append(report, item)
-					continue
-				}
-				// 云盘文件已被删除 → 继续执行重新上传
-			}
-
-			localPath := filepath.Join(tmpDir, asset.Name)
-
-			// 同一软件内同名资产复用本次已上传的文件（避免重复上传/重复占空间）
-			if reuseID, ok := uploadedByName[asset.Name]; ok {
-				fileIDMap[t.ConfigKey] = FileEntry{
-					AliyunFileID: reuseID,
-					FileName:     asset.Name,
-					Size:         asset.Size,
-					Version:      version,
-					UpdatedAt:    time.Now().Format(time.RFC3339),
-				}
-				if err := ensurePanManagedURL(t.ConfigKey); err != nil {
-					item.Message = "复用上传成功，但更新下载链接失败: " + err.Error()
-				} else {
-					item.Message = "复用已上传的同一安装包"
-				}
-				trashOldVersion(ali, entry, hasEntry, reuseID, &item, trashedIDs)
-				item.Status = "ok"
+			if hasEntry && entry.Version == version && entry.FileName == asset.Name {
+				item.Status = "skip"
 				item.FileName = asset.Name
+				item.Message = "已是最新版本"
+				done++
 				report = append(report, item)
 				continue
 			}
 
-			if derr := ghrelease.Download(asset, localPath, prefixes, ghToken); derr != nil {
-				item.Status = "error"
-				item.Message = "下载失败: " + derr.Error()
-				report = append(report, item)
-				continue
+			// 有新版本（或首次检出）：更新版本记录，下载链接始终指向最新版
+			fileIDMap[t.ConfigKey] = FileEntry{
+				FileName:  asset.Name,
+				Size:      asset.Size,
+				Version:   version,
+				UpdatedAt: time.Now().Format(time.RFC3339),
 			}
-
-			aliFileID, uerr := ali.Upload(localPath, asset.Name, swFolderID)
-			if uerr != nil {
-				item.Status = "error"
-				item.Message = "上传阿里云盘失败: " + uerr.Error()
-				report = append(report, item)
-				continue
-			}
-			uploadedByName[asset.Name] = aliFileID
-
-			newEntry := FileEntry{
-				AliyunFileID: aliFileID,
-				FileName:     asset.Name,
-				Size:         asset.Size,
-				Version:      version,
-				UpdatedAt:    time.Now().Format(time.RFC3339),
-			}
-			fileIDMap[t.ConfigKey] = newEntry
-			uploaded++
-
-			// 更新软件下载配置：动态链接 pan://<配置键>
 			if err := ensurePanManagedURL(t.ConfigKey); err != nil {
-				item.Message = "上传成功，但更新下载链接失败: " + err.Error()
+				item.Message = "已检出新版本，但更新下载链接失败: " + err.Error()
 			} else {
-				item.Message = "已上传阿里云盘并设置直链"
+				item.Message = "已检出最新版 v" + version + "，下载链接将指向该版本（国内镜像直链）"
 			}
-			// 有新版本时删除云盘中的旧版本文件
-			trashOldVersion(ali, entry, hasEntry, aliFileID, &item, trashedIDs)
+			newVersions++
 			item.Status = "ok"
 			item.FileName = asset.Name
+			done++
 			report = append(report, item)
 		}
 	}
 
 	if err := SaveFileIDMap(fileIDMap); err != nil {
-		report = append(report, ReportItem{Status: "error", Message: "保存文件映射失败: " + err.Error()})
+		report = append(report, ReportItem{Status: "error", Message: "保存版本记录失败: " + err.Error()})
 	}
 	_ = saveCfgValue("sync_last_run", time.Now().Format(time.RFC3339))
 	if b, err := json.Marshal(report); err == nil {
@@ -526,52 +497,7 @@ func run(only []string) ([]ReportItem, int) {
 		}
 		return report[i].Label < report[j].Label
 	})
-	return report, uploaded
-}
-
-// trashOldVersion 删除该配置键对应的旧版云盘文件；多个目标共享同一旧文件时只删一次。
-// newFileID 为本次新上传（或复用）的文件 id，相同则跳过，避免误删刚就绪的文件。
-func trashOldVersion(ali *aliyundrive.Client, entry FileEntry, hasEntry bool, newFileID string, item *ReportItem, trashedIDs map[string]bool) {
-	if !hasEntry || entry.AliyunFileID == "" || entry.AliyunFileID == newFileID || trashedIDs[entry.AliyunFileID] {
-		return
-	}
-	if terr := ali.Trash(entry.AliyunFileID); terr != nil {
-		item.Message = "新版本已上传，但删除旧版本失败: " + terr.Error()
-		return
-	}
-	trashedIDs[entry.AliyunFileID] = true
-	item.Message = "已上传阿里云盘并替换删除旧版本"
-}
-
-// syncTempBase 下载暂存根目录（相对项目工作目录；uploads 已 gitignore，与数据库同盘）
-const syncTempBase = "uploads/synctmp"
-
-// newSyncTempDir 创建本次同步的下载暂存目录
-func newSyncTempDir() (string, error) {
-	if err := os.MkdirAll(syncTempBase, 0o755); err != nil {
-		return "", err
-	}
-	return os.MkdirTemp(syncTempBase, "sync-*")
-}
-
-// cleanStaleSyncTemp 清理超过 24 小时的遗留暂存目录（同步异常中断时防止堆积占空间）
-func cleanStaleSyncTemp() {
-	entries, err := os.ReadDir(syncTempBase)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		info, ierr := e.Info()
-		if ierr != nil {
-			continue
-		}
-		if time.Since(info.ModTime()) > 24*time.Hour {
-			_ = os.RemoveAll(filepath.Join(syncTempBase, e.Name()))
-		}
-	}
+	return report, newVersions
 }
 
 // ensurePanManagedURL 若该键当前为空或已是 pan://，则写入 pan://<键>；手工外部链接不覆盖
@@ -590,24 +516,6 @@ func findAsset(release *ghrelease.Release, t *Target) (*ghrelease.Asset, error) 
 		}
 	}
 	return release.FindAsset(t.Patterns)
-}
-
-// sanitizeFolderName 清理文件夹名中的非法字符（云盘禁止 / \ : * ? " < > | 等）
-func sanitizeFolderName(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return "软件下载"
-	}
-	return strings.Map(func(r rune) rune {
-		switch r {
-		case '/', '\\', ':', '*', '?', '"', '<', '>', '|':
-			return '_'
-		}
-		if unicode.IsControl(r) {
-			return '_'
-		}
-		return r
-	}, name)
 }
 
 // FindAssetFor 供外部（校验/测试）按目标匹配资产

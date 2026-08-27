@@ -746,13 +746,10 @@ export const softwareConfigAPI = {
   getSoftwareConfig: () => api.get('/software-config/'),
   updateSoftwareConfig: (data) => api.put('/software-config/', data)
 }
-// 阿里云盘自动填充
+// 软件库自动同步（GitHub 版本检测）
 export const cloudAPI = {
   getConfig: () => api.get('/admin/cloud/config'),
   saveConfig: (data) => api.post('/admin/cloud/config', data),
-  aliyunTest: () => api.post('/admin/cloud/aliyun/test'),
-  aliyunSearch: (params) => api.get('/admin/cloud/aliyun/search', { params }),
-  aliyunFolders: (params) => api.get('/admin/cloud/aliyun/folders', { params }),
   sync: () => api.post('/admin/cloud/sync'),
   syncStatus: () => api.get('/admin/cloud/sync/status'),
   versions: () => api.get('/admin/cloud/versions')

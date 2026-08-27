@@ -4,7 +4,7 @@
   <template #header>
     <div class="card-header">
       <h2>配置管理</h2>
-      <p>管理软件下载配置、云盘自动填充和邮件配置</p>
+      <p>管理软件下载配置、软件库自动同步和邮件配置</p>
     </div>
   </template>
   <el-tabs v-model="activeTab" type="border-card">
@@ -158,74 +158,12 @@
             </el-form>
           </div>
           <div class="config-section">
-            <el-divider content-position="left">阿里云盘自动填充（可选）</el-divider>
-            <el-alert
-              type="info"
-              show-icon
-              :closable="false"
-              title="配置阿里云盘 refresh_token 后，定时从 GitHub 获取最新安装包上传到你的阿里云盘，并自动把上方软件下载链接填充为 pan:// 动态直链（用户每次点击下载时实时生成新链接，链接永不失效）。阿里云盘 OAuth 不绑定 IP、无境外风控，海外服务器可用。"
-            />
-            <el-collapse style="margin: 12px 0" :model-value="['tokenGuide']">
-              <el-collapse-item name="tokenGuide">
-                <template #title>
-                  <span style="font-weight: 600; color: var(--el-color-primary)">📖 如何获取 refresh_token？（点击展开分步指引）</span>
-                </template>
-                <div class="token-guide">
-                  <p>① 点击下方按钮，在新窗口打开阿里云盘网页版并登录你的账号：</p>
-                  <p style="margin-left: 16px">
-                    <el-button type="primary" size="small" @click="openAlipanSite">
-                      打开 www.alipan.com 并登录
-                    </el-button>
-                  </p>
-                  <p>② 按 <b>F12</b>（或右键 → 检查）打开开发者工具，切换到 <b>Application（应用）</b> 面板；</p>
-                  <p>③ 左侧找到 <b>Local Storage</b>，展开后点击 <b>https://www.alipan.com</b>；</p>
-                  <p>④ 在右侧键值列表里找到键名 <b>token</b>，双击其 <b>值</b>（一长串 JSON，以 <code>{</code> 开头），复制其中 <code>"refresh_token"</code> 对应的值（<code>eyJ...开头</code> 的一长串）；</p>
-                  <p>⑤ 把复制的内容粘贴到下方「阿里云盘 refresh_token」输入框，点「保存云盘配置」，再点「测试阿里云盘连接」确认可用。</p>
-                  <el-alert
-                    type="warning"
-                    show-icon
-                    :closable="false"
-                    title="重要提示"
-                    description="① 用的是官方网页版 refresh_token（www.alipan.com 网页登录后复制即可），无需注册开发者账号。② refresh_token 是「一次性轮换」的：测试连接 / 同步 / 浏览目录成功后，系统会自动保存新 token，旧 token 立即作废。请勿把旧 token 再次粘贴保存（会覆盖掉好用的新 token）。③ 同一个 token 不要在其他工具（alist、其他服务器等）使用，谁先用谁就把它消耗掉。④ 若提示「refresh_token 无效」，请重新登录 www.alipan.com 复制最新的 token。"
-                  />
-                </div>
-              </el-collapse-item>
-            </el-collapse>
-            <el-form :model="panForm" label-width="150px" style="margin-top: 16px">
-              <el-form-item label="云盘上传目录">
-                <div style="display: flex; width: 100%; gap: 8px">
-                  <el-input v-model="panForm.aliyun_folder" placeholder="如：软件下载（支持 软件/下载 多级路径；留空 = 网盘根目录）" />
-                  <el-button type="primary" plain @click="openFolderPicker" :disabled="!folderPickerReady">从云盘选择</el-button>
-                </div>
-                <div class="pan-tip" style="width: 100%">同步时会在该目录下自动为每个软件创建子文件夹（如 软件下载/v2rayN/），安装包按软件分别存放；也可点击「从云盘选择」直接浏览你的云盘目录，无需手填。</div>
-              </el-form-item>
-              <el-form-item label="阿里云盘 refresh_token">
-                <el-input v-model="panForm.aliyun_refresh_token" type="textarea" :rows="2" placeholder="粘贴 refresh_token（获取方式见上方折叠指引：www.alipan.com → F12 → Application → Local Storage → token → refresh_token）" />
-              </el-form-item>
-              <el-form-item>
-                <el-button type="primary" plain :loading="aliyunTesting" @click="testAliyun">
-                  测试阿里云盘连接
-                </el-button>
-                <span v-if="aliyunTestResult" class="pan-test-result" style="margin-left: 8px">{{ aliyunTestResult }}</span>
-              </el-form-item>
-              <el-form-item class="config-buttons-group">
-                <el-button type="primary" @click="savePanConfig" :loading="panSaving" class="config-action-btn">
-                  保存云盘配置
-                </el-button>
-                <el-button @click="loadPanConfig" class="config-action-btn">
-                  重新加载
-                </el-button>
-              </el-form-item>
-            </el-form>
-          </div>
-
-          <div class="config-section">
             <el-divider content-position="left">GitHub 软件库自动同步（定时）</el-divider>
             <el-alert
               type="info"
               show-icon
               :closable="false"
-              title="自动从 GitHub 获取 v2rayN / Hiddify / Clash Verge / Clash Part / V2rayNG / Clash Meta / FlClash 的最新版本，下载安装包上传到你的阿里云盘，并自动设置为动态直链（pan://）。仅当 GitHub 有新版本时才会下载上传，其余时间跳过。"
+              title="自动检测 v2rayN / Hiddify / Clash Verge / Clash Part / V2rayNG / Clash Meta / FlClash 在 GitHub 的最新版本；用户点击下载时，后端实时获取最新安装包并通过国内加速镜像（ghfast.top 等）302 直链给用户，国内下载快、无需网盘、无需审核。"
             />
             <el-form label-width="150px" style="margin-top: 16px">
               <el-row :gutter="20">
@@ -250,11 +188,14 @@
                 <el-button @click="loadPanSyncStatus" class="config-action-btn">
                   刷新状态
                 </el-button>
-                <span v-if="syncStatusText" class="pan-test-result">{{ syncStatusText }}</span>
+                <el-button v-if="syncReport.list.length" @click="showSyncReport" class="config-action-btn">
+                  查看上次同步报告
+                </el-button>
+                <span v-if="syncStatusText" class="pan-test-result" style="margin-left: 8px; color: var(--el-color-primary); word-break: break-all">{{ syncStatusText }}</span>
               </el-form-item>
             </el-form>
 
-            <h4 class="pan-mapping-title">版本对照（GitHub 最新版 ↔ 云盘已同步版本）</h4>
+            <h4 class="pan-mapping-title">版本对照（GitHub 最新版 ↔ 已检出版本）</h4>
             <el-table :data="panVersions" size="small" border max-height="420">
               <el-table-column prop="name" label="软件" width="130" />
               <el-table-column prop="label" label="平台/架构" width="160" />
@@ -264,7 +205,7 @@
                   <el-tag v-else type="danger" size="small">获取失败</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="云盘版本" width="110" align="center">
+              <el-table-column label="已检出版本" width="110" align="center">
                 <template #default="{ row }">
                   <span v-if="row.cloud_version">v{{ row.cloud_version }}</span>
                   <span v-else class="pan-soft-key">未上传</span>
@@ -278,7 +219,7 @@
                   <el-tag v-else type="info" size="small">待上传</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="file_name" label="云盘文件" min-width="200" show-overflow-tooltip />
+              <el-table-column prop="file_name" label="安装包文件" min-width="200" show-overflow-tooltip />
             </el-table>
           </div>
         </el-tab-pane>
@@ -368,41 +309,30 @@
         </el-tab-pane>
       </el-tabs>
 
-      <el-dialog v-model="folderDialog.visible" title="选择云盘上传目录" width="560px" :close-on-click-modal="false">
+      <el-dialog v-model="syncReport.visible" title="上次同步报告" width="820px">
         <el-alert
+          v-if="syncReport.lastRun"
           type="info"
           show-icon
           :closable="false"
-          title="浏览并选择目录；选中的目录作为同步上传根目录（自动创建 软件下载/子文件夹 结构），留空 = 网盘根目录"
+          :title="`运行时间：${syncReport.lastRun.replace('T', ' ').slice(0, 19)}${syncReport.folder}`"
           style="margin-bottom: 12px"
         />
-        <div class="folder-crumb">
-          <el-button size="small" text type="primary" :disabled="folderDialog.breadcrumb.length === 0" @click="folderGoUp">← 返回上级</el-button>
-          <el-tag
-            v-for="(f, i) in folderDialog.breadcrumb"
-            :key="f.id"
-            size="small"
-            class="folder-crumb-tag"
-            @click="folderGoTo(i)"
-          >{{ f.name }}</el-tag>
-          <span v-if="folderDialog.breadcrumb.length === 0" class="pan-soft-key">当前：网盘根目录</span>
-        </div>
-        <el-table :data="folderDialog.folders" size="small" max-height="320" border v-loading="folderDialog.loading">
-          <el-table-column label="文件夹" min-width="240">
+        <el-table :data="syncReport.list" size="small" max-height="420" border>
+          <el-table-column prop="name" label="软件" width="110" />
+          <el-table-column prop="label" label="平台/架构" width="150" />
+          <el-table-column label="状态" width="90" align="center">
             <template #default="{ row }">
-              <el-button size="small" text type="primary" @click="folderEnter(row)">
-                📁 {{ row.name }}
-              </el-button>
+              <el-tag v-if="row.status === 'ok'" type="success" size="small">成功</el-tag>
+              <el-tag v-else-if="row.status === 'skip'" type="info" size="small">跳过</el-tag>
+              <el-tag v-else type="danger" size="small">失败</el-tag>
             </template>
           </el-table-column>
+          <el-table-column prop="file_name" label="安装包文件" min-width="170" show-overflow-tooltip />
+          <el-table-column prop="message" label="说明" min-width="180" show-overflow-tooltip />
         </el-table>
-        <div v-if="!folderDialog.loading && folderDialog.folders.length === 0" class="pan-tip" style="text-align: center; padding: 12px 0">
-          当前目录没有子文件夹
-        </div>
         <template #footer>
-          <el-button @click="folderChooseRoot">使用根目录（留空）</el-button>
-          <el-button @click="folderDialog.visible = false">取消</el-button>
-          <el-button type="primary" :disabled="folderDialog.breadcrumb.length === 0" @click="folderChoose">选择当前目录</el-button>
+          <el-button @click="syncReport.visible = false">关闭</el-button>
         </template>
       </el-dialog>
     </el-card>
@@ -455,8 +385,6 @@ export default {
       block_browser_subscription_access: false
     })
     const panForm = reactive({
-      aliyun_refresh_token: '',
-      aliyun_folder: '',
       sync_enabled: true,
       sync_interval_hours: 12
     })
@@ -577,11 +505,8 @@ export default {
         const response = await cloudAPI.getConfig()
         if (response.data && response.data.success) {
           const data = response.data.data || {}
-          panForm.aliyun_refresh_token = data.aliyun_refresh_token || ''
-          panForm.aliyun_folder = data.aliyun_folder || ''
           panForm.sync_enabled = data.sync_enabled !== false
           panForm.sync_interval_hours = data.sync_interval_hours || 12
-          folderPickerReady.value = data.configured === true
         }
       } catch (error) {
         // 未配置时静默
@@ -591,110 +516,29 @@ export default {
       panSaving.value = true
       try {
         const response = await cloudAPI.saveConfig({
-          aliyun_refresh_token: panForm.aliyun_refresh_token,
-          aliyun_folder: panForm.aliyun_folder,
           sync_enabled: panForm.sync_enabled,
           sync_interval_hours: panForm.sync_interval_hours
         })
         if (response.data && response.data.success) {
-          ElMessage.success('云盘配置已保存')
+          ElMessage.success('同步配置已保存')
           await loadPanConfig()
+          return true
         } else {
           ElMessage.error(response.data?.message || '保存失败，请检查网络或配置')
+          return false
         }
       } catch (error) {
         ElMessage.error(error.response?.data?.message || '保存失败')
+        return false
       } finally {
         panSaving.value = false
       }
     }
-    // ---- 阿里云盘连接测试 ----
-    const aliyunTesting = ref(false)
-    const aliyunTestResult = ref('')
-    const testAliyun = async () => {
-      aliyunTesting.value = true
-      aliyunTestResult.value = ''
-      try {
-        const saved = await savePanConfig()
-        if (!saved) {
-          aliyunTestResult.value = '保存配置失败'
-          return
-        }
-        const response = await cloudAPI.aliyunTest()
-        if (response.data?.success) {
-          const d = response.data.data || {}
-          aliyunTestResult.value = `连接成功（${d.folder || '根目录'} ${d.root_files} 个文件）${d.refresh_token_rotated ? '，token 已自动轮换' : ''}`
-          folderPickerReady.value = true
-        } else {
-          aliyunTestResult.value = response.data?.message || '连接失败'
-        }
-      } catch (error) {
-        aliyunTestResult.value = error.response?.data?.message || '连接失败'
-      } finally {
-        aliyunTesting.value = false
-      }
-    }
-    // 打开阿里云盘网页版（获取 refresh_token 指引第一步）
-    const openAlipanSite = () => {
-      window.open('https://www.alipan.com', '_blank', 'noopener')
-      ElMessage.info('请在新窗口登录后按指引操作：F12 → Application → Local Storage → https://www.alipan.com → token → refresh_token')
-    }
-    // ---- 云盘目录选择器（从云盘拉取目录树，免手填）----
-    const folderPickerReady = ref(false)
-    const folderDialog = reactive({
-      visible: false,
-      loading: false,
-      breadcrumb: [], // [{ id, name }] 已进入的层级（不含根）
-      folders: []
-    })
-    const openFolderPicker = async () => {
-      if (!folderPickerReady.value) {
-        ElMessage.warning('请先配置 refresh_token 并点击「测试阿里云盘连接」成功后再选择目录')
-        return
-      }
-      folderDialog.breadcrumb = []
-      folderDialog.visible = true
-      await folderLoad('root')
-    }
-    const folderLoad = async (parentId) => {
-      folderDialog.loading = true
-      try {
-        const response = await cloudAPI.aliyunFolders({ parent: parentId || 'root' })
-        folderDialog.folders = (response.data?.data?.list) || []
-      } catch (error) {
-        folderDialog.folders = []
-        ElMessage.error(error.response?.data?.message || '读取云盘目录失败')
-      } finally {
-        folderDialog.loading = false
-      }
-    }
-    const folderEnter = async (folder) => {
-      folderDialog.breadcrumb.push({ id: folder.file_id, name: folder.name })
-      await folderLoad(folder.file_id)
-    }
-    const folderGoUp = async () => {
-      folderDialog.breadcrumb.pop()
-      const parent = folderDialog.breadcrumb.length ? folderDialog.breadcrumb[folderDialog.breadcrumb.length - 1].id : 'root'
-      await folderLoad(parent)
-    }
-    const folderGoTo = async (index) => {
-      folderDialog.breadcrumb = folderDialog.breadcrumb.slice(0, index + 1)
-      const parent = folderDialog.breadcrumb[index].id
-      await folderLoad(parent)
-    }
-    const folderChoose = () => {
-      panForm.aliyun_folder = folderDialog.breadcrumb.map(f => f.name).join('/')
-      folderDialog.visible = false
-      ElMessage.success(`已选择目录：${panForm.aliyun_folder || '网盘根目录'}`)
-    }
-    const folderChooseRoot = () => {
-      panForm.aliyun_folder = ''
-      folderDialog.visible = false
-      ElMessage.success('已使用网盘根目录')
-    }
     const panSyncing = ref(false)
     const panVersions = ref([])
     const syncStatusText = ref('')
+    const syncReport = reactive({ visible: false, list: [], folder: '', lastRun: '' })
+    const showSyncReport = () => { syncReport.visible = true }
     let syncPollTimer = null
     const loadPanSyncStatus = async () => {
       try {
@@ -707,15 +551,30 @@ export default {
           panVersions.value = versionsRes.data.data?.list || []
         }
         if (status.running) {
-          syncStatusText.value = '同步进行中，请稍候…'
+          // 实时进度展示
+          const p = status.progress || {}
+          const done = p.done ?? 0
+          const total = p.total ?? 0
+          const folder = p.folder ? `（上传目录：${p.folder}）` : ''
+          if (p.item && p.stage) {
+            syncStatusText.value = `正在同步 ${done}/${total}：${p.item} · ${p.stage}${p.current_file ? ' · ' + p.current_file : ''}${folder}`
+          } else {
+            syncStatusText.value = `正在同步 ${done}/${total}${folder}，请稍候…`
+          }
           clearTimeout(syncPollTimer)
-          syncPollTimer = setTimeout(loadPanSyncStatus, 5000)
+          syncPollTimer = setTimeout(loadPanSyncStatus, 3000)
           return
         }
         clearTimeout(syncPollTimer)
+        const folder = status.progress?.folder ? `，上传目录：${status.progress.folder}` : ''
         if (status.last_run) {
           const total = status.total_uploaded || 0
-          syncStatusText.value = `上次运行：${status.last_run.replace('T', ' ').slice(0, 19)}，本次上传 ${total} 个文件`
+          const ok = (status.last_report || []).filter(r => r.status === 'ok').length
+          const err = (status.last_report || []).filter(r => r.status === 'error').length
+          syncStatusText.value = `上次检测：${status.last_run.replace('T', ' ').slice(0, 19)}，成功 ${ok} / 失败 ${err} / 跳过 ${((status.last_report || []).length - ok - err)}，发现新版本 ${total} 个${folder}`
+          syncReport.list = status.last_report || []
+          syncReport.folder = folder
+          syncReport.lastRun = status.last_run || ''
         } else {
           syncStatusText.value = '尚未运行过同步'
         }
@@ -729,15 +588,15 @@ export default {
       try {
         const saved = await savePanConfig()
         if (!saved) {
-          ElMessage.error('保存云盘配置失败，无法执行同步')
+          ElMessage.error('保存同步配置失败，无法执行检测')
           return
         }
         const response = await cloudAPI.sync()
         if (response.data?.success) {
-          ElMessage.success('同步已开始（首次可能需下载上传多个安装包，耗时较长）')
-          syncStatusText.value = '同步进行中，请稍候…'
+          ElMessage.success('同步已开始（首次可能需下载上传多个安装包，耗时较长，页面会显示实时进度）')
+          syncStatusText.value = '同步已开始，正在获取进度…'
           clearTimeout(syncPollTimer)
-          syncPollTimer = setTimeout(loadPanSyncStatus, 5000)
+          syncPollTimer = setTimeout(loadPanSyncStatus, 2000)
         } else {
           ElMessage.error(response.data?.message || '触发同步失败')
         }
@@ -772,21 +631,11 @@ export default {
       panSaving,
       loadPanConfig,
       savePanConfig,
-      aliyunTesting,
-      aliyunTestResult,
-      testAliyun,
-      openAlipanSite,
-      folderPickerReady,
-      folderDialog,
-      openFolderPicker,
-      folderEnter,
-      folderGoUp,
-      folderGoTo,
-      folderChoose,
-      folderChooseRoot,
       panSyncing,
       panVersions,
       syncStatusText,
+      syncReport,
+      showSyncReport,
       loadPanSyncStatus,
       runPanSync
     }
