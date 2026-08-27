@@ -343,6 +343,13 @@ func run(only []string) ([]ReportItem, int) {
 		return append(report, ReportItem{Status: "error", Message: "未配置阿里云盘 refresh_token，无法同步"}), 0
 	}
 	ali := aliyundrive.New(cfg.AliyunRefreshToken)
+	// token 到期会自动轮换（新 refresh_token 在客户端内存中），
+	// 无论同步结果如何都回存到 DB，避免只有定时同步在跑时轮换丢失导致 90 天后同步断掉。
+	defer func() {
+		if ali.RefreshToken != "" && ali.RefreshToken != cfg.AliyunRefreshToken {
+			_ = saveCfgValue("aliyun_refresh_token", ali.RefreshToken)
+		}
+	}()
 
 	// 解析上传目录（可配置，支持多级路径；空 = 根目录）
 	folderID := "root"
@@ -390,6 +397,10 @@ func run(only []string) ([]ReportItem, int) {
 			swFolderID = subID
 		}
 
+		// 同一软件内同名资产（如 Hiddify 官方 macOS 通用包 Intel/Apple 同一文件）只上传一次，第二个目标复用
+		uploadedByName := map[string]string{} // asset.Name → 本次已就绪的 file_id
+		trashedIDs := map[string]bool{}       // 本次已删除的旧文件 id（多个目标共享同一旧 id 时避免重复删除）
+
 		for _, t := range sw.Targets {
 			if len(onlySet) > 0 && !onlySet[t.ConfigKey] {
 				continue
@@ -415,14 +426,45 @@ func run(only []string) ([]ReportItem, int) {
 			// 版本与匹配到的安装包名都一致才跳过（同版本更换构建/命名时仍会更新）
 			entry, hasEntry := fileIDMap[t.ConfigKey]
 			if hasEntry && entry.AliyunFileID != "" && entry.Version == version && entry.FileName == asset.Name {
-				item.Status = "skip"
-				item.FileName = entry.FileName
-				item.Message = "已是最新版本"
+				// 校验云盘文件仍存在（用户可能手动删除）：文件不存在时不跳过，走重新上传
+				_, gerr := ali.GetFile(entry.AliyunFileID)
+				if gerr == nil || !aliyundrive.IsFileNotFound(gerr) {
+					item.Status = "skip"
+					item.FileName = entry.FileName
+					if gerr != nil {
+						item.Message = "已是最新版本（云盘文件校验暂时不可用）"
+					} else {
+						item.Message = "已是最新版本"
+					}
+					report = append(report, item)
+					continue
+				}
+				// 云盘文件已被删除 → 继续执行重新上传
+			}
+
+			localPath := filepath.Join(tmpDir, asset.Name)
+
+			// 同一软件内同名资产复用本次已上传的文件（避免重复上传/重复占空间）
+			if reuseID, ok := uploadedByName[asset.Name]; ok {
+				fileIDMap[t.ConfigKey] = FileEntry{
+					AliyunFileID: reuseID,
+					FileName:     asset.Name,
+					Size:         asset.Size,
+					Version:      version,
+					UpdatedAt:    time.Now().Format(time.RFC3339),
+				}
+				if err := ensurePanManagedURL(t.ConfigKey); err != nil {
+					item.Message = "复用上传成功，但更新下载链接失败: " + err.Error()
+				} else {
+					item.Message = "复用已上传的同一安装包"
+				}
+				trashOldVersion(ali, entry, hasEntry, reuseID, &item, trashedIDs)
+				item.Status = "ok"
+				item.FileName = asset.Name
 				report = append(report, item)
 				continue
 			}
 
-			localPath := filepath.Join(tmpDir, asset.Name)
 			if derr := ghrelease.Download(asset, localPath, prefixes, ghToken); derr != nil {
 				item.Status = "error"
 				item.Message = "下载失败: " + derr.Error()
@@ -437,6 +479,7 @@ func run(only []string) ([]ReportItem, int) {
 				report = append(report, item)
 				continue
 			}
+			uploadedByName[asset.Name] = aliFileID
 
 			newEntry := FileEntry{
 				AliyunFileID: aliFileID,
@@ -455,13 +498,7 @@ func run(only []string) ([]ReportItem, int) {
 				item.Message = "已上传阿里云盘并设置直链"
 			}
 			// 有新版本时删除云盘中的旧版本文件
-			if hasEntry && entry.AliyunFileID != "" && entry.AliyunFileID != aliFileID {
-				if terr := ali.Trash(entry.AliyunFileID); terr != nil {
-					item.Message = "新版本已上传，但删除旧版本失败: " + terr.Error()
-				} else {
-					item.Message = "已上传阿里云盘并替换删除旧版本"
-				}
-			}
+			trashOldVersion(ali, entry, hasEntry, aliFileID, &item, trashedIDs)
 			item.Status = "ok"
 			item.FileName = asset.Name
 			report = append(report, item)
@@ -482,6 +519,20 @@ func run(only []string) ([]ReportItem, int) {
 		return report[i].Label < report[j].Label
 	})
 	return report, uploaded
+}
+
+// trashOldVersion 删除该配置键对应的旧版云盘文件；多个目标共享同一旧文件时只删一次。
+// newFileID 为本次新上传（或复用）的文件 id，相同则跳过，避免误删刚就绪的文件。
+func trashOldVersion(ali *aliyundrive.Client, entry FileEntry, hasEntry bool, newFileID string, item *ReportItem, trashedIDs map[string]bool) {
+	if !hasEntry || entry.AliyunFileID == "" || entry.AliyunFileID == newFileID || trashedIDs[entry.AliyunFileID] {
+		return
+	}
+	if terr := ali.Trash(entry.AliyunFileID); terr != nil {
+		item.Message = "新版本已上传，但删除旧版本失败: " + terr.Error()
+		return
+	}
+	trashedIDs[entry.AliyunFileID] = true
+	item.Message = "已上传阿里云盘并替换删除旧版本"
 }
 
 // ensurePanManagedURL 若该键当前为空或已是 pan://，则写入 pan://<键>；手工外部链接不覆盖
