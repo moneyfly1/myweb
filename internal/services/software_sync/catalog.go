@@ -106,6 +106,18 @@ var Catalog = []Software{
 	},
 }
 
+// FindSoftwareByConfigKey 按配置键找所属软件（含 Repo）
+func FindSoftwareByConfigKey(configKey string) *Software {
+	for i := range Catalog {
+		for j := range Catalog[i].Targets {
+			if Catalog[i].Targets[j].ConfigKey == configKey {
+				return &Catalog[i]
+			}
+		}
+	}
+	return nil
+}
+
 // FindTarget 按配置键找目标
 func FindTarget(configKey string) *Target {
 	for i := range Catalog {

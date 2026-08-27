@@ -1,11 +1,9 @@
+// 软件库自动同步（GitHub 版本检测）管理接口。
+// 分发方式为「GitHub Releases + 国内加速镜像直链」（/download/gh），
+// 本模块仅负责：定时版本检测、版本对照展示、手动触发检测。
 package handlers
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
-	"mime"
 	"net/http"
 	"sort"
 	"strconv"
@@ -15,7 +13,6 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
-	"cboard-go/internal/services/aliyundrive"
 	"cboard-go/internal/services/ghrelease"
 	"cboard-go/internal/services/software_sync"
 	"cboard-go/internal/utils"
@@ -23,48 +20,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const (
-	cloudCategory = "pan123" // 沿用旧库分类名（兼容历史数据），仅阿里云盘后端使用
-	cloudLinkTTL  = 10 * time.Minute
-)
-
-func init() {
-	// 同步完成后清理直链缓存，避免旧链接在缓存期内继续生效
-	software_sync.SetOnSyncComplete(clearCloudLinkCache)
-}
-
-// 公共解析接口全局限流：防止滥用（每次请求会消耗云盘接口额度）
-var resolveGate = struct {
-	mu   sync.Mutex
-	last time.Time
-}{}
-
-func maskIfNonEmpty(v string) string {
-	if strings.TrimSpace(v) == "" {
-		return ""
-	}
-	return maskedSecretValue
-}
-
-func resolveThrottled() bool {
-	resolveGate.mu.Lock()
-	defer resolveGate.mu.Unlock()
-	if time.Since(resolveGate.last) < 200*time.Millisecond {
-		return false
-	}
-	resolveGate.last = time.Now()
-	return true
-}
-
-// ---------------------------------------------------------------------------
-// 配置读写
-// ---------------------------------------------------------------------------
+// cloudCategory 同步配置存储分类（沿用旧库分类名，兼容历史数据）
+const cloudCategory = "pan123"
 
 type cloudConfig struct {
-	AliyunRefreshToken string
-	SyncEnabled        bool
-	SyncIntervalHours  int
-	Folder             string // 云盘上传目录（/ 分隔多级；空 = 根目录）
+	SyncEnabled       bool
+	SyncIntervalHours int
 }
 
 func loadCloudConfig() (cloudConfig, error) {
@@ -78,16 +39,12 @@ func loadCloudConfig() (cloudConfig, error) {
 	}
 	for _, c := range configs {
 		switch c.Key {
-		case "aliyun_refresh_token":
-			cfg.AliyunRefreshToken = strings.TrimSpace(c.Value)
 		case "sync_enabled":
 			cfg.SyncEnabled = c.Value == "" || c.Value == "true" || c.Value == "1"
 		case "sync_interval_hours":
 			if v, err2 := strconv.Atoi(c.Value); err2 == nil && v >= 1 {
 				cfg.SyncIntervalHours = v
 			}
-		case "aliyun_folder":
-			cfg.Folder = strings.TrimSpace(c.Value)
 		}
 	}
 	return cfg, nil
@@ -106,54 +63,29 @@ func saveCloudConfigValue(key, value string) error {
 	return db.Save(&conf).Error
 }
 
-// GetCloudConfig 获取云盘配置（refresh_token 脱敏）
+// GetCloudConfig 读取同步配置
 func GetCloudConfig(c *gin.Context) {
 	cfg, err := loadCloudConfig()
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "读取配置失败", err)
 		return
 	}
-	fileIDMap, _ := software_sync.LoadFileIDMap()
-	syncedFiles := map[string]string{}
-	for key, entry := range fileIDMap {
-		if entry.AliyunFileID != "" {
-			syncedFiles[key] = entry.FileName
-		}
-	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"aliyun_refresh_token": maskIfNonEmpty(cfg.AliyunRefreshToken),
-		"aliyun_folder":        cfg.Folder,
-		"sync_enabled":         cfg.SyncEnabled,
-		"sync_interval_hours":  cfg.SyncIntervalHours,
-		"synced_files":         syncedFiles,
-		"configured":           cfg.AliyunRefreshToken != "",
+		"sync_enabled":        cfg.SyncEnabled,
+		"sync_interval_hours": cfg.SyncIntervalHours,
 	})
 }
 
-// SaveCloudConfig 保存云盘配置
+// SaveCloudConfig 保存同步配置
 func SaveCloudConfig(c *gin.Context) {
 	var req struct {
-		AliyunRefreshToken string `json:"aliyun_refresh_token"`
-		AliyunFolder       string `json:"aliyun_folder"`
-		SyncEnabled        *bool  `json:"sync_enabled"`
-		SyncIntervalHours  *int   `json:"sync_interval_hours"`
+		SyncEnabled       *bool `json:"sync_enabled"`
+		SyncIntervalHours *int  `json:"sync_interval_hours"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
 		return
 	}
-	cfg, _ := loadCloudConfig()
-
-	rt := strings.TrimSpace(req.AliyunRefreshToken)
-	if rt == maskedSecretValue {
-		rt = cfg.AliyunRefreshToken
-	}
-	if err := saveCloudConfigValue("aliyun_refresh_token", rt); err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "保存失败", err)
-		return
-	}
-	folder := sanitizeFolderPath(req.AliyunFolder)
-	_ = saveCloudConfigValue("aliyun_folder", folder)
 	if req.SyncEnabled != nil {
 		_ = saveCloudConfigValue("sync_enabled", strconv.FormatBool(*req.SyncEnabled))
 	}
@@ -161,375 +93,23 @@ func SaveCloudConfig(c *gin.Context) {
 		_ = saveCloudConfigValue("sync_interval_hours", strconv.Itoa(*req.SyncIntervalHours))
 	}
 	utils.InvalidateAllSettingCache()
-	utils.CreateAuditLogSimple(c, "cloud_config_save", "settings", 0, "管理员操作: 保存阿里云盘自动填充配置")
+	utils.CreateAuditLogSimple(c, "cloud_config_save", "settings", 0, "管理员操作: 保存软件库自动同步配置")
 	utils.SuccessResponse(c, http.StatusOK, "保存成功", nil)
 }
 
-func newAliyunClientFromConfig(cfg cloudConfig) (*aliyundrive.Client, error) {
-	if cfg.AliyunRefreshToken == "" {
-		return nil, fmt.Errorf("未配置阿里云盘 refresh_token")
+// CloudSync 触发一次版本检测（异步执行，前端轮询状态）
+func CloudSync(c *gin.Context) {
+	if !software_sync.TriggerAsync() {
+		utils.SuccessResponse(c, http.StatusOK, "检测任务正在进行中", gin.H{"started": false, "running": true})
+		return
 	}
-	return aliyundrive.New(cfg.AliyunRefreshToken), nil
+	utils.CreateAuditLogSimple(c, "cloud_sync", "settings", 0, "管理员操作: 手动触发 GitHub 软件库版本检测")
+	utils.SuccessResponse(c, http.StatusOK, "检测已开始，请稍候查看结果", gin.H{"started": true, "running": true})
 }
 
-// newAliyunClientPersist 创建客户端并挂上"刷新成功即回存"钩子。
-// 阿里云盘 refresh_token 一次性轮换：每次刷新旧 token 立即作废，
-// 若不及时写库，下一次任何接口调用都会因旧 token 失效而失败。
-func newAliyunClientPersist(cfg cloudConfig) (*aliyundrive.Client, error) {
-	ali, err := newAliyunClientFromConfig(cfg)
-	if err != nil {
-		return nil, err
-	}
-	ali.OnRotate = func(newRT string) {
-		if newRT != "" && newRT != cfg.AliyunRefreshToken {
-			if serr := saveCloudConfigValue("aliyun_refresh_token", newRT); serr == nil {
-				cfg.AliyunRefreshToken = newRT
-			}
-		}
-	}
-	return ali, nil
-}
-
-// friendlyAliyunErr 把阿里云盘原始错误映射为可操作的中文提示
-func friendlyAliyunErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	msg := err.Error()
-	switch {
-	case strings.Contains(msg, "InvalidParameter.RefreshToken") || strings.Contains(msg, "RefreshTokenInvalid"):
-		return fmt.Errorf("refresh_token 无效或已被轮换/在其他工具中使用过（阿里云盘 token 为一次性轮换）。请重新登录 www.alipan.com 复制最新 refresh_token 并保存，且不要在其他工具（alist 等）重复使用同一 token")
-	case strings.Contains(msg, "AccessTokenInvalid") || strings.Contains(msg, "AccessTokenExpired"):
-		return fmt.Errorf("访问令牌失效（已自动刷新重试），若仍失败请重新复制 refresh_token")
-	default:
-		return err
-	}
-}
-
-// sanitizeFolderPath 净化上传目录路径：去掉首尾 /，逐段替换云盘非法字符（/ \ : * ? " < > |）
-func sanitizeFolderPath(path string) string {
-	segments := strings.Split(strings.TrimSpace(path), "/")
-	clean := make([]string, 0, len(segments))
-	for _, seg := range segments {
-		seg = strings.TrimSpace(seg)
-		if seg == "" {
-			continue
-		}
-		seg = strings.Map(func(r rune) rune {
-			switch r {
-			case '/', '\\', ':', '*', '?', '"', '<', '>', '|':
-				return '_'
-			}
-			if r < 0x20 {
-				return '_'
-			}
-			return r
-		}, seg)
-		clean = append(clean, seg)
-	}
-	return strings.Join(clean, "/")
-}
-
-// ---------------------------------------------------------------------------
-// 阿里云盘连接测试 / 搜索
-// ---------------------------------------------------------------------------
-
-// CloudAliyunTest 测试阿里云盘 refresh_token（刷新 + 列根目录；自动轮换保存新 token）
-func CloudAliyunTest(c *gin.Context) {
-	cfg, err := loadCloudConfig()
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "读取配置失败", err)
-		return
-	}
-	ali, cerr := newAliyunClientPersist(cfg)
-	if cerr != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, cerr.Error(), nil)
-		return
-	}
-	newRT, rerr := ali.Refresh()
-	if rerr != nil {
-		utils.ErrorResponse(c, http.StatusBadGateway, "刷新 token 失败: "+friendlyAliyunErr(rerr).Error(), nil)
-		return
-	}
-	// 解析上传目录（不存在会自动创建），未配置则列根目录
-	folderID := "root"
-	folderName := "根目录"
-	if cfg.Folder != "" {
-		fid, derr := ali.EnsureDir(cfg.Folder)
-		if derr != nil {
-			utils.ErrorResponse(c, http.StatusBadGateway, "连接成功但解析上传目录失败: "+derr.Error(), nil)
-			return
-		}
-		folderID = fid
-		folderName = cfg.Folder
-	}
-	files, lerr := ali.List(folderID, 5)
-	if lerr != nil {
-		utils.ErrorResponse(c, http.StatusBadGateway, "连接成功但列目录失败: "+lerr.Error(), nil)
-		return
-	}
-	firstName := ""
-	if len(files) > 0 {
-		firstName = files[0].Name
-	}
-	utils.SuccessResponse(c, http.StatusOK, "阿里云盘连接成功", gin.H{
-		"refresh_token_rotated": newRT != "",
-		"folder":                folderName,
-		"root_files":            len(files),
-		"first":                 firstName,
-	})
-}
-
-// CloudAliyunFolders 列出云盘文件夹（供前端目录选择器使用）
-// parent 为空时列根目录；仅返回文件夹，不含文件。
-func CloudAliyunFolders(c *gin.Context) {
-	cfg, err := loadCloudConfig()
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "读取配置失败", err)
-		return
-	}
-	if cfg.AliyunRefreshToken == "" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "请先配置并测试阿里云盘连接", nil)
-		return
-	}
-	ali, cerr := newAliyunClientPersist(cfg)
-	if cerr != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, cerr.Error(), nil)
-		return
-	}
-	parent := strings.TrimSpace(c.Query("parent"))
-	if parent == "" {
-		parent = "root"
-	}
-	files, lerr := ali.List(parent, 200)
-	if lerr != nil {
-		utils.ErrorResponse(c, http.StatusBadGateway, "列目录失败: "+friendlyAliyunErr(lerr).Error(), nil)
-		return
-	}
-	folders := make([]gin.H, 0, len(files))
-	for _, f := range files {
-		if f.Type == "folder" {
-			folders = append(folders, gin.H{"file_id": f.FileID, "name": f.Name})
-		}
-	}
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"list": folders, "parent": parent})
-}
-
-// CloudAliyunSearch 搜索阿里云盘文件
-func CloudAliyunSearch(c *gin.Context) {
-	keyword := strings.TrimSpace(c.Query("keyword"))
-	if keyword == "" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "缺少 keyword 参数", nil)
-		return
-	}
-	cfg, err := loadCloudConfig()
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "读取配置失败", err)
-		return
-	}
-	ali, cerr := newAliyunClientPersist(cfg)
-	if cerr != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, cerr.Error(), nil)
-		return
-	}
-	files, serr := ali.Search(keyword, 20)
-	if serr != nil {
-		utils.ErrorResponse(c, http.StatusBadGateway, "搜索失败: "+friendlyAliyunErr(serr).Error(), nil)
-		return
-	}
-	list := make([]gin.H, 0, len(files))
-	for _, f := range files {
-		list = append(list, gin.H{
-			"file_id":   f.FileID,
-			"file_name": f.Name,
-			"size":      f.Size,
-			"size_text": f.DisplaySize(),
-			"type":      f.Type,
-			"update_at": f.UpdatedAt,
-		})
-	}
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"list": list, "total": len(list)})
-}
-
-// ---------------------------------------------------------------------------
-// 动态解析：pan://<配置键> → 阿里云盘直链
-// ---------------------------------------------------------------------------
-
-type cloudLinkCacheEntry struct {
-	URL    string
-	Expire time.Time
-}
-
-var cloudLinkCache sync.Map // key → entry
-
-func getCachedCloudLink(key string) (string, bool) {
-	if v, ok := cloudLinkCache.Load(key); ok {
-		e := v.(cloudLinkCacheEntry)
-		if time.Now().Before(e.Expire) {
-			return e.URL, true
-		}
-		cloudLinkCache.Delete(key)
-	}
-	return "", false
-}
-
-func setCachedCloudLink(key, rawURL string) {
-	cloudLinkCache.Store(key, cloudLinkCacheEntry{URL: rawURL, Expire: time.Now().Add(cloudLinkTTL)})
-}
-
-func clearCloudLinkCache() {
-	cloudLinkCache.Range(func(k, _ interface{}) bool {
-		cloudLinkCache.Delete(k)
-		return true
-	})
-}
-
-// CloudResolve 根据软件配置 key 实时生成阿里云盘直链并通过服务器代理转发下载。
-// 阿里云盘内部 API 的直链要求 Referer 头，浏览器 302 无法携带，
-// 因此由服务器带上 Referer 拉取后流式转发（支持 Range 断点续传）。
-// 支持 ?key=<softwareConfigKey> 或 ?q=<关键词>
-func CloudResolve(c *gin.Context) {
-	if !resolveThrottled() {
-		utils.ErrorResponse(c, http.StatusTooManyRequests, "请求过于频繁，请稍后再试", nil)
-		return
-	}
-	cfg, err := loadCloudConfig()
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "读取配置失败", err)
-		return
-	}
-	if cfg.AliyunRefreshToken == "" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "管理员尚未配置阿里云盘", nil)
-		return
-	}
-	ali, cerr := newAliyunClientPersist(cfg)
-	if cerr != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, cerr.Error(), nil)
-		return
-	}
-
-	rawKey := strings.TrimSpace(c.Query("key"))
-	if rawKey != "" {
-		entry, ok := cloudFileIDMapOf(rawKey)
-		if ok && entry.AliyunFileID != "" {
-			fileName := entry.FileName
-			if fileName == "" {
-				fileName = rawKey
-			}
-			cacheKey := "ali:" + entry.AliyunFileID
-			if cached, ok := getCachedCloudLink(cacheKey); ok && validateDownloadURL(cached) == nil {
-				proxyCloudDownload(c, cached, fileName)
-				return
-			}
-			cloudLinkCache.Delete(cacheKey)
-			link, lerr := ali.DownloadURL(entry.AliyunFileID)
-			if lerr == nil && validateDownloadURL(link) == nil {
-				setCachedCloudLink(cacheKey, link)
-				proxyCloudDownload(c, link, fileName)
-				return
-			}
-			// 直链生成失败：区分"文件被删除"与"临时失败"，给出可操作提示
-			if _, gerr := ali.GetFile(entry.AliyunFileID); gerr != nil && aliyundrive.IsFileNotFound(gerr) {
-				utils.ErrorResponse(c, http.StatusNotFound, "云盘文件已被删除，请稍后重试（后台定时同步会自动重新上传）", nil)
-				return
-			}
-			utils.ErrorResponse(c, http.StatusBadGateway, "生成下载链接失败，请稍后重试", nil)
-			return
-		}
-		// key 不在映射或尚无阿里云盘文件 id：给出可操作的提示
-		utils.ErrorResponse(c, http.StatusNotFound, "该软件尚未同步到阿里云盘，请在后台「配置管理 → 软件下载配置」点击「立即同步」", nil)
-		return
-	}
-	keyword := strings.TrimSpace(c.Query("q"))
-	if keyword == "" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "缺少 key 或 q 参数", nil)
-		return
-	}
-
-	// 按关键词搜索云盘（兜底）
-	files, serr := ali.Search(keyword, 10)
-	if serr != nil {
-		utils.ErrorResponse(c, http.StatusBadGateway, "云盘搜索失败: "+serr.Error(), nil)
-		return
-	}
-	var target *aliyundrive.File
-	for i := range files {
-		if files[i].Type == "file" {
-			target = &files[i]
-			break
-		}
-	}
-	if target == nil {
-		utils.ErrorResponse(c, http.StatusNotFound, "未找到匹配的文件", nil)
-		return
-	}
-	cacheKey := "ali:" + target.FileID
-	if cached, ok := getCachedCloudLink(cacheKey); ok && validateDownloadURL(cached) == nil {
-		proxyCloudDownload(c, cached, target.Name)
-		return
-	}
-	cloudLinkCache.Delete(cacheKey)
-	link, lerr := ali.DownloadURL(target.FileID)
-	if lerr != nil {
-		utils.ErrorResponse(c, http.StatusBadGateway, "生成下载链接失败: "+lerr.Error(), nil)
-		return
-	}
-	if verr := validateDownloadURL(link); verr != nil {
-		utils.ErrorResponse(c, http.StatusBadGateway, "生成的下载链接不合法: "+verr.Error(), nil)
-		return
-	}
-	setCachedCloudLink(cacheKey, link)
-	proxyCloudDownload(c, link, target.Name)
-}
-
-// proxyCloudDownload 从阿里云盘 CDN 拉取文件并流式转发给用户
-func proxyCloudDownload(c *gin.Context, rawURL, fileName string) {
-	client := &http.Client{Timeout: 0} // 大文件不限总超时
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusBadGateway, "构造下载请求失败", nil)
-		return
-	}
-	req.Header.Set("Referer", aliyundrive.Referer())
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36")
-	if r := c.GetHeader("Range"); r != "" {
-		req.Header.Set("Range", r) // 断点续传
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusBadGateway, "拉取云盘文件失败: "+err.Error(), nil)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
-		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		utils.ErrorResponse(c, http.StatusBadGateway, "云盘文件拉取失败: HTTP "+fmt.Sprint(resp.StatusCode), nil)
-		return
-	}
-
-	// 转发关键响应头
-	for _, h := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"} {
-		if v := resp.Header.Get(h); v != "" {
-			c.Header(h, v)
-		}
-	}
-	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": fileName})
-	if disposition == "" {
-		disposition = "attachment"
-	}
-	c.Header("Content-Disposition", disposition)
-	c.Status(resp.StatusCode)
-	_, _ = io.Copy(c.Writer, resp.Body)
-}
-
-func cloudFileIDMapOf(key string) (software_sync.FileEntry, bool) {
-	m, err := software_sync.LoadFileIDMap()
-	if err != nil {
-		return software_sync.FileEntry{}, false
-	}
-	e, ok := m[key]
-	return e, ok
+// CloudSyncStatus 同步状态
+func CloudSyncStatus(c *gin.Context) {
+	utils.SuccessResponse(c, http.StatusOK, "", software_sync.GetStatus())
 }
 
 // GitHub 版本对照缓存（30 分钟，避免每次打开页面都打 GitHub API）
@@ -538,7 +118,7 @@ type ghVersionCacheEntry struct {
 	Expire  time.Time
 }
 
-var ghVersionCache sync.Map // repo → entry
+var ghVersionCache sync.Map // repo → ghVersionCacheEntry
 
 func cachedGitHubVersion(repo, token string) (string, bool) {
 	if v, ok := ghVersionCache.Load(repo); ok {
@@ -557,32 +137,8 @@ func cachedGitHubVersion(repo, token string) (string, bool) {
 	return ver, true
 }
 
-// ---------------------------------------------------------------------------
-// 软件库同步（GitHub → 阿里云盘）
-// ---------------------------------------------------------------------------
-
-// CloudSync 触发一次软件库同步（异步执行，前端轮询状态）
-func CloudSync(c *gin.Context) {
-	if !software_sync.TriggerAsync() {
-		utils.SuccessResponse(c, http.StatusOK, "同步任务正在进行中", gin.H{"started": false, "running": true})
-		return
-	}
-	utils.CreateAuditLogSimple(c, "cloud_sync", "settings", 0, "管理员操作: 手动触发 GitHub→阿里云盘 软件库同步")
-	utils.SuccessResponse(c, http.StatusOK, "同步已开始，请稍候查看结果", gin.H{"started": true, "running": true})
-}
-
-// CloudSyncStatus 同步状态
-func CloudSyncStatus(c *gin.Context) {
-	utils.SuccessResponse(c, http.StatusOK, "", software_sync.GetStatus())
-}
-
-// CloudVersions 版本对照：GitHub 最新版本 vs 云盘已同步版本
+// CloudVersions 版本对照：GitHub 最新版本 vs 已检出版本
 func CloudVersions(c *gin.Context) {
-	cfg, err := loadCloudConfig()
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "读取配置失败", err)
-		return
-	}
 	fileIDMap, _ := software_sync.LoadFileIDMap()
 	token := software_sync.LoadGitHubToken()
 	softwareConfig := getConfigMap("software")
@@ -610,14 +166,14 @@ func CloudVersions(c *gin.Context) {
 				"custom":         false,
 				"gh_error":       ghErr,
 			}
-			// 配置了手工自定义外部链接的入口：不使用云盘，明确标注
+			// 配置了手工自定义外部链接的入口：不使用自动分发，明确标注
 			if current := strings.TrimSpace(softwareConfig[t.ConfigKey]); current != "" && !strings.HasPrefix(current, "pan://") {
 				row["custom"] = true
 				row["file_name"] = current
 				rows = append(rows, row)
 				continue
 			}
-			if entry, ok := fileIDMap[t.ConfigKey]; ok && entry.AliyunFileID != "" {
+			if entry, ok := fileIDMap[t.ConfigKey]; ok && entry.Version != "" {
 				row["cloud_version"] = entry.Version
 				row["file_name"] = entry.FileName
 				row["synced"] = entry.Version == ghVersion
@@ -626,12 +182,12 @@ func CloudVersions(c *gin.Context) {
 		}
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"configured": cfg.AliyunRefreshToken != "",
+		"configured": true,
 		"list":       rows,
 	})
 }
 
-// GetSoftwareVersions 用户端：已同步软件版本信息（公共接口，供下载页展示）
+// GetSoftwareVersions 用户端：已检出软件版本信息（公共接口，供下载页展示）
 func GetSoftwareVersions(c *gin.Context) {
 	fileIDMap, err := software_sync.LoadFileIDMap()
 	if err != nil {
@@ -640,7 +196,7 @@ func GetSoftwareVersions(c *gin.Context) {
 	}
 	out := make([]gin.H, 0)
 	for key, entry := range fileIDMap {
-		if entry.AliyunFileID == "" {
+		if entry.Version == "" {
 			continue
 		}
 		out = append(out, gin.H{
@@ -657,8 +213,3 @@ func GetSoftwareVersions(c *gin.Context) {
 	})
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"list": out})
 }
-
-var _ = errors.New
-var _ = json.Marshal
-var _ = models.SystemConfig{}
-var _ = database.GetDB
