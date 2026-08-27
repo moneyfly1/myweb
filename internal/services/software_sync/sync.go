@@ -318,8 +318,9 @@ func LastSyncAt() time.Time {
 	return t
 }
 
-// Due 判断是否到定时同步时间（开启、至少手动/定时运行过一次、且距上次运行超过间隔）。
-// 从未运行过时返回 false，避免服务器重启后自动触发全量同步（可能数 GB）。
+// Due 判断是否到定时同步时间。
+// 同步引擎为轻量版本检测（仅查 GitHub API + 写 pan:// 链接，不下载/上传），
+// 因此「从未运行过」视为立即到期：服务器启动/升级后自动检测一次并填充下载链接。
 func Due() bool {
 	cfg, err := loadSyncConfig()
 	if err != nil || !cfg.Enabled {
@@ -327,7 +328,7 @@ func Due() bool {
 	}
 	last := LastSyncAt()
 	if last.IsZero() {
-		return false
+		return true
 	}
 	return time.Since(last) >= cfg.Interval
 }
