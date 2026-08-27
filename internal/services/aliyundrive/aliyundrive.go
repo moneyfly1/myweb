@@ -433,27 +433,31 @@ func (c *Client) Upload(localPath, fileName, parentFileID string) (string, error
 	return created.FileID, nil
 }
 
-// request 发起带鉴权的 API 请求；401 时自动刷新重试一次
+// request 发起带鉴权的 API 请求；401 令牌失效时自动刷新重试一次
 func (c *Client) request(uri string, body interface{}) ([]byte, error) {
 	if err := c.ensureToken(); err != nil {
 		return nil, err
 	}
 	payload, err := c.do(uri, body)
 	if err != nil {
+		if isTokenInvalidErr(err) {
+			if _, rerr := c.Refresh(); rerr != nil {
+				return nil, rerr
+			}
+			return c.do(uri, body)
+		}
 		return nil, err
 	}
-	// 401 → 刷新重试
-	var env struct {
-		Code string `json:"code"`
-	}
-	_ = json.Unmarshal(payload, &env)
-	if env.Code == "AccessTokenInvalid" || env.Code == "AccessTokenExpired" {
-		if _, rerr := c.Refresh(); rerr != nil {
-			return nil, rerr
-		}
-		return c.do(uri, body)
-	}
 	return payload, nil
+}
+
+// isTokenInvalidErr 判断错误是否为 access_token 失效/过期（HTTP 401 + 响应体含 AccessToken* 错误码）
+func isTokenInvalidErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "accesstoken") && strings.Contains(msg, "401")
 }
 
 func (c *Client) do(uri string, body interface{}) ([]byte, error) {

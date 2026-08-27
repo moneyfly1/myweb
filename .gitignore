@@ -102,3 +102,8 @@ cboard
 # linux 交叉编译产物（部署用，不入库）
 server-linux
 
+
+# 数据库损坏备份（含敏感数据，不入库）
+*.db.corrupt.*
+*.db.bak.*
+cboard.db.*.bak.*
