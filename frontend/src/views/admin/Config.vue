@@ -186,7 +186,7 @@
                     show-icon
                     :closable="false"
                     title="重要提示"
-                    description="① refresh_token 是「一次性轮换」的：测试连接 / 同步 / 浏览目录成功后，系统会自动保存新 token，旧 token 立即作废。请勿把旧 token 再次粘贴保存（会覆盖掉好用的新 token）。② 同一个 token 不要在其他工具（alist、其他服务器等）使用，谁先用谁就把它消耗掉。③ 若提示「refresh_token 无效」，请重新登录 www.alipan.com 复制最新的 token。"
+                    description="① 用的是官方网页版 refresh_token（www.alipan.com 网页登录后复制即可），无需注册开发者账号。② refresh_token 是「一次性轮换」的：测试连接 / 同步 / 浏览目录成功后，系统会自动保存新 token，旧 token 立即作废。请勿把旧 token 再次粘贴保存（会覆盖掉好用的新 token）。③ 同一个 token 不要在其他工具（alist、其他服务器等）使用，谁先用谁就把它消耗掉。④ 若提示「refresh_token 无效」，请重新登录 www.alipan.com 复制最新的 token。"
                   />
                 </div>
               </el-collapse-item>
