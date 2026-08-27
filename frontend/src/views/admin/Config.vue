@@ -225,10 +225,11 @@
                 type="warning"
                 show-icon
                 :closable="false"
-                title="服务器无法直接发送验证码（需滑块验证）"
-                description="请打开 yun.123pan.cn 登录页，用手机号获取验证码（需滑动验证），再把收到的验证码填到下方完成登录"
+                title="请在下方完成滑块验证后自动发送验证码"
+                description="拖动滑块完成验证，验证码将自动发送到你的手机"
                 style="margin-bottom: 8px"
               />
+              <div v-if="smsMode && smsNeedsCaptcha" id="pan-captcha" style="margin-bottom: 8px; max-width: 340px"></div>
               <el-form-item v-if="smsMode" label="短信验证码">
                 <el-input v-model="panSmsCode" placeholder="输入手机收到的验证码" style="max-width: 220px" />
                 <el-button type="success" :loading="panSmsLogging" @click="smsLogin" class="config-action-btn" style="margin-left: 8px">
@@ -489,7 +490,7 @@
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, nextTick } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { configAPI, softwareConfigAPI, pan123API } from '@/utils/api'
 export default {
@@ -784,7 +785,79 @@ export default {
     const panSmsLogging = ref(false)
     const smsStatus = ref('')
     const smsHashCode = ref('')
+    const smsTimeStamp = ref('')
     const smsNeedsCaptcha = ref(false)
+    let panelCaptchaInstance = null
+
+    // 加载 123pan 同款阿里云验证码 SDK（含其内置 appKey）
+    const loadCaptchaScripts = () => {
+      return new Promise((resolve) => {
+        if (window.initAliyunCaptcha) return resolve(true)
+        const s = document.createElement('script')
+        s.src = 'https://o.alicdn.com/captcha-frontend/aliyunCaptcha/AliyunCaptcha.js'
+        s.onload = () => {
+          const s2 = document.createElement('script')
+          s2.src = 'https://statics.123957.com/static/sliderAli.js'
+          s2.onload = () => resolve(true)
+          s2.onerror = () => resolve(true)
+          document.head.appendChild(s2)
+        }
+        s.onerror = () => resolve(false)
+        document.head.appendChild(s)
+      })
+    }
+
+    // 初始化面板内嵌滑块（场景与 123pan 登录中心一致）
+    const initPanelCaptcha = async () => {
+      const ok = await loadCaptchaScripts()
+      if (!ok || !window.initAliyunCaptcha) {
+        smsStatus.value = '滑块组件加载失败，请检查网络后重试'
+        return
+      }
+      window.AliyunCaptchaConfig = { region: 'cn', prefix: '1gkapk' }
+      await nextTick()
+      try {
+        window.initAliyunCaptcha({
+          SceneId: 'unts8f61',
+          mode: 'embed',
+          element: '#pan-captcha',
+          captchaVerifyCallback: async (traceless) => {
+            // 滑块完成 → 带 traceless 重发验证码（服务器发码）
+            try {
+              const response = await pan123API.smsSend({
+                username: panForm.username,
+                password: panForm.password,
+                traceless
+              })
+              if (response.data?.success) {
+                const d = response.data.data || {}
+                if (d.needs_captcha) {
+                  smsStatus.value = '滑块验证未通过，请重新滑动'
+                  return { captchaResult: false }
+                }
+                smsHashCode.value = d.hash_code || smsHashCode.value
+                smsTimeStamp.value = d.time_stamp || ''
+                smsNeedsCaptcha.value = false
+                smsStatus.value = '验证码已发送，请查收短信'
+                return { captchaResult: true }
+              }
+              smsStatus.value = response.data?.message || '发送失败'
+              return { captchaResult: false }
+            } catch (error) {
+              smsStatus.value = error.response?.data?.message || '发送失败'
+              return { captchaResult: false }
+            }
+          },
+          getInstance: (inst) => { panelCaptchaInstance = inst || null },
+          onError: (err) => { console.error('滑块初始化失败', err); smsStatus.value = '滑块初始化失败，请刷新重试' },
+          slideStyle: { width: 320, height: 40 },
+          language: 'cn'
+        })
+      } catch (error) {
+        console.error('init captcha error', error)
+        smsStatus.value = '滑块初始化失败，请刷新重试'
+      }
+    }
     const tokenExpiryText = ref('')
     const tokenExpiryDanger = ref(false)
     const smsSend = async () => {
@@ -802,9 +875,13 @@ export default {
             return
           }
           smsHashCode.value = data.hash_code || ''
+          smsTimeStamp.value = data.time_stamp || ''
           smsNeedsCaptcha.value = !!data.needs_captcha
           smsMode.value = true
-          smsStatus.value = response.data.message || (data.needs_captcha ? '请按提示在浏览器获取验证码' : '验证码已发送')
+          smsStatus.value = response.data.message || (data.needs_captcha ? '请完成下方滑块验证' : '验证码已发送')
+          if (data.needs_captcha) {
+            await initPanelCaptcha()
+          }
         } else {
           smsStatus.value = response.data?.message || '发送失败'
         }
@@ -826,12 +903,14 @@ export default {
           username: panForm.username,
           password: panForm.password,
           hash_code: smsHashCode.value,
-          sms_code: panSmsCode.value.trim()
+          sms_code: panSmsCode.value.trim(),
+          time_stamp: smsTimeStamp.value
         })
         if (response.data?.success) {
           ElMessage.success('登录成功，token 已自动保存')
           smsMode.value = false
           smsNeedsCaptcha.value = false
+          smsTimeStamp.value = ''
           panSmsCode.value = ''
           smsStatus.value = '登录成功，token 已保存'
           await loadPanConfig()

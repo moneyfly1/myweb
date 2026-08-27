@@ -813,8 +813,9 @@ func GetSoftwareVersions(c *gin.Context) {
 // Pan123SmsSend 发送登录短信验证码：先探测是否触发境外风控（7012），是则发送验证码
 func Pan123SmsSend(c *gin.Context) {
 	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username  string `json:"username"`
+		Password  string `json:"password"`
+		Traceless string `json:"traceless"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
@@ -850,31 +851,37 @@ func Pan123SmsSend(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "未知错误", nil)
 		return
 	}
-	needsCaptcha, err := client.SendSmsCode(username, riskErr.HashCode)
+	timeStamp, needsCaptcha, err := client.SendSmsCode(username, riskErr.HashCode, req.Traceless)
 	if err != nil {
 		if needsCaptcha {
-			// 被滑块验证拦截：提示用户到浏览器完成滑块后把验证码填回面板
-			utils.SuccessResponse(c, http.StatusOK, "服务器无法直接发送验证码（需滑块验证），请在浏览器登录页获取验证码后填回", gin.H{
-				"need_sms":       true,
-				"needs_captcha":  true,
-				"hash_code":      riskErr.HashCode,
-				"guidance":       "请打开 yun.123pan.cn 登录页，用该手机号获取验证码（需滑动验证），再把收到的验证码填到这里",
+			// 被滑块验证拦截：前端展示阿里云滑块，用户滑动后带 traceless 重发
+			msg := "需要滑块验证"
+			if req.Traceless != "" {
+				msg = "滑块验证未通过，请重新滑动"
+			}
+			utils.SuccessResponse(c, http.StatusOK, msg, gin.H{
+				"need_sms":      true,
+				"needs_captcha": true,
+				"hash_code":     riskErr.HashCode,
 			})
 			return
 		}
 		utils.ErrorResponse(c, http.StatusBadGateway, err.Error(), nil)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "验证码已发送，请注意查收短信", gin.H{"need_sms": true, "needs_captcha": false, "hash_code": riskErr.HashCode})
+	utils.SuccessResponse(c, http.StatusOK, "验证码已发送，请注意查收短信", gin.H{
+		"need_sms": true, "needs_captcha": false, "hash_code": riskErr.HashCode, "time_stamp": timeStamp,
+	})
 }
 
 // Pan123SmsLogin 用短信验证码完成登录，成功后自动把 token 保存到配置
 func Pan123SmsLogin(c *gin.Context) {
 	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-		HashCode string `json:"hash_code"`
-		SmsCode  string `json:"sms_code"`
+		Username  string `json:"username"`
+		Password  string `json:"password"`
+		HashCode  string `json:"hash_code"`
+		SmsCode   string `json:"sms_code"`
+		TimeStamp string `json:"time_stamp"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
@@ -896,7 +903,7 @@ func Pan123SmsLogin(c *gin.Context) {
 	}
 
 	client := pan123.New(username, "", "")
-	token, err := client.LoginWithSmsCode(username, smsCode, req.HashCode)
+	token, err := client.LoginWithSmsCode(username, smsCode, req.TimeStamp, req.HashCode)
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusBadGateway, err.Error(), nil)
 		return

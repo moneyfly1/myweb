@@ -37,50 +37,71 @@ func IsRiskBlocked(code int) bool {
 
 // SendSmsCode 发送登录短信验证码。
 // 需要先从账号密码登录的 7012 响应中拿到 hashCode。
-// 返回 needsCaptcha=true 表示被阿里云无痕验证（滑块）拦截、短信未发出，需人工在浏览器完成验证。
-func (c *Client) SendSmsCode(passport, hashCode string) (needsCaptcha bool, err error) {
+// traceless 为阿里云无痕验证（滑块）结果字符串（面板内滑块完成后由 SDK 给出）；
+// 为空表示首次尝试（可能被拦，返回 needsCaptcha=true 需先完成滑块）。
+// 返回 needsCaptcha=true 表示被滑块验证拦截、短信未发出。
+// SendSmsCode 发送登录短信验证码。
+// 需要先从账号密码登录的 7012 响应中拿到 hashCode。
+// traceless 为阿里云无痕验证（滑块）结果字符串（面板内滑块完成后由 SDK 给出）；
+// 为空表示首次尝试（可能被拦，返回 needsCaptcha=true 需先完成滑块）。
+// 返回 timeStamp（get_vcode 的 Timestamp，登录时需回传）与 needsCaptcha。
+func (c *Client) SendSmsCode(passport, hashCode, traceless string) (timeStamp string, needsCaptcha bool, err error) {
 	body := map[string]interface{}{
-		"passport": strings.TrimSpace(passport),
-		"hashCode": hashCode,
+		"passport":   strings.TrimSpace(passport),
+		"hashCode":   hashCode,
+		"aliVersion": 2,
+	}
+	if strings.TrimSpace(traceless) != "" {
+		body["traceless"] = strings.TrimSpace(traceless)
 	}
 	payload, err := postJSON(smsPortalBase+"/user/get_vcode", body, nil)
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 	var out struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
 		Data    struct {
-			SerialNo string `json:"serial_no"`
-			Tips     string `json:"Tips"`
+			SerialNo  string `json:"serial_no"`
+			Timestamp int64  `json:"Timestamp"`
+			Tips      string `json:"Tips"`
 			Traceless struct {
 				Code int `json:"code"`
 			} `json:"traceless"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(payload, &out); err != nil {
-		return false, fmt.Errorf("发送验证码响应解析失败: %w", err)
+		return "", false, fmt.Errorf("发送验证码响应解析失败: %w", err)
 	}
 	if out.Code != 0 {
-		return false, fmt.Errorf("发送验证码失败: %s", firstNonEmpty(out.Message, fmt.Sprintf("code=%d", out.Code)))
+		// 无痕验证失败 / 需要滑块 → 让前端展示滑块
+		if out.Code == 5019 || strings.Contains(out.Message, "无痕") || strings.Contains(out.Message, "验证") {
+			return "", true, fmt.Errorf("需要滑块验证: %s", firstNonEmpty(out.Message, fmt.Sprintf("code=%d", out.Code)))
+		}
+		return "", false, fmt.Errorf("发送验证码失败: %s", firstNonEmpty(out.Message, fmt.Sprintf("code=%d", out.Code)))
 	}
 	// serial_no 为空 或 traceless.code != 0 → 未真正发送（被滑块验证拦截）
 	if strings.TrimSpace(out.Data.SerialNo) == "" || out.Data.Traceless.Code != 0 {
-		return true, fmt.Errorf("需要滑块验证后发送（traceless code=%d）", out.Data.Traceless.Code)
+		return "", true, fmt.Errorf("需要滑块验证后发送（traceless code=%d）", out.Data.Traceless.Code)
 	}
 	if strings.TrimSpace(out.Data.Tips) != "" {
-		return false, fmt.Errorf("发送验证码提示: %s", out.Data.Tips)
+		return "", false, fmt.Errorf("发送验证码提示: %s", out.Data.Tips)
 	}
-	return false, nil
+	return fmt.Sprintf("%d", out.Data.Timestamp), false, nil
 }
 
 // LoginWithSmsCode 使用短信验证码完成登录，返回登录 token（绑定当前请求 IP）。
-func (c *Client) LoginWithSmsCode(passport, vcode, hashCode string) (string, error) {
+// 参数与登录中心网页端一致：v_code（验证码）、time_stamp（get_vcode 返回的 Timestamp）、hashCode。
+func (c *Client) LoginWithSmsCode(passport, vcode, timeStamp, hashCode string) (string, error) {
 	body := map[string]interface{}{
-		"passport": strings.TrimSpace(passport),
-		"type":     3, // 3 = 短信验证码登录
-		"vcode":    strings.TrimSpace(vcode),
-		"hashCode": hashCode,
+		"passport":  strings.TrimSpace(passport),
+		"type":      3, // 3 = 短信验证码登录
+		"v_code":    strings.TrimSpace(vcode),
+		"remember":  true,
+		"hashCode":  hashCode,
+	}
+	if strings.TrimSpace(timeStamp) != "" {
+		body["time_stamp"] = strings.TrimSpace(timeStamp)
 	}
 	payload, err := postJSON(smsPortalBase+"/user/sign_in", body, nil)
 	if err != nil {
