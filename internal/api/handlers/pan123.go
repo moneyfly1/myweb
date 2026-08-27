@@ -941,7 +941,7 @@ func Pan123QrGenerate(c *gin.Context) {
 		return
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"qr_value": qrURL + "?uniID=" + uniID, // 二维码编码内容（App 识别）
+		"qr_value": pan123.BuildQrValue(qrURL, uniID), // 与登录中心一致的完整参数（App/微信识别）
 		"uni_id":   uniID,
 	})
 }
@@ -963,7 +963,7 @@ func Pan123QrStatus(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, cerr.Error(), nil)
 		return
 	}
-	status, token, serr := client.GetQrCodeStatus(uniID)
+	status, scanPlatform, token, serr := client.GetQrCodeStatusV2(uniID)
 	if serr != nil {
 		utils.ErrorResponse(c, http.StatusBadGateway, serr.Error(), nil)
 		return
@@ -978,7 +978,15 @@ func Pan123QrStatus(c *gin.Context) {
 	case 4:
 		utils.SuccessResponse(c, http.StatusOK, "", gin.H{"status": "expired", "message": "二维码已过期，请重新生成"})
 	default:
-		// status 3 = 已确认，带 token
+		// status 3 = 已确认
+		if token == "" && scanPlatform == 4 {
+			// 微信扫码：需用 wx_code 换取登录 token
+			token, serr = client.WechatLoginByQr(uniID)
+			if serr != nil {
+				utils.SuccessResponse(c, http.StatusOK, "", gin.H{"status": "scanned", "message": "微信已确认，换取凭证失败: " + serr.Error()})
+				return
+			}
+		}
 		if token == "" {
 			utils.SuccessResponse(c, http.StatusOK, "", gin.H{"status": "waiting"})
 			return
