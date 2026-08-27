@@ -59,12 +59,36 @@ type SyncStatus struct {
 }
 
 var (
-	statusMu      sync.Mutex
-	syncRunning   bool
-	lastRun       string
-	lastReport    []ReportItem
-	lastUploaded  int
+	statusMu     sync.Mutex
+	syncRunning  bool
+	lastRun      string
+	lastReport   []ReportItem
+	lastUploaded int
+
+	// OnSyncComplete 同步结束后回调（由 handlers 注册用于清理直链缓存等）
+	OnSyncComplete func()
 )
+
+// SetOnSyncComplete 注册同步完成回调（幂等，重复注册以最后一次为准）
+func SetOnSyncComplete(fn func()) {
+	statusMu.Lock()
+	defer statusMu.Unlock()
+	OnSyncComplete = fn
+}
+
+func fireOnSyncComplete() {
+	statusMu.Lock()
+	fn := OnSyncComplete
+	statusMu.Unlock()
+	if fn != nil {
+		defer func() {
+			if r := recover(); r != nil {
+				// 回调异常不影响同步结果
+			}
+		}()
+		fn()
+	}
+}
 
 // ---------------------------------------------------------------------------
 // 配置读写
@@ -203,20 +227,34 @@ func saveSoftwareValue(key, value string) error {
 	return db.Save(&conf).Error
 }
 
-// GetStatus 当前同步状态
+// GetStatus 当前同步状态（内存优先，重启后从数据库回退读取上次运行信息）
 func GetStatus() SyncStatus {
 	cfg, _ := loadSyncConfig()
 	statusMu.Lock()
-	defer statusMu.Unlock()
 	report := make([]ReportItem, len(lastReport))
 	copy(report, lastReport)
+	runAt := lastRun
+	uploaded := lastUploaded
+	statusMu.Unlock()
+
+	if runAt == "" {
+		runAt = LastSyncAt().Format(time.RFC3339)
+	}
+	if len(report) == 0 {
+		// 从数据库回退读取上次报告
+		db := database.GetDB()
+		var conf models.SystemConfig
+		if err := db.Where("key = ? AND category = ?", "sync_last_report", panCategory).First(&conf).Error; err == nil {
+			_ = json.Unmarshal([]byte(conf.Value), &report)
+		}
+	}
 	return SyncStatus{
-		Running:       syncRunning,
+		Running:       IsRunning(),
 		Enabled:       cfg.Enabled,
 		IntervalHours: int(cfg.Interval.Hours()),
-		LastRun:       lastRun,
+		LastRun:       runAt,
 		LastReport:    report,
-		TotalUploaded: lastUploaded,
+		TotalUploaded: uploaded,
 	}
 }
 
@@ -236,14 +274,18 @@ func LastSyncAt() time.Time {
 	return t
 }
 
-// Due 判断是否到定时同步时间（开启且距上次运行超过间隔）
+// Due 判断是否到定时同步时间（开启、至少手动/定时运行过一次、且距上次运行超过间隔）。
+// 从未运行过时返回 false，避免服务器重启后自动触发全量同步（可能数 GB）。
 func Due() bool {
 	cfg, err := loadSyncConfig()
 	if err != nil || !cfg.Enabled {
 		return false
 	}
 	last := LastSyncAt()
-	return last.IsZero() || time.Since(last) >= cfg.Interval
+	if last.IsZero() {
+		return false
+	}
+	return time.Since(last) >= cfg.Interval
 }
 
 // IsRunning 是否正在同步
@@ -274,6 +316,7 @@ func triggerAsync(only []string) bool {
 		lastReport = report
 		lastUploaded = uploaded
 		statusMu.Unlock()
+		fireOnSyncComplete()
 	}()
 	return true
 }
@@ -350,8 +393,8 @@ func run(only []string) ([]ReportItem, int) {
 			}
 			item := ReportItem{Key: t.ConfigKey, Name: sw.Name, Label: t.Label, OS: t.OS, Arch: t.Arch, Version: version}
 
-			// 该入口配置了自定义外部链接（非 pan://）→ 不使用云盘，整项跳过（不下载不上传）
-			if current := loadSoftwareValue(t.ConfigKey); current != "" && !strings.HasPrefix(current, "pan://") {
+			// 该入口配置了手工自定义外部链接（非 pan://、非工具写入的云盘静态直链）→ 不使用云盘，整项跳过
+			if current := loadSoftwareValue(t.ConfigKey); current != "" && !strings.HasPrefix(current, "pan://") && !isPanManagedLink(current) {
 				item.Status = "skip"
 				item.Message = "该入口使用自定义链接，跳过云盘同步"
 				report = append(report, item)
@@ -445,6 +488,11 @@ func run(only []string) ([]ReportItem, int) {
 		return report[i].Label < report[j].Label
 	})
 	return report, uploaded
+}
+
+// isPanManagedLink 判断是否为工具写入的 123 云盘直链（静态模式产物）
+func isPanManagedLink(u string) bool {
+	return strings.Contains(u, "123295.com") || strings.Contains(u, "cjjd19.com")
 }
 
 // ensurePanManagedURL 若该键当前为空或已是 pan://，则写入 pan://<键>；手工外部链接不覆盖
