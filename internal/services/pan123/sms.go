@@ -246,6 +246,60 @@ func (c *Client) GenerateQrCode() (qrURL, uniID string, err error) {
 	return out.Data.URL, out.Data.UniID, nil
 }
 
+// BuildQrValue 构造二维码编码内容（与登录中心一致：env/uniID/source/type 参数缺一不可，
+// 否则手机 App / 微信无法识别登录意图）
+func BuildQrValue(qrURL, uniID string) string {
+	return fmt.Sprintf("%s?env=production&uniID=%s&source=123pan&type=login",
+		strings.TrimRight(qrURL, "/"), url.QueryEscape(uniID))
+}
+
+// WechatLoginByQr 微信扫码确认后：wx_code 换登录凭证
+func (c *Client) WechatLoginByQr(uniID string) (string, error) {
+	payload, err := postJSON(smsPortalBase+"/user/qr-code/wx_code", map[string]interface{}{"uniID": uniID}, nil)
+	if err != nil {
+		return "", err
+	}
+	var wx struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			WxCode string `json:"wxCode"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &wx); err != nil {
+		return "", fmt.Errorf("wx_code 响应解析失败: %w", err)
+	}
+	if wx.Code != 0 || wx.Data.WxCode == "" {
+		return "", fmt.Errorf("获取微信凭证失败: %s", firstNonEmpty(wx.Message, fmt.Sprintf("code=%d", wx.Code)))
+	}
+	// 微信扫码登录（type=4），与登录中心一致
+	loginPayload, err := postJSON(smsPortalBase+"/user/sign_in", map[string]interface{}{
+		"from":         "web",
+		"wechat_code":  wx.Data.WxCode,
+		"type":         4,
+		"remember":     true,
+	}, nil)
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(loginPayload, &out); err != nil {
+		return "", fmt.Errorf("微信登录响应解析失败: %w", err)
+	}
+	if out.Code != 200 || out.Data.Token == "" {
+		return "", fmt.Errorf("微信登录失败: %s", firstNonEmpty(out.Message, fmt.Sprintf("code=%d", out.Code)))
+	}
+	c.Token = out.Data.Token
+	c.Cookies = "jwt=" + out.Data.Token
+	return out.Data.Token, nil
+}
+
 // GetQrCodeStatus 轮询扫码登录状态；loginStatus: 0未扫 1已扫 2拒绝 3已确认(含 token) 4过期
 func (c *Client) GetQrCodeStatus(uniID string) (loginStatus int, token string, err error) {
 	rawURL := smsPortalBase + "/user/qr-code/result?uniID=" + url.QueryEscape(uniID) + "&remember=true"
@@ -257,8 +311,9 @@ func (c *Client) GetQrCodeStatus(uniID string) (loginStatus int, token string, e
 		Code    int    `json:"code"`
 		Message string `json:"message"`
 		Data    struct {
-			LoginStatus int    `json:"loginStatus"`
-			Token       string `json:"token"`
+			LoginStatus  int    `json:"loginStatus"`
+			ScanPlatform int    `json:"scanPlatform"`
+			Token        string `json:"token"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(payload, &out); err != nil {
@@ -268,6 +323,31 @@ func (c *Client) GetQrCodeStatus(uniID string) (loginStatus int, token string, e
 		return 0, "", fmt.Errorf("查询扫码状态失败: %s", firstNonEmpty(out.Message, fmt.Sprintf("code=%d", out.Code)))
 	}
 	return out.Data.LoginStatus, out.Data.Token, nil
+}
+
+// GetQrCodeStatusV2 轮询扫码登录状态（含扫码平台）；loginStatus: 0未扫 1已扫 3已确认 4过期；scanPlatform: 4微信 7App
+func (c *Client) GetQrCodeStatusV2(uniID string) (loginStatus, scanPlatform int, token string, err error) {
+	rawURL := smsPortalBase + "/user/qr-code/result?uniID=" + url.QueryEscape(uniID) + "&remember=true"
+	payload, err := getJSON(rawURL, nil)
+	if err != nil {
+		return 0, 0, "", err
+	}
+	var out struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			LoginStatus  int    `json:"loginStatus"`
+			ScanPlatform int    `json:"scanPlatform"`
+			Token        string `json:"token"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return 0, 0, "", fmt.Errorf("扫码状态解析失败: %w", err)
+	}
+	if out.Code != 0 {
+		return 0, 0, "", fmt.Errorf("查询扫码状态失败: %s", firstNonEmpty(out.Message, fmt.Sprintf("code=%d", out.Code)))
+	}
+	return out.Data.LoginStatus, out.Data.ScanPlatform, out.Data.Token, nil
 }
 
 // getJSON 简单 GET JSON（无签名），用于登录门户接口
