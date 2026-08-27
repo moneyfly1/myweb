@@ -437,7 +437,7 @@
                           :key="app.downloadKey"
                           :command="app.downloadKey"
                         >
-                          {{ app.name }}
+                          {{ app.name }}<template v-if="appVersion(app)">（v{{ appVersion(app) }}）</template>
                         </el-dropdown-item>
                       </el-dropdown-menu>
                     </template>
@@ -618,6 +618,7 @@ import { formatMoney } from '@/utils/format'
 import { getOrderStatusText, getOrderStatusType } from '@/utils/statusMaps'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
 import { safeNavigate, safeOpen, safeOpenApp } from '@/utils/safeOpen'
+import { resolvePanDownloadUrl, pickConfiguredUrl } from '@/utils/githubDownload'
 import { sanitizeBasicHtml, sanitizePlainText } from '@/utils/sanitizeHtml'
 import { useMobile } from '@/composables/useMobile'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
@@ -789,7 +790,8 @@ const platforms = ref([
         name: 'Clash Meta',
         version: 'Latest',
         downloadKey: 'clash_android_url',
-        clientId: 'clash-meta'
+        clientId: 'clash-meta',
+        githubKey: 'clash-meta'
       },
       {
         name: 'V2rayNG',
@@ -804,6 +806,13 @@ const platforms = ref([
         downloadKey: 'hiddify_android_url',
         clientId: 'hiddify',
         githubKey: 'hiddify'
+      },
+      {
+        name: 'FlClash',
+        version: 'Latest',
+        downloadKey: 'flash_android_url',
+        clientId: 'flclash',
+        githubKey: 'flclash'
       }
     ]
   },
@@ -815,6 +824,7 @@ const platforms = ref([
         name: 'FlClash',
         version: 'Latest',
         downloadKey: 'flash_macos_url',
+        downloadKeyArm: 'flash_macos_arm_url',
         clientId: 'flclash',
         githubKey: 'flclash'
       },
@@ -822,6 +832,7 @@ const platforms = ref([
         name: 'Clash Part',
         version: 'Latest',
         downloadKey: 'clash_party_macos_url',
+        downloadKeyArm: 'clash_party_macos_arm_url',
         clientId: 'clash-party',
         githubKey: 'clash-party'
       },
@@ -829,8 +840,25 @@ const platforms = ref([
         name: 'Clash Verge',
         version: 'Latest',
         downloadKey: 'clash_verge_macos_url',
+        downloadKeyArm: 'clash_verge_macos_arm_url',
         clientId: 'clash-verge',
         githubKey: 'clash-verge'
+      },
+      {
+        name: 'V2rayN',
+        version: 'Latest',
+        downloadKey: 'v2rayn_macos_url',
+        downloadKeyArm: 'v2rayn_macos_arm_url',
+        clientId: 'v2rayn',
+        githubKey: 'v2rayn'
+      },
+      {
+        name: 'Hiddify',
+        version: 'Latest',
+        downloadKey: 'hiddify_macos_url',
+        downloadKeyArm: 'hiddify_macos_arm_url',
+        clientId: 'hiddify',
+        githubKey: 'hiddify'
       }
     ]
   },
@@ -1307,6 +1335,22 @@ const loadSoftwareConfig = async () => {
     }
   } catch (error) {
     }
+  try {
+    const vRes = await fetch('/api/v1/software/versions')
+    const vData = await vRes.json()
+    const map = {}
+    ;(vData?.data?.list || []).forEach(item => {
+      map[item.key] = item.version
+    })
+    softwareVersions.value = map
+  } catch (error) {
+    // 版本信息可选
+  }
+}
+const softwareVersions = ref({})
+const appVersion = (app) => {
+  if (!app) return ''
+  return softwareVersions.value[app.downloadKey] || softwareVersions.value[app.downloadKeyArm] || ''
 }
 const downloadApp = async (appName) => {
   const clientKeyMap = {
@@ -1314,20 +1358,31 @@ const downloadApp = async (appName) => {
     'v2rayn_url': 'v2rayn',
     'clash_party_windows_url': 'clash-party',
     'clash_party_macos_url': 'clash-party',
+    'clash_party_macos_arm_url': 'clash-party',
+    'v2rayn_macos_url': 'v2rayn',
+    'v2rayn_macos_arm_url': 'v2rayn',
     'clash_verge_windows_url': 'clash-verge',
     'clash_verge_macos_url': 'clash-verge',
+    'clash_verge_macos_arm_url': 'clash-verge',
     'hiddify_windows_url': 'hiddify',
     'hiddify_android_url': 'hiddify',
+    'hiddify_macos_url': 'hiddify',
+    'hiddify_macos_arm_url': 'hiddify',
     'flash_windows_url': 'flclash',
+    'flash_android_url': 'flclash',
     'flash_macos_url': 'flclash',
+    'flash_macos_arm_url': 'flclash',
     'clash_android_url': null, // Clash Meta 使用配置的链接
     'v2rayng_url': 'v2rayng',
     'shadowrocket_url': null // Shadowrocket 使用 App Store 链接
   }
   const clientKey = clientKeyMap[appName]
-  const configUrl = softwareConfig.value[appName]
+  // 架构感知：macOS 下 Apple 芯片优先 arm 键
+  const app = (platforms.value || []).flatMap(p => p.apps || []).find(a => a.downloadKey === appName || a.downloadKeyArm === appName)
+  const keys = app ? [app.downloadKey, app.downloadKeyArm].filter(Boolean) : [appName]
+  const configUrl = pickConfiguredUrl(keys, softwareConfig.value || {})
   if (configUrl) {
-    safeOpen(configUrl)
+    safeOpen(resolvePanDownloadUrl(configUrl))
     return
   }
   if (appName === 'shadowrocket_url') {

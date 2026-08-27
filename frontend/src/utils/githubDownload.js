@@ -123,6 +123,15 @@ const CLIENT_CONFIGS = {
         intel: { pattern: /macos.*intel|mac.*intel|intel.*\.dmg$/i, installer: true }
       }
     }
+  },
+  'clash-meta': {
+    name: 'Clash Meta',
+    repo: 'MetaCubeX/ClashMetaForAndroid',
+    platforms: {
+      android: {
+        universal: { pattern: /\.apk$/i, installer: true }
+      }
+    }
   }
 }
 export function detectSystem() {
@@ -278,6 +287,39 @@ function toResolverURL(target) {
   return `/api/v1/download/resolve?target=${encodeURIComponent(target)}`
 }
 
+// resolvePanDownloadUrl 识别 123 云盘动态链接标记（pan://<关键词或配置键>），
+// 转换为后端实时解析接口地址；普通 URL 原样返回。
+export function resolvePanDownloadUrl(url) {
+  if (typeof url === 'string' && url.startsWith('pan://')) {
+    const value = url.slice('pan://'.length)
+    return `/api/v1/download/pan?key=${encodeURIComponent(value)}&q=${encodeURIComponent(value)}`
+  }
+  return url
+}
+
+// pickConfiguredUrl 从配置键列表里按当前系统/架构选出最合适的已配置链接：
+// 优先用 osKeys 按系统过滤（如 Android 只取 apk 键）；macOS 下 Apple 芯片优先 *_macos_arm_url。
+export function pickConfiguredUrl(configKeys, softwareConfig, platform = null, osKeys = null) {
+  const { os, arch } = platform || detectSystem()
+  let keys = Array.isArray(configKeys) ? configKeys : []
+  if (osKeys && Array.isArray(osKeys[os])) {
+    keys = osKeys[os]
+  }
+  let ordered = keys
+  if (os === 'macos') {
+    const armKeys = keys.filter(k => /arm/i.test(k))
+    const nonArm = keys.filter(k => !/arm/i.test(k))
+    ordered = arch === 'apple' ? [...armKeys, ...nonArm] : [...nonArm, ...armKeys]
+  }
+  for (const key of ordered) {
+    const value = softwareConfig?.[key]
+    if (value && String(value).trim()) {
+      return String(value).trim()
+    }
+  }
+  return ''
+}
+
 export async function getGitHubDownloadUrl(repo, os, arch, configKey = null, softwareConfig = {}) {
   try {
     const prefixes = getProxyPrefixes(softwareConfig)
@@ -343,11 +385,14 @@ export async function getClientDownloadUrl(clientKey, softwareConfig = {}) {
     try {
       const data = await fetchJSONWithCandidates(`https://api.github.com/repos/${client.repo}/releases/latest`, getProxyPrefixes(softwareConfig))
       if (data) {
-        let apkAsset = data.assets.find(asset =>
-          asset.name.includes('arm64-v8a') && asset.name.endsWith('.apk')
-        )
+        // 优先 arm64-v8a，其次 arm64，最后任意 APK
+        const apkAssets = data.assets.filter(asset => asset.name.endsWith('.apk'))
+        let apkAsset = apkAssets.find(asset => /arm64[-_]?v8a/i.test(asset.name))
         if (!apkAsset) {
-          apkAsset = data.assets.find(asset => asset.name.endsWith('.apk'))
+          apkAsset = apkAssets.find(asset => /arm64/i.test(asset.name))
+        }
+        if (!apkAsset) {
+          apkAsset = apkAssets[0]
         }
         if (apkAsset) {
           return toResolverURL(apkAsset.browser_download_url)
