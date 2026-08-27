@@ -312,7 +312,7 @@ func SetupRouter() *gin.Engine {
 		api.GET("/software-config", handlers.GetSoftwareConfig)
 		api.GET("/software/versions", handlers.GetSoftwareVersions)
 		api.GET("/download/resolve", handlers.ResolveDownload)
-		api.GET("/download/cloud", handlers.CloudResolve)
+		api.GET("/download/gh", handlers.GitHubResolve)
 
 		api.GET("/mobile-config", handlers.GetMobileConfig)
 		softwareConfig := api.Group("/software-config")
@@ -608,9 +608,6 @@ func SetupRouter() *gin.Engine {
 			// 阿里云盘自动填充
 			admin.GET("/cloud/config", handlers.GetCloudConfig)
 			admin.POST("/cloud/config", handlers.SaveCloudConfig)
-			admin.POST("/cloud/aliyun/test", handlers.CloudAliyunTest)
-			admin.GET("/cloud/aliyun/search", handlers.CloudAliyunSearch)
-			admin.GET("/cloud/aliyun/folders", handlers.CloudAliyunFolders)
 			admin.POST("/cloud/sync", handlers.CloudSync)
 			admin.GET("/cloud/sync/status", handlers.CloudSyncStatus)
 			admin.GET("/cloud/versions", handlers.CloudVersions)

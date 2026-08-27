@@ -17,9 +17,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// 国内 GitHub 加速镜像（2026-08 实测可用；用于下载解析与同步下载）
 var defaultDownloadProxyPrefixes = []string{
-	"https://ghproxy.com/{url}",
-	"https://ghproxy.net/{url}",
+	"https://ghfast.top/{url}",
+	"https://gh-proxy.com/{url}",
+	"https://gh.llkk.cc/{url}",
+	"https://gh.ddlc.top/{url}",
 	"{url}",
 }
 
