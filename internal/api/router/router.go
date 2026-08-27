@@ -616,6 +616,8 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/pan123/versions", handlers.Pan123Versions)
 			admin.POST("/pan123/sms/send", handlers.Pan123SmsSend)
 			admin.POST("/pan123/sms/login", handlers.Pan123SmsLogin)
+			admin.POST("/pan123/qr/generate", handlers.Pan123QrGenerate)
+			admin.GET("/pan123/qr/status", handlers.Pan123QrStatus)
 		}
 	}
 
