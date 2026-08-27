@@ -278,12 +278,19 @@
                   </el-select>
                 </template>
               </el-table-column>
-              <el-table-column label="当前配置" width="220">
+              <el-table-column label="当前配置" width="170">
                 <template #default="{ row }">
                   <el-tag v-if="isPanDynamic(row.key)" type="success" size="small">云盘动态</el-tag>
                   <el-tag v-else-if="softwareForm[row.key]" type="info" size="small">外部链接</el-tag>
                   <el-tag v-else type="warning" size="small">未配置</el-tag>
-                  <div v-if="softwareForm[row.key]" class="pan-soft-key pan-current-value">{{ softwareForm[row.key] }}</div>
+                  <el-tooltip
+                    v-if="softwareForm[row.key]"
+                    :content="softwareForm[row.key]"
+                    placement="top"
+                    :show-after="300"
+                  >
+                    <div class="pan-soft-key pan-current-value">{{ shortUrl(row.key) }}</div>
+                  </el-tooltip>
                 </template>
               </el-table-column>
               <el-table-column label="搜索验证" width="100" align="center">
@@ -794,6 +801,12 @@ export default {
       }
     }
     const isPanDynamic = (key) => String(softwareForm[key] || '').startsWith('pan://')
+    // 当前配置列：超长链接截断显示，悬停查看完整
+    const shortUrl = (key) => {
+      const v = String(softwareForm[key] || '').trim()
+      if (v.length <= 24) return v
+      return v.slice(0, 24) + '…'
+    }
     // ---- 短信验证码登录（海外服务器风控场景）----
     const smsMode = ref(false)
     const panSmsCode = ref('')
@@ -1157,6 +1170,7 @@ export default {
       testPanConfig,
       testPanKeyword,
       isPanDynamic,
+      shortUrl,
       panRefresh,
       panSyncing,
       panVersions,
@@ -1243,7 +1257,11 @@ export default {
 }
 .pan-current-value {
   margin-top: 2px;
-  word-break: break-all;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
 }
 .avatar-uploader {
   text-align: center;
