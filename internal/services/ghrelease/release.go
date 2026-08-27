@@ -200,10 +200,12 @@ func downloadFileValidated(rawURL, destPath string, expectedSize int64, token st
 	if n == 0 {
 		return fmt.Errorf("下载内容为空")
 	}
-	// 再校验首字节不是 HTML（部分代理不设置 Content-Type）
-	if b, rerr := os.ReadFile(destPath); rerr == nil {
-		head := strings.TrimSpace(string(b[:min(len(b), 64)]))
-		low := strings.ToLower(head)
+	// 再校验首字节不是 HTML（部分代理不设置 Content-Type）——只读文件头，避免大文件整读进内存
+	if fh, rerr := os.Open(destPath); rerr == nil {
+		head := make([]byte, 64)
+		rn, _ := io.ReadFull(fh, head)
+		fh.Close()
+		low := strings.ToLower(strings.TrimSpace(string(head[:rn])))
 		if strings.HasPrefix(low, "<!doctype") || strings.HasPrefix(low, "<html") {
 			return fmt.Errorf("下载内容为 HTML 页面而非安装包")
 		}
