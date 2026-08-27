@@ -755,7 +755,9 @@ export const pan123API = {
   refresh: (data) => api.post('/admin/pan123/refresh', data),
   sync: () => api.post('/admin/pan123/sync'),
   syncStatus: () => api.get('/admin/pan123/sync/status'),
-  versions: () => api.get('/admin/pan123/versions')
+  versions: () => api.get('/admin/pan123/versions'),
+  smsSend: (data) => api.post('/admin/pan123/sms/send', data),
+  smsLogin: (data) => api.post('/admin/pan123/sms/login', data)
 }
 // 用户端：已同步软件版本信息
 export const softwareVersionsAPI = {

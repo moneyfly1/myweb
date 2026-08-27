@@ -114,10 +114,16 @@ func extractCookieValue(cookieHeader, key string) string {
 	return ""
 }
 
-// NewWithToken 使用 Bearer token 直接认证（跳过登录）
+// NewWithToken 使用 Bearer token 直接认证（跳过登录）。
+// 123 云盘网页版 API 主要从名为 jwt 的 HttpOnly cookie 读取令牌，
+// 因此同时以 Cookie: jwt=<token> 发送，确保接口能识别（无需登录，不触发风控）。
 func NewWithToken(token, sharePwd string) *Client {
 	c := New("", "", sharePwd)
-	c.Token = strings.TrimSpace(token)
+	token = strings.TrimSpace(token)
+	c.Token = token
+	if token != "" {
+		c.Cookies = "jwt=" + token
+	}
 	return c
 }
 

@@ -205,7 +205,7 @@
                   v-model="panForm.token"
                   type="textarea"
                   :rows="1"
-                  placeholder="从浏览器 localStorage 复制的 Bearer token；优先级最高"
+                  placeholder="浏览器 DevTools → Application → Cookies → yun.123pan.cn → 复制 jwt 的值；绕过登录不触发风控（不是 localStorage 的 authorToken）"
                 />
               </el-form-item>
               <el-form-item class="config-buttons-group">
@@ -219,6 +219,33 @@
                   重新加载
                 </el-button>
                 <span v-if="panTestResult" class="pan-test-result">{{ panTestResult }}</span>
+              </el-form-item>
+              <el-alert
+                v-if="smsMode && smsNeedsCaptcha"
+                type="warning"
+                show-icon
+                :closable="false"
+                title="服务器无法直接发送验证码（需滑块验证）"
+                description="请打开 yun.123pan.cn 登录页，用手机号获取验证码（需滑动验证），再把收到的验证码填到下方完成登录"
+                style="margin-bottom: 8px"
+              />
+              <el-form-item v-if="smsMode" label="短信验证码">
+                <el-input v-model="panSmsCode" placeholder="输入手机收到的验证码" style="max-width: 220px" />
+                <el-button type="success" :loading="panSmsLogging" @click="smsLogin" class="config-action-btn" style="margin-left: 8px">
+                  完成登录（自动保存 token）
+                </el-button>
+              </el-form-item>
+              <el-form-item v-if="tokenExpiryText">
+                <el-tag :type="tokenExpiryDanger ? 'danger' : 'success'" size="small">
+                  {{ tokenExpiryText }}
+                </el-tag>
+                <span class="pan-soft-key" style="margin-left: 8px">token 过期后需重新短信登录</span>
+              </el-form-item>
+              <el-form-item>
+                <el-button type="warning" plain :loading="panSmsSending" @click="smsSend">
+                  海外服务器？短信验证码登录
+                </el-button>
+                <span v-if="smsStatus" class="pan-test-result" style="margin-left: 8px">{{ smsStatus }}</span>
               </el-form-item>
             </el-form>
 
@@ -675,6 +702,13 @@ export default {
           panForm.token = data.token || ''
           panForm.sync_enabled = data.sync_enabled !== false
           panForm.sync_interval_hours = data.sync_interval_hours || 12
+          const daysLeft = Number(data.token_days_left || 0)
+          if (data.token_expiry && !isNaN(daysLeft)) {
+            tokenExpiryText.value = daysLeft >= 0 ? `Token 剩余 ${daysLeft} 天（${(data.token_expiry || '').replace('T', ' ').slice(0, 10)} 到期）` : `Token 已过期，请重新短信登录`
+            tokenExpiryDanger.value = daysLeft < 7
+          } else {
+            tokenExpiryText.value = ''
+          }
           const map = data.file_map || {}
           PAN_SOFTWARE_KEYS.forEach(({ key }) => {
             panMap[key] = map[key] || ''
@@ -743,6 +777,73 @@ export default {
       }
     }
     const isPanDynamic = (key) => String(softwareForm[key] || '').startsWith('pan://')
+    // ---- 短信验证码登录（海外服务器风控场景）----
+    const smsMode = ref(false)
+    const panSmsCode = ref('')
+    const panSmsSending = ref(false)
+    const panSmsLogging = ref(false)
+    const smsStatus = ref('')
+    const smsHashCode = ref('')
+    const smsNeedsCaptcha = ref(false)
+    const tokenExpiryText = ref('')
+    const tokenExpiryDanger = ref(false)
+    const smsSend = async () => {
+      panSmsSending.value = true
+      smsStatus.value = ''
+      try {
+        const response = await pan123API.smsSend({
+          username: panForm.username,
+          password: panForm.password
+        })
+        if (response.data?.success) {
+          const data = response.data.data || {}
+          if (data.need_sms === false) {
+            smsStatus.value = '账号密码登录成功，无需短信验证'
+            return
+          }
+          smsHashCode.value = data.hash_code || ''
+          smsNeedsCaptcha.value = !!data.needs_captcha
+          smsMode.value = true
+          smsStatus.value = response.data.message || (data.needs_captcha ? '请按提示在浏览器获取验证码' : '验证码已发送')
+        } else {
+          smsStatus.value = response.data?.message || '发送失败'
+        }
+      } catch (error) {
+        smsStatus.value = error.response?.data?.message || '发送失败'
+      } finally {
+        panSmsSending.value = false
+      }
+    }
+    const smsLogin = async () => {
+      if (!panSmsCode.value.trim()) {
+        ElMessage.warning('请输入验证码')
+        return
+      }
+      panSmsLogging.value = true
+      smsStatus.value = ''
+      try {
+        const response = await pan123API.smsLogin({
+          username: panForm.username,
+          password: panForm.password,
+          hash_code: smsHashCode.value,
+          sms_code: panSmsCode.value.trim()
+        })
+        if (response.data?.success) {
+          ElMessage.success('登录成功，token 已自动保存')
+          smsMode.value = false
+          smsNeedsCaptcha.value = false
+          panSmsCode.value = ''
+          smsStatus.value = '登录成功，token 已保存'
+          await loadPanConfig()
+        } else {
+          smsStatus.value = response.data?.message || '登录失败'
+        }
+      } catch (error) {
+        smsStatus.value = error.response?.data?.message || '登录失败'
+      } finally {
+        panSmsLogging.value = false
+      }
+    }
     const testPanKeyword = async (row) => {
       const keyword = String(panMap[row.key] || '').trim()
       if (!keyword) {
@@ -902,7 +1003,17 @@ export default {
       panVersions,
       syncStatusText,
       loadPanSyncStatus,
-      runPanSync
+      runPanSync,
+      smsMode,
+      panSmsCode,
+      panSmsSending,
+      panSmsLogging,
+      smsStatus,
+      smsNeedsCaptcha,
+      tokenExpiryText,
+      tokenExpiryDanger,
+      smsSend,
+      smsLogin
     }
   }
 }
