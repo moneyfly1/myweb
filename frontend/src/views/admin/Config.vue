@@ -71,7 +71,11 @@
                     <el-input v-model="softwareForm.hiddify_android_url" placeholder="请输入下载链接" />
                   </el-form-item>
                 </el-col>
-                <el-col :span="12"></el-col>
+                <el-col :span="12">
+                  <el-form-item label="FlClash">
+                    <el-input v-model="softwareForm.flash_android_url" placeholder="请输入下载链接（可留空）" />
+                  </el-form-item>
+                </el-col>
               </el-row>
               <el-divider content-position="left">macOS 软件</el-divider>
               <el-row :gutter="20">
@@ -81,18 +85,58 @@
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
-                  <el-form-item label="Clash Part">
-                    <el-input v-model="softwareForm.clash_party_macos_url" placeholder="请输入下载链接" />
+                  <el-form-item label="FlClash (Apple 芯片)">
+                    <el-input v-model="softwareForm.flash_macos_arm_url" placeholder="Apple 芯片版本（可留空）" />
                   </el-form-item>
                 </el-col>
               </el-row>
               <el-row :gutter="20">
                 <el-col :span="12">
-                  <el-form-item label="Clash Verge">
-                    <el-input v-model="softwareForm.clash_verge_macos_url" placeholder="请输入下载链接" />
+                  <el-form-item label="Clash Part (Intel)">
+                    <el-input v-model="softwareForm.clash_party_macos_url" placeholder="Intel 芯片版本" />
                   </el-form-item>
                 </el-col>
-                <el-col :span="12"></el-col>
+                <el-col :span="12">
+                  <el-form-item label="Clash Part (Apple 芯片)">
+                    <el-input v-model="softwareForm.clash_party_macos_arm_url" placeholder="Apple 芯片版本（可留空）" />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="Clash Verge (Intel)">
+                    <el-input v-model="softwareForm.clash_verge_macos_url" placeholder="Intel 芯片版本" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="Clash Verge (Apple 芯片)">
+                    <el-input v-model="softwareForm.clash_verge_macos_arm_url" placeholder="Apple 芯片版本（可留空）" />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="V2rayN (Intel)">
+                    <el-input v-model="softwareForm.v2rayn_macos_url" placeholder="Intel 芯片版本（可留空）" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="V2rayN (Apple 芯片)">
+                    <el-input v-model="softwareForm.v2rayn_macos_arm_url" placeholder="Apple 芯片版本（可留空）" />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="Hiddify (Intel)">
+                    <el-input v-model="softwareForm.hiddify_macos_url" placeholder="Intel 芯片版本（可留空）" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="Hiddify (Apple 芯片)">
+                    <el-input v-model="softwareForm.hiddify_macos_arm_url" placeholder="Apple 芯片版本（可留空）" />
+                  </el-form-item>
+                </el-col>
               </el-row>
               <el-divider content-position="left">iOS 软件</el-divider>
               <el-row :gutter="20">
@@ -112,6 +156,184 @@
                 </el-button>
               </el-form-item>
             </el-form>
+          </div>
+          <div class="config-section">
+            <el-divider content-position="left">123云盘自动填充（可选）</el-divider>
+            <el-alert
+              type="info"
+              show-icon
+              :closable="false"
+              title="配置 123 云盘账号后，可一键搜索云盘里的安装包并自动填入上方下载链接。动态模式（pan://）下用户每次点击下载时实时生成新链接，链接永不失效；静态模式则填入当前有效链接，失效后需再次一键填充。"
+            />
+            <el-form :model="panForm" label-width="150px" style="margin-top: 16px">
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="123云盘账号">
+                    <el-input v-model="panForm.username" placeholder="手机号或邮箱" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="账号密码">
+                    <el-input v-model="panForm.password" type="password" show-password placeholder="密码仅保存在本服务器" />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="分享密码(可选)">
+                    <el-input v-model="panForm.share_pwd" placeholder="生成的分享链接密码，留空为无密码" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="链接模式">
+                    <el-select v-model="panForm.mode" style="width: 100%">
+                      <el-option label="直链（推荐，已验证可直接下载）" value="direct" />
+                      <el-option label="分享链接（实验性，可能不可用）" value="share" />
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-form-item label="Cookie（可选）">
+                <el-input
+                  v-model="panForm.cookies"
+                  type="textarea"
+                  :rows="2"
+                  placeholder="从浏览器 DevTools 复制 Cookie 粘贴到此；填写后优先于账号密码。留空则使用账号密码登录"
+                />
+              </el-form-item>
+              <el-form-item label="Token（可选）">
+                <el-input
+                  v-model="panForm.token"
+                  type="textarea"
+                  :rows="1"
+                  placeholder="从浏览器 localStorage 复制的 Bearer token；优先级最高"
+                />
+              </el-form-item>
+              <el-form-item class="config-buttons-group">
+                <el-button type="primary" @click="savePanConfig" :loading="panSaving" class="config-action-btn">
+                  保存云盘配置
+                </el-button>
+                <el-button @click="testPanConfig" :loading="panTesting" class="config-action-btn">
+                  测试连接
+                </el-button>
+                <el-button @click="loadPanConfig" class="config-action-btn">
+                  重新加载
+                </el-button>
+                <span v-if="panTestResult" class="pan-test-result">{{ panTestResult }}</span>
+              </el-form-item>
+            </el-form>
+
+            <h4 class="pan-mapping-title">软件 ↔ 云盘文件名关键词</h4>
+            <p class="pan-tip">
+              每个软件填一个能在云盘里搜到安装包的关键词（如 v2rayN）。<strong>留空 = 该软件不用云盘</strong>，
+              继续使用上方手动填的外部链接（官网 / App Store / GitHub 等均可），一键生成时会跳过留空的行，不会覆盖外部链接。
+              同一软件云盘里有多个平台安装包（exe / dmg / apk）时，用<strong>扩展名过滤</strong>精确锁定，并自动取最新版本。
+            </p>
+            <el-table :data="panMapRows" size="small" border>
+              <el-table-column label="软件" width="200">
+                <template #default="{ row }">
+                  <div class="pan-soft-name">{{ row.label }}</div>
+                  <div class="pan-soft-key">{{ row.key }}</div>
+                </template>
+              </el-table-column>
+              <el-table-column label="云盘文件名关键词">
+                <template #default="{ row }">
+                  <el-input v-model="panMap[row.key]" size="small" placeholder="留空 = 使用外部链接" clearable />
+                </template>
+              </el-table-column>
+              <el-table-column label="扩展名过滤" width="110">
+                <template #default="{ row }">
+                  <el-select v-model="panExts[row.key]" size="small" clearable placeholder="不限">
+                    <el-option v-for="e in PAN_EXT_OPTIONS" :key="e" :label="e" :value="e" />
+                  </el-select>
+                </template>
+              </el-table-column>
+              <el-table-column label="当前配置" width="220">
+                <template #default="{ row }">
+                  <el-tag v-if="isPanDynamic(row.key)" type="success" size="small">云盘动态</el-tag>
+                  <el-tag v-else-if="softwareForm[row.key]" type="info" size="small">外部链接</el-tag>
+                  <el-tag v-else type="warning" size="small">未配置</el-tag>
+                  <div v-if="softwareForm[row.key]" class="pan-soft-key pan-current-value">{{ softwareForm[row.key] }}</div>
+                </template>
+              </el-table-column>
+              <el-table-column label="搜索验证" width="100" align="center">
+                <template #default="{ row }">
+                  <el-button size="small" :loading="panTestingKey === row.key" @click="testPanKeyword(row)">测试</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+
+            <el-form-item class="config-buttons-group" style="margin-top: 16px">
+              <el-button type="primary" @click="panRefresh(true)" :loading="panRefreshing" class="config-action-btn">
+                一键生成并填充（动态 · 实时解析）
+              </el-button>
+              <el-button @click="panRefresh(false)" :loading="panRefreshing" class="config-action-btn">
+                一键生成并填充（静态链接）
+              </el-button>
+            </el-form-item>
+          </div>
+
+          <div class="config-section">
+            <el-divider content-position="left">GitHub 软件库自动同步（定时）</el-divider>
+            <el-alert
+              type="info"
+              show-icon
+              :closable="false"
+              title="自动从 GitHub 获取 v2rayN / Hiddify / Clash Verge / Clash Part / V2rayNG / Clash Meta 的最新版本，下载安装包上传到你的 123 云盘，并自动设置直链（pan://）。仅当 GitHub 有新版本时才会下载上传，其余时间跳过。"
+            />
+            <el-form label-width="150px" style="margin-top: 16px">
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="启用定时同步">
+                    <el-switch v-model="panForm.sync_enabled" active-text="开启" inactive-text="关闭" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="同步间隔（小时）">
+                    <el-input-number v-model="panForm.sync_interval_hours" :min="1" :max="168" :precision="0" style="width: 140px" />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-form-item class="config-buttons-group">
+                <el-button type="primary" @click="savePanConfig" :loading="panSaving" class="config-action-btn">
+                  保存定时设置
+                </el-button>
+                <el-button type="warning" @click="runPanSync" :loading="panSyncing" class="config-action-btn">
+                  立即同步
+                </el-button>
+                <el-button @click="loadPanSyncStatus" class="config-action-btn">
+                  刷新状态
+                </el-button>
+                <span v-if="syncStatusText" class="pan-test-result">{{ syncStatusText }}</span>
+              </el-form-item>
+            </el-form>
+
+            <h4 class="pan-mapping-title">版本对照（GitHub 最新版 ↔ 云盘已同步版本）</h4>
+            <el-table :data="panVersions" size="small" border max-height="420">
+              <el-table-column prop="name" label="软件" width="130" />
+              <el-table-column prop="label" label="平台/架构" width="160" />
+              <el-table-column label="GitHub 版本" width="110" align="center">
+                <template #default="{ row }">
+                  <span v-if="row.github_version">v{{ row.github_version }}</span>
+                  <el-tag v-else type="danger" size="small">获取失败</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="云盘版本" width="110" align="center">
+                <template #default="{ row }">
+                  <span v-if="row.cloud_version">v{{ row.cloud_version }}</span>
+                  <span v-else class="pan-soft-key">未上传</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" width="110" align="center">
+                <template #default="{ row }">
+                  <el-tag v-if="row.custom" type="warning" size="small">自定义链接</el-tag>
+                  <el-tag v-else-if="row.synced" type="success" size="small">已同步</el-tag>
+                  <el-tag v-else-if="row.cloud_version" type="warning" size="small">待更新</el-tag>
+                  <el-tag v-else type="info" size="small">待上传</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="file_name" label="云盘文件" min-width="200" show-overflow-tooltip />
+            </el-table>
           </div>
         </el-tab-pane>
         <el-tab-pane label="邮件配置" name="email">
@@ -199,13 +421,51 @@
           </el-form>
         </el-tab-pane>
       </el-tabs>
+
+      <el-dialog v-model="searchDialog.visible" :title="searchDialog.title" width="640px">
+        <el-table :data="searchDialog.list" size="small" max-height="360" border>
+          <el-table-column prop="file_name" label="文件名" min-width="240" show-overflow-tooltip />
+          <el-table-column prop="size_text" label="大小" width="110" />
+          <el-table-column prop="update_at" label="更新时间" width="170" />
+        </el-table>
+        <template #footer>
+          <el-button @click="searchDialog.visible = false">关闭</el-button>
+        </template>
+      </el-dialog>
+
+      <el-dialog v-model="refreshReport.visible" title="填充结果" width="720px">
+        <el-alert
+          v-if="refreshReport.dynamic"
+          type="success"
+          show-icon
+          :closable="false"
+          title="已写入动态标记 pan://，用户点击下载时将实时获取最新链接，链接永不失效"
+          style="margin-bottom: 12px"
+        />
+        <el-table :data="refreshReport.list" size="small" max-height="420" border>
+          <el-table-column prop="key" label="配置键" width="200" show-overflow-tooltip />
+          <el-table-column prop="keyword" label="关键词" width="110" />
+          <el-table-column label="状态" width="90" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.ok" type="success" size="small">成功</el-tag>
+              <el-tag v-else type="danger" size="small">失败</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="file_name" label="匹配文件" min-width="150" show-overflow-tooltip />
+          <el-table-column prop="size_text" label="大小" width="95" />
+          <el-table-column prop="error" label="错误" min-width="130" show-overflow-tooltip />
+        </el-table>
+        <template #footer>
+          <el-button @click="refreshReport.visible = false">关闭</el-button>
+        </template>
+      </el-dialog>
     </el-card>
   </div>
 </template>
 <script>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { configAPI, softwareConfigAPI } from '@/utils/api'
+import { configAPI, softwareConfigAPI, pan123API } from '@/utils/api'
 export default {
   name: 'AdminConfig',
   setup() {
@@ -233,13 +493,65 @@ export default {
       v2rayng_url: '',
       hiddify_android_url: '',
       flash_macos_url: '',
+      flash_macos_arm_url: '',
+      flash_android_url: '',
       clash_party_macos_url: '',
+      clash_party_macos_arm_url: '',
       clash_verge_macos_url: '',
+      clash_verge_macos_arm_url: '',
+      v2rayn_macos_url: '',
+      v2rayn_macos_arm_url: '',
+      hiddify_macos_url: '',
+      hiddify_macos_arm_url: '',
       shadowrocket_url: ''
     })
     const subscriptionAccessForm = reactive({
       block_browser_subscription_access: false
     })
+    const PAN_SOFTWARE_KEYS = [
+      { key: 'clash_windows_url', label: 'Clash for Windows' },
+      { key: 'v2rayn_url', label: 'V2rayN (Win)' },
+      { key: 'clash_party_windows_url', label: 'Clash Part (Win)' },
+      { key: 'clash_verge_windows_url', label: 'Clash Verge (Win)' },
+      { key: 'hiddify_windows_url', label: 'Hiddify (Win)' },
+      { key: 'flash_windows_url', label: 'FlClash (Win)' },
+      { key: 'clash_android_url', label: 'Clash Meta (Android)' },
+      { key: 'v2rayng_url', label: 'V2rayNG (Android)' },
+      { key: 'hiddify_android_url', label: 'Hiddify (Android)' },
+      { key: 'flash_android_url', label: 'FlClash (Android)' },
+      { key: 'flash_macos_url', label: 'FlClash (macOS Intel)' },
+      { key: 'flash_macos_arm_url', label: 'FlClash (macOS Apple)' },
+      { key: 'clash_party_macos_url', label: 'Clash Part (macOS Intel)' },
+      { key: 'clash_party_macos_arm_url', label: 'Clash Part (macOS Apple)' },
+      { key: 'clash_verge_macos_url', label: 'Clash Verge (macOS Intel)' },
+      { key: 'clash_verge_macos_arm_url', label: 'Clash Verge (macOS Apple)' },
+      { key: 'v2rayn_macos_url', label: 'V2rayN (macOS Intel)' },
+      { key: 'v2rayn_macos_arm_url', label: 'V2rayN (macOS Apple)' },
+      { key: 'hiddify_macos_url', label: 'Hiddify (macOS Intel)' },
+      { key: 'hiddify_macos_arm_url', label: 'Hiddify (macOS Apple)' },
+      { key: 'shadowrocket_url', label: 'Shadowrocket (iOS)' }
+    ]
+    const panForm = reactive({
+      username: '',
+      password: '',
+      share_pwd: '',
+      mode: 'direct',
+      cookies: '',
+      token: '',
+      sync_enabled: true,
+      sync_interval_hours: 12
+    })
+    const panMap = reactive({})
+    const panExts = reactive({})
+    const PAN_EXT_OPTIONS = ['exe', 'msi', 'dmg', 'pkg', 'apk', 'zip', '7z']
+    const panMapRows = PAN_SOFTWARE_KEYS
+    const panSaving = ref(false)
+    const panTesting = ref(false)
+    const panTestingKey = ref('')
+    const panRefreshing = ref(false)
+    const panTestResult = ref('')
+    const searchDialog = reactive({ visible: false, title: '搜索结果', list: [] })
+    const refreshReport = reactive({ visible: false, dynamic: true, list: [] })
     const saveSoftwareConfig = async () => {
       softwareLoading.value = true
       try {
@@ -351,10 +663,209 @@ export default {
         subscriptionAccessLoading.value = false
       }
     }
+    const loadPanConfig = async () => {
+      try {
+        const response = await pan123API.getConfig()
+        if (response.data && response.data.success) {
+          const data = response.data.data || {}
+          panForm.username = data.username || ''
+          panForm.password = data.password || ''
+          panForm.share_pwd = data.share_pwd || ''
+          panForm.mode = data.mode || 'share'
+          panForm.cookies = data.cookies || ''
+          panForm.token = data.token || ''
+          panForm.sync_enabled = data.sync_enabled !== false
+          panForm.sync_interval_hours = data.sync_interval_hours || 12
+          const map = data.file_map || {}
+          PAN_SOFTWARE_KEYS.forEach(({ key }) => {
+            panMap[key] = map[key] || ''
+          })
+          // 已同步的软件自动回填关键词（取云盘文件名），避免输入框为空
+          const syncedFiles = data.synced_files || {}
+          PAN_SOFTWARE_KEYS.forEach(({ key }) => {
+            if (!panMap[key] && syncedFiles[key]) {
+              panMap[key] = syncedFiles[key]
+            }
+          })
+          const extMap = data.file_exts || {}
+          PAN_SOFTWARE_KEYS.forEach(({ key }) => {
+            panExts[key] = extMap[key] || ''
+          })
+        }
+      } catch (error) {
+        // 未配置时静默
+      }
+    }
+    // persistPanConfig 把当前表单（凭证 + 关键词 + 扩展名）保存到后端，不弹提示
+    const persistPanConfig = async () => {
+      try {
+        const response = await pan123API.saveConfig({
+          ...panForm,
+          file_map: { ...panMap },
+          file_exts: { ...panExts }
+        })
+        return !!(response.data && response.data.success)
+      } catch (error) {
+        return false
+      }
+    }
+    const savePanConfig = async () => {
+      panSaving.value = true
+      try {
+        const ok = await persistPanConfig()
+        if (ok) {
+          ElMessage.success('云盘配置已保存')
+          await loadPanConfig()
+        } else {
+          ElMessage.error('保存失败，请检查网络或配置')
+        }
+      } catch (error) {
+        ElMessage.error(error.response?.data?.message || '保存失败')
+      } finally {
+        panSaving.value = false
+      }
+    }
+    const testPanConfig = async () => {
+      panTesting.value = true
+      panTestResult.value = ''
+      try {
+        const response = await pan123API.test()
+        if (response.data && response.data.success) {
+          const data = response.data.data || {}
+          const modeText = data.mode === 'direct' ? '直链' : '分享链接'
+          panTestResult.value = `连接成功：${data.nickname || '已登录'}（当前模式：${modeText}）`
+        } else {
+          panTestResult.value = `失败：${response.data?.message || '未知错误'}`
+        }
+      } catch (error) {
+        panTestResult.value = `失败：${error.response?.data?.message || error.message || '网络错误'}`
+      } finally {
+        panTesting.value = false
+      }
+    }
+    const isPanDynamic = (key) => String(softwareForm[key] || '').startsWith('pan://')
+    const testPanKeyword = async (row) => {
+      const keyword = String(panMap[row.key] || '').trim()
+      if (!keyword) {
+        ElMessage.warning('请先填写关键词')
+        return
+      }
+      panTestingKey.value = row.key
+      try {
+        const response = await pan123API.search({ keyword, ext: panExts[row.key] || '' })
+        if (response.data && response.data.success) {
+          const list = response.data.data?.list || []
+          searchDialog.list = list
+          searchDialog.title = `“${keyword}” 搜索结果（共 ${list.length} 个）`
+          searchDialog.visible = true
+          if (!list.length) {
+            ElMessage.warning('未找到匹配文件，请调整关键词')
+          }
+        } else {
+          ElMessage.error(response.data?.message || '搜索失败')
+        }
+      } catch (error) {
+        ElMessage.error(error.response?.data?.message || '搜索失败')
+      } finally {
+        panTestingKey.value = ''
+      }
+    }
+    const panRefresh = async (dynamic) => {
+      panRefreshing.value = true
+      try {
+        // 先把当前表格里的关键词/扩展名和凭证落库，避免刷新读到旧配置（旧配置关键词为空导致 0 个软件）
+        const saved = await persistPanConfig()
+        if (!saved) {
+          ElMessage.error('保存云盘配置失败，无法执行一键生成')
+          return
+        }
+        const response = await pan123API.refresh({
+          dynamic,
+          mode: panForm.mode,
+          file_map: { ...panMap },
+          file_exts: { ...panExts }
+        })
+        if (response.data && response.data.success) {
+          const data = response.data.data || {}
+          ElMessage.success(response.data.message || '填充完成')
+          await loadSoftwareConfig()
+          refreshReport.list = data.report || []
+          refreshReport.dynamic = data.dynamic !== false
+          refreshReport.visible = true
+        } else {
+          ElMessage.error(response.data?.message || '填充失败')
+        }
+      } catch (error) {
+        ElMessage.error(error.response?.data?.message || '填充失败')
+      } finally {
+        panRefreshing.value = false
+      }
+    }
+    const panSyncing = ref(false)
+    const panVersions = ref([])
+    const syncStatusText = ref('')
+    let syncPollTimer = null
+    const loadPanSyncStatus = async () => {
+      try {
+        const [statusRes, versionsRes] = await Promise.all([
+          pan123API.syncStatus(),
+          pan123API.versions()
+        ])
+        const status = statusRes.data?.data || {}
+        if (versionsRes.data?.success) {
+          panVersions.value = versionsRes.data.data?.list || []
+        }
+        if (status.running) {
+          syncStatusText.value = '同步进行中，请稍候…'
+          clearTimeout(syncPollTimer)
+          syncPollTimer = setTimeout(loadPanSyncStatus, 5000)
+          return
+        }
+        clearTimeout(syncPollTimer)
+        if (status.last_run) {
+          const total = status.total_uploaded || 0
+          syncStatusText.value = `上次运行：${status.last_run.replace('T', ' ').slice(0, 19)}，本次上传 ${total} 个文件`
+        } else {
+          syncStatusText.value = '尚未运行过同步'
+        }
+        // 同步完成后刷新版本对照与软件配置
+        if (versionsRes.data?.success) {
+          panVersions.value = versionsRes.data.data?.list || []
+        }
+        await loadSoftwareConfig()
+      } catch (error) {
+        syncStatusText.value = '获取同步状态失败'
+      }
+    }
+    const runPanSync = async () => {
+      panSyncing.value = true
+      try {
+        const saved = await persistPanConfig()
+        if (!saved) {
+          ElMessage.error('保存云盘配置失败，无法执行同步')
+          return
+        }
+        const response = await pan123API.sync()
+        if (response.data?.success) {
+          ElMessage.success('同步已开始（首次可能需下载上传多个安装包，耗时较长）')
+          syncStatusText.value = '同步进行中，请稍候…'
+          clearTimeout(syncPollTimer)
+          syncPollTimer = setTimeout(loadPanSyncStatus, 5000)
+        } else {
+          ElMessage.error(response.data?.message || '触发同步失败')
+        }
+      } catch (error) {
+        ElMessage.error(error.response?.data?.message || '触发同步失败')
+      } finally {
+        panSyncing.value = false
+      }
+    }
     onMounted(() => {
       loadEmailConfig()
       loadSoftwareConfig()
       loadSubscriptionAccessConfig()
+      loadPanConfig()
+      loadPanSyncStatus()
     })
     return {
       activeTab,
@@ -369,7 +880,30 @@ export default {
       saveEmailConfig,
       loadEmailConfig,
       loadSubscriptionAccessConfig,
-      saveSubscriptionAccessConfig
+      saveSubscriptionAccessConfig,
+      panForm,
+      panMap,
+      panExts,
+      PAN_EXT_OPTIONS,
+      panMapRows,
+      panSaving,
+      panTesting,
+      panTestingKey,
+      panRefreshing,
+      panTestResult,
+      searchDialog,
+      refreshReport,
+      loadPanConfig,
+      savePanConfig,
+      testPanConfig,
+      testPanKeyword,
+      isPanDynamic,
+      panRefresh,
+      panSyncing,
+      panVersions,
+      syncStatusText,
+      loadPanSyncStatus,
+      runPanSync
     }
   }
 }
@@ -411,6 +945,32 @@ export default {
   color: #333;
   margin-bottom: 20px;
   font-size: 1.2rem;
+}
+.pan-test-result {
+  margin-left: 12px;
+  font-size: 13px;
+  color: var(--el-color-success);
+}
+.pan-mapping-title {
+  margin: 16px 0 8px;
+  color: #333;
+  font-size: 1rem;
+}
+.pan-tip {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #909399;
+}
+.pan-soft-name {
+  font-weight: 600;
+}
+.pan-soft-key {
+  font-size: 12px;
+  color: #909399;
+}
+.pan-current-value {
+  margin-top: 2px;
+  word-break: break-all;
 }
 .avatar-uploader {
   text-align: center;

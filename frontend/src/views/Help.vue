@@ -45,6 +45,9 @@
                 >
                   {{ platform }}
                 </el-tag>
+                <el-tag v-if="clientVersion(client)" type="success" size="small">
+                  v{{ clientVersion(client) }}
+                </el-tag>
               </div>
               <div class="item-meta">{{ client.description }}</div>
             </div>
@@ -177,6 +180,7 @@ import {
 import { ElMessage } from '@/utils/elementPlusServices'
 import { safeOpen } from '@/utils/safeOpen'
 import { sanitizeBasicHtml } from '@/utils/sanitizeHtml'
+import { resolvePanDownloadUrl, pickConfiguredUrl } from '@/utils/githubDownload'
 import { cachedAPI } from '@/utils/api'
 export default {
   name: 'Help',
@@ -341,6 +345,7 @@ export default {
         platforms: ['Windows'],
         githubKey: null,
         downloadKeys: ['clash_windows_url'],
+        osKeys: { windows: ['clash_windows_url'] },
         downloadUrl: '',
         guideUrl: '#',
         guide: `
@@ -361,7 +366,8 @@ export default {
         icon: 'desktop',
         platforms: ['Windows', 'Mac', 'Linux'],
         githubKey: 'clash-party',
-        downloadKeys: ['clash_party_windows_url', 'clash_party_macos_url', 'clash_windows_url'],
+        downloadKeys: ['clash_party_windows_url', 'clash_party_macos_arm_url', 'clash_party_macos_url', 'clash_windows_url'],
+        osKeys: { windows: ['clash_party_windows_url'], macos: ['clash_party_macos_arm_url', 'clash_party_macos_url'] },
         downloadUrl: '',
         guideUrl: '#',
         guide: `
@@ -383,7 +389,8 @@ export default {
         icon: 'desktop',
         platforms: ['Windows', 'Mac', 'Linux'],
         githubKey: 'clash-verge',
-        downloadKeys: ['clash_verge_windows_url', 'clash_verge_macos_url'],
+        downloadKeys: ['clash_verge_windows_url', 'clash_verge_macos_arm_url', 'clash_verge_macos_url'],
+        osKeys: { windows: ['clash_verge_windows_url'], macos: ['clash_verge_macos_arm_url', 'clash_verge_macos_url'] },
         downloadUrl: '',
         guideUrl: '#',
         guide: `
@@ -406,6 +413,7 @@ export default {
         platforms: ['Android'],
         githubKey: null,
         downloadKeys: ['clash_android_url'],
+        osKeys: { android: ['clash_android_url'] },
         downloadUrl: '',
         guideUrl: '#',
         guide: `
@@ -426,7 +434,8 @@ export default {
         icon: 'desktop',
         platforms: ['Windows', 'Mac', 'Android'],
         githubKey: 'hiddify',
-        downloadKeys: ['hiddify_windows_url', 'hiddify_android_url'],
+        downloadKeys: ['hiddify_windows_url', 'hiddify_android_url', 'hiddify_macos_arm_url', 'hiddify_macos_url'],
+        osKeys: { windows: ['hiddify_windows_url'], android: ['hiddify_android_url'], macos: ['hiddify_macos_arm_url', 'hiddify_macos_url'] },
         downloadUrl: '',
         guideUrl: '#',
         guide: `
@@ -447,7 +456,8 @@ export default {
         icon: 'desktop',
         platforms: ['Windows', 'Mac', 'Android'],
         githubKey: 'flclash',
-        downloadKeys: ['flash_windows_url', 'flash_macos_url'],
+        downloadKeys: ['flash_windows_url', 'flash_android_url', 'flash_macos_arm_url', 'flash_macos_url'],
+        osKeys: { windows: ['flash_windows_url'], android: ['flash_android_url'], macos: ['flash_macos_arm_url', 'flash_macos_url'] },
         downloadUrl: '',
         guideUrl: '#',
         guide: `
@@ -468,7 +478,8 @@ export default {
         icon: 'desktop',
         platforms: ['Windows'],
         githubKey: 'v2rayn',
-        downloadKeys: ['v2rayn_url'],
+        downloadKeys: ['v2rayn_url', 'v2rayn_macos_arm_url', 'v2rayn_macos_url'],
+        osKeys: { windows: ['v2rayn_url'], macos: ['v2rayn_macos_arm_url', 'v2rayn_macos_url'] },
         downloadUrl: '',
         guideUrl: '#',
         guide: `
@@ -490,6 +501,7 @@ export default {
         platforms: ['Android'],
         githubKey: 'v2rayng',
         downloadKeys: ['v2rayng_url'],
+        osKeys: { android: ['v2rayng_url'] },
         downloadUrl: '',
         guideUrl: '#',
         guide: `
@@ -511,6 +523,7 @@ export default {
         platforms: ['iOS'],
         githubKey: null,
         downloadKeys: ['shadowrocket_url'],
+        osKeys: { ios: ['shadowrocket_url'] },
         downloadUrl: 'https://apps.apple.com/app/shadowrocket/id932747118',
         guideUrl: '#',
         guide: `
@@ -543,13 +556,15 @@ export default {
     })
     const normalizeClientId = (clientId) => clientAliasMap.value.get(String(clientId || '').trim()) || ''
     const getConfiguredDownloadUrl = (client) => {
-      for (const key of client.downloadKeys || []) {
-        const value = softwareConfig.value?.[key]
-        if (value && String(value).trim()) {
-          return String(value).trim()
-        }
-      }
-      return ''
+      return pickConfiguredUrl(client.downloadKeys, softwareConfig.value || {}, null, client.osKeys)
+    }
+    const softwareVersions = ref({})
+    const clientVersion = (client) => {
+      const key = (client.downloadKeys || []).find(k => {
+        const v = softwareConfig.value?.[k]
+        return v && String(v).trim()
+      })
+      return key ? softwareVersions.value[key] || '' : ''
     }
     const openClientGuide = async (clientId, { updateUrl = true } = {}) => {
       const normalizedId = normalizeClientId(clientId)
@@ -581,6 +596,17 @@ export default {
       } catch (error) {
         softwareConfig.value = {}
       }
+      try {
+        const vRes = await fetch('/api/v1/software/versions')
+        const vData = await vRes.json()
+        const map = {}
+        ;(vData?.data?.list || []).forEach(item => {
+          map[item.key] = item.version
+        })
+        softwareVersions.value = map
+      } catch (error) {
+        // 版本信息可选，失败静默
+      }
     }
     const scrollToSection = (sectionId) => {
       const element = document.getElementById(sectionId)
@@ -592,7 +618,7 @@ export default {
       try {
         const configuredUrl = getConfiguredDownloadUrl(client)
         if (configuredUrl) {
-          safeOpen(configuredUrl)
+          safeOpen(resolvePanDownloadUrl(configuredUrl))
           ElMessage.success('已打开下载页面')
           return
         }
@@ -707,6 +733,7 @@ export default {
       downloadClient,
       openClientGuide,
       getClientIcon,
+      clientVersion,
       sanitizeHtml
     }
   }
