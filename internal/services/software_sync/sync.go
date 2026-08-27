@@ -15,27 +15,26 @@ import (
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/aliyundrive"
 	"cboard-go/internal/services/ghrelease"
-	"cboard-go/internal/services/pan123"
 )
 
-const panCategory = "pan123"
+// cfgCategory 云盘配置存储分类（沿用旧库分类名，避免迁移；与 123 云盘已无任何关联）
+const cfgCategory = "pan123"
 
-// FileEntry 云盘文件映射条目（存于 pan123 配置 file_id_map）
+// FileEntry 云盘文件映射条目（存于 file_id_map 配置）
 type FileEntry struct {
-	FileId    int64  `json:"fileId"`
+	// FileId 旧版（123 云盘）遗留字段，已不使用
+	FileId    int64  `json:"fileId,omitempty"`
 	FileName  string `json:"fileName"`
 	Size      int64  `json:"size"`
-	Etag      string `json:"etag"`
-	S3KeyFlag string `json:"s3KeyFlag"`
 	Version   string `json:"version"`
 	UpdatedAt string `json:"updatedAt"`
-	// Provider: "123pan"（默认）或 "aliyundrive"；阿里云盘用文件 id 字符串
+	// AliyunFileID 阿里云盘文件 id（当前唯一存储后端）
 	AliyunFileID string `json:"aliyunFileId,omitempty"`
 }
 
-// HasMeta 是否具备直链所需元数据
+// HasMeta 是否已具备可用文件 id
 func (e FileEntry) HasMeta() bool {
-	return e.FileId > 0 && e.Etag != "" && e.S3KeyFlag != ""
+	return e.AliyunFileID != ""
 }
 
 // ReportItem 单目标同步结果
@@ -53,12 +52,12 @@ type ReportItem struct {
 
 // SyncStatus 同步状态（供管理接口/前端轮询）
 type SyncStatus struct {
-	Running        bool         `json:"running"`
-	Enabled        bool         `json:"enabled"`
-	IntervalHours  int          `json:"interval_hours"`
-	LastRun        string       `json:"last_run"`
-	LastReport     []ReportItem `json:"last_report"`
-	TotalUploaded  int          `json:"total_uploaded"`
+	Running       bool         `json:"running"`
+	Enabled       bool         `json:"enabled"`
+	IntervalHours int          `json:"interval_hours"`
+	LastRun       string       `json:"last_run"`
+	LastReport    []ReportItem `json:"last_report"`
+	TotalUploaded int          `json:"total_uploaded"`
 }
 
 var (
@@ -98,14 +97,8 @@ func fireOnSyncComplete() {
 // ---------------------------------------------------------------------------
 
 type syncConfig struct {
-	Username string
-	Password string
-	SharePwd string
-	Cookies  string
-	Token    string
-	Enabled  bool
-	Interval time.Duration
-	// 阿里云盘后端（refresh_token 非空时优先使用，海外服务器可用）
+	Enabled            bool
+	Interval           time.Duration
 	AliyunRefreshToken string
 }
 
@@ -115,21 +108,11 @@ func loadSyncConfig() (syncConfig, error) {
 	cfg.Interval = 12 * time.Hour
 	db := database.GetDB()
 	var configs []models.SystemConfig
-	if err := db.Where("category = ?", panCategory).Find(&configs).Error; err != nil {
+	if err := db.Where("category = ?", cfgCategory).Find(&configs).Error; err != nil {
 		return cfg, err
 	}
 	for _, c := range configs {
 		switch c.Key {
-		case "username":
-			cfg.Username = c.Value
-		case "password":
-			cfg.Password = c.Value
-		case "share_pwd":
-			cfg.SharePwd = c.Value
-		case "cookies":
-			cfg.Cookies = c.Value
-		case "token":
-			cfg.Token = c.Value
 		case "sync_enabled":
 			cfg.Enabled = c.Value == "" || c.Value == "true" || c.Value == "1"
 		case "sync_interval_hours":
@@ -175,7 +158,7 @@ func LoadFileIDMap() (map[string]FileEntry, error) {
 	out := map[string]FileEntry{}
 	db := database.GetDB()
 	var conf models.SystemConfig
-	if err := db.Where("key = ? AND category = ?", "file_id_map", panCategory).First(&conf).Error; err != nil {
+	if err := db.Where("key = ? AND category = ?", "file_id_map", cfgCategory).First(&conf).Error; err != nil {
 		return out, nil // 不存在则空
 	}
 	if strings.TrimSpace(conf.Value) != "" {
@@ -189,24 +172,24 @@ func SaveFileIDMap(m map[string]FileEntry) error {
 	b, _ := json.Marshal(m)
 	db := database.GetDB()
 	var conf models.SystemConfig
-	if err := db.Where("key = ? AND category = ?", "file_id_map", panCategory).FirstOrInit(&conf).Error; err != nil {
+	if err := db.Where("key = ? AND category = ?", "file_id_map", cfgCategory).FirstOrInit(&conf).Error; err != nil {
 		return err
 	}
 	conf.Key = "file_id_map"
-	conf.Category = panCategory
+	conf.Category = cfgCategory
 	conf.Value = string(b)
 	conf.Type = "text"
 	return db.Save(&conf).Error
 }
 
-func savePanValue(key, value string) error {
+func saveCfgValue(key, value string) error {
 	db := database.GetDB()
 	var conf models.SystemConfig
-	if err := db.Where("key = ? AND category = ?", key, panCategory).FirstOrInit(&conf).Error; err != nil {
+	if err := db.Where("key = ? AND category = ?", key, cfgCategory).FirstOrInit(&conf).Error; err != nil {
 		return err
 	}
 	conf.Key = key
-	conf.Category = panCategory
+	conf.Category = cfgCategory
 	conf.Value = value
 	conf.Type = "text"
 	return db.Save(&conf).Error
@@ -251,7 +234,7 @@ func GetStatus() SyncStatus {
 		// 从数据库回退读取上次报告
 		db := database.GetDB()
 		var conf models.SystemConfig
-		if err := db.Where("key = ? AND category = ?", "sync_last_report", panCategory).First(&conf).Error; err == nil {
+		if err := db.Where("key = ? AND category = ?", "sync_last_report", cfgCategory).First(&conf).Error; err == nil {
 			_ = json.Unmarshal([]byte(conf.Value), &report)
 		}
 	}
@@ -267,11 +250,9 @@ func GetStatus() SyncStatus {
 
 // LastSyncAt 上次同步时间（供调度器判断是否到期）
 func LastSyncAt() time.Time {
-	cfg, _ := loadSyncConfig()
-	_ = cfg
 	db := database.GetDB()
 	var conf models.SystemConfig
-	if err := db.Where("key = ? AND category = ?", "sync_last_run", panCategory).First(&conf).Error; err != nil {
+	if err := db.Where("key = ? AND category = ?", "sync_last_run", cfgCategory).First(&conf).Error; err != nil {
 		return time.Time{}
 	}
 	t, err := time.ParseInLocation(time.RFC3339, conf.Value, time.Local)
@@ -338,7 +319,7 @@ func RunSync(only []string) ([]ReportItem, error) {
 }
 
 // ---------------------------------------------------------------------------
-// 同步主流程
+// 同步主流程（GitHub 最新版 → 下载 → 上传阿里云盘 → 设置动态直链）
 // ---------------------------------------------------------------------------
 
 func run(only []string) ([]ReportItem, int) {
@@ -353,21 +334,10 @@ func run(only []string) ([]ReportItem, int) {
 	if err != nil {
 		return append(report, ReportItem{Status: "error", Message: "读取配置失败: " + err.Error()}), 0
 	}
-	if strings.TrimSpace(cfg.Username) == "" && cfg.Cookies == "" && cfg.Token == "" {
-		return append(report, ReportItem{Status: "error", Message: "未配置 123 云盘登录信息，无法同步"}), 0
-	}
-
-	var client *pan123.Client
 	if cfg.AliyunRefreshToken == "" {
-		switch {
-		case cfg.Token != "":
-			client = pan123.NewWithToken(cfg.Token, cfg.SharePwd)
-		case cfg.Cookies != "":
-			client = pan123.NewWithCookies(cfg.Cookies, cfg.SharePwd)
-		default:
-			client = pan123.New(cfg.Username, cfg.Password, cfg.SharePwd)
-		}
+		return append(report, ReportItem{Status: "error", Message: "未配置阿里云盘 refresh_token，无法同步"}), 0
 	}
+	ali := aliyundrive.New(cfg.AliyunRefreshToken)
 
 	fileIDMap, err := LoadFileIDMap()
 	if err != nil {
@@ -402,8 +372,8 @@ func run(only []string) ([]ReportItem, int) {
 			}
 			item := ReportItem{Key: t.ConfigKey, Name: sw.Name, Label: t.Label, OS: t.OS, Arch: t.Arch, Version: version}
 
-			// 该入口配置了手工自定义外部链接（非 pan://、非工具写入的云盘静态直链）→ 不使用云盘，整项跳过
-			if current := loadSoftwareValue(t.ConfigKey); current != "" && !strings.HasPrefix(current, "pan://") && !isPanManagedLink(current) {
+			// 该入口配置了手工自定义外部链接（非 pan://）→ 不使用云盘，整项跳过
+			if current := loadSoftwareValue(t.ConfigKey); current != "" && !strings.HasPrefix(current, "pan://") {
 				item.Status = "skip"
 				item.Message = "该入口使用自定义链接，跳过云盘同步"
 				report = append(report, item)
@@ -418,9 +388,9 @@ func run(only []string) ([]ReportItem, int) {
 				continue
 			}
 
-			// 版本与匹配到的安装包名都一致才跳过（同版本更换构建/命名时仍会更新，如 fdroid → 常规 arm64-v8a）
+			// 版本与匹配到的安装包名都一致才跳过（同版本更换构建/命名时仍会更新）
 			entry, hasEntry := fileIDMap[t.ConfigKey]
-			if hasEntry && entry.FileId > 0 && entry.Version == version && entry.FileName == asset.Name {
+			if hasEntry && entry.AliyunFileID != "" && entry.Version == version && entry.FileName == asset.Name {
 				item.Status = "skip"
 				item.FileName = entry.FileName
 				item.Message = "已是最新版本"
@@ -436,43 +406,20 @@ func run(only []string) ([]ReportItem, int) {
 				continue
 			}
 
-			newEntry := FileEntry{
-				FileName:  asset.Name,
-				Size:      asset.Size,
-				Version:   version,
-				UpdatedAt: time.Now().Format(time.RFC3339),
+			aliFileID, uerr := ali.Upload(localPath, asset.Name, "root")
+			if uerr != nil {
+				item.Status = "error"
+				item.Message = "上传阿里云盘失败: " + uerr.Error()
+				report = append(report, item)
+				continue
 			}
-			if cfg.AliyunRefreshToken != "" {
-				// 阿里云盘后端（海外服务器可用，refresh_token 刷新不绑定 IP）
-				ali := aliyundrive.New(cfg.AliyunRefreshToken)
-				aliFileID, uerr := ali.Upload(localPath, asset.Name, "root")
-				if uerr != nil {
-					item.Status = "error"
-					item.Message = "上传阿里云盘失败: " + uerr.Error()
-					report = append(report, item)
-					continue
-				}
-				newEntry.AliyunFileID = aliFileID
-				newEntry.FileName = asset.Name
-				newEntry.Size = asset.Size
-			} else {
-				fileId, uerr := client.UploadFile(localPath, asset.Name, 0)
-				if uerr != nil {
-					item.Status = "error"
-					item.Message = "上传云盘失败: " + uerr.Error()
-					report = append(report, item)
-					continue
-				}
-				newEntry.FileId = fileId
-				// 补全直链所需元数据（etag/s3KeyFlag）；以列表返回的真实 fileId 为准
-				if meta := findFileMeta(client, asset.Name); meta != nil {
-					newEntry.FileId = meta.FileID
-					newEntry.Etag = meta.Etag
-					newEntry.S3KeyFlag = meta.S3KeyFlag
-					if newEntry.Size == 0 {
-						newEntry.Size = meta.Size
-					}
-				}
+
+			newEntry := FileEntry{
+				AliyunFileID: aliFileID,
+				FileName:     asset.Name,
+				Size:         asset.Size,
+				Version:      version,
+				UpdatedAt:    time.Now().Format(time.RFC3339),
 			}
 			fileIDMap[t.ConfigKey] = newEntry
 			uploaded++
@@ -481,14 +428,14 @@ func run(only []string) ([]ReportItem, int) {
 			if err := ensurePanManagedURL(t.ConfigKey); err != nil {
 				item.Message = "上传成功，但更新下载链接失败: " + err.Error()
 			} else {
-				item.Message = "已上传云盘并设置直链"
+				item.Message = "已上传阿里云盘并设置直链"
 			}
-			// 有新版本时删除云盘中的旧版本文件（fileId 不同才删，避免误删覆盖后的新文件）
-			if hasEntry && entry.FileId > 0 && newEntry.FileId != entry.FileId {
-				if terr := client.TrashFile(entry.FileId); terr != nil {
+			// 有新版本时删除云盘中的旧版本文件
+			if hasEntry && entry.AliyunFileID != "" && entry.AliyunFileID != aliFileID {
+				if terr := ali.Trash(entry.AliyunFileID); terr != nil {
 					item.Message = "新版本已上传，但删除旧版本失败: " + terr.Error()
 				} else {
-					item.Message = "已上传云盘并替换删除旧版本"
+					item.Message = "已上传阿里云盘并替换删除旧版本"
 				}
 			}
 			item.Status = "ok"
@@ -500,9 +447,9 @@ func run(only []string) ([]ReportItem, int) {
 	if err := SaveFileIDMap(fileIDMap); err != nil {
 		report = append(report, ReportItem{Status: "error", Message: "保存文件映射失败: " + err.Error()})
 	}
-	_ = savePanValue("sync_last_run", time.Now().Format(time.RFC3339))
+	_ = saveCfgValue("sync_last_run", time.Now().Format(time.RFC3339))
 	if b, err := json.Marshal(report); err == nil {
-		_ = savePanValue("sync_last_report", string(b))
+		_ = saveCfgValue("sync_last_report", string(b))
 	}
 	sort.SliceStable(report, func(i, j int) bool {
 		if report[i].Name != report[j].Name {
@@ -511,11 +458,6 @@ func run(only []string) ([]ReportItem, int) {
 		return report[i].Label < report[j].Label
 	})
 	return report, uploaded
-}
-
-// isPanManagedLink 判断是否为工具写入的 123 云盘直链（静态模式产物）
-func isPanManagedLink(u string) bool {
-	return strings.Contains(u, "123295.com") || strings.Contains(u, "cjjd19.com")
 }
 
 // ensurePanManagedURL 若该键当前为空或已是 pan://，则写入 pan://<键>；手工外部链接不覆盖
@@ -558,20 +500,4 @@ func findAssetWithPref(release *ghrelease.Release, preferred []*regexp.Regexp) *
 		}
 	}
 	return fdroidFallback
-}
-
-// findFileMeta 上传后按文件名搜索补齐元数据
-func findFileMeta(client *pan123.Client, fileName string) *pan123.File {
-	for i := 0; i < 4; i++ {
-		files, err := client.SearchFiles(fileName, 20)
-		if err == nil {
-			for j := range files {
-				if files[j].Type == 0 && strings.EqualFold(files[j].FileName, fileName) {
-					return &files[j]
-				}
-			}
-		}
-		time.Sleep(1500 * time.Millisecond)
-	}
-	return nil
 }
