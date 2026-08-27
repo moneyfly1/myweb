@@ -1129,6 +1129,11 @@ show_menu() {
 main() {
     while true; do
         show_menu
+        # 标准输入关闭（如管道/SSH 非交互执行）时退出，避免死循环占满 CPU
+        if [[ -z "$choice" ]]; then
+            log "检测到非交互输入，自动退出。"
+            exit 0
+        fi
         case $choice in
             1) full_deploy ;;
             2) manage_admin ;;
