@@ -164,8 +164,33 @@
               show-icon
               :closable="false"
               title="配置阿里云盘 refresh_token 后，定时从 GitHub 获取最新安装包上传到你的阿里云盘，并自动把上方软件下载链接填充为 pan:// 动态直链（用户每次点击下载时实时生成新链接，链接永不失效）。阿里云盘 OAuth 不绑定 IP、无境外风控，海外服务器可用。"
-              description="获取 refresh_token：浏览器登录 www.alipan.com → F12 → Application → Local Storage → https://www.alipan.com → 找到键名 token，复制其中 refresh_token 的值（约 90 天有效；测试连接成功后会自动轮换并保存新 token）。"
             />
+            <el-collapse style="margin: 12px 0" :model-value="['tokenGuide']">
+              <el-collapse-item name="tokenGuide">
+                <template #title>
+                  <span style="font-weight: 600; color: var(--el-color-primary)">📖 如何获取 refresh_token？（点击展开分步指引）</span>
+                </template>
+                <div class="token-guide">
+                  <p>① 点击下方按钮，在新窗口打开阿里云盘网页版并登录你的账号：</p>
+                  <p style="margin-left: 16px">
+                    <el-button type="primary" size="small" @click="openAlipanSite">
+                      打开 www.alipan.com 并登录
+                    </el-button>
+                  </p>
+                  <p>② 按 <b>F12</b>（或右键 → 检查）打开开发者工具，切换到 <b>Application（应用）</b> 面板；</p>
+                  <p>③ 左侧找到 <b>Local Storage</b>，展开后点击 <b>https://www.alipan.com</b>；</p>
+                  <p>④ 在右侧键值列表里找到键名 <b>token</b>，双击其 <b>值</b>（一长串 JSON，以 <code>{</code> 开头），复制其中 <code>"refresh_token"</code> 对应的值（<code>eyJ...开头</code> 的一长串）；</p>
+                  <p>⑤ 把复制的内容粘贴到下方「阿里云盘 refresh_token」输入框，点「保存云盘配置」，再点「测试阿里云盘连接」确认可用。</p>
+                  <el-alert
+                    type="warning"
+                    show-icon
+                    :closable="false"
+                    title="提示"
+                    description="refresh_token 约 90 天有效；测试连接 / 同步时会自动轮换并回存新 token，平时无需手动更新。保存后输入框会显示为 ******（脱敏），再次保存请保持原样即可，不会覆盖原 token。"
+                  />
+                </div>
+              </el-collapse-item>
+            </el-collapse>
             <el-form :model="panForm" label-width="150px" style="margin-top: 16px">
               <el-form-item label="云盘上传目录">
                 <div style="display: flex; width: 100%; gap: 8px">
@@ -175,7 +200,7 @@
                 <div class="pan-tip" style="width: 100%">同步时会在该目录下自动为每个软件创建子文件夹（如 软件下载/v2rayN/），安装包按软件分别存放；也可点击「从云盘选择」直接浏览你的云盘目录，无需手填。</div>
               </el-form-item>
               <el-form-item label="阿里云盘 refresh_token">
-                <el-input v-model="panForm.aliyun_refresh_token" type="textarea" :rows="2" placeholder="粘贴 refresh_token" />
+                <el-input v-model="panForm.aliyun_refresh_token" type="textarea" :rows="2" placeholder="粘贴 refresh_token（获取方式见上方折叠指引：www.alipan.com → F12 → Application → Local Storage → token → refresh_token）" />
               </el-form-item>
               <el-form-item>
                 <el-button type="primary" plain :loading="aliyunTesting" @click="testAliyun">
@@ -609,6 +634,11 @@ export default {
         aliyunTesting.value = false
       }
     }
+    // 打开阿里云盘网页版（获取 refresh_token 指引第一步）
+    const openAlipanSite = () => {
+      window.open('https://www.alipan.com', '_blank', 'noopener')
+      ElMessage.info('请在新窗口登录后按指引操作：F12 → Application → Local Storage → https://www.alipan.com → token → refresh_token')
+    }
     // ---- 云盘目录选择器（从云盘拉取目录树，免手填）----
     const folderPickerReady = ref(false)
     const folderDialog = reactive({
@@ -745,6 +775,7 @@ export default {
       aliyunTesting,
       aliyunTestResult,
       testAliyun,
+      openAlipanSite,
       folderPickerReady,
       folderDialog,
       openFolderPicker,
@@ -840,6 +871,22 @@ export default {
 }
 .folder-crumb-tag {
   cursor: pointer;
+}
+.token-guide {
+  font-size: 13px;
+  line-height: 1.9;
+  color: #333;
+  padding: 4px 8px;
+}
+.token-guide p {
+  margin: 4px 0;
+}
+.token-guide code {
+  background: var(--el-fill-color-light);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: monospace;
+  color: #d03050;
 }
 .avatar-uploader {
   text-align: center;
