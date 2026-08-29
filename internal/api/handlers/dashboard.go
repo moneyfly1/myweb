@@ -214,7 +214,7 @@ func GetDashboard(c *gin.Context) {
 		"totalUsers":          dashboardStats.TotalUsers,
 		"activeSubscriptions": dashboardStats.ActiveSubscriptions,
 		"totalOrders":         paymentSummary.Total,
-		"totalRevenue":        paymentSummary.PaidRevenue,
+		"totalRevenue":        paymentSummary.RangeRevenue,
 	})
 }
 
