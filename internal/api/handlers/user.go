@@ -684,25 +684,13 @@ func GetUserDetails(c *gin.Context) {
 	db.Where("user_id = ?", u.ID).Order("created_at DESC").Limit(50).Find(&recharges)
 
 	formattedRecharges := make([]gin.H, 0, len(recharges))
-	formatIPForRecharge := func(ip string) string {
-		if ip == "" {
-			return "-"
-		}
-		if ip == "::1" {
-			return "127.0.0.1"
-		}
-		if strings.HasPrefix(ip, "::ffff:") {
-			return strings.TrimPrefix(ip, "::ffff:")
-		}
-		return ip
-	}
 	for _, record := range recharges {
 		ipValue := utils.GetNullStringValue(record.IPAddress)
 		var ipStr string
 		if ipValue != nil {
 			ipStr = ipValue.(string)
 		}
-		ipAddress := formatIPForRecharge(ipStr)
+		ipAddress := utils.FormatIP(ipStr)
 		// 列表查询不查询 GeoIP，提升性能
 		location := ""
 		// if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
@@ -756,46 +744,22 @@ func GetUserDetails(c *gin.Context) {
 	var resets []models.SubscriptionReset
 	db.Where("user_id = ?", u.ID).Order("created_at DESC").Find(&resets)
 	formattedResets := make([]gin.H, 0, len(resets))
-	getStringPtr := func(ptr *string) string {
-		if ptr != nil {
-			return *ptr
-		}
-		return ""
-	}
 	for _, reset := range resets {
 		formattedResets = append(formattedResets, gin.H{
 			"id":                   reset.ID,
 			"subscription_id":      reset.SubscriptionID,
 			"reset_type":           reset.ResetType,
 			"reason":               reset.Reason,
-			"old_subscription_url": getStringPtr(reset.OldSubscriptionURL),
-			"new_subscription_url": getStringPtr(reset.NewSubscriptionURL),
+			"old_subscription_url": utils.GetStringValue(reset.OldSubscriptionURL),
+			"new_subscription_url": utils.GetStringValue(reset.NewSubscriptionURL),
 			"device_count_before":  reset.DeviceCountBefore,
 			"device_count_after":   reset.DeviceCountAfter,
-			"reset_by":             getStringPtr(reset.ResetBy),
+			"reset_by":             utils.GetStringValue(reset.ResetBy),
 			"created_at":           utils.FormatBeijingTime(reset.CreatedAt),
 		})
 	}
 
 	uaRecords := make([]gin.H, 0)
-	getString := func(ptr *string) string {
-		if ptr != nil {
-			return *ptr
-		}
-		return ""
-	}
-	formatIPForUA := func(ip string) string {
-		if ip == "" {
-			return "-"
-		}
-		if ip == "::1" {
-			return "127.0.0.1"
-		}
-		if strings.HasPrefix(ip, "::ffff:") {
-			return strings.TrimPrefix(ip, "::ffff:")
-		}
-		return ip
-	}
 	if len(subIDs) > 0 {
 		var devices []models.Device
 		db.Where("subscription_id IN ?", subIDs).
@@ -818,14 +782,14 @@ func GetUserDetails(c *gin.Context) {
 		}
 
 		for _, d := range uaMap {
-			ipAddress := formatIPForUA(getString(d.IPAddress))
+			ipAddress := utils.FormatIP(utils.GetStringValue(d.IPAddress))
 			// 使用数据库中已存储的位置信息，避免实时查询 GeoIP
-			location := getString(d.Location)
+			location := utils.GetStringValue(d.Location)
 
 			uaRecords = append(uaRecords, gin.H{
 				"user_agent":   *d.UserAgent,
-				"device_type":  getString(d.DeviceType),
-				"device_name":  getString(d.DeviceName),
+				"device_type":  utils.GetStringValue(d.DeviceType),
+				"device_name":  utils.GetStringValue(d.DeviceName),
 				"ip_address":   ipAddress,
 				"location":     utils.FormatLocation(location),
 				"created_at":   utils.FormatBeijingTime(d.CreatedAt),
@@ -843,11 +807,7 @@ func GetUserDetails(c *gin.Context) {
 		if lh.IPAddress.Valid {
 			ipAddr = lh.IPAddress.String
 		}
-		if ipAddr == "::1" {
-			ipAddr = "127.0.0.1"
-		} else if strings.HasPrefix(ipAddr, "::ffff:") {
-			ipAddr = strings.TrimPrefix(ipAddr, "::ffff:")
-		}
+		ipAddr = utils.NormalizeIP(ipAddr)
 		location := ""
 		if lh.Location.Valid {
 			location = lh.Location.String
@@ -1039,8 +999,8 @@ func buildMultiIPDetail(db *gorm.DB, userID uint, count int64, startTime, endTim
 			"time":       utils.FormatBeijingTime(row.LoginTime),
 			"source":     "登录",
 			"ip_address": normalizeNullableIP(row.IPAddress),
-			"location":   utils.FormatLocation(nullableString(row.Location)),
-			"user_agent": nullableString(row.UserAgent),
+			"location":   utils.FormatLocation(utils.NullStringValue(row.Location)),
+			"user_agent": utils.NullStringValue(row.UserAgent),
 		})
 	}
 	for _, row := range deviceRows {
@@ -1048,8 +1008,8 @@ func buildMultiIPDetail(db *gorm.DB, userID uint, count int64, startTime, endTim
 			"time":       utils.FormatBeijingTime(row.LastAccess),
 			"source":     "设备访问",
 			"ip_address": normalizePointerIP(row.IPAddress),
-			"location":   utils.FormatLocation(stringPointerValue(row.Location)),
-			"user_agent": stringPointerValue(row.UserAgent),
+			"location":   utils.FormatLocation(utils.GetStringValue(row.Location)),
+			"user_agent": utils.GetStringValue(row.UserAgent),
 		})
 	}
 
@@ -1088,18 +1048,18 @@ func buildMultiLocationDetail(db *gorm.DB, userID uint, count int64, startTime, 
 		items = append(items, gin.H{
 			"time":       utils.FormatBeijingTime(row.LoginTime),
 			"source":     "登录",
-			"location":   utils.FormatLocation(nullableString(row.Location)),
+			"location":   utils.FormatLocation(utils.NullStringValue(row.Location)),
 			"ip_address": normalizeNullableIP(row.IPAddress),
-			"user_agent": nullableString(row.UserAgent),
+			"user_agent": utils.NullStringValue(row.UserAgent),
 		})
 	}
 	for _, row := range deviceRows {
 		items = append(items, gin.H{
 			"time":       utils.FormatBeijingTime(row.LastAccess),
 			"source":     "设备访问",
-			"location":   utils.FormatLocation(stringPointerValue(row.Location)),
+			"location":   utils.FormatLocation(utils.GetStringValue(row.Location)),
 			"ip_address": normalizePointerIP(row.IPAddress),
-			"user_agent": stringPointerValue(row.UserAgent),
+			"user_agent": utils.GetStringValue(row.UserAgent),
 		})
 	}
 
@@ -1134,7 +1094,7 @@ func buildLoginFailedDetail(db *gorm.DB, user *models.User, count int64, startTi
 			"time":       utils.FormatBeijingTime(row.CreatedAt),
 			"username":   row.Username,
 			"ip_address": normalizeNullableIP(row.IPAddress),
-			"user_agent": nullableString(row.UserAgent),
+			"user_agent": utils.NullStringValue(row.UserAgent),
 		})
 	}
 
@@ -1170,7 +1130,7 @@ func buildFrequentResetDetail(db *gorm.DB, userID uint, count int64, startTime, 
 			"reason":              row.Reason,
 			"device_count_before": row.DeviceCountBefore,
 			"device_count_after":  row.DeviceCountAfter,
-			"reset_by":            stringPointerValue(row.ResetBy),
+			"reset_by":            utils.GetStringValue(row.ResetBy),
 		})
 	}
 
@@ -1249,10 +1209,10 @@ func buildDeviceOverLimitDetail(db *gorm.DB, userID uint, activeDeviceCount int6
 	for _, row := range rows {
 		items = append(items, gin.H{
 			"subscription_id": row.SubscriptionID,
-			"device_name":     stringPointerValue(row.DeviceName),
-			"device_type":     stringPointerValue(row.DeviceType),
+			"device_name":     utils.GetStringValue(row.DeviceName),
+			"device_type":     utils.GetStringValue(row.DeviceType),
 			"ip_address":      normalizePointerIP(row.IPAddress),
-			"location":        utils.FormatLocation(stringPointerValue(row.Location)),
+			"location":        utils.FormatLocation(utils.GetStringValue(row.Location)),
 			"last_access":     utils.FormatBeijingTime(row.LastAccess),
 			"access_count":    row.AccessCount,
 		})
@@ -1277,39 +1237,18 @@ func buildDeviceOverLimitDetail(db *gorm.DB, userID uint, activeDeviceCount int6
 	}
 }
 
-func nullableString(value sql.NullString) string {
-	if value.Valid {
-		return value.String
-	}
-	return ""
-}
-
-func stringPointerValue(value *string) string {
-	if value != nil {
-		return *value
-	}
-	return ""
-}
-
 func normalizeNullableIP(value sql.NullString) string {
 	if !value.Valid {
 		return ""
 	}
-	return normalizeIP(value.String)
+	return utils.NormalizeIP(value.String)
 }
 
 func normalizePointerIP(value *string) string {
 	if value == nil {
 		return ""
 	}
-	return normalizeIP(*value)
-}
-
-func normalizeIP(ip string) string {
-	if ip == "::1" {
-		return "127.0.0.1"
-	}
-	return strings.TrimPrefix(ip, "::ffff:")
+	return utils.NormalizeIP(*value)
 }
 
 func buildUserCheckinLogsQuery(db *gorm.DB, c *gin.Context, userID uint) (*gorm.DB, error) {

@@ -325,3 +325,38 @@ func ParseIP(ip string) string {
 
 	return ip
 }
+
+// NormalizeIP 规范化 IP 字符串：去除 host:port、::1→127.0.0.1、去 ::ffff: 前缀。
+// 与 ParseIP 的区别：对无法解析的字符串原样返回（而非丢弃），适合展示场景。
+func NormalizeIP(ip string) string {
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return ""
+	}
+
+	if host, _, err := net.SplitHostPort(ip); err == nil {
+		ip = host
+	}
+
+	if ip == "::1" {
+		return "127.0.0.1"
+	}
+
+	if strings.HasPrefix(ip, "::ffff:") {
+		ipv4 := strings.TrimPrefix(ip, "::ffff:")
+		if parsedIPv4 := net.ParseIP(ipv4); parsedIPv4 != nil && parsedIPv4.To4() != nil {
+			return ipv4
+		}
+	}
+
+	return ip
+}
+
+// FormatIP 规范化 IP 并处理空值（空值返回 "-"），用于前端展示。
+func FormatIP(ip string) string {
+	normalized := NormalizeIP(ip)
+	if normalized == "" {
+		return "-"
+	}
+	return normalized
+}

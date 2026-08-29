@@ -38,13 +38,6 @@ func GetDevices(c *gin.Context) {
 
 	deviceList := make([]gin.H, 0, len(devices))
 	for _, d := range devices {
-		getString := func(ptr *string) string {
-			if ptr != nil {
-				return *ptr
-			}
-			return ""
-		}
-
 		lastSeen := utils.FormatBeijingTime(d.LastAccess)
 		if d.LastSeen != nil {
 			lastSeen = utils.FormatBeijingTime(*d.LastSeen)
@@ -55,21 +48,8 @@ func GetDevices(c *gin.Context) {
 			firstSeen = utils.FormatBeijingTime(*d.FirstSeen)
 		}
 
-		formatIP := func(ip string) string {
-			if ip == "" {
-				return "-"
-			}
-			if ip == "::1" {
-				return "127.0.0.1"
-			}
-			if len(ip) >= 7 && ip[:7] == "::ffff:" {
-				return ip[7:]
-			}
-			return ip
-		}
-
-		ipStr := getString(d.IPAddress)
-		ipAddress := formatIP(ipStr)
+		ipStr := utils.GetStringValue(d.IPAddress)
+		ipAddress := utils.FormatIP(ipStr)
 
 		// 列表查询不查询 GeoIP，提升性能
 		location := ""
@@ -83,19 +63,19 @@ func GetDevices(c *gin.Context) {
 		deviceList = append(deviceList, gin.H{
 			"id":                 d.ID,
 			"subscription_id":    d.SubscriptionID,
-			"device_name":        getString(d.DeviceName),
-			"device_type":        getString(d.DeviceType),
-			"device_model":       getString(d.DeviceModel),
-			"device_brand":       getString(d.DeviceBrand),
+			"device_name":        utils.GetStringValue(d.DeviceName),
+			"device_type":        utils.GetStringValue(d.DeviceType),
+			"device_model":       utils.GetStringValue(d.DeviceModel),
+			"device_brand":       utils.GetStringValue(d.DeviceBrand),
 			"device_fingerprint": d.DeviceFingerprint,
 			"ip_address":         ipAddress,
 			"location":           location,
-			"user_agent":         getString(d.UserAgent),
-			"software_name":      getString(d.SoftwareName),
-			"software_version":   getString(d.SoftwareVersion),
-			"os_name":            getString(d.OSName),
-			"os_version":         getString(d.OSVersion),
-			"subscription_type":  getString(d.SubscriptionType),
+			"user_agent":         utils.GetStringValue(d.UserAgent),
+			"software_name":      utils.GetStringValue(d.SoftwareName),
+			"software_version":   utils.GetStringValue(d.SoftwareVersion),
+			"os_name":            utils.GetStringValue(d.OSName),
+			"os_version":         utils.GetStringValue(d.OSVersion),
+			"subscription_type":  utils.GetStringValue(d.SubscriptionType),
 			"is_active":          d.IsActive,
 			"is_allowed":         d.IsAllowed,
 			"first_seen":         firstSeen,
@@ -103,7 +83,7 @@ func GetDevices(c *gin.Context) {
 			"last_seen":          lastSeen,
 			"access_count":       d.AccessCount,
 			"created_at":         utils.FormatBeijingTime(d.CreatedAt),
-			"remark":             getString(d.Remark),
+			"remark":             utils.GetStringValue(d.Remark),
 		})
 	}
 

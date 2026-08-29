@@ -403,6 +403,15 @@ func GetNullStringValue(ns sql.NullString) interface{} {
 	return nil
 }
 
+// NullStringValue 将 sql.NullString 转为普通字符串（无效时返回空字符串）。
+// 与 GetNullStringValue 的区别：返回值类型为 string 而非 interface{}，适合直接拼接入 gin.H。
+func NullStringValue(ns sql.NullString) string {
+	if ns.Valid {
+		return ns.String
+	}
+	return ""
+}
+
 func GetNullInt64Value(ni sql.NullInt64) interface{} {
 	if ni.Valid {
 		return ni.Int64
