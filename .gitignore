@@ -112,3 +112,4 @@ cboard.db.*.bak.*
 .askpass.sh
 .gomodcache/
 audit-moneyfly/
+.gopath/

@@ -26,6 +26,11 @@ func SetupRouter() *gin.Engine {
 	r.Use(middleware.ErrorRecoveryMiddleware())
 	r.Use(middleware.LoggerMiddleware())
 	r.Use(middleware.RequestIDMiddleware())
+	// Prometheus 指标采集（QPS/延迟/并发），放在最外层记录完整耗时
+	r.Use(middleware.MetricsMiddleware())
+
+	// /metrics 端点：Prometheus 抓取（仅供内网监控，注意不要暴露公网）
+	r.GET("/metrics", middleware.MetricsHandler())
 
 	serveImmutableAsset := func(c *gin.Context) {
 		c.Header("Cache-Control", "public, max-age=31536000, immutable")
