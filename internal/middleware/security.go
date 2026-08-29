@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"runtime/debug"
 	"time"
@@ -60,20 +61,30 @@ func CORSMiddleware() gin.HandlerFunc {
 // ==========================================
 
 // LoggerMiddleware 请求日志中间件
+// LoggerMiddleware 输出结构化访问日志（JSON），带 request_id 便于关联追踪。
 func LoggerMiddleware() gin.HandlerFunc {
-	return gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
-		return fmt.Sprintf("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",
-			param.ClientIP,
-			param.TimeStamp.Format(time.RFC1123),
-			param.Method,
-			param.Path,
-			param.Request.Proto,
-			param.StatusCode,
-			param.Latency,
-			param.Request.UserAgent(),
-			param.ErrorMessage,
+	return func(c *gin.Context) {
+		start := time.Now()
+		path := c.Request.URL.Path
+
+		c.Next()
+
+		// request_id 由后置的 RequestIDMiddleware 在链中设置，c.Next() 后已可用
+		latencyMs := float64(time.Since(start).Microseconds()) / 1000.0
+		errMsg := c.Errors.ByType(gin.ErrorTypePrivate).String()
+
+		slog.Info("http_request",
+			"request_id", c.GetString("request_id"),
+			"method", c.Request.Method,
+			"path", path,
+			"query", c.Request.URL.RawQuery,
+			"status", c.Writer.Status(),
+			"latency_ms", latencyMs,
+			"client_ip", c.ClientIP(),
+			"user_agent", c.Request.UserAgent(),
+			"error", errMsg,
 		)
-	})
+	}
 }
 
 // ErrorRecoveryMiddleware 错误恢复中间件
