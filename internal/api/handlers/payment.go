@@ -1052,10 +1052,7 @@ func sendPaymentNotifications(db *gorm.DB, orderNo string) {
 				remainingDays := 0
 				if !subscriptionInfo.ExpireTime.IsZero() {
 					expireTime = utils.FormatBeijingTime(subscriptionInfo.ExpireTime)
-					diff := subscriptionInfo.ExpireTime.Sub(utils.GetBeijingTime())
-					if diff > 0 {
-						remainingDays = int(diff.Hours() / 24)
-					}
+					remainingDays, _ = utils.RemainingDays(subscriptionInfo.ExpireTime, utils.GetBeijingTime())
 				}
 
 				content := templateBuilder.GetSubscriptionTemplate(

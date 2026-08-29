@@ -362,7 +362,7 @@
         <div class="qr-code-wrapper-compact">
           <div v-if="paymentQRCode" class="qr-code">
             <img
-              :src="paymentQRCode.startsWith('data:') ? paymentQRCode : (paymentQRCode + '?t=' + Date.now())"
+              :src="qrDisplaySrc(paymentQRCode)"
               alt="支付二维码"
               @error="onImageError"
               @load="onImageLoad"
@@ -403,12 +403,13 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { Loading, Wallet } from '@element-plus/icons-vue'
 import { useApi, rechargeAPI, paymentAPI, pendingPaymentStorage, cachedAPI } from '@/utils/api'
 import { formatDateTime } from '@/utils/date'
+import { getOrderStatusType, getOrderStatusText, getPaymentMethodType, getPaymentMethodText as getPaymentMethodTextShared } from '@/utils/statusMaps'
 import { formatMoney } from '@/utils/format'
 import { confirmWarning } from '@/utils/confirmAction'
 import { safeNavigate } from '@/utils/safeOpen'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
 import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
-import { createQRCodeDataURL } from '@/utils/qrcode'
+import { buildAlipayAppUrl, createPaymentQRCode, isPaymentPageUrl, qrDisplaySrc } from '@/utils/payment'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import AppDialog from '@/components/AppDialog.vue'
@@ -858,17 +859,6 @@ export default {
       return String(value || '').trim()
     }
     const isHttpUrl = (url) => /^https?:\/\//i.test(String(url || '').trim())
-    const createPaymentQRCode = async (url) => {
-      return createQRCodeDataURL(url, {
-        width: 256,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        },
-        errorCorrectionLevel: 'M'
-      })
-    }
     const isAlipayPayment = (order) => {
       const method = normalizePaymentMethodValue(order?.payment_method).toLowerCase()
       const url = String(paymentUrl.value || '').toLowerCase()
@@ -939,25 +929,10 @@ export default {
     })
     const generateQRCode = async (url) => {
       try {
-        return await createQRCodeDataURL(url, {
-          width: 256,
-          margin: 2,
-          color: {
-            dark: '#000000',
-            light: '#FFFFFF'
-          },
-          errorCorrectionLevel: 'M'
-        })
+        return await createPaymentQRCode(url)
       } catch (error) {
         throw new Error('生成二维码失败')
       }
-    }
-    const isPaymentPageUrl = (url) => {
-      const value = String(url || '').toLowerCase()
-      return value.includes('payapi/pay/payment') ||
-        value.includes('submit.php') ||
-        value.includes('alipay.com') ||
-        (value.startsWith('http') && !value.includes('qrcode') && !value.includes('qr.alipay'))
     }
     const payOrder = async (order) => {
       try {
@@ -1006,7 +981,7 @@ export default {
         ElMessage.error('支付链接不存在')
         return
       }
-      const alipayAppUrl = `alipays://platformapi/startapp?saId=10000007&qrcode=${encodeURIComponent(paymentUrl.value)}`
+      const alipayAppUrl = buildAlipayAppUrl(paymentUrl.value)
       try {
         cleanupPaymentManualWatchers()
         paymentManualVisibilityHandler = async () => {
@@ -1294,24 +1269,6 @@ export default {
         ElMessage.error('查看订单详情失败')
       }
     }
-    const getOrderStatusType = (status) => {
-      const statusMap = {
-        pending: 'warning',
-        paid: 'success',
-        cancelled: 'info',
-        failed: 'danger'
-      }
-      return statusMap[status] || 'info'
-    }
-    const getOrderStatusText = (status) => {
-      const statusMap = {
-        pending: '待支付',
-        paid: '已支付',
-        cancelled: '已取消',
-        failed: '支付失败'
-      }
-      return statusMap[status] || status
-    }
     const getPaymentMethodText = (method) => {
       // 如果没有支付方式，返回"未知"
       if (!method || method === '' || method === null || method === undefined) {
@@ -1334,38 +1291,7 @@ export default {
         }
       }
 
-      const methodMap = {
-        alipay: '支付宝',
-        wechat: '微信支付',
-        wxpay: '微信支付',
-        balance: '余额支付',
-        yipay: '易支付',
-        yipay_alipay: '易支付-支付宝',
-        yipay_wxpay: '易支付-微信',
-        yipay_qqpay: '易支付-QQ钱包',
-        codepay: '码支付',
-        codepay_alipay: '码支付-支付宝',
-        codepay_wxpay: '码支付-微信',
-        '支付宝': '支付宝',
-        '微信支付': '微信支付',
-        '余额支付': '余额支付'
-      }
-      return methodMap[methodStr] || methodStr || '未知'
-    }
-    const getPaymentMethodType = (method) => {
-      const typeMap = {
-        alipay: 'primary',
-        wechat: 'success',
-        balance: 'warning',
-        yipay: 'primary',
-        yipay_alipay: 'primary',
-        yipay_wxpay: 'success',
-        yipay_qqpay: 'info',
-        codepay: 'primary',
-        codepay_alipay: 'primary',
-        codepay_wxpay: 'success'
-      }
-      return typeMap[method] || 'info'
+      return getPaymentMethodTextShared(methodStr)
     }
     const formatRecordAmount = (record) => {
       const amount = record?.display_amount ?? record?.amount ?? 0
@@ -1413,6 +1339,7 @@ export default {
       paymentQRVisible,
       selectedOrder,
       paymentQRCode,
+      qrDisplaySrc,
       paymentUrl,
       openAlipayApp,
       isCheckingPayment,

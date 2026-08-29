@@ -29,11 +29,6 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const (
-	TimeLayout = "2006-01-02 15:04:05"
-	DateFormat = "2006-01-02"
-)
-
 // ==========================================
 // 辅助函数 (Helpers)
 // ==========================================
@@ -189,8 +184,7 @@ func getSubscriptionByIDAdmin(db *gorm.DB, id string) (*models.Subscription, err
 
 func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, reason string, resetBy *string, resetByUserID *uint, ipAddress string) error {
 	oldURL := sub.SubscriptionURL
-	var deviceCountBefore int64
-	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&deviceCountBefore)
+	deviceCountBefore, _ := device.CountActiveDevices(db, sub.ID)
 
 	newURL := utils.GenerateSubscriptionURL()
 
@@ -275,11 +269,7 @@ func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, 
 // calculateSubscriptionValue 计算订阅剩余价值
 func calculateSubscriptionValue(db *gorm.DB, sub models.Subscription, userID uint) (float64, int, float64, int, float64) {
 	now := utils.GetBeijingTime()
-	diff := sub.ExpireTime.Sub(now)
-	days := int(math.Ceil(diff.Hours() / 24))
-	if days < 0 {
-		days = 0
-	}
+	days, _ := utils.RemainingDays(sub.ExpireTime, now)
 
 	var originalPkgPrice float64 = 0
 	var originalPkgDays int = 0
@@ -611,11 +601,7 @@ func buildSubscriptionListData(db *gorm.DB, subscriptions []models.Subscription,
 
 		daysUntil, isExpired := 0, false
 		if !sub.ExpireTime.IsZero() {
-			if diff := sub.ExpireTime.Sub(now); diff > 0 {
-				daysUntil = int(diff.Hours() / 24)
-			} else {
-				isExpired = true
-			}
+			daysUntil, isExpired = utils.RemainingDays(sub.ExpireTime, now)
 		}
 
 		universalCount := sub.UniversalCount
@@ -1273,9 +1259,7 @@ func queueSubEmail(c *gin.Context, sub models.Subscription, user models.User) er
 	exp, days := "未设置", 0
 	if !sub.ExpireTime.IsZero() {
 		exp = sub.ExpireTime.Format(TimeLayout)
-		if diff := sub.ExpireTime.Sub(utils.GetBeijingTime()); diff > 0 {
-			days = int(diff.Hours() / 24)
-		}
+		days, _ = utils.RemainingDays(sub.ExpireTime, utils.GetBeijingTime())
 	}
 	content := email.NewEmailTemplateBuilder().GetSubscriptionTemplate(user.Username, univ, clash, exp, days, sub.DeviceLimit, sub.CurrentDevices)
 	if !notification.ShouldSendCustomerNotificationToUser(&user, "subscription_sent", notification.ChannelEmail) {
@@ -1595,9 +1579,7 @@ func GetExpiringSubscriptions(c *gin.Context) {
 	for _, sub := range subscriptions {
 		daysUntilExpire := 0
 		if !sub.ExpireTime.IsZero() {
-			if diff := sub.ExpireTime.Sub(now); diff > 0 {
-				daysUntilExpire = int(diff.Hours() / 24)
-			}
+			daysUntilExpire, _ = utils.RemainingDays(sub.ExpireTime, now)
 		}
 		userInfo := gin.H{"id": 0, "username": "用户已删除", "email": "", "last_login": ""}
 		if sub.User.ID > 0 {
@@ -1640,8 +1622,7 @@ func validateSubscription(subscription *models.Subscription, user *models.User, 
 		return "订阅已失效或被禁用，请联系客服", 0, subscription.DeviceLimit, false
 	}
 
-	var count int64
-	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&count)
+	count, _ := device.CountActiveDevices(db, subscription.ID)
 
 	// 如果用户开启了不限制设备数量，跳过设备数量限制检查
 	if user.SpecialNodeUnlimitedDevices {
@@ -1743,8 +1724,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 		log.Printf("failed to check existing device: %v", findDeviceErr)
 	}
 
-	var count int64
-	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&count)
+	count, _ := device.CountActiveDevices(db, subscription.ID)
 
 	// 检查设备限制（不拦截请求，交由 GenerateClashConfig 返回 YAML 格式错误节点）
 	shouldRecord := true
@@ -1981,8 +1961,7 @@ func GetUniversalSubscription(c *gin.Context) {
 			log.Printf("failed to check existing device: %v", findDeviceErr)
 		}
 
-		var count int64
-		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&count)
+		count, _ := device.CountActiveDevices(db, sub.ID)
 
 		shouldRecord := true
 		if !deviceExists && !unlimitedDevices {

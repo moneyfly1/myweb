@@ -258,7 +258,7 @@
           </div>
           <div v-else-if="paymentQRCode" class="qr-code">
             <img
-              :src="paymentQRCode.startsWith('data:') ? paymentQRCode : (paymentQRCode + '?t=' + Date.now())"
+              :src="qrDisplaySrc(paymentQRCode)"
               alt="支付二维码"
               title="支付宝二维码"
               @error="onImageError"
@@ -290,14 +290,15 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Loading, Wallet, InfoFilled, Plus, Minus, Right, Timer } from '@element-plus/icons-vue'
 import { orderAPI, parsePaymentMethods, useApi, userAPI, userLevelAPI, cachedAPI, pendingPaymentStorage } from '@/utils/api'
-import { getRemainingDays as getRemainingDaysUtil } from '@/utils/date'
+import { formatDateTimeSafe, getRemainingDays as getRemainingDaysUtil } from '@/utils/date'
 import { safeNavigate } from '@/utils/safeOpen'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
-import { createQRCodeDataURL } from '@/utils/qrcode'
+import { useMobile } from '@/composables/useMobile'
+import { buildAlipayAppUrl, createPaymentQRCode, isPaymentPageUrl as isPaymentPageUrlUtil, qrDisplaySrc } from '@/utils/payment'
 import AppDrawer from '@/components/AppDrawer.vue'
 import AppDialog from '@/components/AppDialog.vue'
 
@@ -339,18 +340,13 @@ const paymentQRCode = ref(null)
 const paymentUrl = ref('')
 const paymentStatusRequest = ref(null)
 let paymentManualVisibilityHandler = null
-const isMobile = ref(typeof window !== 'undefined' ? window.innerWidth <= 768 : false)
-let resizeRafId = null
+const isMobile = useMobile()
 const currentDeviceLimit = computed(() => props.subscription?.device_limit || props.subscription?.maxDevices || 0)
 const targetDeviceLimit = computed(() => currentDeviceLimit.value + (upgradeForm.value.additionalDevices || 0))
 const remainingDays = computed(() => getRemainingDays(props.subscription))
 const additionalMonths = computed(() => Math.round((upgradeForm.value.additionalDays || 0) / 30))
 const isPaymentPageUrl = computed(() => {
-  if (!paymentUrl.value) return false
-  const url = String(paymentUrl.value).toLowerCase()
-  return url.includes('payapi/pay/payment') ||
-         url.includes('submit.php') ||
-         (url.startsWith('http') && !url.includes('qrcode') && !url.includes('qr.alipay') && !url.startsWith('weixin://') && !url.startsWith('wxp://'))
+  return isPaymentPageUrlUtil(paymentUrl.value)
 })
 
 // 月份卡片选项
@@ -389,24 +385,13 @@ const barProgressStyle = computed(() => ({
 
 // 格式化日期显示
 const formatDate = (dateStr) => {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  if (isNaN(d.getTime())) return ''
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return formatDateTimeSafe(dateStr, 'YYYY-MM-DD', '')
 }
 
 // 选择延长天数
 const selectAdditionalDays = (days) => {
   upgradeForm.value.additionalDays = days
   calculateUpgradeCost()
-}
-
-const handleResize = () => {
-  if (resizeRafId !== null || typeof window === 'undefined') return
-  resizeRafId = window.requestAnimationFrame(() => {
-    resizeRafId = null
-    isMobile.value = window.innerWidth <= 768
-  })
 }
 
 const getRemainingDays = (subscription) => getRemainingDaysUtil(subscription?.expire_time)
@@ -508,13 +493,7 @@ const showPaymentQRCode = async (order) => {
     return
   }
   try {
-    const qrOptions = {
-      width: isMobile.value ? 200 : 256,
-      margin: 2,
-      color: { dark: '#000000', light: '#FFFFFF' },
-      errorCorrectionLevel: 'M'
-    }
-    paymentQRCode.value = await createQRCodeDataURL(url, qrOptions)
+    paymentQRCode.value = await createPaymentQRCode(url, { width: isMobile.value ? 200 : 256 })
     paymentQRVisible.value = true
     startPaymentStatusCheck()
   } catch (error) {
@@ -632,7 +611,7 @@ const openAlipayApp = () => {
     ElMessage.error('支付链接不存在')
     return
   }
-  const alipayAppUrl = `alipays://platformapi/startapp?saId=10000007&qrcode=${encodeURIComponent(paymentUrl.value)}`
+  const alipayAppUrl = buildAlipayAppUrl(paymentUrl.value)
   cleanupPaymentManualWatcher()
   paymentManualVisibilityHandler = async () => {
     if (document.visibilityState === 'visible' && upgradeOrder.value?.order_no) {
@@ -671,20 +650,7 @@ const changeDeviceCount = (delta) => {
   }
 }
 
-onMounted(() => {
-  if (typeof window !== 'undefined') {
-    window.addEventListener('resize', handleResize, { passive: true })
-  }
-})
-
 onUnmounted(() => {
-  if (typeof window !== 'undefined') {
-    window.removeEventListener('resize', handleResize)
-    if (resizeRafId !== null) {
-      window.cancelAnimationFrame(resizeRafId)
-      resizeRafId = null
-    }
-  }
   cleanupPaymentStatusCheck()
 })
 </script>

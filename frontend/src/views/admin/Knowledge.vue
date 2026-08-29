@@ -298,6 +298,7 @@ import { ref, onMounted, reactive } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { FolderAdd, DocumentAdd, Search, Folder, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook, Clock, View } from '@element-plus/icons-vue'
 import { knowledgeAPI } from '@/utils/api'
+import { formatDateTimeSafe } from '@/utils/date'
 import AppDrawer from '@/components/AppDrawer.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
@@ -370,15 +371,7 @@ const mobileCategoryFields = [
 ]
 
 const formatDate = (d) => {
-  if (!d) return ''
-  const date = new Date(d)
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  return formatDateTimeSafe(d, 'YYYY-MM-DD HH:mm', '')
 }
 
 const loadCategories = async () => {

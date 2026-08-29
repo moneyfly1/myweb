@@ -11,6 +11,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/device"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -46,22 +47,13 @@ func GetUserDashboard(c *gin.Context) {
 	if subscription.ID > 0 && !subscription.ExpireTime.IsZero() {
 		now := utils.GetBeijingTime()
 		beijingTime := utils.ToBeijingTime(subscription.ExpireTime)
-		diff := beijingTime.Sub(now)
-		if diff > 0 {
-			days := diff.Hours() / 24.0
-			remainingDays = int(days)
-			if days > float64(remainingDays) {
-				remainingDays++
-			}
-		} else {
-			remainingDays = 0
-		}
+		remainingDays, _ = utils.RemainingDays(beijingTime, now)
 		expiryDate = utils.FormatBeijingTime(beijingTime)
 	}
 
 	var deviceCount int64
 	if subscription.ID > 0 {
-		db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&deviceCount)
+		deviceCount, _ = device.CountActiveDevices(db, subscription.ID)
 	}
 	var specialNodeCount int64
 	db.Model(&models.UserCustomNode{}).Where("user_id = ?", user.ID).Count(&specialNodeCount)

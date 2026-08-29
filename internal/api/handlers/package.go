@@ -254,20 +254,8 @@ func GetAdminPackages(c *gin.Context) {
 	db := database.GetDB()
 	query := db.Model(&models.Package{})
 
-	page := 1
-	size := 20
-	if pageStr := c.Query("page"); pageStr != "" {
-		_, _ = fmt.Sscanf(pageStr, "%d", &page) // Ignore error, use default value
-	}
-	if sizeStr := c.Query("size"); sizeStr != "" {
-		_, _ = fmt.Sscanf(sizeStr, "%d", &size) // Ignore error, use default value
-	}
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 20
-	}
+	p := utils.ParsePaginationWithDefaultSize(c, 20)
+	page, size := p.Page, p.Size
 
 	if name := c.Query("name"); name != "" {
 		sanitizedName := utils.SanitizeSearchKeyword(name)

@@ -75,6 +75,8 @@
 <script setup>
 import { computed } from 'vue'
 import dayjs from 'dayjs'
+import { formatDateTimeSafe } from '@/utils/date'
+import { formatMoney as formatMoneyUtil } from '@/utils/format'
 import SkeletonLoader from './SkeletonLoader.vue'
 import ErrorState from './ErrorState.vue'
 import EmptyState from './EmptyState.vue'
@@ -137,14 +139,11 @@ const formatDate = (date, format) => {
   if (!date) return '-'
   const parsed = dayjs(date)
   if (!parsed.isValid()) return '-'
-  return parsed.format(format || props.dateFormat)
+  return formatDateTimeSafe(date, format || props.dateFormat, '-')
 }
 
 const formatMoney = (value) => {
-  if (value === null || value === undefined) return '0.00'
-  const amount = Number(value)
-  if (Number.isNaN(amount)) return '0.00'
-  return amount.toFixed(2)
+  return formatMoneyUtil(value, { prefix: '' })
 }
 
 const formatValue = (value, item, field) => {

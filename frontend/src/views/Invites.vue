@@ -272,7 +272,7 @@ import { copyToClipboard as copyText } from '@/utils/textSelection'
 import { useMobile } from '@/composables/useMobile'
 import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
 import { confirmDelete } from '@/utils/confirmAction'
-import { formatDateTime } from '@/utils/date'
+import { formatDateTimeSafe } from '@/utils/date'
 import { formatMoney } from '@/utils/format'
 import AppDialog from '@/components/AppDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -520,8 +520,8 @@ const deleteCode = async (code) => {
   }
 }
 const formatDate = (dateStr) => {
-  if (!dateStr || dateStr === 'null' || dateStr === null) return '-'
-  return formatDateTime(dateStr, 'YYYY-MM-DD HH:mm') || '-'
+  if (dateStr === 'null') return '-'
+  return formatDateTimeSafe(dateStr, 'YYYY-MM-DD HH:mm', '-')
 }
 const getMaxUses = (maxUses) => {
   if (!maxUses || maxUses === 'null' || maxUses === null) return '∞'

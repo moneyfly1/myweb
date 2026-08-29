@@ -744,7 +744,9 @@ import {
   Filter, Refresh, Delete, Wallet, ShoppingCart, User, Timer
 } from '@element-plus/icons-vue'
 import { useApi, adminAPI } from '@/utils/api'
-import { formatDateTime as formatDateTimeUtil, formatLocation } from '@/utils/date'
+import { formatDateTimeSafe, formatLocation } from '@/utils/date'
+import { formatMoney as formatMoneyUtil } from '@/utils/format'
+import { getOrderStatusType as getStatusType, getOrderStatusText as getStatusText } from '@/utils/statusMaps'
 import { useMobile } from '@/composables/useMobile'
 import { debounce } from '@/composables/useDebounce'
 import { confirmDelete, confirmWarning } from '@/utils/confirmAction'
@@ -1404,28 +1406,9 @@ export default {
     }
 
     // Utilities
-    const getStatusType = (status) => ({
-      'pending': 'warning',
-      'paid': 'success',
-      'cancelled': 'info',
-      'failed': 'danger',
-      'expired': 'info',
-      'refunded': 'warning'
-    }[status] || 'info')
-
-    const getStatusText = (status) => ({
-      'pending': '待支付',
-      'paid': '已支付',
-      'cancelled': '已取消',
-      'failed': '支付失败',
-      'expired': '已过期',
-      'refunded': '已退款'
-    }[status] || status)
-
-    const formatDateTime = (d) => formatDateTimeUtil(d) || '-'
+    const formatDateTime = (d) => formatDateTimeSafe(d, 'YYYY-MM-DD HH:mm:ss', '-')
     const formatMoney = (v) => {
-      const n = parseFloat(v)
-      return isNaN(n) ? '0.00' : n.toFixed(2)
+      return formatMoneyUtil(v, { prefix: '' })
     }
 
     // Lifecycle

@@ -1209,19 +1209,13 @@ func (b *EmailTemplateBuilder) GetAdminReplyNotificationTemplate(ticketNo, title
 }
 
 func getStringFromData(data map[string]interface{}, key string, defaultValue string) string {
-	var s string
-	if val, ok := data[key]; ok {
-		if str, ok := val.(string); ok {
-			s = str
-		} else {
-			s = fmt.Sprintf("%v", val)
-		}
-	} else {
-		s = defaultValue
+	v := utils.GetMapString(data, key)
+	if v == "" {
+		v = defaultValue
 	}
 	// 该辅助函数仅用于把 data 中的用户可控字段拼进邮件 HTML，
 	// 在这里统一转义，防止恶意用户名/邮箱等注入（存储型 XSS）
-	return escapeHTML(s)
+	return escapeHTML(v)
 }
 
 func getFloatFromData(data map[string]interface{}, key string, defaultValue float64) float64 {

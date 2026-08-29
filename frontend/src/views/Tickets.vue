@@ -312,7 +312,14 @@ import { UserFilled } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
 import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
-import { getTicketStatusText, getTicketStatusType, getTicketPriorityText, getTicketPriorityType } from '@/utils/statusMaps'
+import {
+  getTicketStatusText as getStatusText,
+  getTicketStatusType as getStatusTagType,
+  getTicketTypeText as getTypeText,
+  getTicketTypeType as getTypeTagType,
+  getTicketPriorityText as getPriorityText,
+  getTicketPriorityType as getPriorityTagType
+} from '@/utils/statusMaps'
 import AppDialog from '@/components/AppDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
@@ -504,39 +511,6 @@ const addReply = async () => {
   } finally {
     replying.value = false
   }
-}
-const getStatusText = (status) => {
-  if (status === 'cancelled') return '已取消'
-  return getTicketStatusText(status)
-}
-const getStatusTagType = (status) => {
-  if (status === 'cancelled') return 'danger'
-  return getTicketStatusType(status)
-}
-const getTypeText = (type) => {
-  const map = {
-    technical: '技术问题',
-    billing: '账单问题',
-    account: '账户问题',
-    other: '其他'
-  }
-  return map[type] || type
-}
-const getTypeTagType = (type) => {
-  const map = {
-    technical: 'primary',
-    billing: 'warning',
-    account: 'danger',
-    other: 'info'
-  }
-  return map[type] || 'info'
-}
-const getPriorityText = (priority) => {
-  return getTicketPriorityText(priority)
-}
-const getPriorityTagType = (priority) => {
-  const type = getTicketPriorityType(priority)
-  return type || 'primary'
 }
 const handleFilterChange = () => {
   pagination.page = 1 // 重置到第一页

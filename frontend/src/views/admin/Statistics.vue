@@ -326,6 +326,8 @@ import { ref, reactive, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { Refresh, User, Connection, ShoppingCart, Money } from '@element-plus/icons-vue'
 import { statisticsAPI } from '@/utils/api'
+import { formatMoney as formatMoneyUtil } from '@/utils/format'
+import { useMobile } from '@/composables/useMobile'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 Chart.register(...registerables)
@@ -341,6 +343,7 @@ export default {
 			LoadingState
 	},
 	setup() {
+		const isMobile = useMobile()
 		const userChart = ref(null)
 		const revenueChart = ref(null)
 		const regionChart = ref(null)
@@ -489,10 +492,7 @@ export default {
 			}
 		}
 		const formatMoney = (value) => {
-			if (value === null || value === undefined || value === '') return '0.00'
-			const num = typeof value === 'string' ? parseFloat(value) : value
-			if (isNaN(num)) return '0.00'
-			return num.toFixed(2)
+			return formatMoneyUtil(value, { prefix: '' })
 		}
 		const loadRegionStats = async () => {
 			try {
@@ -530,7 +530,6 @@ export default {
 				}
 				const ctx = regionChart.value.getContext('2d')
 				if (ctx) {
-					const isMobile = window.innerWidth <= 768
 					regionChartInstance = new Chart(ctx, {
 						type: 'doughnut',
 						data: {
@@ -551,12 +550,12 @@ export default {
 								legend: {
 									position: 'bottom',
 									labels: {
-										padding: isMobile ? 8 : 12,
+										padding: isMobile.value ? 8 : 12,
 										usePointStyle: true,
 										font: {
-											size: isMobile ? 10 : 12
+											size: isMobile.value ? 10 : 12
 										},
-										boxWidth: isMobile ? 10 : 12
+										boxWidth: isMobile.value ? 10 : 12
 									}
 								},
 								tooltip: {
@@ -571,10 +570,10 @@ export default {
 									}
 								},
 								title: {
-									display: !isMobile,
+									display: !isMobile.value,
 									text: '用户地区分布',
 									font: {
-										size: isMobile ? 14 : 16,
+										size: isMobile.value ? 14 : 16,
 										weight: 'bold'
 									},
 									padding: {

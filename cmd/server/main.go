@@ -26,6 +26,7 @@ import (
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"github.com/spf13/viper"
 	"gorm.io/gorm"
 )
 
@@ -194,68 +195,117 @@ func ensureDefaultAdmin() {
 
 	username := "admin"
 	email := "admin@example.com"
-	// 支持环境变量覆盖默认管理员用户名/邮箱（与 scripts/admin_tool 一致）
-	if v := os.Getenv("ADMIN_USERNAME"); v != "" {
+	// 支持环境变量/.env 覆盖默认管理员用户名/邮箱/密码（与 scripts/admin_tool 一致；
+	// viper 优先取真实环境变量，其次取 .env 文件中的值）
+	if v := viper.GetString("ADMIN_USERNAME"); v != "" {
 		username = v
 	}
-	if v := os.Getenv("ADMIN_EMAIL"); v != "" {
+	if v := viper.GetString("ADMIN_EMAIL"); v != "" {
 		email = v
 	}
+	adminPassword := viper.GetString("ADMIN_PASSWORD")
 
 	var user models.User
-	err := db.Where("username = ? OR email = ?", username, email).First(&user).Error
-	if err == nil {
-		log.Printf("管理员账号已存在: %s (%s)", username, email)
+	// 先按用户名精确匹配；未命中再按邮箱匹配。
+	// 不要用 username = ? OR email = ? 的单查询——用户名命中 A、邮箱命中 B 时会误改错误用户的密码。
+	err := db.Where("username = ?", username).First(&user).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.Printf("查询管理员失败: %v", err)
 		return
 	}
-
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		err = db.Where("email = ?", email).First(&user).Error
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.Printf("查询管理员失败: %v", err)
 		return
 	}
 
-	// 首次创建管理员时：优先使用 ADMIN_PASSWORD 环境变量（部署可预测、重建不随机），
-	// 未设置则生成随机密码并打印到日志（仅显示一次）。
-	password := os.Getenv("ADMIN_PASSWORD")
-	if password == "" {
-		password = generateRandomPassword()
-	} else if len(password) < 6 {
-		log.Println("警告: ADMIN_PASSWORD 长度不足 6 位，忽略并使用随机密码")
-		password = generateRandomPassword()
-	}
-	hashed, err := auth.HashPassword(password)
-	if err != nil {
-		log.Printf("生成管理员密码哈希失败: %v", err)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// 首次创建管理员：优先使用 ADMIN_PASSWORD 环境变量（部署可预测、重建不随机），
+		// 未设置则生成随机密码并打印到日志（仅显示一次）。
+		password := adminPassword
+		if password == "" {
+			password = generateRandomPassword()
+		} else if len(password) < 6 {
+			log.Println("警告: ADMIN_PASSWORD 长度不足 6 位，忽略并使用随机密码")
+			password = generateRandomPassword()
+		}
+		hashed, err := auth.HashPassword(password)
+		if err != nil {
+			log.Printf("生成管理员密码哈希失败: %v", err)
+			return
+		}
+
+		user = models.User{
+			Username:   username,
+			Email:      email,
+			Password:   hashed,
+			IsAdmin:    true,
+			IsVerified: true,
+			IsActive:   true,
+		}
+
+		if err := db.Create(&user).Error; err != nil {
+			log.Printf("创建默认管理员失败: %v", err)
+			return
+		}
+
+		log.Println("========================================")
+		log.Printf("管理员账号已自动创建")
+		log.Printf("用户名: %s", username)
+		log.Printf("邮箱: %s", email)
+		if adminPassword != "" {
+			log.Println("密码: [使用 ADMIN_PASSWORD 配置的密码]")
+		} else {
+			log.Printf("初始密码: %s", password)
+			log.Println("⚠️  此密码仅显示一次，请妥善保存！")
+		}
+		log.Println("========================================")
+		log.Println("⚠️  请立即登录并修改密码！")
+		log.Println("========================================")
 		return
 	}
 
-	user = models.User{
-		Username:   username,
-		Email:      email,
-		Password:   hashed,
-		IsAdmin:    true,
-		IsVerified: true,
-		IsActive:   true,
+	// 管理员已存在
+	if adminPassword == "" {
+		log.Printf("管理员账号已存在: %s (%s)", username, email)
+		return
 	}
-
-	if err := db.Create(&user).Error; err != nil {
-		log.Printf("创建默认管理员失败: %v", err)
+	if len(adminPassword) < 6 {
+		log.Println("警告: ADMIN_PASSWORD 长度不足 6 位，已忽略本次密码重置")
 		return
 	}
 
-	log.Println("========================================")
-	log.Printf("管理员账号已自动创建")
-	log.Printf("用户名: %s", username)
-	log.Printf("邮箱: %s", email)
-	if os.Getenv("ADMIN_PASSWORD") != "" {
-		log.Println("密码: [使用环境变量 ADMIN_PASSWORD 配置的密码]")
-	} else {
-		log.Printf("初始密码: %s", password)
-		log.Println("⚠️  此密码仅显示一次，请妥善保存！")
+	// 每次启动按 ADMIN_PASSWORD 重置管理员密码，保证固定密码始终可用，
+	// 并确保管理员账户始终处于激活/已验证状态（即使被锁定，重启后也能登录）。
+	updates := map[string]interface{}{}
+	if !auth.VerifyPassword(adminPassword, user.Password) {
+		hashed, err := auth.HashPassword(adminPassword)
+		if err != nil {
+			log.Printf("生成管理员密码哈希失败: %v", err)
+			return
+		}
+		updates["password"] = hashed
+		log.Printf("管理员 %s 的密码与 ADMIN_PASSWORD 不一致，已重置为固定密码", username)
 	}
-	log.Println("========================================")
-	log.Println("⚠️  请立即登录并修改密码！")
-	log.Println("========================================")
+	if !user.IsAdmin {
+		updates["is_admin"] = true
+	}
+	if !user.IsVerified {
+		updates["is_verified"] = true
+	}
+	if !user.IsActive {
+		updates["is_active"] = true
+		log.Printf("管理员 %s 账户处于锁定状态，已自动解锁", username)
+	}
+	if len(updates) > 0 {
+		if err := db.Model(&user).Updates(updates).Error; err != nil {
+			log.Printf("更新管理员失败: %v", err)
+			return
+		}
+	}
+	log.Printf("✅ 管理员账号已就绪: %s (%s)，密码固定为 ADMIN_PASSWORD 配置值", username, email)
 }
 
 func generateRandomPassword() string {

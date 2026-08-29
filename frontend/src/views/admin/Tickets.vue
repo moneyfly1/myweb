@@ -392,8 +392,17 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
+import { formatDateTimeSafe } from '@/utils/date'
 import { useMobile } from '@/composables/useMobile'
 import { debounce } from '@/composables/useDebounce'
+import {
+  getTicketStatusText as getStatusText,
+  getTicketStatusType as getStatusTagType,
+  getTicketTypeText as getTypeText,
+  getTicketTypeType as getTypeTagType,
+  getTicketPriorityText as getPriorityText,
+  getTicketPriorityType as getPriorityTagType
+} from '@/utils/statusMaps'
 import PaginationBar from '@/components/PaginationBar.vue'
 import AppDrawer from '@/components/AppDrawer.vue'
 import AppDialog from '@/components/AppDialog.vue'
@@ -580,61 +589,7 @@ const handleDetailDrawerChange = (value) => {
   closeDetailDialog()
 }
 const formatTime = (timeStr) => {
-  if (!timeStr) return '-'
-  return new Date(timeStr).toLocaleString('zh-CN')
-}
-const getStatusText = (status) => {
-  const map = {
-    pending: '待处理',
-    processing: '处理中',
-    resolved: '已解决',
-    closed: '已关闭',
-    cancelled: '已取消'
-  }
-  return map[status] || status
-}
-const getStatusTagType = (status) => {
-  if (!status) return 'info'
-  const map = {
-    pending: 'warning',
-    processing: 'primary',
-    resolved: 'success',
-    closed: 'info',
-    cancelled: 'danger'
-  }
-  return map[status] || 'info'
-}
-const getTypeText = (type) => {
-  const map = {
-    technical: '技术问题',
-    billing: '账单问题',
-    account: '账户问题',
-    other: '其他'
-  }
-  return map[type] || type
-}
-const getTypeTagType = (type) => {
-  if (!type) return 'info'
-  return 'info'
-}
-const getPriorityText = (priority) => {
-  const map = {
-    low: '低',
-    normal: '普通',
-    high: '高',
-    urgent: '紧急'
-  }
-  return map[priority] || priority
-}
-const getPriorityTagType = (priority) => {
-  if (!priority) return 'info'
-  const map = {
-    low: 'info',
-    normal: 'info',
-    high: 'warning',
-    urgent: 'danger'
-  }
-  return map[priority] || 'info'
+  return formatDateTimeSafe(timeStr, 'YYYY-MM-DD HH:mm:ss', '-')
 }
 const resetFilters = () => {
   filters.keyword = ''

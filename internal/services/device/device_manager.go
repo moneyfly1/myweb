@@ -253,8 +253,7 @@ func (dm *DeviceManager) deactivateClashMetaAndroidAliasDuplicates(canonical *mo
 	}
 
 	if deactivated {
-		var deviceCount int64
-		dm.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", canonical.SubscriptionID, true).Count(&deviceCount)
+		deviceCount, _ := CountActiveDevices(dm.db, canonical.SubscriptionID)
 		return dm.db.Model(&models.Subscription{}).Where("id = ?", canonical.SubscriptionID).Update("current_devices", deviceCount).Error
 	}
 
@@ -1032,8 +1031,7 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 			return nil, err
 		}
 
-		var deviceCount int64
-		dm.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscriptionID, true).Count(&deviceCount)
+		deviceCount, _ := CountActiveDevices(dm.db, subscriptionID)
 		dm.db.Model(&models.Subscription{}).Where("id = ?", subscriptionID).Update("current_devices", deviceCount)
 
 		return &device, nil

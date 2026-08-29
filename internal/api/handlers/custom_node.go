@@ -70,14 +70,8 @@ func GetCustomNodes(c *gin.Context) {
 		}
 	}
 
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 20
-	}
+	p := utils.ParsePaginationWithDefaultSize(c, 20)
+	page, size := p.Page, p.Size
 
 	var total int64
 	query.Count(&total)
@@ -209,17 +203,14 @@ func normalizeCustomNodeConfig(configStr, protocol, domain string, port int) (st
 }
 
 func getStringFromConfigMap(data map[string]interface{}, keys ...string) string {
-	for _, key := range keys {
-		if val, ok := data[key]; ok {
-			if s, ok := val.(string); ok {
-				return strings.TrimSpace(s)
-			}
-		}
+	if v := utils.GetMapString(data, keys...); v != "" {
+		return strings.TrimSpace(v)
 	}
+	// 兼容键名大小写不一致的历史数据（保留原实现语义）
 	for existingKey, val := range data {
 		for _, key := range keys {
 			if strings.EqualFold(existingKey, key) {
-				if s, ok := val.(string); ok {
+				if s, ok := val.(string); ok && s != "" {
 					return strings.TrimSpace(s)
 				}
 			}

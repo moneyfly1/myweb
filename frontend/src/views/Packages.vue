@@ -451,7 +451,7 @@
             </div>
             <div v-else-if="paymentQRCode" class="qr-code">
               <img
-                :src="paymentQRCode.startsWith('data:') ? paymentQRCode : (paymentQRCode + '?t=' + Date.now())"
+                :src="qrDisplaySrc(paymentQRCode)"
                 alt="支付二维码"
                 :title="getPaymentMethodDisplayName(currentOrder?.payment_method || paymentMethod) + '二维码'"
                 @error="onImageError"
@@ -648,7 +648,8 @@ import { Check, CircleCheckFilled, Loading, Wallet, CreditCard, StarFilled, Prom
 import { useApi, couponAPI, userAPI, userLevelAPI, orderAPI, parsePaymentMethods, cachedAPI, pendingPaymentStorage } from '@/utils/api'
 import { safeNavigate } from '@/utils/safeOpen'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
-import { createQRCodeDataURL } from '@/utils/qrcode'
+import { useMobile } from '@/composables/useMobile'
+import { buildAlipayAppUrl, createPaymentQRCode, isPaymentPageUrl as isPaymentPageUrlUtil, qrDisplaySrc } from '@/utils/payment'
 import EmptyState from '@/components/EmptyState.vue'
 import SkeletonLoader from '@/components/SkeletonLoader.vue'
 import ErrorState from '@/components/ErrorState.vue'
@@ -689,11 +690,7 @@ export default {
     const paymentQRCode = ref('')
     const paymentUrl = ref('')
     const isPaymentPageUrl = computed(() => {
-      if (!paymentUrl.value) return false
-      const url = String(paymentUrl.value).toLowerCase()
-      return url.includes('payapi/pay/payment') ||
-             url.includes('submit.php') ||
-             (url.startsWith('http') && !url.includes('qrcode') && !url.includes('qr.alipay') && !url.startsWith('weixin://') && !url.startsWith('wxp://'))
+      return isPaymentPageUrlUtil(paymentUrl.value)
     })
     const isCheckingPayment = ref(false)
     let paymentStatusTimeoutId = null
@@ -735,18 +732,7 @@ export default {
     const levelAccentStyle = computed(() => ({
       '--level-accent-color': userLevel.value?.color || '#67c23a'
     }))
-    const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1920)
-    const isMobile = computed(() => {
-      return windowWidth.value <= 768
-    })
-    let resizeRafId = null
-    const handleResize = () => {
-      if (resizeRafId !== null || typeof window === 'undefined') return
-      resizeRafId = window.requestAnimationFrame(() => {
-        resizeRafId = null
-        windowWidth.value = window.innerWidth
-      })
-    }
+    const isMobile = useMobile()
     const getOrderPayAmount = (order) => {
       if (!order) return 0
       const raw = order.final_amount ?? order.actual_payment_amount ?? order.actual_total_amount ?? order.amount ?? 0
@@ -1440,7 +1426,7 @@ export default {
         ElMessage.error('支付链接不存在')
         return
       }
-      const alipayAppUrl = `alipays://platformapi/startapp?saId=10000007&qrcode=${encodeURIComponent(paymentUrl.value)}`
+      const alipayAppUrl = buildAlipayAppUrl(paymentUrl.value)
       try {
         cleanupPaymentManualWatchers()
         paymentManualVisibilityHandler = async () => {
@@ -1501,17 +1487,7 @@ export default {
           paymentQRCode.value = ''
         } else {
           // 生成二维码
-          const isMobileDevice = window.innerWidth <= 768
-          const qrOptions = {
-            width: isMobileDevice ? 200 : 256,
-            margin: 2,
-            color: {
-              dark: '#000000',
-              light: '#FFFFFF'
-            },
-            errorCorrectionLevel: 'M'
-          }
-          const qrCodeDataURL = await createQRCodeDataURL(urlString, qrOptions)
+          const qrCodeDataURL = await createPaymentQRCode(urlString, { width: isMobile.value ? 200 : 256 })
           paymentQRCode.value = qrCodeDataURL
         }
         paymentQRVisible.value = true
@@ -1670,15 +1646,7 @@ export default {
         const paymentUrl = orderInfo.paymentUrl || currentOrder.value?.payment_url
         if (paymentUrl) {
           try {
-            const qrCodeDataURL = await createQRCodeDataURL(paymentUrl, {
-              width: 256,
-              margin: 2,
-              color: {
-                dark: '#000000',
-                light: '#FFFFFF'
-              },
-              errorCorrectionLevel: 'M'
-            })
+            const qrCodeDataURL = await createPaymentQRCode(paymentUrl)
             paymentQRCode.value = qrCodeDataURL
             event.target.src = qrCodeDataURL
           } catch (error) {
@@ -1719,24 +1687,13 @@ export default {
       // 不再使用 await 阻塞组件的生命周期
       loadUserBalance()
       loadPackages()
-      
-      if (typeof window !== 'undefined') {
-        windowWidth.value = window.innerWidth
-        window.addEventListener('resize', handleResize, { passive: true })
-      }
+
       window.addEventListener('subscription-updated', handleSubscriptionUpdate)
       window.addEventListener('user-info-updated', handleUserInfoUpdate)
     })
     
     onUnmounted(() => {
       closePaymentStatusWatchers()
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('resize', handleResize)
-        if (resizeRafId !== null) {
-          window.cancelAnimationFrame(resizeRafId)
-          resizeRafId = null
-        }
-      }
       window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
       window.removeEventListener('user-info-updated', handleUserInfoUpdate)
     })
@@ -1951,6 +1908,7 @@ export default {
       handlePaymentMethodChange,
       loadUserBalance,
       isMobile,
+      qrDisplaySrc,
       validateCoupon,
       clearCoupon,
       getPaymentMethodDisplayName,

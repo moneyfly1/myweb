@@ -260,6 +260,7 @@ import { ref, onMounted, reactive } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Plus } from '@element-plus/icons-vue'
 import { promotionAPI } from '@/utils/api'
+import { formatDateTimeSafe } from '@/utils/date'
 import AppDrawer from '@/components/AppDrawer.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
@@ -319,15 +320,7 @@ const mobilePromotionFields = [
 ]
 
 const formatDate = (d) => {
-  if (!d) return ''
-  const date = new Date(d)
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  return formatDateTimeSafe(d, 'YYYY-MM-DD HH:mm', '')
 }
 
 const formatDiscount = (row) => {

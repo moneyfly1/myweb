@@ -238,7 +238,7 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { Plus } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import { adminAPI } from '@/utils/api'
-import { formatLocation, formatDateTimeSafe } from '@/utils/date'
+import { formatDateTimeSafe, getLocationText as getLocationTextUtil } from '@/utils/date'
 import router from '@/router'
 import { secureStorage } from '@/utils/api'
 import EmptyState from '@/components/EmptyState.vue'
@@ -612,18 +612,7 @@ export default {
     }
     const formatDate = (dateString) => formatDateTimeSafe(dateString, 'YYYY-MM-DD HH:mm:ss', '')
     const getLocationText = (location, ipAddress) => {
-      if (location) {
-        return formatLocation(location)
-      }
-      if (ipAddress) {
-        if (ipAddress === '127.0.0.1' || ipAddress === '::1' || ipAddress === 'localhost') {
-          return '本地'
-        }
-        if (ipAddress.startsWith('192.168.') || ipAddress.startsWith('10.') || ipAddress.startsWith('172.')) {
-          return '内网'
-        }
-      }
-      return ''
+      return getLocationTextUtil(location, ipAddress)
     }
     const getDeviceInfo = (userAgent) => {
       if (!userAgent) return '未知设备'

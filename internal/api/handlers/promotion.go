@@ -7,7 +7,6 @@ import (
 	"cboard-go/internal/utils"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -28,8 +27,8 @@ func GetActivePromotions(c *gin.Context) {
 // 管理端 - 获取所有促销活动
 func GetAdminPromotions(c *gin.Context) {
 	db := database.GetDB()
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	p := utils.ParsePaginationWithDefaultSize(c, 20)
+	page, pageSize := p.Page, p.Size
 
 	var total int64
 	db.Model(&models.Promotion{}).Count(&total)
