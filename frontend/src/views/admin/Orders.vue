@@ -589,7 +589,7 @@
             </div>
             <div class="detail-field">
               <span class="field-label">IP 归属地</span>
-              <span class="field-value">{{ selectedOrder.location || '-' }}</span>
+              <span class="field-value">{{ formatLocation(selectedOrder.location) || '-' }}</span>
             </div>
             <div class="detail-field">
               <span class="field-label">用户代理</span>
@@ -744,7 +744,7 @@ import {
   Filter, Refresh, Delete, Wallet, ShoppingCart, User, Timer
 } from '@element-plus/icons-vue'
 import { useApi, adminAPI } from '@/utils/api'
-import { formatDateTime as formatDateTimeUtil } from '@/utils/date'
+import { formatDateTime as formatDateTimeUtil, formatLocation } from '@/utils/date'
 import { useMobile } from '@/composables/useMobile'
 import { debounce } from '@/composables/useDebounce'
 import { confirmDelete, confirmWarning } from '@/utils/confirmAction'

@@ -806,7 +806,7 @@ import {
   Connection, Monitor, Unlock, Check, Message, Bell, Loading, CircleCheck, View
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
-import { formatDate as formatDateUtil } from '@/utils/date'
+import { formatDate as formatDateUtil, formatLocation } from '@/utils/date'
 import { debounce } from '@/composables/useDebounce'
 import { useMobile } from '@/composables/useMobile'
 import { confirmDelete, confirmWarning } from '@/utils/confirmAction'
@@ -1594,10 +1594,6 @@ export default {
           ElMessage.error('复制失败，请手动复制')
         }
       }
-    }
-    const formatLocation = (location) => {
-      if (!location) return '-'
-      return location
     }
     const deleteUser = async (user) => {
       if (!user?.id) {
