@@ -12,7 +12,9 @@ import (
 func SetupRouter() *gin.Engine {
 	r := gin.New()
 
-	if err := r.SetTrustedProxies(nil); err != nil {
+	// 信任本机 nginx 反向代理，使 ClientIP() 能通过 X-Forwarded-For 正确获取真实客户端 IP
+	// （Gin v1.11 中 SetTrustedProxies(nil) 表示不信任任何代理，会导致 IP 被记录为 127.0.0.1）
+	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
 		utils.LogErrorMsg("failed to set trusted proxies: %v", err)
 	}
 
