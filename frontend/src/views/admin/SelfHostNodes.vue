@@ -394,6 +394,9 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Promotion, DocumentCopy, Refresh, Setting, Operation, ArrowDown, Connection, VideoPlay, Edit } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
+import { formatDateTimeSafe } from '@/utils/date'
+import { formatFileSize } from '@/utils/format'
+import { copyToClipboard } from '@/utils/textSelection'
 import { confirmAction } from '@/utils/confirmAction'
 import { useMobile } from '@/composables/useMobile'
 
@@ -405,18 +408,10 @@ const selfHostStatusMap = { pending: '等待安装', online: '在线', offline: 
 const selfHostStatusTypeMap = { pending: 'warning', online: 'success', offline: 'danger', expired: 'info', canceled: 'info' }
 
 const formatBytes = (b) => {
-  if (b === undefined || b === null || isNaN(b)) return '-'
-  if (b === 0) return '0 B'
-  const u = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(b) / Math.log(1024))
-  return (b / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 2) + ' ' + u[i]
+  return formatFileSize(b)
 }
 const formatTime = (t) => {
-  if (!t) return '-'
-  const d = new Date(t)
-  if (isNaN(d.getTime())) return '-'
-  const p = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+  return formatDateTimeSafe(t, 'YYYY-MM-DD HH:mm', '-')
 }
 
 const loadSelfHostNodes = async () => {
@@ -806,8 +801,7 @@ const createManualNode = async () => {
 }
 const copyManualCmd = () => {
   if (manualNode.value?.install_cmd) {
-    navigator.clipboard.writeText(manualNode.value.install_cmd)
-    ElMessage.success('安装命令已复制')
+    copyToClipboard(manualNode.value.install_cmd, '安装命令已复制')
   }
 }
 

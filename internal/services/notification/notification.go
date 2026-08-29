@@ -560,11 +560,8 @@ func getNotificationSubject(notificationType string) string {
 }
 
 func getString(data map[string]interface{}, key string, defaultValue string) string {
-	if val, ok := data[key]; ok {
-		if str, ok := val.(string); ok {
-			return str
-		}
-		return fmt.Sprintf("%v", val)
+	if v := utils.GetMapString(data, key); v != "" {
+		return v
 	}
 	return defaultValue
 }

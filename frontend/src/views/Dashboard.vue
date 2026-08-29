@@ -613,7 +613,7 @@ import FormActionBar from '@/components/FormActionBar.vue'
 import SkeletonLoader from '@/components/SkeletonLoader.vue'
 import UpgradeDevicesDrawer from '@/components/UpgradeDevicesDrawer.vue'
 import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, checkinAPI, useApi, cachedAPI, pendingPaymentStorage, orderAPI } from '@/utils/api'
-import { formatDate as formatDateUtil, getRemainingDays, isExpired as isExpiredUtil } from '@/utils/date'
+import { formatDateTimeSafe, getRemainingDays, isExpired as isExpiredUtil } from '@/utils/date'
 import { formatMoney } from '@/utils/format'
 import { getOrderStatusText, getOrderStatusType } from '@/utils/statusMaps'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
@@ -623,6 +623,7 @@ import { sanitizeBasicHtml, sanitizePlainText } from '@/utils/sanitizeHtml'
 import { useMobile } from '@/composables/useMobile'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
 import { createQRCodeDataURL } from '@/utils/qrcode'
+import { buildAlipayAppUrl, createPaymentQRCode } from '@/utils/payment'
 const router = useRouter()
 const api = useApi()
 const sanitizeHtml = sanitizeBasicHtml
@@ -963,9 +964,7 @@ const handleUpgradeSuccess = async () => {
 }
 
 const formatDate = (dateString) => {
-  if (!dateString) return '未知'
-  const date = new Date(dateString)
-  return date.toLocaleString('zh-CN')
+  return formatDateTimeSafe(dateString, 'YYYY-MM-DD HH:mm:ss', '未知')
 }
 const getRecentOrderTitle = (order) => {
   return order?.package_name || order?.package?.name || order?.order_no || '订单'
@@ -1138,7 +1137,7 @@ const openAlipayAppForRecharge = () => {
     ElMessage.error('支付链接不存在')
     return
   }
-  const alipayAppUrl = `alipays://platformapi/startapp?saId=10000007&qrcode=${encodeURIComponent(rechargePaymentUrl.value)}`
+  const alipayAppUrl = buildAlipayAppUrl(rechargePaymentUrl.value)
   try {
     cleanupRechargeManualWatchers()
     rechargeManualVisibilityHandler = async () => {
@@ -1221,16 +1220,7 @@ const createRecharge = async () => {
         rechargePaymentUrl.value = paymentUrl
         currentRechargeOrderNo.value = rechargeOrderNo
         try {
-          const qrOptions = {
-            width: isMobile.value ? 200 : 256,
-            margin: 2,
-            color: {
-              dark: '#000000',
-              light: '#FFFFFF'
-            },
-            errorCorrectionLevel: 'M'
-          }
-          const qrCodeDataURL = await createQRCodeDataURL(paymentUrl, qrOptions)
+          const qrCodeDataURL = await createPaymentQRCode(paymentUrl, { width: isMobile.value ? 200 : 256 })
           rechargeQRCode.value = qrCodeDataURL
           ElMessage.success('充值订单创建成功，请扫描二维码完成支付')
           startRechargeStatusCheck()

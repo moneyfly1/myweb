@@ -385,12 +385,7 @@ func GetUsers(c *gin.Context) {
 			daysUntilExpire := 0
 			isExpired := false
 			if !sub.ExpireTime.IsZero() {
-				diff := sub.ExpireTime.Sub(now)
-				if diff > 0 {
-					daysUntilExpire = int(diff.Hours() / 24)
-				} else {
-					isExpired = true
-				}
+				daysUntilExpire, isExpired = utils.RemainingDays(sub.ExpireTime, now)
 			}
 
 			subscriptionInfo = gin.H{
@@ -579,12 +574,7 @@ func GetUserDetails(c *gin.Context) {
 		isExpired := false
 		now := utils.GetBeijingTime()
 		if !sub.ExpireTime.IsZero() {
-			diff := sub.ExpireTime.Sub(now)
-			if diff > 0 {
-				daysUntilExpire = int(diff.Hours() / 24)
-			} else {
-				isExpired = true
-			}
+			daysUntilExpire, isExpired = utils.RemainingDays(sub.ExpireTime, now)
 		}
 
 		universalCount := sub.UniversalCount
@@ -2631,10 +2621,7 @@ func BatchSendExpireReminder(c *gin.Context) {
 			continue
 		}
 
-		daysUntilExpire := int(sub.ExpireTime.Sub(now).Hours() / 24)
-		if daysUntilExpire < 0 {
-			daysUntilExpire = 0
-		}
+		daysUntilExpire, isExpired := utils.RemainingDays(sub.ExpireTime, now)
 
 		subject := "订阅即将到期提醒"
 		pkgName := "默认套餐"
@@ -2643,7 +2630,6 @@ func BatchSendExpireReminder(c *gin.Context) {
 				pkgName = name
 			}
 		}
-		isExpired := daysUntilExpire <= 0
 		content := templateBuilder.GetExpirationReminderTemplate(
 			user.Username,
 			pkgName,
@@ -3222,7 +3208,7 @@ func SendEmailToUser(c *gin.Context) {
 			expireDate := subscription.ExpireTime.Format("2006-01-02")
 			content = strings.ReplaceAll(content, "{expire_date}", expireDate)
 
-			daysLeft := int(subscription.ExpireTime.Sub(time.Now()).Hours() / 24)
+			daysLeft, _ := utils.RemainingDays(subscription.ExpireTime, utils.GetBeijingTime())
 			content = strings.ReplaceAll(content, "{days_left}", fmt.Sprintf("%d", daysLeft))
 		}
 	}

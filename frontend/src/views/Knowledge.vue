@@ -136,6 +136,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import { knowledgeAPI } from '@/utils/api'
+import { formatDateTimeSafe } from '@/utils/date'
 import { sanitizeArticleHtml } from '@/utils/sanitizeHtml'
 
 const iconMap = { Search, Folder, View, Clock, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook }
@@ -153,10 +154,7 @@ const pageSize = ref(12)
 const total = ref(0)
 
 const formatDate = (d) => {
-  if (!d) return ''
-  const date = new Date(String(d).replace(/-/g, '/'))
-  if (isNaN(date.getTime())) return ''
-  return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+  return formatDateTimeSafe(d, 'YYYY-MM-DD', '')
 }
 
 const getSummary = (article) => {

@@ -369,6 +369,7 @@ import { confirmDelete } from '@/utils/confirmAction'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import { formatTime as formatTimeUtil } from '@/utils/date'
+import { getCouponStatusText as getStatusText, getCouponStatusType as getStatusTagType } from '@/utils/statusMaps'
 dayjs.extend(timezone)
 const loading = ref(false)
 const saving = ref(false)
@@ -618,22 +619,6 @@ const getTypeText = (type) => {
     free_days: '赠送天数'
   }
   return map[type] || type
-}
-const getStatusText = (status) => {
-  const map = {
-    active: '有效',
-    inactive: '无效',
-    expired: '已过期'
-  }
-  return map[status] || status
-}
-const getStatusTagType = (status) => {
-  const map = {
-    active: 'success',
-    inactive: 'info',
-    expired: 'danger'
-  }
-  return map[status] || ''
 }
 const formatTime = (timeStr) => {
   return formatTimeUtil(timeStr) || '-'

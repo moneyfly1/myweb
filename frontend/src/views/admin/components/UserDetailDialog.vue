@@ -791,7 +791,21 @@
 
 <script>
 import { adminAPI } from '@/utils/api'
-import { formatDate as formatDateUtil, formatLocation } from '@/utils/date'
+import { formatDateTimeSafe, formatLocation } from '@/utils/date'
+import { getDeviceTypeName as deviceTypeName, getDeviceTypeColor as deviceTypeColor } from '@/utils/device'
+import { copyToClipboard as copyText } from '@/utils/textSelection'
+import {
+  USER_STATUS_MAP,
+  SUBSCRIPTION_STATUS_MAP,
+  ORDER_STATUS_MAP,
+  getUserStatusType,
+  getUserStatusText,
+  getSubscriptionStatusType,
+  getSubscriptionStatusText,
+  getOrderStatusType,
+  getOrderStatusText,
+  getPaymentMethodText as getPaymentMethodTextShared
+} from '@/utils/statusMaps'
 import { ElMessage } from '@/utils/elementPlusServices'
 import PaginationBar from '@/components/PaginationBar.vue'
 import AppDrawer from '@/components/AppDrawer.vue'
@@ -1079,28 +1093,10 @@ export default {
       }
     },
     getDeviceTypeName(type) {
-      const map = {
-        mobile: '手机',
-        desktop: '电脑',
-        tablet: '平板',
-        router: '路由器',
-        tv_box: '电视盒子',
-        server: '服务器',
-        unknown: '未知'
-      }
-      return map[type] || type || '未知'
+      return deviceTypeName(type)
     },
     getDeviceTypeColor(type) {
-      const map = {
-        mobile: 'primary',
-        desktop: 'success',
-        tablet: 'warning',
-        router: '',
-        tv_box: 'danger',
-        server: 'info',
-        unknown: 'info'
-      }
-      return map[type] || 'info'
+      return deviceTypeColor(type)
     },
     displayLocation(loc) {
       if (!loc) return '-'
@@ -1140,11 +1136,11 @@ export default {
     },
     formatDate(date) {
       if (!date) return ''
-      return formatDateUtil(date)
+      return formatDateTimeSafe(date)
     },
     formatDateTime(date) {
       if (!date) return ''
-      return formatDateUtil(date)
+      return formatDateTimeSafe(date)
     },
     hasMoreSubscriptionUrls(sub) {
       return this.getMoreSubscriptionUrls(sub).length > 0
@@ -1211,42 +1207,19 @@ export default {
       return `${window.location.origin}/api/v1/client/subscribe?token=${encodeURIComponent(token)}&type=${encodeURIComponent(type)}`
     },
     getStatusType(status) {
-      const statusMap = {
-        active: 'success',
-        inactive: 'info',
-        paid: 'success',
-        pending: 'warning',
-        cancelled: 'info',
-        refunded: 'danger',
-        expired: 'danger',
-        success: 'success',
-        failed: 'danger'
-      }
-      return statusMap[status] || 'info'
+      if (SUBSCRIPTION_STATUS_MAP[status]) return getSubscriptionStatusType(status)
+      if (USER_STATUS_MAP[status]) return getUserStatusType(status)
+      if (ORDER_STATUS_MAP[status]) return getOrderStatusType(status)
+      return status === 'success' ? 'success' : 'info'
     },
     getStatusText(status) {
-      const statusMap = {
-        active: '活跃',
-        inactive: '未激活',
-        paid: '已支付',
-        pending: '待支付',
-        cancelled: '已取消',
-        refunded: '已退款',
-        expired: '已过期',
-        success: '成功',
-        failed: '失败'
-      }
-      return statusMap[status] || status
+      if (SUBSCRIPTION_STATUS_MAP[status]) return getSubscriptionStatusText(status)
+      if (USER_STATUS_MAP[status]) return getUserStatusText(status)
+      if (ORDER_STATUS_MAP[status]) return getOrderStatusText(status)
+      return status === 'success' ? '成功' : (status || '-')
     },
     getPaymentMethodText(method) {
-      const methodMap = {
-        alipay: '支付宝',
-        wechat: '微信支付',
-        balance: '余额',
-        card: '银行卡',
-        other: '其他'
-      }
-      return methodMap[method] || method || '未知'
+      return getPaymentMethodTextShared(method)
     },
     getResetTypeText(type) {
       const typeMap = {
@@ -1257,16 +1230,7 @@ export default {
       return typeMap[type] || type
     },
     async copyToClipboard(text) {
-      if (!text) {
-        ElMessage.warning('无可复制内容')
-        return
-      }
-      try {
-        await navigator.clipboard.writeText(text)
-        ElMessage.success('复制成功')
-      } catch (err) {
-        ElMessage.error('复制失败')
-      }
+      return copyText(text, '复制成功')
     },
     getCurrentUserId() {
       return this.user?.user_info?.id || this.user?.id

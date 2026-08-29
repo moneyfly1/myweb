@@ -2,7 +2,6 @@ package payment
 
 import (
 	"crypto"
-	"crypto/md5" // #nosec G501 - MD5 required by Yipay API specification
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -15,7 +14,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
@@ -171,33 +169,6 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
-}
-
-func buildSignString(params map[string]string, excludeKeys ...string) string {
-	var keys []string
-	excludeMap := make(map[string]bool)
-	for _, k := range excludeKeys {
-		excludeMap[k] = true
-	}
-
-	for k, v := range params {
-		if v == "" || excludeMap[k] {
-			continue
-		}
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	var sb strings.Builder
-	for i, k := range keys {
-		if i > 0 {
-			sb.WriteString("&")
-		}
-		sb.WriteString(k)
-		sb.WriteString("=")
-		sb.WriteString(params[k])
-	}
-	return sb.String()
 }
 
 func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error) {
@@ -550,12 +521,9 @@ func (s *YipayService) calculateMD5Sign(params map[string]string) string {
 	return s.calcMD5FromStr(signStr)
 }
 
-// calcMD5FromStr 计算MD5签名
-// #nosec G401 - MD5 is required by Yipay API specification, not used for security-critical operations
+// calcMD5FromStr 计算MD5签名（拼串末尾直接追加商户密钥）
 func (s *YipayService) calcMD5FromStr(signStr string) string {
-	fullStr := signStr + s.Key
-	hash := md5.Sum([]byte(fullStr)) // #nosec G401
-	return strings.ToLower(fmt.Sprintf("%x", hash))
+	return md5Sign(signStr + s.Key)
 }
 
 func (s *YipayService) verifyRSASign(content, sign string) bool {

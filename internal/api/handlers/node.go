@@ -478,26 +478,10 @@ func GetAdminNodes(c *gin.Context) {
 
 	total := int64(len(uniqueNodes))
 
-	page := 1
-	size := 20
-	if pageStr := c.Query("page"); pageStr != "" {
-		_, _ = fmt.Sscanf(pageStr, "%d", &page) // Ignore error, use default value
-	}
-	if sizeStr := c.Query("size"); sizeStr != "" {
-		_, _ = fmt.Sscanf(sizeStr, "%d", &size) // Ignore error, use default value
-	}
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 20
-	}
-	if size > 100 {
-		size = 100 // 限制最大每页数量
-	}
+	p := utils.ParsePaginationWithDefaultSize(c, 20)
 
-	offset := (page - 1) * size
-	end := offset + size
+	offset := p.GetOffset()
+	end := offset + p.Size
 	if end > len(uniqueNodes) {
 		end = len(uniqueNodes)
 	}
@@ -510,8 +494,8 @@ func GetAdminNodes(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"data":  uniqueNodes,
 		"total": total,
-		"page":  page,
-		"size":  size,
+		"page":  p.Page,
+		"size":  p.Size,
 	})
 }
 

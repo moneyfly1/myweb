@@ -89,7 +89,7 @@ func CreateRecharge(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	orderNo, err := utils.GenerateRechargeOrderNo(user.ID, db)
+	orderNo, err := utils.GenerateOrderNoFor(db, "recharge_records", "RCH")
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成充值订单号失败", err)
 		return
@@ -352,20 +352,8 @@ func CancelRecharge(c *gin.Context) {
 
 func GetAdminRechargeRecords(c *gin.Context) {
 	db := database.GetDB()
-	page := 1
-	size := 20
-	if pageStr := c.Query("page"); pageStr != "" {
-		_, _ = fmt.Sscanf(pageStr, "%d", &page) // Ignore error, use default value
-	}
-	if sizeStr := c.Query("size"); sizeStr != "" {
-		_, _ = fmt.Sscanf(sizeStr, "%d", &size) // Ignore error, use default value
-	}
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 || size > 100 {
-		size = 20
-	}
+	p := utils.ParsePaginationWithDefaultSize(c, 20)
+	page, size := p.Page, p.Size
 
 	keyword := c.Query("keyword")
 	if keyword == "" {

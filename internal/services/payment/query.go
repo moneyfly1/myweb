@@ -1,13 +1,11 @@
 package payment
 
 import (
-	"crypto/md5" // #nosec G501 - MD5 required by epay query API spec
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 	"time"
 )
@@ -39,28 +37,7 @@ func (r *EpayQueryResult) IsPaid() bool {
 // epayMD5Sign 计算 epay 协议族（码支付/易支付）的 MD5 签名：
 // 参数（排除 sign/sign_type/空值）按 key 排序拼接 k=v&...，末尾追加 key，MD5 小写。
 func epayMD5Sign(params map[string]string, key string) string {
-	var keys []string
-	for k, v := range params {
-		if k == "sign" || k == "sign_type" || v == "" {
-			continue
-		}
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	var sb strings.Builder
-	for i, k := range keys {
-		if i > 0 {
-			sb.WriteString("&")
-		}
-		sb.WriteString(k)
-		sb.WriteString("=")
-		sb.WriteString(params[k])
-	}
-	sb.WriteString(key)
-
-	sum := md5.Sum([]byte(sb.String())) // #nosec G401
-	return fmt.Sprintf("%x", sum)
+	return md5Sign(buildSignString(params, "sign", "sign_type") + key)
 }
 
 // verifyEpayQueryResponseSign 校验查单响应签名。

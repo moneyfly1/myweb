@@ -119,11 +119,8 @@ func getEmailConfigFromDB(db *gorm.DB) map[string]interface{} {
 }
 
 func getStringFromConfig(config map[string]interface{}, key string, defaultValue string) string {
-	if val, ok := config[key]; ok {
-		if str, ok := val.(string); ok {
-			return str
-		}
-		return fmt.Sprintf("%v", val)
+	if v := utils.GetMapString(config, key); v != "" {
+		return v
 	}
 	return defaultValue
 }

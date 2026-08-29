@@ -1744,7 +1744,7 @@ func UpgradeDevices(c *gin.Context) {
 		}
 	}
 
-	orderNo, err := utils.GenerateDeviceUpgradeOrderNo(db)
+	orderNo, err := utils.GenerateOrderNoFor(db, "orders", "UPG")
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成订单号失败", err)
 		return
@@ -2193,7 +2193,7 @@ func CreateCustomOrder(c *gin.Context) {
 	extraStr := string(extraDataJSON)
 
 	// 创建订单号
-	orderNo, err := utils.GenerateOrderNo(db)
+	orderNo, err := utils.GenerateOrderNoFor(db, "orders", "ORD")
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成订单号失败", err)
 		return

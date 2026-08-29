@@ -180,6 +180,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Connection } from '@element-plus/icons-vue'
 import { nodeAPI } from '@/utils/api'
+import { NODE_STATUS_MAP, getNodeStatusType, getNodeStatusText } from '@/utils/statusMaps'
 import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
 import EmptyState from '@/components/EmptyState.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
@@ -419,22 +420,12 @@ export default {
       return colors[type] || 'info'
     }
     const getStatusType = (status) => {
-      const statusMap = {
-        online: 'success',
-        offline: 'danger',
-        timeout: 'warning',
-        inactive: 'info'
-      }
-      return statusMap[status?.toLowerCase()] || 'info'
+      const key = status?.toLowerCase()
+      return NODE_STATUS_MAP[key] ? getNodeStatusType(key) : 'info'
     }
     const getStatusText = (status) => {
-      const statusMap = {
-        online: '在线',
-        offline: '离线',
-        timeout: '超时',
-        inactive: '未激活'
-      }
-      return statusMap[status?.toLowerCase()] || status || '未知'
+      const key = status?.toLowerCase()
+      return NODE_STATUS_MAP[key] ? getNodeStatusText(key) : (status || '未知')
     }
     onMounted(() => {
       fetchNodes()

@@ -79,75 +79,41 @@ type orderNoGenerator interface {
 	getPrefix() string
 }
 
-// 订单生成器
+// orderGenerator 订单号生成器，按表名与前缀参数化，订单/充值/设备升级共用。
+// tableName 由调用方传入（白名单值：orders / recharge_records），prefix 为订单号前缀（ORD/RCH/UPG）。
 type orderGenerator struct {
-	db *gorm.DB
+	db        *gorm.DB
+	tableName string
+	prefix    string
 }
 
-func (og *orderGenerator) getTableName() string { return "orders" }
-func (og *orderGenerator) getPrefix() string    { return "ORD" }
+func newOrderGenerator(tableName, prefix string) *orderGenerator {
+	return &orderGenerator{tableName: tableName, prefix: prefix}
+}
+
+func (og *orderGenerator) getTableName() string { return og.tableName }
+func (og *orderGenerator) getPrefix() string    { return og.prefix }
 func (og *orderGenerator) getMaxSequence() int {
 	if og.db == nil {
 		return 0
 	}
-	return findMaxOrderSequence(og.db)
+	return findMaxOrderSequence(og.db, og.tableName, og.prefix)
 }
 func (og *orderGenerator) checkExists(orderNo string) bool {
 	if og.db == nil {
 		return false
 	}
-	return checkOrderNoExists(og.db, orderNo)
+	return checkOrderNoExists(og.db, og.tableName, orderNo)
 }
 
-// 充值订单生成器
-type rechargeOrderGenerator struct {
-	db *gorm.DB
-}
-
-func (og *rechargeOrderGenerator) getTableName() string { return "recharge_records" }
-func (og *rechargeOrderGenerator) getPrefix() string    { return "RCH" }
-func (og *rechargeOrderGenerator) getMaxSequence() int {
-	if og.db == nil {
-		return 0
-	}
-	return findMaxRechargeOrderSequence(og.db)
-}
-func (og *rechargeOrderGenerator) checkExists(orderNo string) bool {
-	if og.db == nil {
-		return false
-	}
-	return checkRechargeOrderNoExists(og.db, orderNo)
-}
-
-// 设备升级订单生成器
-type deviceUpgradeOrderGenerator struct {
-	db *gorm.DB
-}
-
-func (og *deviceUpgradeOrderGenerator) getTableName() string { return "orders" }
-func (og *deviceUpgradeOrderGenerator) getPrefix() string    { return "UPG" }
-func (og *deviceUpgradeOrderGenerator) getMaxSequence() int {
-	if og.db == nil {
-		return 0
-	}
-	return findMaxOrderSequence(og.db)
-}
-func (og *deviceUpgradeOrderGenerator) checkExists(orderNo string) bool {
-	if og.db == nil {
-		return false
-	}
-	return checkOrderNoExists(og.db, orderNo)
-}
-
-// 专门查询订单序列号（硬编码表名，避免SQL注入）
-func findMaxOrderSequence(db *gorm.DB) int {
+// findMaxOrderSequence 查询指定订单表当日最大序列号（表名/前缀由参数传入，仅白名单值）
+func findMaxOrderSequence(db *gorm.DB, tableName, prefix string) int {
 	var maxSeq int
 	dateStr := GetBeijingTime().Format("20060102")
-	fullPrefix := fmt.Sprintf("ORD%s", dateStr)
+	fullPrefix := fmt.Sprintf("%s%s", prefix, dateStr)
 
 	var orderNos []string
-	// 使用硬编码表名，无SQL注入风险
-	if err := db.Table("orders").Where("order_no LIKE ?", fullPrefix+"%").Order("order_no DESC").Limit(100).Pluck("order_no", &orderNos).Error; err != nil {
+	if err := db.Table(tableName).Where("order_no LIKE ?", fullPrefix+"%").Order("order_no DESC").Limit(100).Pluck("order_no", &orderNos).Error; err != nil {
 		return 0
 	}
 
@@ -162,42 +128,10 @@ func findMaxOrderSequence(db *gorm.DB) int {
 	return maxSeq
 }
 
-// 专门查询充值订单序列号（硬编码表名）
-func findMaxRechargeOrderSequence(db *gorm.DB) int {
-	var maxSeq int
-	dateStr := GetBeijingTime().Format("20060102")
-	fullPrefix := fmt.Sprintf("RCH%s", dateStr)
-
-	var orderNos []string
-	// 使用硬编码表名，无SQL注入风险
-	if err := db.Table("recharge_records").Where("order_no LIKE ?", fullPrefix+"%").Order("order_no DESC").Limit(100).Pluck("order_no", &orderNos).Error; err != nil {
-		return 0
-	}
-
-	for _, orderNo := range orderNos {
-		if len(orderNo) >= len(fullPrefix)+3 {
-			var seq int
-			if _, err := fmt.Sscanf(orderNo[len(fullPrefix):], "%d", &seq); err == nil && seq > maxSeq {
-				maxSeq = seq
-			}
-		}
-	}
-	return maxSeq
-}
-
-// 检查订单号是否存在（硬编码表名）
-func checkOrderNoExists(db *gorm.DB, orderNo string) bool {
+// checkOrderNoExists 检查订单号在指定订单表中是否已存在
+func checkOrderNoExists(db *gorm.DB, tableName, orderNo string) bool {
 	var count int64
-	if err := db.Table("orders").Where("order_no = ?", orderNo).Count(&count).Error; err != nil {
-		return false
-	}
-	return count > 0
-}
-
-// 检查充值订单号是否存在（硬编码表名）
-func checkRechargeOrderNoExists(db *gorm.DB, orderNo string) bool {
-	var count int64
-	if err := db.Table("recharge_records").Where("order_no = ?", orderNo).Count(&count).Error; err != nil {
+	if err := db.Table(tableName).Where("order_no = ?", orderNo).Count(&count).Error; err != nil {
 		return false
 	}
 	return count > 0
@@ -253,41 +187,14 @@ func cryptoRandDigits(n int) (string, error) {
 	return string(b), nil
 }
 
-func GenerateOrderNo(db interface{}) (string, error) {
-	var gen orderNoGenerator
-	if db != nil {
-		if gormDB, ok := db.(*gorm.DB); ok {
-			gen = &orderGenerator{db: gormDB}
-		}
-	}
-	if gen == nil {
-		gen = &orderGenerator{}
-	}
-	return generateOrderNo(gen)
-}
-
-func GenerateRechargeOrderNo(userID uint, db interface{}) (string, error) {
-	var gen orderNoGenerator
-	if db != nil {
-		if gormDB, ok := db.(*gorm.DB); ok {
-			gen = &rechargeOrderGenerator{db: gormDB}
-		}
-	}
-	if gen == nil {
-		gen = &rechargeOrderGenerator{}
-	}
-	return generateOrderNo(gen)
-}
-
-func GenerateDeviceUpgradeOrderNo(db interface{}) (string, error) {
-	var gen orderNoGenerator
-	if db != nil {
-		if gormDB, ok := db.(*gorm.DB); ok {
-			gen = &deviceUpgradeOrderGenerator{db: gormDB}
-		}
-	}
-	if gen == nil {
-		gen = &deviceUpgradeOrderGenerator{}
+// GenerateOrderNoFor 生成订单号（订单号生成器唯一公开入口）。
+// tableName 为订单表名（白名单值：orders / recharge_records），
+// prefix 为订单号前缀（ORD / RCH / UPG），三者组合对应原
+// GenerateOrderNo / GenerateRechargeOrderNo / GenerateDeviceUpgradeOrderNo。
+func GenerateOrderNoFor(db interface{}, tableName, prefix string) (string, error) {
+	gen := newOrderGenerator(tableName, prefix)
+	if gormDB, ok := db.(*gorm.DB); ok {
+		gen.db = gormDB
 	}
 	return generateOrderNo(gen)
 }
@@ -366,6 +273,44 @@ func FormatNullTimeBeijing(nt sql.NullTime) string {
 		return ""
 	}
 	return FormatBeijingTime(nt.Time)
+}
+
+// RemainingDays 计算到期剩余天数（统一 ceil 语义：剩余不足 1 天按 1 天算）。
+// 返回 (days, expired)：已过期或到期时间未设置时 expired=true 且 days=0；
+// 未过期时 expired=false 且 days>=1。
+func RemainingDays(expireTime, now time.Time) (days int, expired bool) {
+	if expireTime.IsZero() {
+		return 0, true
+	}
+	diff := expireTime.Sub(now)
+	if diff <= 0 {
+		return 0, true
+	}
+	days = int(math.Ceil(diff.Hours() / 24))
+	if days < 1 {
+		days = 1
+	}
+	return days, false
+}
+
+// GetMapString 从 map 中按 keys 顺序取第一个存在的非空值并转成字符串。
+// 字符串值直接返回；非字符串值用 fmt.Sprintf("%v") 渲染；找不到或为空返回 ""。
+func GetMapString(data map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if val, ok := data[key]; ok {
+			switch s := val.(type) {
+			case string:
+				if s != "" {
+					return s
+				}
+			default:
+				if s := fmt.Sprintf("%v", val); s != "" {
+					return s
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // ========== Token哈希 ==========

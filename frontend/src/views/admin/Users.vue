@@ -806,7 +806,18 @@ import {
   Connection, Monitor, Unlock, Check, Message, Bell, Loading, CircleCheck, View
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
-import { formatDate as formatDateUtil, formatLocation } from '@/utils/date'
+import { formatDateTimeSafe, formatLocation } from '@/utils/date'
+import { getDeviceTypeColor as getDeviceTypeTag, getDeviceTypeName as getDeviceTypeText } from '@/utils/device'
+import { copyToClipboard } from '@/utils/textSelection'
+import {
+  getUserStatusType as getStatusType,
+  getUserStatusText as getStatusText,
+  getSubscriptionStatusType,
+  getSubscriptionStatusText,
+  getOrderStatusType,
+  getOrderStatusText,
+  getPaymentMethodText
+} from '@/utils/statusMaps'
 import { debounce } from '@/composables/useDebounce'
 import { useMobile } from '@/composables/useMobile'
 import { confirmDelete, confirmWarning } from '@/utils/confirmAction'
@@ -820,16 +831,6 @@ import UserDetailDialog from './components/UserDetailDialog.vue'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 dayjs.extend(timezone)
-const STATUS_MAP = {
-  active: { type: 'success', text: '活跃' },
-  inactive: { type: 'warning', text: '待激活' },
-  disabled: { type: 'danger', text: '禁用' }
-}
-const SUBSCRIPTION_STATUS_MAP = {
-  active: { type: 'success', text: '活跃' },
-  inactive: { type: 'info', text: '未激活' },
-  expired: { type: 'danger', text: '已过期' }
-}
 const STATUS_FILTER_MAP = {
   '': '状态筛选',
   'active': '活跃',
@@ -1088,12 +1089,8 @@ export default {
       sort: '',
       order: ''
     })
-    const getStatusType = (status) => STATUS_MAP[status]?.type || 'info'
-    const getStatusText = (status) => STATUS_MAP[status]?.text || status
-    const getSubscriptionStatusType = (status) => SUBSCRIPTION_STATUS_MAP[status]?.type || 'info'
-    const getSubscriptionStatusText = (status) => SUBSCRIPTION_STATUS_MAP[status]?.text || '未知'
     const getStatusFilterText = () => STATUS_FILTER_MAP[searchForm.status] || '状态筛选'
-    const formatDate = (date) => formatDateUtil(date) || ''
+    const formatDate = (date) => formatDateTimeSafe(date, 'YYYY-MM-DD HH:mm:ss', '')
     const isDeviceOverlimit = (user) => {
       const onlineDevices = user.online_devices || 0
       const deviceLimit = user.subscription?.device_limit || 0
@@ -1537,14 +1534,6 @@ export default {
         }
       }
     }
-    const getDeviceTypeTag = (type) => {
-      const typeMap = { 'mobile': 'primary', 'desktop': 'success', 'tablet': 'warning', 'server': 'danger' }
-      return typeMap[type] || 'info'
-    }
-    const getDeviceTypeText = (type) => {
-      const typeMap = { 'mobile': '手机', 'desktop': '电脑', 'tablet': '平板', 'server': '服务器' }
-      return typeMap[type] || type || '未知'
-    }
     const getResetTypeTag = (type) => {
       const typeMap = { 'manual': 'primary', 'automatic': 'info', 'admin': 'warning', 'system': 'success' }
       return typeMap[type] || 'info'
@@ -1560,40 +1549,6 @@ export default {
     const getResetByText = (by) => {
       const byMap = { 'user': '用户', 'admin': '管理员', 'system': '系统' }
       return byMap[by] || by || '未知'
-    }
-    const getOrderStatusType = (status) => {
-      const statusMap = { 'pending': 'warning', 'paid': 'success', 'completed': 'success', 'cancelled': 'info', 'failed': 'danger', 'refunded': 'info' }
-      return statusMap[status] || 'info'
-    }
-    const getOrderStatusText = (status) => {
-      const statusMap = { 'pending': '待支付', 'paid': '已支付', 'completed': '已完成', 'cancelled': '已取消', 'failed': '失败', 'refunded': '已退款' }
-      return statusMap[status] || status || '未知'
-    }
-    const getPaymentMethodText = (method) => {
-      const methodMap = { 'alipay': '支付宝', 'wechat': '微信支付', 'balance': '余额支付', 'card': '银行卡', 'paypal': 'PayPal' }
-      return methodMap[method] || method || '未知'
-    }
-    const copyToClipboard = async (text) => {
-      if (!text) {
-        ElMessage.warning('没有可复制的内容')
-        return
-      }
-      try {
-        await navigator.clipboard.writeText(text)
-        ElMessage.success('已复制到剪贴板')
-      } catch (error) {
-        try {
-          const textArea = document.createElement('textarea')
-          textArea.value = text
-          document.body.appendChild(textArea)
-          textArea.select()
-          document.execCommand('copy')
-          document.body.removeChild(textArea)
-          ElMessage.success('已复制到剪贴板')
-        } catch (fallbackError) {
-          ElMessage.error('复制失败，请手动复制')
-        }
-      }
     }
     const deleteUser = async (user) => {
       if (!user?.id) {

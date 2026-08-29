@@ -119,19 +119,10 @@
 <script setup>
 import { adminAPI } from '@/utils/api'
 import { useLogListPage } from '@/composables/useLogListPage'
-import { EMAIL_TYPE_MAP, getEmailTypeText } from '@/utils/statusMaps'
+import { EMAIL_TYPE_MAP, getEmailTypeText, getEmailStatusText as getStatusText, getEmailStatusType as getStatusColor } from '@/utils/statusMaps'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import MobileLogFields from '@/components/MobileLogFields.vue'
-
-const getStatusText = (status) => {
-  const map = { pending: '待发送', sent: '已发送', failed: '失败' }
-  return map[status] || status || '-'
-}
-const getStatusColor = (status) => {
-  const map = { pending: 'warning', sent: 'success', failed: 'danger' }
-  return map[status] || 'info'
-}
 
 const {
   loading, list, total, page, pageSize, filter, isMobile, paginationLayout,

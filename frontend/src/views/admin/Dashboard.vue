@@ -169,7 +169,7 @@
               <el-table-column width="80" align="right">
                 <template #default="scope">
                   <el-tag 
-                    :type="getAbnormalTypeTag(scope.row.abnormal_type)" 
+                    :type="getAbnormalTypeType(scope.row.abnormal_type)" 
                     size="small"
                     effect="plain"
                   >
@@ -328,7 +328,9 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { useRouter } from 'vue-router'
 import { useApi } from '@/utils/api'
 import { adminAPI } from '@/utils/api'
+import { formatMoney as formatMoneyUtil } from '@/utils/format'
 import { confirmAction } from '@/utils/confirmAction'
+import { getOrderStatusType, getOrderStatusText, getAbnormalTypeText, getAbnormalTypeType } from '@/utils/statusMaps'
 import { ArrowRight, ShoppingCart, Warning } from '@element-plus/icons-vue'
 import EmptyState from '@/components/EmptyState.vue'
 export default {
@@ -465,40 +467,6 @@ export default {
         abnormalUsers.value = []
       }
     }
-    const getOrderStatusType = (status) => {
-      const statusMap = {
-        'pending': 'warning',
-        'paid': 'success',
-        'cancelled': 'danger',
-        'refunded': 'info'
-      }
-      return statusMap[status] || 'info'
-    }
-    const getOrderStatusText = (status) => {
-      const statusMap = {
-        'pending': '待支付',
-        'paid': '已支付',
-        'cancelled': '已取消',
-        'refunded': '已退款'
-      }
-      return statusMap[status] || status
-    }
-    const getAbnormalTypeTag = (type) => {
-      const typeMap = {
-        'frequent_reset': 'warning',
-        'frequent_subscription': 'danger',
-        'multiple_abnormal': 'error'
-      }
-      return typeMap[type] || 'info'
-    }
-    const getAbnormalTypeText = (type) => {
-      const typeMap = {
-        'frequent_reset': '频繁重置',
-        'frequent_subscription': '频繁订阅',
-        'multiple_abnormal': '多重异常'
-      }
-      return typeMap[type] || type
-    }
     const goToAbnormalUsers = () => {
       router.push('/admin/abnormal-users')
     }
@@ -555,10 +523,7 @@ export default {
       }
     }
     const formatMoney = (value) => {
-      if (value === null || value === undefined || value === '') return '0.00'
-      const num = typeof value === 'string' ? parseFloat(value) : value
-      if (isNaN(num)) return '0.00'
-      return num.toFixed(2)
+      return formatMoneyUtil(value, { prefix: '' })
     }
     const formatTimeAgo = (dateString) => {
       if (!dateString) return '未知'
@@ -665,7 +630,7 @@ export default {
       abnormalUsers,
       getOrderStatusType,
       getOrderStatusText,
-      getAbnormalTypeTag,
+      getAbnormalTypeType,
       getAbnormalTypeText,
       goToAbnormalUsers,
       handleAbnormalUserClick,

@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"cboard-go/internal/utils"
 )
 
 // ProxyNode 统一代理节点结构体
@@ -854,7 +856,7 @@ func containsNodeLinks(s string) bool {
 }
 
 func getString(m map[string]any, key, def string) string {
-	if v, ok := m[key].(string); ok && v != "" {
+	if v := utils.GetMapString(m, key); v != "" {
 		return v
 	}
 	return def

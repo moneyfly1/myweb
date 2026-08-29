@@ -19,26 +19,11 @@ import (
 
 const systemLogsBaseWhere = "(audit_logs.action_type = ? OR audit_logs.action_type LIKE ? OR audit_logs.action_type LIKE ? OR audit_logs.action_type LIKE ? OR audit_logs.action_type LIKE ? OR audit_logs.resource_type = ? OR audit_logs.resource_type = ?)"
 
-// PaginationParams 分页参数结构
-type PaginationParams struct {
-	Page     int
-	PageSize int
-	Offset   int
-}
-
 // ==========================================
 // 通用辅助函数 (提取并复用)
 // ==========================================
-
-// parsePagination 解析分页参数
-func parsePagination(c *gin.Context) PaginationParams {
-	p := utils.ParsePagination(c)
-	return PaginationParams{
-		Page:     p.Page,
-		PageSize: p.Size,
-		Offset:   p.GetOffset(),
-	}
-}
+// 分页解析统一使用 utils.ParsePagination（返回 utils.PaginationParams，
+// offset 用 p.GetOffset() 计算）。
 
 // applyTimeRangeFilter 通用时间范围过滤
 func applyTimeRangeFilter(query *gorm.DB, c *gin.Context, dbTimeField string) *gorm.DB {
@@ -163,13 +148,13 @@ func applySystemLogsFilters(query *gorm.DB, c *gin.Context, includeLevel bool) *
 }
 
 // genericSuccessResponse 统一的分页响应封装
-func genericSuccessResponse(c *gin.Context, data interface{}, total int64, p PaginationParams) {
+func genericSuccessResponse(c *gin.Context, data interface{}, total int64, p utils.PaginationParams) {
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"logs":        data, // 注意：某些接口返回字段名叫 "attempts" 或其他，如有特定需求需调整
 		"total":       total,
 		"page":        p.Page,
-		"page_size":   p.PageSize,
-		"total_pages": (total + int64(p.PageSize) - 1) / int64(p.PageSize),
+		"page_size":   p.Size,
+		"total_pages": (total + int64(p.Size) - 1) / int64(p.Size),
 	})
 }
 
@@ -196,10 +181,6 @@ func getNullableInt64(v sql.NullInt64) interface{} {
 		return v.Int64
 	}
 	return nil
-}
-
-func formatTime(t time.Time) string {
-	return utils.ToBeijingTime(t).Format(TimeLayout)
 }
 
 func getCommonUserName(user *models.User) string {
@@ -430,7 +411,7 @@ func formatAuditLogForAPIWithUsername(log models.AuditLog, username string) gin.
 
 	result := gin.H{
 		"id":          log.ID,
-		"timestamp":   formatTime(log.CreatedAt),
+		"timestamp":   utils.FormatBeijingTime(log.CreatedAt),
 		"level":       level,
 		"module":      getNullableString(log.ResourceType),
 		"message":     message,
@@ -471,7 +452,7 @@ func formatLogForCSV(db *gorm.DB, log models.AuditLog) string {
 	message = strings.ReplaceAll(message, "\r", " ")
 
 	return fmt.Sprintf("%s,%s,%s,%s,%s,%s,\"%s\"\n",
-		formatTime(log.CreatedAt),
+		utils.FormatBeijingTime(log.CreatedAt),
 		level,
 		utils.SanitizeCSVField(getNullableString(log.ResourceType)),
 		utils.SanitizeCSVField(username),
@@ -486,7 +467,7 @@ func formatLogForCSV(db *gorm.DB, log models.AuditLog) string {
 // ==========================================
 
 func GetAuditLogs(c *gin.Context) {
-	p := parsePagination(c)
+	p := utils.ParsePagination(c)
 	db := database.GetDB()
 
 	query := db.Model(&models.AuditLog{})
@@ -497,7 +478,7 @@ func GetAuditLogs(c *gin.Context) {
 
 	var logs []models.AuditLog
 	query.Preload("User").Order("audit_logs.created_at DESC").
-		Offset(p.Offset).Limit(p.PageSize).Find(&logs)
+		Offset(p.GetOffset()).Limit(p.Size).Find(&logs)
 
 	// 转换为前端友好格式：NullString → 普通字符串，包含 User 信息
 	type auditLogItem struct {
@@ -551,12 +532,12 @@ func GetAuditLogs(c *gin.Context) {
 		"logs":      items,
 		"total":     total,
 		"page":      p.Page,
-		"page_size": p.PageSize,
+		"page_size": p.Size,
 	})
 }
 
 func GetLoginAttempts(c *gin.Context) {
-	p := parsePagination(c)
+	p := utils.ParsePagination(c)
 	db := database.GetDB()
 
 	var attempts []models.LoginAttempt
@@ -564,7 +545,7 @@ func GetLoginAttempts(c *gin.Context) {
 
 	db.Model(&models.LoginAttempt{}).Count(&total)
 	db.Order("created_at DESC").
-		Offset(p.Offset).Limit(p.PageSize).Find(&attempts)
+		Offset(p.GetOffset()).Limit(p.Size).Find(&attempts)
 
 	type attemptItem struct {
 		ID        uint   `json:"id"`
@@ -595,12 +576,12 @@ func GetLoginAttempts(c *gin.Context) {
 		"attempts":  items,
 		"total":     total,
 		"page":      p.Page,
-		"page_size": p.PageSize,
+		"page_size": p.Size,
 	})
 }
 
 func GetSystemLogs(c *gin.Context) {
-	p := parsePagination(c)
+	p := utils.ParsePagination(c)
 	db := database.GetDB()
 
 	query := db.Model(&models.AuditLog{})
@@ -617,7 +598,7 @@ func GetSystemLogs(c *gin.Context) {
 	// 2. 获取数据 (Preload User)
 	var logs []models.AuditLog
 	if err := query.Preload("User").Order("audit_logs.created_at DESC").
-		Offset(p.Offset).Limit(p.PageSize).Find(&logs).Error; err != nil {
+		Offset(p.GetOffset()).Limit(p.Size).Find(&logs).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取系统日志失败", err)
 		return
 	}
@@ -629,7 +610,7 @@ func GetSystemLogs(c *gin.Context) {
 		"logs":  logList,
 		"total": total,
 		"page":  p.Page,
-		"size":  p.PageSize,
+		"size":  p.Size,
 	})
 }
 
@@ -721,7 +702,7 @@ func ClearLogs(c *gin.Context) {
 // ==========================================
 
 func GetRegistrationLogs(c *gin.Context) {
-	p := parsePagination(c)
+	p := utils.ParsePagination(c)
 	db := database.GetDB()
 
 	query := db.Model(&models.RegistrationLog{})
@@ -756,7 +737,7 @@ func GetRegistrationLogs(c *gin.Context) {
 	var logs []models.RegistrationLog
 	err := query.Preload("User").Preload("Inviter").
 		Order("created_at DESC").
-		Offset(p.Offset).Limit(p.PageSize).Find(&logs).Error
+		Offset(p.GetOffset()).Limit(p.Size).Find(&logs).Error
 
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "查询注册日志失败", err)
@@ -788,14 +769,14 @@ func GetRegistrationLogs(c *gin.Context) {
 			"inviter_id":      getNullableInt64(log.InviterID),
 			"inviter_name":    inviterName, // 添加邀请人名称
 			"register_source": getNullableString(log.RegisterSource),
-			"created_at":      formatTime(log.CreatedAt), // 格式化时间
+			"created_at":      utils.FormatBeijingTime(log.CreatedAt), // 格式化时间
 		})
 	}
 	genericSuccessResponse(c, logList, total, p)
 }
 
 func GetSubscriptionLogs(c *gin.Context) {
-	p := parsePagination(c)
+	p := utils.ParsePagination(c)
 	db := database.GetDB()
 
 	// 基础 Query，包含 Join
@@ -834,7 +815,7 @@ func GetSubscriptionLogs(c *gin.Context) {
 	// 需要 Preload 关联数据
 	err := query.Preload("Subscription").Preload("User").Preload("ActionByUser").
 		Order("subscription_logs.created_at DESC").
-		Offset(p.Offset).Limit(p.PageSize).
+		Offset(p.GetOffset()).Limit(p.Size).
 		// 使用 Select 确保返回的是 log 表的数据，避免 Join 造成的字段歧义
 		Select("subscription_logs.*").
 		Find(&logs).Error
@@ -901,14 +882,14 @@ func GetSubscriptionLogs(c *gin.Context) {
 			"action_by_email": actionByEmail,
 			"description":     description,
 			"ip_address":      ipWithLocation,
-			"created_at":      formatTime(log.CreatedAt),
+			"created_at":      utils.FormatBeijingTime(log.CreatedAt),
 		})
 	}
 	genericSuccessResponse(c, logList, total, p)
 }
 
 func GetBalanceLogs(c *gin.Context) {
-	p := parsePagination(c)
+	p := utils.ParsePagination(c)
 	db := database.GetDB()
 
 	query := db.Model(&models.BalanceLog{}).Joins("JOIN users ON balance_logs.user_id = users.id")
@@ -934,7 +915,7 @@ func GetBalanceLogs(c *gin.Context) {
 	var logs []models.BalanceLog
 	err := query.Preload("User").Preload("RelatedOrder").Preload("OperatorUser").
 		Order("balance_logs.created_at DESC").
-		Offset(p.Offset).Limit(p.PageSize).
+		Offset(p.GetOffset()).Limit(p.Size).
 		Select("balance_logs.*").
 		Find(&logs).Error
 
@@ -978,14 +959,14 @@ func GetBalanceLogs(c *gin.Context) {
 				return getNullableString(log.Operator)
 			}(),
 			"ip_address": ipWithLocation, // IP 地址 + 地区
-			"created_at": formatTime(log.CreatedAt),
+			"created_at": utils.FormatBeijingTime(log.CreatedAt),
 		})
 	}
 	genericSuccessResponse(c, logList, total, p)
 }
 
 func GetCommissionLogs(c *gin.Context) {
-	p := parsePagination(c)
+	p := utils.ParsePagination(c)
 	db := database.GetDB()
 
 	query := db.Model(&models.CommissionLog{}).
@@ -1018,7 +999,7 @@ func GetCommissionLogs(c *gin.Context) {
 	var logs []models.CommissionLog
 	err := query.Preload("Inviter").Preload("Invitee").Preload("RelatedOrder").
 		Order("commission_logs.created_at DESC").
-		Offset(p.Offset).Limit(p.PageSize).
+		Offset(p.GetOffset()).Limit(p.Size).
 		Select("commission_logs.*").
 		Find(&logs).Error
 
@@ -1031,7 +1012,7 @@ func GetCommissionLogs(c *gin.Context) {
 	for _, log := range logs {
 		settledAt := ""
 		if log.SettledAt.Valid {
-			settledAt = formatTime(log.SettledAt.Time)
+			settledAt = utils.FormatBeijingTime(log.SettledAt.Time)
 		}
 
 		logList = append(logList, gin.H{
@@ -1054,14 +1035,14 @@ func GetCommissionLogs(c *gin.Context) {
 			"status":      log.Status,
 			"settled_at":  settledAt,
 			"description": getNullableString(log.Description),
-			"created_at":  formatTime(log.CreatedAt),
+			"created_at":  utils.FormatBeijingTime(log.CreatedAt),
 		})
 	}
 	genericSuccessResponse(c, logList, total, p)
 }
 
 func GetSubscriptionResetLogs(c *gin.Context) {
-	p := parsePagination(c)
+	p := utils.ParsePagination(c)
 	db := database.GetDB()
 
 	query := db.Model(&models.SubscriptionReset{}).
@@ -1094,7 +1075,7 @@ func GetSubscriptionResetLogs(c *gin.Context) {
 	var logs []models.SubscriptionReset
 	err := query.Preload("User").Preload("Subscription").
 		Order("subscription_resets.created_at DESC").
-		Offset(p.Offset).Limit(p.PageSize).
+		Offset(p.GetOffset()).Limit(p.Size).
 		Select("subscription_resets.*").
 		Find(&logs).Error
 
@@ -1124,14 +1105,14 @@ func GetSubscriptionResetLogs(c *gin.Context) {
 			"device_count_before":  log.DeviceCountBefore,
 			"device_count_after":   log.DeviceCountAfter,
 			"reset_by":             getNullableStringPtr(log.ResetBy),
-			"created_at":           formatTime(log.CreatedAt),
+			"created_at":           utils.FormatBeijingTime(log.CreatedAt),
 		})
 	}
 	genericSuccessResponse(c, logList, total, p)
 }
 
 func GetEmailLogs(c *gin.Context) {
-	p := parsePagination(c)
+	p := utils.ParsePagination(c)
 	db := database.GetDB()
 
 	query := db.Model(&models.EmailQueue{})
@@ -1160,7 +1141,7 @@ func GetEmailLogs(c *gin.Context) {
 
 	var logs []models.EmailQueue
 	err := query.Order("created_at DESC").
-		Offset(p.Offset).Limit(p.PageSize).Find(&logs).Error
+		Offset(p.GetOffset()).Limit(p.Size).Find(&logs).Error
 
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "查询邮件日志失败", err)
@@ -1171,7 +1152,7 @@ func GetEmailLogs(c *gin.Context) {
 	for _, log := range logs {
 		sentAt := ""
 		if log.SentAt.Valid {
-			sentAt = formatTime(log.SentAt.Time)
+			sentAt = utils.FormatBeijingTime(log.SentAt.Time)
 		}
 		logList = append(logList, gin.H{
 			"id":              log.ID,
@@ -1184,7 +1165,7 @@ func GetEmailLogs(c *gin.Context) {
 			"max_retries":     log.MaxRetries,
 			"sent_at":         sentAt,
 			"error_message":   getNullableString(log.ErrorMessage),
-			"created_at":      formatTime(log.CreatedAt),
+			"created_at":      utils.FormatBeijingTime(log.CreatedAt),
 		})
 	}
 	genericSuccessResponse(c, logList, total, p)

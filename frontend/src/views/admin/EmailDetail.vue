@@ -213,6 +213,7 @@ import { ArrowLeft, Refresh, Delete, CopyDocument, Download } from '@element-plu
 import { adminAPI } from '@/utils/api'
 import { sanitizeEmailHtml } from '@/utils/sanitizeHtml'
 import { formatDateTimeSafe } from '@/utils/date'
+import { copyToClipboard } from '@/utils/textSelection'
 import { EMAIL_STATUS_MAP } from '@/utils/statusMaps'
 import { confirmDelete, confirmWarning } from '@/utils/confirmAction'
 import EmptyState from '@/components/EmptyState.vue'
@@ -294,12 +295,7 @@ export default {
       }
     }
     const copyTemplateData = async () => {
-      try {
-        await navigator.clipboard.writeText(formattedTemplateData.value)
-        ElMessage.success('模板数据已复制到剪贴板')
-      } catch (error) {
-        ElMessage.error('复制失败')
-      }
+      await copyToClipboard(formattedTemplateData.value, '模板数据已复制到剪贴板')
     }
     const downloadTemplateData = () => {
       const blob = new Blob([formattedTemplateData.value], { type: 'application/json' })

@@ -322,6 +322,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Refresh, User, TrendCharts, DataAnalysis, Monitor, Download, Top, Bottom } from '@element-plus/icons-vue'
 import { api } from '@/utils/api'
+import { formatDateTimeSafe } from '@/utils/date'
 import AppDrawer from '@/components/AppDrawer.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
@@ -450,13 +451,7 @@ const getDeviceTypeName = (type) => {
 }
 
 const formatDate = (d) => {
-  if (!d) return '-'
-  const date = new Date(d)
-  return date.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  })
+  return formatDateTimeSafe(d, 'YYYY-MM-DD', '-')
 }
 
 const getPercentage = (value, total) => {
