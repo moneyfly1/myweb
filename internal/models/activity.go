@@ -14,7 +14,7 @@ type UserActivity struct {
 	Description      sql.NullString `gorm:"type:text" json:"description,omitempty"`
 	IPAddress        sql.NullString `gorm:"type:varchar(45)" json:"ip_address,omitempty"`
 	UserAgent        sql.NullString `gorm:"type:text" json:"user_agent,omitempty"`
-	Location         sql.NullString `gorm:"type:varchar(100)" json:"location,omitempty"`
+	Location         sql.NullString `gorm:"type:text" json:"location,omitempty"` // GeoIP JSON，可能超过 100 字符（MySQL 5.7 varchar 会 1406）
 	ActivityMetadata sql.NullString `gorm:"type:json" json:"activity_metadata,omitempty"`
 	CreatedAt        time.Time      `gorm:"autoCreateTime;index;index:idx_user_activities_user_created_at,priority:2" json:"created_at"`
 
@@ -32,7 +32,7 @@ type LoginHistory struct {
 	LogoutTime        sql.NullTime   `json:"logout_time,omitempty"`
 	IPAddress         sql.NullString `gorm:"type:varchar(45)" json:"ip_address,omitempty"`
 	UserAgent         sql.NullString `gorm:"type:text" json:"user_agent,omitempty"`
-	Location          sql.NullString `gorm:"type:varchar(100)" json:"location,omitempty"`
+	Location          sql.NullString `gorm:"type:text" json:"location,omitempty"` // GeoIP JSON，实测最长 144 字符，varchar(100) 会 1406
 	DeviceFingerprint sql.NullString `gorm:"type:varchar(255)" json:"device_fingerprint,omitempty"`
 	LoginStatus       string         `gorm:"type:varchar(20);default:success" json:"login_status"`
 	FailureReason     sql.NullString `gorm:"type:text" json:"failure_reason,omitempty"`
