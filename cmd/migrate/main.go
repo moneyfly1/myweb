@@ -36,7 +36,11 @@ func main() {
 	}
 
 	// 连接目标库（MySQL）
-	mysqlDB, err := gorm.Open(mysql.Open(*mysqlDSN), &gorm.Config{})
+	// DisableForeignKeyConstraintWhenMigrating: 建表时不创建外键约束，
+	// 避免多表互相引用导致的建表顺序问题（数据完整性由应用层保证，与 SQLite 行为一致）。
+	mysqlDB, err := gorm.Open(mysql.Open(*mysqlDSN), &gorm.Config{
+		DisableForeignKeyConstraintWhenMigrating: true,
+	})
 	if err != nil {
 		log.Fatalf("连接 MySQL 失败: %v", err)
 	}
