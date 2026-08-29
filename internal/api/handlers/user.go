@@ -827,7 +827,7 @@ func GetUserDetails(c *gin.Context) {
 				"device_type":  getString(d.DeviceType),
 				"device_name":  getString(d.DeviceName),
 				"ip_address":   ipAddress,
-				"location":     location,
+				"location":     utils.FormatLocation(location),
 				"created_at":   utils.FormatBeijingTime(d.CreatedAt),
 				"last_access":  utils.FormatBeijingTime(d.LastAccess),
 				"access_count": d.AccessCount,
@@ -862,7 +862,7 @@ func GetUserDetails(c *gin.Context) {
 			"id":           lh.ID,
 			"login_time":   utils.FormatBeijingTime(lh.LoginTime),
 			"ip_address":   ipAddr,
-			"location":     location,
+			"location":     utils.FormatLocation(location),
 			"login_status": lh.LoginStatus,
 		}
 		if lh.UserAgent.Valid {
@@ -1039,7 +1039,7 @@ func buildMultiIPDetail(db *gorm.DB, userID uint, count int64, startTime, endTim
 			"time":       utils.FormatBeijingTime(row.LoginTime),
 			"source":     "登录",
 			"ip_address": normalizeNullableIP(row.IPAddress),
-			"location":   nullableString(row.Location),
+			"location":   utils.FormatLocation(nullableString(row.Location)),
 			"user_agent": nullableString(row.UserAgent),
 		})
 	}
@@ -1048,7 +1048,7 @@ func buildMultiIPDetail(db *gorm.DB, userID uint, count int64, startTime, endTim
 			"time":       utils.FormatBeijingTime(row.LastAccess),
 			"source":     "设备访问",
 			"ip_address": normalizePointerIP(row.IPAddress),
-			"location":   stringPointerValue(row.Location),
+			"location":   utils.FormatLocation(stringPointerValue(row.Location)),
 			"user_agent": stringPointerValue(row.UserAgent),
 		})
 	}
@@ -1088,7 +1088,7 @@ func buildMultiLocationDetail(db *gorm.DB, userID uint, count int64, startTime, 
 		items = append(items, gin.H{
 			"time":       utils.FormatBeijingTime(row.LoginTime),
 			"source":     "登录",
-			"location":   nullableString(row.Location),
+			"location":   utils.FormatLocation(nullableString(row.Location)),
 			"ip_address": normalizeNullableIP(row.IPAddress),
 			"user_agent": nullableString(row.UserAgent),
 		})
@@ -1097,7 +1097,7 @@ func buildMultiLocationDetail(db *gorm.DB, userID uint, count int64, startTime, 
 		items = append(items, gin.H{
 			"time":       utils.FormatBeijingTime(row.LastAccess),
 			"source":     "设备访问",
-			"location":   stringPointerValue(row.Location),
+			"location":   utils.FormatLocation(stringPointerValue(row.Location)),
 			"ip_address": normalizePointerIP(row.IPAddress),
 			"user_agent": stringPointerValue(row.UserAgent),
 		})
@@ -1252,7 +1252,7 @@ func buildDeviceOverLimitDetail(db *gorm.DB, userID uint, activeDeviceCount int6
 			"device_name":     stringPointerValue(row.DeviceName),
 			"device_type":     stringPointerValue(row.DeviceType),
 			"ip_address":      normalizePointerIP(row.IPAddress),
-			"location":        stringPointerValue(row.Location),
+			"location":        utils.FormatLocation(stringPointerValue(row.Location)),
 			"last_access":     utils.FormatBeijingTime(row.LastAccess),
 			"access_count":    row.AccessCount,
 		})
@@ -2968,7 +2968,7 @@ func GetLoginHistory(c *gin.Context) {
 			"login_status": status,
 			"country":      country,
 			"city":         city,
-			"location":     h.Location.String,
+			"location":     utils.FormatLocation(h.Location.String),
 		})
 	}
 

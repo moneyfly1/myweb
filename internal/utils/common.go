@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -25,6 +26,34 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
 )
+
+// FormatLocation 将 location 字段解析为"国家, 城市"的可读文本。
+// 数据库中 location 可能是 JSON（如 {"country":"中国","city":"杭州","region":"Zhejiang"}），
+// 也可能是纯文本（如"本地"/"内网"）。统一解析，避免前端显示原始 JSON。
+// 所有返回 location 给前端的接口都应调用此函数。
+func FormatLocation(location string) string {
+	if location == "" {
+		return ""
+	}
+	if location == "本地" || location == "内网" || location == "localhost" {
+		return location
+	}
+	var loc struct {
+		Country string `json:"country"`
+		City    string `json:"city"`
+		Region  string `json:"region"`
+	}
+	if err := json.Unmarshal([]byte(location), &loc); err == nil && loc.Country != "" {
+		if loc.City != "" {
+			return loc.Country + ", " + loc.City
+		}
+		if loc.Region != "" {
+			return loc.Country + ", " + loc.Region
+		}
+		return loc.Country
+	}
+	return location
+}
 
 // NormalizeEmail 将邮箱转为小写并去空格，用于注册/登录等场景防止同一邮箱不同写法重复注册
 func NormalizeEmail(email string) string {
