@@ -16,8 +16,8 @@ type PromotionParticipation struct {
 	Status      string        `gorm:"type:varchar(20);not null;default:pending;index;index:idx_promotion_participation_lookup,priority:2" json:"status"`
 	AppliedAt   sql.NullTime  `json:"applied_at,omitempty"`
 	ExpireAt    sql.NullTime  `gorm:"index;index:idx_promotion_participation_lookup,priority:4" json:"expire_at,omitempty"`
-	CreatedAt   time.Time     `gorm:"autoCreateTime;not null;default:CURRENT_TIMESTAMP;index" json:"created_at"`
-	UpdatedAt   time.Time     `gorm:"autoUpdateTime;not null;default:CURRENT_TIMESTAMP" json:"updated_at"`
+	CreatedAt   time.Time     `gorm:"autoCreateTime;not null;index" json:"created_at"`
+	UpdatedAt   time.Time     `gorm:"autoUpdateTime;not null" json:"updated_at"`
 
 	Promotion Promotion `gorm:"foreignKey:PromotionID;constraint:OnDelete:CASCADE" json:"promotion,omitempty"`
 	User      User      `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
