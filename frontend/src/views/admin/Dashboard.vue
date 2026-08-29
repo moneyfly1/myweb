@@ -29,7 +29,7 @@
         <el-card class="stat-card">
           <div class="stat-content">
             <div class="stat-number">¥{{ formatMoney(stats.totalRevenue) }}</div>
-            <div class="stat-label">总收入</div>
+            <div class="stat-label">今日收入</div>
           </div>
         </el-card>
       </el-col>
