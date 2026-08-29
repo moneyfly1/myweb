@@ -20,6 +20,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/queue"
 	"cboard-go/internal/services/cache_service"
 	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/services/scheduler"
@@ -134,8 +135,25 @@ func main() {
 		log.Println("Redis 缓存已启用，GeoIP 查询将使用缓存加速")
 		// 预热缓存
 		cache_service.WarmupCache()
+
+		// 初始化任务队列（基于 Redis），并启动 worker 消费任务
+		redisAddr := os.Getenv("REDIS_ADDR")
+		if redisAddr == "" {
+			redisAddr = "localhost:6379"
+		}
+		if err := queue.InitQueue(redisAddr); err != nil {
+			log.Printf("任务队列初始化失败: %v", err)
+		} else {
+			go func() {
+				if err := queue.StartWorker(queue.RegisterHandlers()); err != nil {
+					utils.LogErrorMsg("任务队列 worker 异常退出: %v", err)
+				}
+			}()
+			log.Println("任务队列 worker 已启动")
+		}
 	}
 	defer cache.Close()
+	defer queue.Close()
 
 	if !cfg.DisableScheduleTasks {
 		sched := scheduler.NewScheduler()
