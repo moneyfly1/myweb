@@ -21,11 +21,11 @@ const (
 
 // Asset GitHub Release 附件
 type Asset struct {
-	Name          string `json:"name"`
-	Size          int64  `json:"size"`
-	DownloadURL   string `json:"browser_download_url"`
-	ContentType   string `json:"content_type"`
-	UpdatedAt     string `json:"updated_at"`
+	Name        string `json:"name"`
+	Size        int64  `json:"size"`
+	DownloadURL string `json:"browser_download_url"`
+	ContentType string `json:"content_type"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 // Release GitHub Release 信息

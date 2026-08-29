@@ -1163,10 +1163,10 @@ func BatchTestCustomNodes(c *gin.Context) {
 		db.Save(node)
 
 		results = append(results, gin.H{
-			"node_id": nodeID,
-			"status":  res.Status,
-			"latency": res.Latency,
-			"message": res.Error,
+			"node_id":   nodeID,
+			"status":    res.Status,
+			"latency":   res.Latency,
+			"message":   res.Error,
 			"is_active": node.IsActive,
 		})
 	}
@@ -1381,7 +1381,7 @@ func AssignCustomNodeToUser(c *gin.Context) {
 		CustomNodeID        uint       `json:"custom_node_id" binding:"required"`
 		SubscriptionType    string     `json:"subscription_type"`
 		ExpiresAt           *time.Time `json:"expires_at"`
-		UnlimitedDevices    *bool      `json:"unlimited_devices"` // true = 不限制设备数量
+		UnlimitedDevices    *bool      `json:"unlimited_devices"`     // true = 不限制设备数量
 		TrafficLimitEnabled bool       `json:"traffic_limit_enabled"` // 分配级流量配额
 		TrafficLimitBytes   int64      `json:"traffic_limit_bytes"`
 	}

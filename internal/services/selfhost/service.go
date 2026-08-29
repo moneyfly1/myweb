@@ -1,7 +1,8 @@
 // Package selfhost 提供"自建节点"能力（挂载在专线节点 custom_nodes 体系下）：
-// 1. 手动搭建：管理员生成一次性安装令牌，用户到 VPS 执行面板下发的安装脚本，
-//    脚本自动部署 sing-box、生成协议凭据并回传节点链接，面板据此激活节点。
-// 2. VPS 自动搭建：管理员填 VPS IP/SSH端口/root密码，面板 SSH 全自动部署（见 sshdeploy）。
+//  1. 手动搭建：管理员生成一次性安装令牌，用户到 VPS 执行面板下发的安装脚本，
+//     脚本自动部署 sing-box、生成协议凭据并回传节点链接，面板据此激活节点。
+//  2. VPS 自动搭建：管理员填 VPS IP/SSH端口/root密码，面板 SSH 全自动部署（见 sshdeploy）。
+//
 // 节点通过心跳维护在线状态，并上报流量统计。
 package selfhost
 
@@ -138,21 +139,21 @@ func CreateRecord(db *gorm.DB, name, protocol string, vpsHost string, sshPort in
 	expiresAt := now.Add(installTokenTTL)
 
 	node := models.CustomNode{
-		Name:              name,
-		DisplayName:       name,
-		Protocol:          protocol,
-		Status:            StatusPending,
-		IsActive:          false,
-		Source:            "selfhost",
-		SelfHosted:        true,
-		SelfHostProtocol:  protocol,
-		InstallID:         installID,
-		InstallToken:      token,
-		InstallExpiresAt:  &expiresAt,
-		LastHeartbeatAt:   nil,
-		SSHHost:           vpsHost,
-		SSHPort:           sshPort,
-		SSHUser:           sshUser,
+		Name:             name,
+		DisplayName:      name,
+		Protocol:         protocol,
+		Status:           StatusPending,
+		IsActive:         false,
+		Source:           "selfhost",
+		SelfHosted:       true,
+		SelfHostProtocol: protocol,
+		InstallID:        installID,
+		InstallToken:     token,
+		InstallExpiresAt: &expiresAt,
+		LastHeartbeatAt:  nil,
+		SSHHost:          vpsHost,
+		SSHPort:          sshPort,
+		SSHUser:          sshUser,
 	}
 	// 显式 Select 强制写入零值字段（IsActive=false），
 	// 否则 GORM 会跳过零值导致落库为模型默认值 true，占位节点会被误认为激活。
@@ -298,11 +299,11 @@ func Heartbeat(db *gorm.DB, node *models.CustomNode, trafficUp, trafficDown int6
 		db.Model(&models.CustomNode{}).
 			Where("install_id = ? AND id != ?", node.InstallID, node.ID).
 			Updates(map[string]interface{}{
-				"status":            StatusOnline,
-				"last_heartbeat_at": &now,
-				"is_active":         true,
-				"traffic_up":        gorm.Expr("traffic_up + ?", trafficUp),
-				"traffic_down":      gorm.Expr("traffic_down + ?", trafficDown),
+				"status":             StatusOnline,
+				"last_heartbeat_at":  &now,
+				"is_active":          true,
+				"traffic_up":         gorm.Expr("traffic_up + ?", trafficUp),
+				"traffic_down":       gorm.Expr("traffic_down + ?", trafficDown),
 				"traffic_updated_at": &now,
 			})
 	}

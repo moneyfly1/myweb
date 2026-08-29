@@ -52,7 +52,7 @@ type SyncStatus struct {
 	LastReport    []ReportItem `json:"last_report"`
 	TotalUploaded int          `json:"total_uploaded"`
 	// 实时进度（同步运行中有效）
-	Progress      SyncProgress `json:"progress"`
+	Progress SyncProgress `json:"progress"`
 }
 
 // SyncProgress 同步实时进度
@@ -73,12 +73,12 @@ var (
 	lastUploaded int
 
 	// 实时进度
-	progressDone    int
-	progressTotal   int
-	progressItem    string
-	progressStage   string
-	progressFile    string
-	progressFolder  string
+	progressDone   int
+	progressTotal  int
+	progressItem   string
+	progressStage  string
+	progressFile   string
+	progressFolder string
 
 	// OnSyncComplete 同步结束后回调（由 handlers 注册用于清理直链缓存等）
 	OnSyncComplete func()

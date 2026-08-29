@@ -167,19 +167,19 @@ func GetSavedSelfHostVPS(c *gin.Context) {
 	}
 
 	type vpsProfile struct {
-		Key          string   `json:"key"`
-		SSHHost      string   `json:"ssh_host"`
-		SSHPort      int      `json:"ssh_port"`
-		SSHUser      string   `json:"ssh_user"`
-		Domain       string   `json:"domain"`
-		DeployMode   string   `json:"deploy_mode"`
-		ProtocolList []string `json:"protocol_list"` // 上次部署的协议（多协议）
-		Protocol     string   `json:"protocol"`      // 单协议时的协议
-		NodeName     string   `json:"node_name"`     // 上次节点名（主节点）
-		NodeID       uint     `json:"node_id"`       // 引用节点（有加密密码，供 saved_ssh_id 用）
-		HasPassword  bool     `json:"has_password"`
-		NodeCount    int      `json:"node_count"`  // 该 VPS 上的自建节点数
-		MainNodeID   uint     `json:"main_node_id"` // 主节点 id（multi 模式）
+		Key          string     `json:"key"`
+		SSHHost      string     `json:"ssh_host"`
+		SSHPort      int        `json:"ssh_port"`
+		SSHUser      string     `json:"ssh_user"`
+		Domain       string     `json:"domain"`
+		DeployMode   string     `json:"deploy_mode"`
+		ProtocolList []string   `json:"protocol_list"` // 上次部署的协议（多协议）
+		Protocol     string     `json:"protocol"`      // 单协议时的协议
+		NodeName     string     `json:"node_name"`     // 上次节点名（主节点）
+		NodeID       uint       `json:"node_id"`       // 引用节点（有加密密码，供 saved_ssh_id 用）
+		HasPassword  bool       `json:"has_password"`
+		NodeCount    int        `json:"node_count"`   // 该 VPS 上的自建节点数
+		MainNodeID   uint       `json:"main_node_id"` // 主节点 id（multi 模式）
 		CreatedAt    *time.Time `json:"created_at,omitempty"`
 	}
 
@@ -191,10 +191,10 @@ func GetSavedSelfHostVPS(c *gin.Context) {
 		p, exists := profiles[key]
 		if !exists {
 			p = &vpsProfile{
-				Key:        key,
-				SSHHost:    n.SSHHost,
-				SSHPort:    n.SSHPort,
-				SSHUser:    n.SSHUser,
+				Key:         key,
+				SSHHost:     n.SSHHost,
+				SSHPort:     n.SSHPort,
+				SSHUser:     n.SSHUser,
 				HasPassword: n.SSHPasswordEnc != "",
 			}
 			profiles[key] = p
@@ -235,6 +235,7 @@ func GetSavedSelfHostVPS(c *gin.Context) {
 		"total": len(list),
 	})
 }
+
 // GET /api/v1/agent/install.sh?install_id=xxx
 func AgentInstallScript(c *gin.Context) {
 	installID := strings.TrimSpace(c.Query("install_id"))
@@ -470,10 +471,10 @@ func AgentReportBatch(c *gin.Context) {
 // POST /api/v1/agent/heartbeat
 func AgentHeartbeat(c *gin.Context) {
 	var req struct {
-		InstallID  string `json:"install_id"`
-		Token      string `json:"token"`
-		TrafficUp  int64  `json:"traffic_up"`  // 上行流量增量（字节），可选
-		TrafficDown int64 `json:"traffic_down"` // 下行流量增量（字节），可选
+		InstallID   string `json:"install_id"`
+		Token       string `json:"token"`
+		TrafficUp   int64  `json:"traffic_up"`   // 上行流量增量（字节），可选
+		TrafficDown int64  `json:"traffic_down"` // 下行流量增量（字节），可选
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)

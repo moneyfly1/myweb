@@ -53,8 +53,8 @@ type XrayScriptConfig struct {
 	PanelBaseURL string
 	InstallID    string
 	Token        string
-	Domain       string   // 证书域名
-	Email        string   // acme 邮箱
+	Domain       string // 证书域名
+	Email        string // acme 邮箱
 	Protocols    []XrayProtocol
 	MirrorURLs   []string
 	GeneratedAt  time.Time
