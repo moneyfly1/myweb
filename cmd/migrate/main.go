@@ -74,20 +74,6 @@ func main() {
 	}
 	log.Println("✅ 已调整 users.username/email 为 utf8mb4_bin")
 
-	// 1.6. 诊断：打印连接池实际字符集 + emoji 插入测试（排查 Error 1366）
-	var csClient, csConn, csColl string
-	if err := mysqlDB.Raw("SELECT @@character_set_client, @@character_set_connection, @@collation_connection").Row().Scan(&csClient, &csConn, &csColl); err != nil {
-		log.Printf("  ⚠️ 读取连接字符集失败: %v", err)
-	} else {
-		log.Printf("  [诊断] character_set_client=%s connection=%s collation=%s", csClient, csConn, csColl)
-	}
-	if err := mysqlDB.Exec("INSERT INTO system_configs (`key`, value, type, category, display_name, description, is_public, sort_order, created_at, updated_at) VALUES ('__diag_emoji__', '测试😀emoji', 'text', 'diag', 'd', '', 0, 0, NOW(), NOW())").Error; err != nil {
-		log.Printf("  [诊断] emoji 插入失败: %v", err)
-	} else {
-		log.Println("  [诊断] emoji 插入成功（连接为 utf8mb4）")
-	}
-	mysqlDB.Exec("DELETE FROM system_configs WHERE `key` = '__diag_emoji__'")
-
 	// 2. 逐表迁移数据
 	log.Println("=== 步骤2：迁移数据 ===")
 	results := migrateList(sqliteDB, mysqlDB)
