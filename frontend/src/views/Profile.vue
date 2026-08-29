@@ -249,8 +249,9 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { userAPI, subscriptionAPI, authAPI, api } from '@/utils/api'
-import { formatLocation } from '@/utils/date'
-import dayjs from 'dayjs'
+import { formatDateTimeSafe, getLocationText as getLocationTextUtil } from '@/utils/date'
+import { getUserStatusType, getUserStatusText, getSubscriptionStatusText as getSubscriptionStatusTextShared } from '@/utils/statusMaps'
+import { getDeviceTypeFromUA as getDeviceInfo } from '@/utils/device'
 import { Lock, User } from '@element-plus/icons-vue'
 import AppDialog from '@/components/AppDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -523,77 +524,26 @@ export default {
         loginHistoryLoading.value = false
       }
     }
-    const getDeviceInfo = (userAgent) => {
-      if (!userAgent) return '未知设备'
-      if (userAgent.includes('Mobile')) {
-        return '移动设备'
-      } else if (userAgent.includes('Windows')) {
-        return 'Windows设备'
-      } else if (userAgent.includes('Mac')) {
-        return 'Mac设备'
-      } else if (userAgent.includes('Linux')) {
-        return 'Linux设备'
-      } else {
-        return '其他设备'
-      }
-    }
     const viewLoginHistory = () => {
       loginHistoryDialogVisible.value = true
       fetchLoginHistory()
     }
     const getLocationText = (location, ipAddress) => {
-      if (location) {
-        return formatLocation(location)
-      }
-      if (ipAddress && ipAddress !== '未知' && ipAddress !== '127.0.0.1' && ipAddress !== '::1') {
-        return '解析中...'
-      }
-      return ''
+      return getLocationTextUtil(location, ipAddress, { pendingText: '解析中...' })
     }
     const formatTime = (time) => {
-      if (!time || time === 'null' || time === 'None' || time === null || time === undefined) {
+      if (!time || time === 'null' || time === 'None') {
         return '未知'
       }
-      try {
-        const date = dayjs(time)
-        if (date.isValid()) {
-          return date.format('YYYY-MM-DD HH:mm:ss')
-        }
-        if (typeof time === 'string' && time.trim() !== '') {
-          return time
-        }
-        return '未知'
-      } catch (error) {
-        return '未知'
-      }
+      return formatDateTimeSafe(time, 'YYYY-MM-DD HH:mm:ss', '未知')
     }
     const getAccountStatusType = (userInfo) => {
       if (!userInfo || !userInfo.status) return 'info'
-      switch (userInfo.status) {
-        case 'active':
-          return 'success'
-        case 'inactive':
-        case 'disabled':
-          return 'danger'
-        case 'pending':
-          return 'warning'
-        default:
-          return 'info'
-      }
+      return getUserStatusType(userInfo.status)
     }
     const getAccountStatusText = (userInfo) => {
       if (!userInfo || !userInfo.status) return '未知'
-      switch (userInfo.status) {
-        case 'active':
-          return '正常'
-        case 'inactive':
-        case 'disabled':
-          return '已禁用'
-        case 'pending':
-          return '待激活'
-        default:
-          return '未知'
-      }
+      return getUserStatusText(userInfo.status)
     }
     const getProfileMetaText = () => {
       const parts = []
@@ -608,9 +558,7 @@ export default {
     const getSubscriptionStatusText = () => {
       const status = subscriptionInfo.value?.status
       if (!status || status === 'expired') return '未订阅'
-      if (status === 'active') return '已开通'
-      if (status === 'pending') return '待生效'
-      return status
+      return getSubscriptionStatusTextShared(status)
     }
     onMounted(() => {
       initUserInfo()

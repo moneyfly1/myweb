@@ -17,7 +17,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { ElMessage } from '@/utils/elementPlusServices'
+import { copyToClipboard } from '@/utils/textSelection'
 
 const props = defineProps({
   value: {
@@ -36,38 +36,7 @@ const displayValue = computed(() => isEmpty.value ? props.empty : copyValue.valu
 
 const copy = async () => {
   if (isEmpty.value) return
-
-  // 优先使用 Clipboard API；非安全上下文（http/iframe）时降级为 execCommand
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(copyValue.value)
-      ElMessage.success('已复制')
-      return
-    }
-  } catch (error) {
-    console.warn('Clipboard API 复制失败，尝试降级:', error)
-  }
-
-  // 降级：隐藏 textarea + execCommand（兼容 http 与旧浏览器）
-  try {
-    const textarea = document.createElement('textarea')
-    textarea.value = copyValue.value
-    textarea.style.position = 'fixed'
-    textarea.style.opacity = '0'
-    textarea.style.pointerEvents = 'none'
-    document.body.appendChild(textarea)
-    textarea.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(textarea)
-    if (ok) {
-      ElMessage.success('已复制')
-    } else {
-      ElMessage.info('请长按手动复制：' + copyValue.value)
-    }
-  } catch (error) {
-    console.error('复制失败:', error)
-    ElMessage.error('复制失败，请手动复制')
-  }
+  await copyToClipboard(copyValue.value, '已复制')
 }
 </script>
 

@@ -128,8 +128,8 @@
               </el-table-column>
               <el-table-column prop="abnormal_type" label="异常类型" width="150">
                 <template #default="scope">
-                  <el-tag :type="abnormalTypeMap[scope.row.abnormal_type]?.tag || 'info'">
-                    {{ abnormalTypeMap[scope.row.abnormal_type]?.text || scope.row.abnormal_type }}
+                  <el-tag :type="getAbnormalTypeType(scope.row.abnormal_type)">
+                    {{ getAbnormalTypeText(scope.row.abnormal_type) }}
                   </el-tag>
                 </template>
               </el-table-column>
@@ -183,15 +183,15 @@
                 <span class="email">{{ item.email }}</span>
               </button>
             </div>
-            <el-tag :type="abnormalTypeMap[item.abnormal_type]?.tag || 'info'" size="small">
-              {{ abnormalTypeMap[item.abnormal_type]?.text || item.abnormal_type }}
+            <el-tag :type="getAbnormalTypeType(item.abnormal_type)" size="small">
+              {{ getAbnormalTypeText(item.abnormal_type) }}
             </el-tag>
           </div>
         </template>
 
         <template #field-abnormal_type="{ item }">
-          <el-tag :type="abnormalTypeMap[item.abnormal_type]?.tag || 'info'" size="small">
-            {{ abnormalTypeMap[item.abnormal_type]?.text || item.abnormal_type }}
+          <el-tag :type="getAbnormalTypeType(item.abnormal_type)" size="small">
+            {{ getAbnormalTypeText(item.abnormal_type) }}
           </el-tag>
         </template>
 
@@ -301,8 +301,8 @@
             >
               <div class="abnormal-detail-heading">
                 <div class="abnormal-detail-title">
-                  <el-tag :type="detail.level || abnormalTypeMap[detail.type]?.tag || 'warning'" size="small">
-                    {{ detail.title || abnormalTypeMap[detail.type]?.text || detail.type }}
+                  <el-tag :type="detail.level || abnormalTypeMap[detail.type]?.type || 'warning'" size="small">
+                    {{ detail.title || getAbnormalTypeText(detail.type) || detail.type }}
                   </el-tag>
                   <span>{{ detail.summary }}</span>
                 </div>
@@ -403,25 +403,14 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Refresh, View, Check, Search } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
+import { formatDateTimeSafe } from '@/utils/date'
 import { useMobile } from '@/composables/useMobile'
 import AppDrawer from '@/components/AppDrawer.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import { confirmWarning } from '@/utils/confirmAction'
-const abnormalTypeMap = {
-  disabled: { tag: 'danger', text: '账户禁用' },
-  device_over_limit: { tag: 'danger', text: '设备超限' },
-  frequent_reset: { tag: 'warning', text: '频繁重置' },
-  frequent_subscription: { tag: 'danger', text: '频繁订阅' },
-  inactive: { tag: 'info', text: '长期未登录' },
-  login_failed: { tag: 'warning', text: '登录失败' },
-  multi_ip: { tag: 'danger', text: '多IP访问' },
-  multi_location: { tag: 'warning', text: '多地区访问' },
-  multiple_abnormal: { tag: 'error', text: '多重异常' },
-  unverified: { tag: 'warning', text: '未验证邮箱' },
-  unknown: { tag: 'info', text: '未知异常' }
-}
+import { ABNORMAL_TYPE_MAP as abnormalTypeMap, getAbnormalTypeText, getAbnormalTypeType } from '@/utils/statusMaps'
 const riskLevelMap = {
   high: { tag: 'danger', text: '高危' },
   medium: { tag: 'warning', text: '中危' },
@@ -574,18 +563,8 @@ export default {
       }
     }
     const formatDate = (dateStr) => {
-      if (!dateStr) return '-'
-      // 后端返回 "YYYY-MM-DD HH:mm:ss"，new Date 直接解析在 Safari 为 Invalid Date，
-      // 先替换为 '/' 分隔按本地时间解析，避免 UTC 偏移
-      const date = new Date(String(dateStr).replace(/-/g, '/'))
-      if (isNaN(date.getTime())) return '-'
-      return date.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      })
+      // 统一走 formatDateTimeSafe（dayjs 解析，天然规避 Safari new Date 的 UTC 偏移问题）
+      return formatDateTimeSafe(dateStr, 'YYYY-MM-DD HH:mm', '-')
     }
     onMounted(() => {
       loadAbnormalUsers()
@@ -608,6 +587,8 @@ export default {
       userDetails,
       isMobile,
       abnormalTypeMap,
+      getAbnormalTypeText,
+      getAbnormalTypeType,
       riskLevelMap,
       mobileAbnormalFields,
       loadAbnormalUsers,

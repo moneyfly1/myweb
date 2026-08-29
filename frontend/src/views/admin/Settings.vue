@@ -1046,6 +1046,8 @@ import { ref, reactive, onMounted, onBeforeUnmount, computed } from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Check, Plus, Refresh, Message, Bell } from '@element-plus/icons-vue'
 import { useApi, adminAPI, secureStorage } from '@/utils/api'
+import { formatFileSize as formatFileSizeUtil } from '@/utils/format'
+import { copyToClipboard } from '@/utils/textSelection'
 import { useThemeStore } from '@/store/theme'
 import { useMobile } from '@/composables/useMobile'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
@@ -1337,11 +1339,7 @@ export default {
     const generalRules = { site_name: [{ required: true, message: '请输入网站名称', trigger: 'blur' }] }
 
     const formatFileSize = (bytes) => {
-      if (!bytes) return '0 B'
-      const k = 1024
-      const sizes = ['B', 'KB', 'MB', 'GB']
-      const i = Math.floor(Math.log(bytes) / Math.log(k))
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+      return formatFileSizeUtil(bytes, '0 B')
     }
     
     const loadGeoIPStatus = async () => {
@@ -1673,12 +1671,7 @@ export default {
       return s === 'success' ? '成功' : s === 'failed' ? '失败' : s === 'partial' ? '部分成功' : s || '等待中'
     })
     const copyText = async (text) => {
-      try {
-        await navigator.clipboard.writeText(text)
-        ElMessage.success('已复制到剪贴板')
-      } catch {
-        ElMessage.error('复制失败，请手动复制')
-      }
+      await copyToClipboard(text)
     }
     const loadRepoSyncStatus = async () => {
       repoSyncLoading.status = true

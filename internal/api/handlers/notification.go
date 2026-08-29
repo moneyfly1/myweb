@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"cboard-go/internal/core/database"
-	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/utils"
@@ -22,39 +21,12 @@ const (
 	emailCategoryMarketing = "marketing"
 )
 
-func requireAuth(c *gin.Context) (*models.User, bool) {
-	user, ok := middleware.GetCurrentUser(c)
-	if !ok {
-		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
-		return nil, false
-	}
-	return user, true
-}
-
 func errorResponse(c *gin.Context, statusCode int, message string) {
 	utils.ErrorResponse(c, statusCode, message, nil)
 }
 
 func successResponse(c *gin.Context, statusCode int, message string, data interface{}) {
 	utils.SuccessResponse(c, statusCode, message, data)
-}
-
-func parsePaginationParams(c *gin.Context) (page, size int) {
-	page = 1
-	size = 20
-	if pageStr := c.Query("page"); pageStr != "" {
-		_, _ = fmt.Sscanf(pageStr, "%d", &page) // Ignore error, use default value
-	}
-	if sizeStr := c.Query("size"); sizeStr != "" {
-		_, _ = fmt.Sscanf(sizeStr, "%d", &size) // Ignore error, use default value
-	}
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 20
-	}
-	return page, size
 }
 
 func validateUserExists(db *gorm.DB, userID uint) (*models.User, error) {
@@ -98,7 +70,7 @@ func sendNotificationEmail(db *gorm.DB, userID *uint, title, content string) {
 }
 
 func GetNotifications(c *gin.Context) {
-	user, ok := requireAuth(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
 		return
 	}
@@ -116,7 +88,7 @@ func GetNotifications(c *gin.Context) {
 }
 
 func GetUnreadCount(c *gin.Context) {
-	user, ok := requireAuth(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
 		return
 	}
@@ -135,7 +107,7 @@ func GetUnreadCount(c *gin.Context) {
 
 func MarkAsRead(c *gin.Context) {
 	id := c.Param("id")
-	user, ok := requireAuth(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
 		return
 	}
@@ -158,7 +130,7 @@ func MarkAsRead(c *gin.Context) {
 }
 
 func MarkAllAsRead(c *gin.Context) {
-	user, ok := requireAuth(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
 		return
 	}
@@ -176,7 +148,7 @@ func MarkAllAsRead(c *gin.Context) {
 
 func DeleteNotification(c *gin.Context) {
 	id := c.Param("id")
-	user, ok := requireAuth(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
 		return
 	}
@@ -193,17 +165,16 @@ func DeleteNotification(c *gin.Context) {
 
 func GetAdminNotifications(c *gin.Context) {
 	db := database.GetDB()
-	page, size := parsePaginationParams(c)
+	p := utils.ParsePaginationWithDefaultSize(c, 20)
 
 	query := db.Model(&models.Notification{})
 	var total int64
 	query.Count(&total)
 
 	var notifications []models.Notification
-	offset := (page - 1) * size
 	if err := query.Preload("User").
-		Offset(offset).
-		Limit(size).
+		Offset(p.GetOffset()).
+		Limit(p.Size).
 		Order("created_at DESC").
 		Find(&notifications).Error; err != nil {
 		errorResponse(c, http.StatusInternalServerError, "获取通知列表失败")
@@ -213,13 +184,13 @@ func GetAdminNotifications(c *gin.Context) {
 	successResponse(c, http.StatusOK, "", gin.H{
 		"notifications": notifications,
 		"total":         total,
-		"page":          page,
-		"size":          size,
+		"page":          p.Page,
+		"size":          p.Size,
 	})
 }
 
 func GetUserNotifications(c *gin.Context) {
-	user, ok := requireAuth(c)
+	user, ok := getCurrentUserOrError(c)
 	if !ok {
 		return
 	}

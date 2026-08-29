@@ -6,6 +6,7 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	devicesvc "cboard-go/internal/services/device"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -116,8 +117,7 @@ func DeleteDevice(c *gin.Context) {
 		if err := tx.Delete(&device).Error; err != nil {
 			return err
 		}
-		var count int64
-		tx.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", device.SubscriptionID, true).Count(&count)
+		count, _ := devicesvc.CountActiveDevices(tx, device.SubscriptionID)
 		return tx.Model(&models.Subscription{}).Where("id = ?", device.SubscriptionID).Update("current_devices", count).Error
 	}); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除设备失败", err)
@@ -150,8 +150,7 @@ func RemoveDevice(c *gin.Context) {
 		if err := tx.Delete(&device).Error; err != nil {
 			return err
 		}
-		var count int64
-		tx.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscriptionID, true).Count(&count)
+		count, _ := devicesvc.CountActiveDevices(tx, subscriptionID)
 		return tx.Model(&models.Subscription{}).Where("id = ?", subscriptionID).Update("current_devices", count).Error
 	}); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除设备失败", err)
@@ -201,8 +200,7 @@ func BatchDeleteDevices(c *gin.Context) {
 			return err
 		}
 		for subID := range subscriptionIDMap {
-			var count int64
-			tx.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subID, true).Count(&count)
+			count, _ := devicesvc.CountActiveDevices(tx, subID)
 			if err := tx.Model(&models.Subscription{}).Where("id = ?", subID).Update("current_devices", count).Error; err != nil {
 				return err
 			}

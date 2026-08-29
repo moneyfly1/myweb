@@ -81,20 +81,10 @@ func GetUserSubscriptionXBoardCompat(c *gin.Context) {
 	remainingDays := 0
 	isExpired := false
 	if !subscription.ExpireTime.IsZero() {
-		now := utils.GetBeijingTime()
-		diff := subscription.ExpireTime.Sub(now)
-		if diff > 0 {
-			remainingDays = int(diff.Hours() / 24)
-			if diff.Hours() > float64(remainingDays*24) {
-				remainingDays++
-			}
-		} else {
-			isExpired = true
-		}
+		remainingDays, isExpired = utils.RemainingDays(subscription.ExpireTime, utils.GetBeijingTime())
 	}
 
-	var onlineDevices int64
-	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&onlineDevices)
+	onlineDevices, _ := device.CountActiveDevices(db, subscription.ID)
 
 	responseData := gin.H{
 		"subscribe_url":   clashURL,     // XBoard 期望的字段名
@@ -183,8 +173,7 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 	deviceManager := device.NewDeviceManager()
 	_, deviceExists, _ := deviceManager.FindExistingDevice(subscription.ID, userAgent, clientIP)
 
-	var count int64
-	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&count)
+	count, _ := device.CountActiveDevices(db, subscription.ID)
 
 	shouldRecord := true
 	if !deviceExists && !user.SpecialNodeUnlimitedDevices {

@@ -1,13 +1,11 @@
 package payment
 
 import (
-	"crypto/md5" // #nosec G501 - MD5 required by codepay API specification
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 	"time"
 
@@ -93,32 +91,18 @@ func NewCodepayService(paymentConfig *models.PaymentConfig) (*CodepayService, er
 // 3. 拼接成 key=value& 格式
 // 4. 末尾拼接商户密钥后 MD5
 func (s *CodepayService) codepaySign(params map[string]string) string {
-	var keys []string
+	keys := make([]string, 0)
 	for k, v := range params {
 		if v == "" || k == "sign" || k == "sign_type" {
 			continue
 		}
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
 
-	var sb strings.Builder
-	for i, k := range keys {
-		if i > 0 {
-			sb.WriteString("&")
-		}
-		sb.WriteString(k)
-		sb.WriteString("=")
-		sb.WriteString(params[k])
-	}
-	sb.WriteString(s.Key)
-
-	signStr := sb.String()
 	// 只记录参与签名的参数键，绝不输出签名串（其末尾拼有商户密钥）
 	utils.LogInfo("码支付签名参数键: %v", keys)
 
-	hash := md5.Sum([]byte(signStr)) // #nosec G401
-	return fmt.Sprintf("%x", hash)
+	return md5Sign(buildSignString(params, "sign", "sign_type") + s.Key)
 }
 
 func (s *CodepayService) CreatePayment(order *models.Order, amount float64, paymentType string) (string, error) {

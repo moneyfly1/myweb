@@ -396,7 +396,8 @@ import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { DocumentCopy } from '@element-plus/icons-vue'
 import { subscriptionAPI, userAPI } from '@/utils/api'
-import { formatDate as formatDateUtil, getRemainingDays as getRemainingDaysUtil, isExpired as isExpiredUtil } from '@/utils/date'
+import { formatDateTimeSafe, getRemainingDays as getRemainingDaysUtil, isExpired as isExpiredUtil } from '@/utils/date'
+import { getSubscriptionStatus } from '@/utils/statusMaps'
 import { confirmReset } from '@/utils/confirmAction'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
 import EmptyState from '@/components/EmptyState.vue'
@@ -713,24 +714,16 @@ export default {
         }, 2000)
       }
     }
-    const formatDate = (dateString) => formatDateUtil(dateString, 'YYYY-MM-DD HH:mm') || '未设置'
+    const formatDate = (dateString) => formatDateTimeSafe(dateString, 'YYYY-MM-DD HH:mm', '未设置')
     const getRemainingDays = (subscription) => {
       if (!subscription || !subscription.expire_time) return 0
       return getRemainingDaysUtil(subscription.expire_time)
     }
     const getStatusType = (subscription) => {
-      if (!subscription) return 'info'
-      if (subscription.expire_time) {
-        return isExpiredUtil(subscription.expire_time) ? 'danger' : 'success'
-      }
-      return subscription.status === 'active' ? 'success' : (subscription.status === 'expired' ? 'danger' : 'info')
+      return getSubscriptionStatus(subscription).type
     }
     const getStatusText = (subscription) => {
-      if (!subscription) return '未激活'
-      if (subscription.expire_time) {
-        return isExpiredUtil(subscription.expire_time) ? '已过期' : '正常'
-      }
-      return subscription.status === 'active' ? '正常' : (subscription.status === 'expired' ? '已过期' : '未激活')
+      return getSubscriptionStatus(subscription).text
     }
     const isSubscriptionActive = (subscription) => {
       if (!subscription) return false

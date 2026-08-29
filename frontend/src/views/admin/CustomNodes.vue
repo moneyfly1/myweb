@@ -739,6 +739,9 @@ import {
   ArrowDown, Close, Setting
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
+import { formatDateTimeSafe } from '@/utils/date'
+import { formatFileSize } from '@/utils/format'
+import { copyToClipboard } from '@/utils/textSelection'
 import { confirmDelete, confirmWarning, confirmAction } from '@/utils/confirmAction'
 import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
 import PaginationBar from '@/components/PaginationBar.vue'
@@ -748,6 +751,7 @@ import FormActionBar from '@/components/FormActionBar.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { useMobile } from '@/composables/useMobile'
 import { debounce } from '@/composables/useDebounce'
+import { getCustomNodeStatusType, getCustomNodeStatusText } from '@/utils/statusMaps'
 export default {
   name: 'AdminCustomNodes',
   components: { 
@@ -1365,18 +1369,10 @@ export default {
     const selfHostStatusMap = { pending: '等待安装', online: '在线', offline: '离线', expired: '已过期', canceled: '已取消' }
     const selfHostStatusTypeMap = { pending: 'warning', online: 'success', offline: 'danger', expired: 'info', canceled: 'info' }
     const formatBytes2 = (b) => {
-      if (b === undefined || b === null || isNaN(b)) return '-'
-      if (b === 0) return '0 B'
-      const u = ['B', 'KB', 'MB', 'GB', 'TB']
-      const i = Math.floor(Math.log(b) / Math.log(1024))
-      return (b / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 2) + ' ' + u[i]
+      return formatFileSize(b)
     }
     const formatTime2 = (t) => {
-      if (!t) return '-'
-      const d = new Date(t)
-      if (isNaN(d.getTime())) return '-'
-      const p = (n) => String(n).padStart(2, '0')
-      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+      return formatDateTimeSafe(t, 'YYYY-MM-DD HH:mm', '-')
     }
     const viewLink = async (node) => {
       try {
@@ -1389,8 +1385,7 @@ export default {
     }
     const copyLink = () => {
       if (nodeLink.value?.link) {
-        navigator.clipboard.writeText(nodeLink.value.link)
-        ElMessage.success('已复制')
+        copyToClipboard(nodeLink.value.link, '已复制')
       }
     }
     const assignSingleNode = (node) => {
@@ -1511,10 +1506,10 @@ export default {
         migratingAssignments.value = false
       }
     }
-    const getStatusType = (s) => ({ active: 'success', inactive: 'info', error: 'danger' }[s] || 'info')
-    const getStatusText = (s) => ({ active: '活跃', inactive: '非活跃', error: '错误' }[s] || s)
-    const formatExpire = (row) => row.follow_user_expire ? '跟随用户' : (row.expire_time ? new Date(row.expire_time).toLocaleString() : '永久')
-    const formatTime = (t) => t ? new Date(t).toLocaleString() : '跟随订阅'
+    const getStatusType = (s) => getCustomNodeStatusType(s)
+    const getStatusText = (s) => getCustomNodeStatusText(s)
+    const formatExpire = (row) => row.follow_user_expire ? '跟随用户' : formatDateTimeSafe(row.expire_time, 'YYYY-MM-DD HH:mm:ss', '永久')
+    const formatTime = (t) => formatDateTimeSafe(t, 'YYYY-MM-DD HH:mm:ss', '跟随订阅')
     const isExpired = (t) => t && new Date(t) < new Date()
     const testNode = async (node) => {
        node.testing = true

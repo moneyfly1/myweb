@@ -229,7 +229,8 @@ export default {
   getTimezoneTime,
   parseLocation,
   formatLocation,
-  getLocationTag
+  getLocationTag,
+  getLocationText
 }
 export function parseLocation(locationStr) {
   if (!locationStr) {
@@ -287,4 +288,30 @@ export function getLocationTag(locationStr, ipAddress = '') {
     text,
     tooltip: ipAddress ? `${text} (${ipAddress})` : text
   }
+}
+
+/**
+ * 统一的登录位置文本（本地/内网判定）
+ * 来源：Profile.vue:544、LoginHistory.vue:370、admin/Profile.vue:614 的 getLocationText
+ * @param {string} location 位置（JSON / "国家, 城市" / 纯文本），非空时优先展示 formatLocation
+ * @param {string} ip IP 地址
+ * @param {object} [options] 可选参数
+ * @param {string} [options.pendingText] 公网 IP 且无 location 时返回的「解析中」文案（Profile 页用）
+ * @returns {string}
+ */
+export function getLocationText(location, ip, options = {}) {
+  const { pendingText = '' } = options
+  if (location) {
+    return formatLocation(location)
+  }
+  if (ip && ip !== '未知') {
+    if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') {
+      return '本地'
+    }
+    if (ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')) {
+      return '内网'
+    }
+    if (pendingText) return pendingText
+  }
+  return ''
 }

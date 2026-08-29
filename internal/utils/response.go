@@ -201,6 +201,17 @@ func (p PaginationParams) GetOffset() int {
 	return (p.Page - 1) * p.Size
 }
 
+// ParsePaginationWithDefaultSize 解析分页参数；当请求未携带任何分页参数
+// （page/size/page_size/limit/skip 均未提供）时，使用 defaultSize 作为每页条数，
+// 用于保持各接口原有的默认 size（如 20/100/12）语义不变。
+func ParsePaginationWithDefaultSize(c *gin.Context, defaultSize int) PaginationParams {
+	p := ParsePagination(c)
+	if c.Query("size") == "" && c.Query("page_size") == "" && c.Query("limit") == "" && c.Query("skip") == "" {
+		p.Size = defaultSize
+	}
+	return p
+}
+
 // 敏感字段列表，这些字段在日志中会被隐藏
 var sensitiveFields = map[string]bool{
 	"password":         true,

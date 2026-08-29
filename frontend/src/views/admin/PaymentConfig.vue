@@ -509,11 +509,12 @@
   </div>
 </template>
 <script>
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Operation, Plus, Edit, Delete, Check, Close, Loading } from '@element-plus/icons-vue'
 import { paymentAPI } from '@/utils/api'
 import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
+import { useMobile } from '@/composables/useMobile'
 import { confirmWarning, confirmDelete } from '@/utils/confirmAction'
 import AppDialog from '@/components/AppDialog.vue'
 import AppDrawer from '@/components/AppDrawer.vue'
@@ -594,7 +595,7 @@ export default {
     const showAddDialog = ref(false)
     const showBulkOperationsDialog = ref(false)
     const editingConfig = ref(null)
-    const isMobile = ref(false)
+    const isMobile = useMobile()
     const viewMode = ref('table') // 'table' | 'grid'
     const gridOrientation = ref('horizontal') // 'horizontal' | 'vertical'
     const gridColumns = ref(3) // 2-6 columns for horizontal
@@ -664,7 +665,6 @@ export default {
     
     const isSelected = (config) => selectedConfigs.value.some(c => c.id === config.id)
     const baseUrl = computed(() => typeof window !== 'undefined' ? window.location.origin : '')
-    const checkMobile = () => isMobile.value = window.innerWidth <= 768
     const getPaymentTypeConfig = (type) => PAYMENT_TYPES[type] || { label: type, tag: 'info' }
     const getDisplayAppId = (config) => {
       if (config.app_id) return config.app_id
@@ -945,12 +945,9 @@ export default {
     })
     
     onMounted(() => {
-      checkMobile()
-      window.addEventListener('resize', checkMobile)
       loadSettings() // 先加载保存的设置
       loadPaymentConfigs()
     })
-    onUnmounted(() => window.removeEventListener('resize', checkMobile))
     return {
       baseUrl,
       loading,

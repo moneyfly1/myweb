@@ -348,7 +348,7 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		return nil, "", fmt.Errorf("余额不足，请选择其他支付方式或充值后再试")
 	}
 
-	orderNo, err := utils.GenerateOrderNo(s.db)
+	orderNo, err := utils.GenerateOrderNoFor(s.db, "orders", "ORD")
 	if err != nil {
 		return nil, "", fmt.Errorf("生成订单号失败: %v", err)
 	}

@@ -6,7 +6,6 @@ import (
 	"cboard-go/internal/utils"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -44,14 +43,8 @@ func GetKnowledgeArticles(c *gin.Context) {
 		return
 	}
 
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "12"))
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 12
-	}
+	p := utils.ParsePaginationWithDefaultSize(c, 12)
+	page, pageSize := p.Page, p.Size
 
 	var articles []models.KnowledgeArticle
 	if err := query.Preload("Category").Order("sort_order ASC, id DESC").
@@ -143,8 +136,8 @@ func DeleteKnowledgeCategory(c *gin.Context) {
 // 管理端 - 获取所有文章
 func GetAdminKnowledgeArticles(c *gin.Context) {
 	db := database.GetDB()
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	p := utils.ParsePaginationWithDefaultSize(c, 20)
+	page, pageSize := p.Page, p.Size
 	categoryID := c.Query("category_id")
 
 	query := db.Model(&models.KnowledgeArticle{})

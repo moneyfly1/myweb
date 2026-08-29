@@ -111,3 +111,4 @@ cboard.db.*.bak.*
 # SSH askpass 临时脚本（含服务器密码，严禁入库）
 .askpass.sh
 .gomodcache/
+audit-moneyfly/

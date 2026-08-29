@@ -305,18 +305,12 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import {
-  Box,
-  Cellphone,
-  Connection,
-  Iphone,
   Location,
-  Monitor,
-  QuestionFilled,
-  VideoCamera
+  Monitor
 } from '@element-plus/icons-vue'
 import { subscriptionAPI } from '@/utils/api'
-import { formatDateTime as formatTimeUtil } from '@/utils/date'
-import { formatLocation } from '@/utils/date'
+import { formatDateTimeSafe, formatLocation } from '@/utils/date'
+import { getDeviceTypeIcon as getDeviceIcon, getDeviceTypeName, getDeviceTypeColor, truncateText } from '@/utils/device'
 import { confirmWarning } from '@/utils/confirmAction'
 import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
 import EmptyState from '@/components/EmptyState.vue'
@@ -332,14 +326,8 @@ export default {
   components: {
     EmptyState,
     ResponsiveDataView,
-    Box,
-    Cellphone,
-    Connection,
-    Iphone,
     Location,
     Monitor,
-    QuestionFilled,
-    VideoCamera,
     PaginationBar,
     UpgradeDevicesDrawer,
     InlineEditableText
@@ -586,48 +574,11 @@ export default {
         }
       }
     }
-    const getDeviceIcon = (deviceType) => {
-      const icons = {
-        mobile: Cellphone,
-        desktop: Monitor,
-        tablet: Iphone,
-        router: Connection,
-        tv_box: VideoCamera,
-        server: Box,
-        unknown: QuestionFilled
-      }
-      return icons[deviceType] || icons.unknown
-    }
-    const getDeviceTypeName = (deviceType) => {
-      const names = {
-        mobile: '手机',
-        desktop: '电脑',
-        tablet: '平板',
-        router: '路由器',
-        tv_box: '电视盒子',
-        server: '服务器',
-        unknown: '未知'
-      }
-      return names[deviceType] || '未知'
-    }
-    const getDeviceTypeColor = (deviceType) => {
-      const colors = {
-        mobile: 'primary',
-        desktop: 'success',
-        tablet: 'warning',
-        router: '',
-        tv_box: 'danger',
-        server: 'info',
-        unknown: 'info'
-      }
-      return colors[deviceType] || colors.unknown
-    }
     const formatTime = (time) => {
-      return formatTimeUtil(time) || '未知'
+      return formatDateTimeSafe(time, 'YYYY-MM-DD HH:mm:ss', '未知')
     }
     const truncateUserAgent = (ua) => {
-      if (!ua) return '未知'
-      return ua.length > 50 ? ua.substring(0, 50) + '...' : ua
+      return truncateText(ua, 50)
     }
     const isOnline = (lastAccess) => {
       if (!lastAccess) return false

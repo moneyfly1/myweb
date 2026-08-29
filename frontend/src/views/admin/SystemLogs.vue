@@ -423,7 +423,8 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Search, Refresh, Download, Delete } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
-import { formatLocation } from '@/utils/date'
+import { formatDateTimeSafe, formatLocation } from '@/utils/date'
+import { copyToClipboard } from '@/utils/textSelection'
 import { confirmClear } from '@/utils/confirmAction'
 import AppDrawer from '@/components/AppDrawer.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
@@ -624,8 +625,7 @@ export default {
     }
     const copyLogDetails = async () => {
       if (!selectedLog.value) return
-      try {
-        const logText = `
+      const logText = `
 时间: ${formatDate(selectedLog.value.timestamp)}
 级别: ${getLogLevelText(selectedLog.value.level)}
 模块: ${selectedLog.value.module}
@@ -635,11 +635,7 @@ IP地址: ${selectedLog.value.ip_address}
 ${selectedLog.value.details ? `详细信息: ${selectedLog.value.details}` : ''}
 ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace}` : ''}
         `.trim()
-        await navigator.clipboard.writeText(logText)
-        ElMessage.success('日志详情已复制到剪贴板')
-      } catch (error) {
-        ElMessage.error('复制失败')
-      }
+      await copyToClipboard(logText, '日志详情已复制到剪贴板')
     }
     const handleSizeChange = (size) => {
       pagination.size = size
@@ -651,9 +647,7 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
       loadLogs()
     }
     const formatDate = (dateString) => {
-      if (!dateString) return ''
-      const date = new Date(dateString)
-      return date.toLocaleString('zh-CN')
+      return formatDateTimeSafe(dateString, 'YYYY-MM-DD HH:mm:ss', '')
     }
     const getLogLevelTagType = (level) => {
       const typeMap = {

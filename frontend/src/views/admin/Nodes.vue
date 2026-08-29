@@ -563,6 +563,9 @@ import {
   DocumentCopy, Edit, MoreFilled, Promotion, InfoFilled, Monitor 
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
+import { formatDateTimeSafe } from '@/utils/date'
+import { formatFileSize } from '@/utils/format'
+import { copyToClipboard } from '@/utils/textSelection'
 import AppDrawer from '@/components/AppDrawer.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
@@ -571,6 +574,7 @@ import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import { confirmDelete } from '@/utils/confirmAction'
 import { useMobile } from '@/composables/useMobile'
 import { debounce } from '@/composables/useDebounce'
+import { NODE_STATUS_MAP, getNodeStatusType, getNodeStatusText } from '@/utils/statusMaps'
 export default {
   name: 'AdminNodes',
   components: { 
@@ -867,8 +871,7 @@ export default {
     }
     const copyInstallCmd = () => {
       if (selfHostInfo.value?.install_cmd) {
-        navigator.clipboard.writeText(selfHostInfo.value.install_cmd)
-        ElMessage.success('安装命令已复制')
+        copyToClipboard(selfHostInfo.value.install_cmd, '安装命令已复制')
       }
     }
     const selfHostStatus = computed(() => selfHostInfo.value?.status || 'pending')
@@ -887,18 +890,10 @@ export default {
       canceled: 'info'
     }[selfHostStatus.value] || 'info'))
     const formatTime = (t) => {
-      if (!t) return '-'
-      const d = new Date(t)
-      if (isNaN(d.getTime())) return '-'
-      const pad = (n) => String(n).padStart(2, '0')
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+      return formatDateTimeSafe(t, 'YYYY-MM-DD HH:mm:ss', '-')
     }
     const formatBytes = (bytes) => {
-      if (bytes === undefined || bytes === null || isNaN(bytes)) return '-'
-      if (bytes === 0) return '0 B'
-      const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
-      const i = Math.floor(Math.log(bytes) / Math.log(1024))
-      return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 2) + ' ' + units[i]
+      return formatFileSize(bytes)
     }
 
     // ==================== 自建节点列表视图 ====================
@@ -1062,8 +1057,8 @@ export default {
       nodeLinkValue.value = ''
       parsedNode.value = null
     }
-    const getStatusType = (s) => ({ online: 'success', offline: 'danger', timeout: 'warning', pending: 'warning', expired: 'info', canceled: 'info' }[s] || 'info')
-    const getStatusText = (s) => ({ online: '在线', offline: '离线', timeout: '超时', pending: '安装中', expired: '已过期', canceled: '已取消' }[s] || '未知')
+    const getStatusType = (s) => NODE_STATUS_MAP[s] ? getNodeStatusType(s) : 'info'
+    const getStatusText = (s) => NODE_STATUS_MAP[s] ? getNodeStatusText(s) : '未知'
     const formatLatency = (l) => l > 0 ? `${l}ms` : '-'
     const getLatencyClass = (l) => l <= 0 ? '' : l < 200 ? 'text-green' : l < 500 ? 'text-orange' : 'text-red'
     const nodeLink = computed(() => {
@@ -1071,8 +1066,7 @@ export default {
       return nodeLinkValue.value || ''
     })
     const copyNodeLink = () => {
-      navigator.clipboard.writeText(nodeLink.value)
-      ElMessage.success('复制成功')
+      copyToClipboard(nodeLink.value, '复制成功')
     }
     onMounted(() => {
       loadNodes()

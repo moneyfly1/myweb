@@ -197,7 +197,8 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { userAPI } from '@/utils/api'
 import { Clock } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
-import { formatLocation } from '@/utils/date'
+import { formatDateTimeSafe, getLocationText as getLocationTextUtil } from '@/utils/date'
+import { getDeviceTypeFromUA as getDeviceInfo } from '@/utils/device'
 import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
 import EmptyState from '@/components/EmptyState.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
@@ -317,22 +318,7 @@ export default {
       }
     }
     const formatTime = (time) => {
-      if (!time) return '未知'
-      return dayjs(time).format('YYYY-MM-DD HH:mm:ss')
-    }
-    const getDeviceInfo = (userAgent) => {
-      if (!userAgent) return '未知设备'
-      if (userAgent.includes('Mobile')) {
-        return '移动设备'
-      } else if (userAgent.includes('Windows')) {
-        return 'Windows设备'
-      } else if (userAgent.includes('Mac')) {
-        return 'Mac设备'
-      } else if (userAgent.includes('Linux')) {
-        return 'Linux设备'
-      } else {
-        return '其他设备'
-      }
+      return formatDateTimeSafe(time, 'YYYY-MM-DD HH:mm:ss', '未知')
     }
     const handleSizeChange = (val) => {
       pageSize.value = val
@@ -368,18 +354,7 @@ export default {
       return dayjs().diff(dayjs(lastLogin), 'day')
     })
     const getLocationText = (location, ipAddress) => {
-      if (location) {
-        return formatLocation(location)
-      }
-      if (ipAddress) {
-        if (ipAddress === '127.0.0.1' || ipAddress === '::1' || ipAddress === 'localhost') {
-          return '本地'
-        }
-        if (ipAddress.startsWith('192.168.') || ipAddress.startsWith('10.') || ipAddress.startsWith('172.')) {
-          return '内网'
-        }
-      }
-      return ''
+      return getLocationTextUtil(location, ipAddress)
     }
     const mobileHistoryFields = computed(() => [
       {

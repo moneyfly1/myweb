@@ -1198,8 +1198,7 @@ func (s *ConfigUpdateService) GetSubscriptionContext(token, clientIP, userAgent 
 
 	// 设置了专线到期时间且未过期 或 开启了不限制设备 → 跳过设备数量限制
 	if !specialActive && !user.SpecialNodeUnlimitedDevices {
-		var devices int64
-		s.db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&devices)
+		devices, _ := device.CountActiveDevices(s.db, sub.ID)
 		ctx.CurrentDevices, ctx.DeviceLimit = int(devices), sub.DeviceLimit
 
 		if sub.DeviceLimit == 0 {

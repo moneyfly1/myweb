@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/cache_service"
+	"cboard-go/internal/services/device"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -725,15 +725,9 @@ func GetUserSubscription(c *gin.Context) {
 	remainingDays := 0
 	isExpired := false
 	if !subscription.ExpireTime.IsZero() {
-		diff := utils.ToBeijingTime(subscription.ExpireTime).Sub(utils.GetBeijingTime())
-		if diff > 0 {
-			remainingDays = int(math.Ceil(diff.Hours() / 24.0))
-		} else {
-			isExpired = true
-		}
+		remainingDays, isExpired = utils.RemainingDays(utils.ToBeijingTime(subscription.ExpireTime), utils.GetBeijingTime())
 	}
-	var onlineDevices int64
-	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", subscription.ID, true).Count(&onlineDevices)
+	onlineDevices, _ := device.CountActiveDevices(db, subscription.ID)
 	var specialNodeCount int64
 	db.Model(&models.UserCustomNode{}).Where("user_id = ?", user.ID).Count(&specialNodeCount)
 
@@ -952,25 +946,12 @@ func GetPaymentConfig(c *gin.Context) {
 	db := database.GetDB()
 	query := db.Model(&models.PaymentConfig{})
 
-	page, size := 1, 100
-	if pageStr := c.Query("page"); pageStr != "" {
-		_, _ = fmt.Sscanf(pageStr, "%d", &page) // Ignore error, use default value
-	}
-	if sizeStr := c.Query("size"); sizeStr != "" {
-		_, _ = fmt.Sscanf(sizeStr, "%d", &size) // Ignore error, use default value
-	}
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 100
-	}
-	offset := (page - 1) * size
+	p := utils.ParsePaginationWithDefaultSize(c, 100)
 
 	var total int64
 	query.Count(&total)
 	var paymentConfigs []models.PaymentConfig
-	if err := query.Offset(offset).Limit(size).Order("created_at DESC").Find(&paymentConfigs).Error; err != nil {
+	if err := query.Offset(p.GetOffset()).Limit(p.Size).Order("created_at DESC").Find(&paymentConfigs).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取支付配置列表失败", err)
 		return
 	}
@@ -1034,7 +1015,7 @@ func GetPaymentConfig(c *gin.Context) {
 			}
 		}
 	}
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"items": configsResponse, "total": total, "page": page, "size": size})
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"items": configsResponse, "total": total, "page": p.Page, "size": p.Size})
 }
 
 func GetUserTrend(c *gin.Context) {

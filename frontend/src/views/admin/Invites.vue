@@ -523,6 +523,7 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { Search, Filter, Refresh, Setting, Delete } from '@element-plus/icons-vue'
 import { inviteAPI } from '@/utils/api'
 import { useApi } from '@/utils/api'
+import { formatDateTimeSafe } from '@/utils/date'
 import { useMobile } from '@/composables/useMobile'
 import { debounce } from '@/composables/useDebounce'
 import AppDrawer from '@/components/AppDrawer.vue'
@@ -932,16 +933,7 @@ const loadData = () => {
   loadStatistics()
 }
 const formatDate = (dateString) => {
-  if (!dateString) return '-'
-  const date = new Date(dateString)
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  })
+  return formatDateTimeSafe(dateString, 'YYYY-MM-DD HH:mm:ss', '-')
 }
 onMounted(() => {
   loadInviteSettings()

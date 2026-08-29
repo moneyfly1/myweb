@@ -774,8 +774,10 @@ import {
 import { adminAPI } from '@/utils/api'
 import { secureStorage } from '@/utils/api'
 import { safeNavigate } from '@/utils/safeOpen'
-import { formatLocation } from '@/utils/date'
-import { formatDateTime, formatDate as formatDateUtil, formatTime as formatTimeUtil } from '@/utils/date'
+import { formatLocation, formatDateTimeSafe } from '@/utils/date'
+import { getDeviceTypeColor as getDeviceTypeTag, getDeviceTypeName as getDeviceTypeText, truncateText } from '@/utils/device'
+import { copyToClipboard as copyText } from '@/utils/textSelection'
+import { getSubscriptionStatusType, getSubscriptionStatusText } from '@/utils/statusMaps'
 import { useMobile } from '@/composables/useMobile'
 import { debounce } from '@/composables/useDebounce'
 import { confirmWarning, confirmDelete, confirmReset, confirmClear } from '@/utils/confirmAction'
@@ -1113,8 +1115,7 @@ export default {
       if (!subscription) return ''
       if (subscription.qrcodeUrl) {
         const qrData = subscription.qrcodeUrl
-        const isMobile = window.innerWidth <= 768
-        const qrSize = isMobile ? '400x400' : '200x200'
+        const qrSize = isMobile.value ? '400x400' : '200x200'
         return `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}&data=${encodeURIComponent(qrData)}&ecc=M&margin=10`
       }
       let qrData = ''
@@ -1147,8 +1148,7 @@ export default {
       } else {
         return ''
       }
-      const isMobile = window.innerWidth <= 768
-      const qrSize = isMobile ? '400x400' : '200x200'
+      const qrSize = isMobile.value ? '400x400' : '200x200'
       return `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}&data=${encodeURIComponent(qrData)}&ecc=M&margin=10`
     }
     const showQRCode = (subscription) => {
@@ -1356,45 +1356,8 @@ export default {
       }
       return byMap[by] || by || '未知'
     }
-    const getDeviceTypeTag = (type) => {
-      const typeMap = {
-        'mobile': 'primary',
-        'desktop': 'success',
-        'tablet': 'warning',
-        'server': 'danger'
-      }
-      return typeMap[type] || 'info'
-    }
-    const getDeviceTypeText = (type) => {
-      const typeMap = {
-        'mobile': '手机',
-        'desktop': '电脑',
-        'tablet': '平板',
-        'server': '服务器'
-      }
-      return typeMap[type] || type || '未知'
-    }
     const copyToClipboard = async (text) => {
-      if (!text) {
-        ElMessage.warning('没有可复制的内容')
-        return
-      }
-      try {
-        await navigator.clipboard.writeText(text)
-        ElMessage.success('订阅链接已复制到剪贴板')
-      } catch (error) {
-        try {
-          const textArea = document.createElement('textarea')
-          textArea.value = text
-          document.body.appendChild(textArea)
-          textArea.select()
-          document.execCommand('copy')
-          document.body.removeChild(textArea)
-          ElMessage.success('订阅链接已复制到剪贴板')
-        } catch (fallbackError) {
-          ElMessage.error('复制失败，请手动复制')
-        }
-      }
+      return copyText(text, '订阅链接已复制到剪贴板')
     }
     const openUserBackendWindow = () => {
       if (typeof window === 'undefined') return null
@@ -1836,16 +1799,14 @@ export default {
       }
     }
     const truncateUserAgent = (userAgent) => {
-      if (!userAgent) return '未知'
-      return userAgent.length > 50 ? userAgent.substring(0, 50) + '...' : userAgent
+      return truncateText(userAgent, 50)
     }
     const formatTime = (time) => {
-      return formatTimeUtil(time) || '未知'
+      return formatDateTimeSafe(time, 'YYYY-MM-DD HH:mm:ss', '未知')
     }
     const truncateUrl = (url) => {
       if (!url) return ''
-      const isMobile = window.innerWidth <= 768
-      if (isMobile) {
+      if (isMobile.value) {
         return url
       }
       if (url.length > 60) {
@@ -1853,26 +1814,8 @@ export default {
       }
       return url
     }
-    const getSubscriptionStatusType = (status) => {
-      const statusMap = {
-        'active': 'success',
-        'inactive': 'info',
-        'expired': 'danger',
-        'paused': 'warning'
-      }
-      return statusMap[status] || 'info'
-    }
-    const getSubscriptionStatusText = (status) => {
-      const statusMap = {
-        'active': '活跃',
-        'inactive': '未激活',
-        'expired': '已过期',
-        'paused': '已暂停'
-      }
-      return statusMap[status] || '未知'
-    }
     const formatDate = (date) => {
-      return formatDateUtil(date)
+      return formatDateTimeSafe(date)
     }
     const handleSelectionChange = (selection) => {
       selectedSubscriptions.value = selection

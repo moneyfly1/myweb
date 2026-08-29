@@ -128,6 +128,7 @@
 <script setup>
 import { adminAPI } from '@/utils/api'
 import { useLogListPage } from '@/composables/useLogListPage'
+import { getCommissionStatusText as getStatusText, getCommissionStatusType as getStatusColor } from '@/utils/statusMaps'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import MobileLogFields from '@/components/MobileLogFields.vue'
@@ -135,14 +136,8 @@ import MobileLogFields from '@/components/MobileLogFields.vue'
 const COMMISSION_TYPE_MAP = {
   register_reward: '注册奖励', order_commission: '订单佣金'
 }
-const STATUS_MAP = { pending: '待结算', paid: '已结算', cancelled: '已取消' }
 
 const getCommissionTypeText = (type) => COMMISSION_TYPE_MAP[type] || type || '-'
-const getStatusText = (status) => STATUS_MAP[status] || status || '-'
-const getStatusColor = (status) => {
-  const map = { pending: 'warning', paid: 'success', cancelled: 'info' }
-  return map[status] || ''
-}
 
 const {
   loading, list, total, page, pageSize, filter, isMobile, paginationLayout,
