@@ -18,6 +18,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/queue"
 	"cboard-go/internal/services/config_update"
 	"cboard-go/internal/services/device"
 	"cboard-go/internal/services/email"
@@ -99,6 +100,27 @@ func asyncSubscriptionLog(
 	beforeData, afterData map[string]interface{},
 	reason string,
 ) {
+	payload := queue.SubscriptionLogPayload{
+		SubID:          subID,
+		UserID:         userID,
+		ActionType:     actionType,
+		ActionBy:       actionBy,
+		ActionByUserID: actionByUserID,
+		ClientIP:       clientIP,
+		BeforeData:     beforeData,
+		AfterData:      afterData,
+		Reason:         reason,
+	}
+
+	// 优先走任务队列（异步 + 失败重试）；Redis 不可用/入队失败时 fallback 到 goroutine
+	if queue.IsReady() {
+		if err := queue.Enqueue(context.Background(), queue.TypeSubscriptionLog, payload); err == nil {
+			return
+		} else {
+			log.Printf("订阅日志入队失败，fallback 到 goroutine: %v", err)
+		}
+	}
+
 	go func() {
 		// 设置超时，避免goroutine永久阻塞
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
