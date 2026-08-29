@@ -94,26 +94,6 @@ func getCurrentAdminUsername(c *gin.Context) *string {
 	return nil
 }
 
-func getString(ptr *string) string {
-	if ptr != nil {
-		return *ptr
-	}
-	return ""
-}
-
-func formatIP(ip string) string {
-	if ip == "" {
-		return "-"
-	}
-	if ip == "::1" {
-		return "127.0.0.1"
-	}
-	if strings.HasPrefix(ip, "::ffff:") {
-		return strings.TrimPrefix(ip, "::ffff:")
-	}
-	return ip
-}
-
 // asyncSubscriptionLog 异步记录订阅日志，带超时控制
 func asyncSubscriptionLog(
 	ctx context.Context,
@@ -156,34 +136,34 @@ func formatDeviceList(devices []models.Device) []gin.H {
 		if d.LastSeen != nil {
 			lastSeen = d.LastSeen.Format(TimeLayout)
 		}
-		ipAddress := formatIP(getString(d.IPAddress))
+		ipAddress := utils.FormatIP(utils.GetStringValue(d.IPAddress))
 		// 使用数据库中已存储的位置信息，避免实时查询 GeoIP
-		location := utils.FormatLocation(getString(d.Location))
+		location := utils.FormatLocation(utils.GetStringValue(d.Location))
 
 		list = append(list, gin.H{
 			"id":                 d.ID,
-			"device_name":        getString(d.DeviceName),
-			"name":               getString(d.DeviceName),
+			"device_name":        utils.GetStringValue(d.DeviceName),
+			"name":               utils.GetStringValue(d.DeviceName),
 			"device_fingerprint": d.DeviceFingerprint,
-			"device_type":        getString(d.DeviceType),
-			"type":               getString(d.DeviceType),
+			"device_type":        utils.GetStringValue(d.DeviceType),
+			"type":               utils.GetStringValue(d.DeviceType),
 			"ip_address":         ipAddress,
 			"ip":                 ipAddress,
 			"location":           location,
-			"os_name":            getString(d.OSName),
-			"os_version":         getString(d.OSVersion),
+			"os_name":            utils.GetStringValue(d.OSName),
+			"os_version":         utils.GetStringValue(d.OSVersion),
 			"last_access":        d.LastAccess.Format(TimeLayout),
 			"last_seen":          lastSeen,
 			"created_at":         d.CreatedAt.Format(TimeLayout),
 			"is_active":          d.IsActive,
 			"is_allowed":         d.IsAllowed,
-			"user_agent":         getString(d.UserAgent),
-			"software_name":      getString(d.SoftwareName),
-			"software_version":   getString(d.SoftwareVersion),
-			"device_model":       getString(d.DeviceModel),
-			"device_brand":       getString(d.DeviceBrand),
+			"user_agent":         utils.GetStringValue(d.UserAgent),
+			"software_name":      utils.GetStringValue(d.SoftwareName),
+			"software_version":   utils.GetStringValue(d.SoftwareVersion),
+			"device_model":       utils.GetStringValue(d.DeviceModel),
+			"device_brand":       utils.GetStringValue(d.DeviceBrand),
 			"access_count":       d.AccessCount,
-			"remark":             getString(d.Remark),
+			"remark":             utils.GetStringValue(d.Remark),
 		})
 	}
 	return list
