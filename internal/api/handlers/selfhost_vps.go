@@ -97,12 +97,12 @@ func prepareSelfHostNodeForDeploy(db *gorm.DB, name, protocol, host string, sshP
 		db.Model(&models.CustomNode{}).
 			Where("install_id = ? AND id != ?", oldInstallID, node.ID).
 			Updates(map[string]interface{}{
-				"install_id":         tok.InstallID,
-				"install_token":      tok.Token,
-				"status":             selfhost.StatusPending,
-				"is_active":          false,
-				"config":             "",
-				"last_heartbeat_at":  nil,
+				"install_id":        tok.InstallID,
+				"install_token":     tok.Token,
+				"status":            selfhost.StatusPending,
+				"is_active":         false,
+				"config":            "",
+				"last_heartbeat_at": nil,
 			})
 		return &node, tok.InstallID, tok.Token, true, nil
 	}
@@ -144,8 +144,8 @@ func DeploySelfHostVPS(c *gin.Context) {
 		SSHPort     int    `json:"ssh_port"`
 		SSHUser     string `json:"ssh_user"`
 		SSHPass     string `json:"ssh_pass"`
-		ReuseNodeID uint   `json:"reuse_node_id"`    // 复用已有节点记录重装（覆盖同一 VPS 旧节点）
-		SavedSSHID  uint   `json:"saved_ssh_id"`     // 引用已保存 VPS 的加密密码（不传明文密码时使用）
+		ReuseNodeID uint   `json:"reuse_node_id"` // 复用已有节点记录重装（覆盖同一 VPS 旧节点）
+		SavedSSHID  uint   `json:"saved_ssh_id"`  // 引用已保存 VPS 的加密密码（不传明文密码时使用）
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请填写节点名称、协议、VPS 地址与 root 密码", err)
@@ -173,9 +173,9 @@ func DeploySelfHostVPS(c *gin.Context) {
 	if req.ReuseNodeID == 0 {
 		if existing := findSelfHostNodeBySSHHost(db, host, sshPort); existing != nil {
 			c.JSON(http.StatusConflict, gin.H{
-				"success":   false,
-				"code":      "vps_occupied",
-				"message":   fmt.Sprintf("该 VPS 已部署自建节点「%s」（#%d），直接再次搭建会覆盖它并使旧节点失效。如需重装请确认复用该节点。", existing.Name, existing.ID),
+				"success": false,
+				"code":    "vps_occupied",
+				"message": fmt.Sprintf("该 VPS 已部署自建节点「%s」（#%d），直接再次搭建会覆盖它并使旧节点失效。如需重装请确认复用该节点。", existing.Name, existing.ID),
 				"data": gin.H{
 					"existing_node_id":     existing.ID,
 					"existing_node_name":   existing.Name,
@@ -381,9 +381,9 @@ func DeploySelfHostVPSDomain(c *gin.Context) {
 	if req.ReuseNodeID == 0 {
 		if existing := findSelfHostNodeBySSHHost(db, host, sshPort); existing != nil {
 			c.JSON(http.StatusConflict, gin.H{
-				"success":   false,
-				"code":      "vps_occupied",
-				"message":   fmt.Sprintf("该 VPS 已部署自建节点「%s」（#%d），直接再次搭建会覆盖它并使旧节点失效。如需重装请确认复用该节点。", existing.Name, existing.ID),
+				"success": false,
+				"code":    "vps_occupied",
+				"message": fmt.Sprintf("该 VPS 已部署自建节点「%s」（#%d），直接再次搭建会覆盖它并使旧节点失效。如需重装请确认复用该节点。", existing.Name, existing.ID),
 				"data": gin.H{
 					"existing_node_id":     existing.ID,
 					"existing_node_name":   existing.Name,
@@ -471,13 +471,13 @@ func DeploySelfHostVPSDomain(c *gin.Context) {
 	utils.CreateAuditLogSimple(c, action, "custom_node", node.ID, actionDesc)
 
 	utils.SuccessResponse(c, http.StatusOK, "域名多协议搭建完成", gin.H{
-		"node_id":     node.ID,
-		"install_id":  installID,
-		"domain":      domain,
-		"protocols":   selfhost.XrayProtocolNames(protoList),
-		"output":      out,
-		"ssh_host":    host,
-		"ssh_port":    sshPort,
+		"node_id":    node.ID,
+		"install_id": installID,
+		"domain":     domain,
+		"protocols":  selfhost.XrayProtocolNames(protoList),
+		"output":     out,
+		"ssh_host":   host,
+		"ssh_port":   sshPort,
 	})
 }
 
@@ -660,8 +660,8 @@ func SelfHostResetTraffic(c *gin.Context) {
 		return
 	}
 	if err := db.Model(&node).Updates(map[string]interface{}{
-		"traffic_up":            0,
-		"traffic_down":          0,
+		"traffic_up":             0,
+		"traffic_down":           0,
 		"traffic_limit_reset_at": nil,
 	}).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "清零流量失败", err)
@@ -684,15 +684,14 @@ func formatBytesHuman(b int64) string {
 	return fmt.Sprintf("%.2f%s", f, units[i])
 }
 
-
 // SelfHostBatchManage 自建节点批量管理入口：
 // POST /admin/custom-nodes/selfhost/:id/manage  body: {"action":"reset|change-password|change-port|reinstall|status", ...}
 func SelfHostBatchManage(c *gin.Context) {
 	nodeID := c.Param("id")
 	var req struct {
-		Action   string `json:"action" binding:"required"` // reset / change-password / change-port / reinstall / status
-		NewPass  string `json:"new_pass"`
-		NewPort  int    `json:"new_port"`
+		Action  string `json:"action" binding:"required"` // reset / change-password / change-port / reinstall / status
+		NewPass string `json:"new_pass"`
+		NewPort int    `json:"new_port"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.Action == "" {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请提供管理动作", err)
@@ -1064,7 +1063,6 @@ func randomDistinctPorts(n int, occupied map[int]bool) []int {
 	return ports
 }
 
-
 // getSelfHostNodeByID 按 ID 查询自建节点（供管理操作复用）。
 func getSelfHostNodeByID(db *gorm.DB, id string) (*models.CustomNode, error) {
 	var node models.CustomNode
@@ -1084,7 +1082,9 @@ func getSelfHostNodeByID(db *gorm.DB, id string) (*models.CustomNode, error) {
 // SelfHostBatchManageMany 批量管理自建节点。
 // POST /admin/custom-nodes/selfhost/batch-manage
 // body: {"node_ids":[1,2,3], "action":"reset|change-password|change-port|traffic-limit|reset-traffic|enable|disable|delete",
-//        "new_pass":"", "new_port":0, "enabled":true, "limit_bytes":0}
+//
+//	"new_pass":"", "new_port":0, "enabled":true, "limit_bytes":0}
+//
 // SSH 类操作（reset/change-password/change-port）按 ssh_host 去重：同一 VPS 只执行一次，避免端口冲突。
 func SelfHostBatchManageMany(c *gin.Context) {
 	var req struct {

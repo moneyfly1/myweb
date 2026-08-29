@@ -19,7 +19,7 @@ import (
 type cleanupTarget struct {
 	Label      string // 展示名
 	Clear      func(db *gorm.DB, before time.Time) *gorm.DB
-	IsTimeType bool   // 是否按 created_at 时间过滤（部分目标如邀请码按过期时间）
+	IsTimeType bool // 是否按 created_at 时间过滤（部分目标如邀请码按过期时间）
 }
 
 var cleanupTargets = map[string]cleanupTarget{
@@ -184,10 +184,10 @@ func CleanupData(c *gin.Context) {
 	utils.CreateAuditLogSimple(c, "data_cleanup", "cleanup", 0,
 		fmt.Sprintf("管理员操作: 清理%s（%s）共 %d 条", target.Label, scopeDesc, result.RowsAffected))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("已清理 %d 条%s", result.RowsAffected, target.Label), gin.H{
-		"type":           cleanupType,
-		"deleted_count":  result.RowsAffected,
-		"before":         before.Format("2006-01-02"),
-		"cleared_all":    before.IsZero(),
+		"type":          cleanupType,
+		"deleted_count": result.RowsAffected,
+		"before":        before.Format("2006-01-02"),
+		"cleared_all":   before.IsZero(),
 	})
 }
 

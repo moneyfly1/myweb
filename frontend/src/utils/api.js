@@ -548,8 +548,6 @@ export const nodeAPI = {
   batchTestNodes: (nodeIds) => api.post('/admin/nodes/batch-test', { node_ids: nodeIds }),
   batchDeleteNodes: (nodeIds) => api.post('/admin/nodes/batch-delete', { node_ids: nodeIds }),
   createSelfHostNode: (data) => api.post('/admin/nodes/selfhost', data),
-  getSelfHostNodeStatus: (id) => api.get(`/admin/nodes/selfhost/${id}`),
-  getSelfHostNodes: () => api.get('/admin/nodes/selfhost'),
   disableTimeoutNodes: () => api.post('/admin/nodes/disable-timeout'),
   enableAllNodes: () => api.post('/admin/nodes/enable-all')
 }
@@ -626,8 +624,6 @@ export const adminAPI = {
   importNodeLinks: (links) => nodeAPI.importNodeLinks(links),
   importNodeSubscription: (url) => nodeAPI.importNodeSubscription(url),
   createSelfHostNode: (data) => nodeAPI.createSelfHostNode(data),
-  getSelfHostNodeStatus: (id) => nodeAPI.getSelfHostNodeStatus(id),
-  getSelfHostNodes: () => nodeAPI.getSelfHostNodes(),
   disableTimeoutNodes: () => nodeAPI.disableTimeoutNodes(),
   enableAllNodes: () => nodeAPI.enableAllNodes(),
   updateNode: (id, data) => nodeAPI.updateNode(id, data),
