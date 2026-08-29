@@ -16,13 +16,13 @@ func TestGroupExpiringSubscriptions(t *testing.T) {
 	}
 
 	subs := []models.Subscription{
-		{ID: 1, UserID: 1, User: models.User{ID: 1}, ExpireTime: at(0)},  // 今天到期 → 0 天组
-		{ID: 2, UserID: 1, User: models.User{ID: 1}, ExpireTime: at(1)},  // 明天到期 → 1 天组
-		{ID: 3, UserID: 1, User: models.User{ID: 1}, ExpireTime: at(3)},  // 3 天后 → 3 天组
-		{ID: 4, UserID: 1, User: models.User{ID: 1}, ExpireTime: at(7)},  // 7 天后 → 7 天组
-		{ID: 5, UserID: 1, User: models.User{ID: 1}, ExpireTime: at(2)},  // 2 天后 → 不匹配任何组
-		{ID: 6, UserID: 0, User: models.User{ID: 0}, ExpireTime: at(0)},  // 无用户 → 跳过
-		{ID: 7, UserID: 1, User: models.User{ID: 1}, ExpireTime: at(8)},  // 8 天后 → 超出窗口
+		{ID: 1, UserID: 1, User: models.User{ID: 1}, ExpireTime: at(0)}, // 今天到期 → 0 天组
+		{ID: 2, UserID: 1, User: models.User{ID: 1}, ExpireTime: at(1)}, // 明天到期 → 1 天组
+		{ID: 3, UserID: 1, User: models.User{ID: 1}, ExpireTime: at(3)}, // 3 天后 → 3 天组
+		{ID: 4, UserID: 1, User: models.User{ID: 1}, ExpireTime: at(7)}, // 7 天后 → 7 天组
+		{ID: 5, UserID: 1, User: models.User{ID: 1}, ExpireTime: at(2)}, // 2 天后 → 不匹配任何组
+		{ID: 6, UserID: 0, User: models.User{ID: 0}, ExpireTime: at(0)}, // 无用户 → 跳过
+		{ID: 7, UserID: 1, User: models.User{ID: 1}, ExpireTime: at(8)}, // 8 天后 → 超出窗口
 	}
 
 	grouped := groupExpiringSubscriptions(subs, dayStart)

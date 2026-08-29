@@ -8,7 +8,8 @@ import (
 
 // buildXrayCreds 生成每个协议的随机凭据脚本（UUID/密码/ws path）。
 // 输出形如:
-//   UUID_vless_ws="xxxx"   PASS_ss="yyy"   WS_vless_ws="/cboardxxx"
+//
+//	UUID_vless_ws="xxxx"   PASS_ss="yyy"   WS_vless_ws="/cboardxxx"
 func buildXrayCreds(protocols []XrayProtocol) string {
 	var sb strings.Builder
 	for _, p := range protocols {

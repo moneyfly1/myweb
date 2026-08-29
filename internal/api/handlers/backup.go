@@ -193,12 +193,12 @@ func CreateBackup(c *gin.Context) {
 	}
 
 	response := gin.H{
-		"filename":          backupFileName,
-		"path":              backupPath,
-		"size":              fileSize,
-		"db_cleaned":        cleanedSize > 0,
-		"db_original_size":  rawDBSize,
-		"db_cleaned_size":   cleanedSize,
+		"filename":         backupFileName,
+		"path":             backupPath,
+		"size":             fileSize,
+		"db_cleaned":       cleanedSize > 0,
+		"db_original_size": rawDBSize,
+		"db_cleaned_size":  cleanedSize,
 	}
 
 	// 根据目标平台设置响应字段

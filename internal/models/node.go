@@ -27,16 +27,16 @@ type Node struct {
 	UpdatedAt     time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 
 	// 自建节点（一键部署）字段
-	SelfHosted       bool       `gorm:"default:false" json:"self_hosted"`                        // 是否为自建节点
-	SelfHostProtocol string     `gorm:"type:varchar(30);default:''" json:"self_host_protocol"`   // 自建协议：vless-ws / vmess-ws / vless-reality / trojan-ws / ss
-	InstallID        string     `gorm:"type:varchar(64);index" json:"install_id,omitempty"`      // 一次性安装标识
-	InstallToken     string     `gorm:"type:varchar(128)" json:"-"`                              // 回传/心跳令牌（不暴露给前端）
-	InstallExpiresAt *time.Time `json:"install_expires_at,omitempty"`                            // 安装令牌过期时间
-	LastHeartbeatAt  *time.Time `json:"last_heartbeat_at,omitempty"`                             // 最近一次心跳时间
-	InstallCmd       string     `gorm:"type:text" json:"-"`                                      // 生成的安装命令（不暴露给前端）
-	TrafficUp        int64      `gorm:"default:0" json:"traffic_up"`                             // 自建节点上行流量（字节）
-	TrafficDown      int64      `gorm:"default:0" json:"traffic_down"`                           // 自建节点下行流量（字节）
-	TrafficUpdatedAt *time.Time `json:"traffic_updated_at,omitempty"`                            // 流量统计时间
+	SelfHosted       bool       `gorm:"default:false" json:"self_hosted"`                      // 是否为自建节点
+	SelfHostProtocol string     `gorm:"type:varchar(30);default:''" json:"self_host_protocol"` // 自建协议：vless-ws / vmess-ws / vless-reality / trojan-ws / ss
+	InstallID        string     `gorm:"type:varchar(64);index" json:"install_id,omitempty"`    // 一次性安装标识
+	InstallToken     string     `gorm:"type:varchar(128)" json:"-"`                            // 回传/心跳令牌（不暴露给前端）
+	InstallExpiresAt *time.Time `json:"install_expires_at,omitempty"`                          // 安装令牌过期时间
+	LastHeartbeatAt  *time.Time `json:"last_heartbeat_at,omitempty"`                           // 最近一次心跳时间
+	InstallCmd       string     `gorm:"type:text" json:"-"`                                    // 生成的安装命令（不暴露给前端）
+	TrafficUp        int64      `gorm:"default:0" json:"traffic_up"`                           // 自建节点上行流量（字节）
+	TrafficDown      int64      `gorm:"default:0" json:"traffic_down"`                         // 自建节点下行流量（字节）
+	TrafficUpdatedAt *time.Time `json:"traffic_updated_at,omitempty"`                          // 流量统计时间
 }
 
 func (Node) TableName() string {

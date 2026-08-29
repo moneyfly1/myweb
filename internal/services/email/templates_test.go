@@ -22,17 +22,29 @@ func TestEmailTemplatesEscapeUserInput(t *testing.T) {
 		{"PasswordReset", func() string { return b.GetPasswordResetTemplate(evil, "https://example.com/reset?token=abc") }},
 		{"PasswordResetVerificationCode", func() string { return b.GetPasswordResetVerificationCodeTemplate(evil, "123456") }},
 		{"Subscription", func() string { return b.GetSubscriptionTemplate(evil, "u", "c", "2026-01-01", 3, 3, 1) }},
-		{"OrderConfirmation", func() string { return b.GetOrderConfirmationTemplate(evil, "ORD1", "套餐", 10, "支付宝", "2026-01-01") }},
-		{"PaymentSuccess", func() string { return b.GetPaymentSuccessTemplate(evil, "ORD1", "套餐", 10, "支付宝", "2026-01-01") }},
-		{"DeviceUpgrade", func() string { return b.GetDeviceUpgradePaymentSuccessTemplate(evil, "ORD1", 10, "支付宝", "2026-01-01", 3, 5, 2, 30, "2026-01-01", "2026-02-01") }},
-		{"AbnormalLogin", func() string { return b.GetAbnormalLoginAlertTemplate(evil, "2026-01-01", "1.2.3.4", evil, true, false) }},
-		{"Welcome", func() string { return b.GetWelcomeTemplate(evil, evilWithQuote, "https://example.com/login", true, evil) }},
+		{"OrderConfirmation", func() string {
+			return b.GetOrderConfirmationTemplate(evil, "ORD1", "套餐", 10, "支付宝", "2026-01-01")
+		}},
+		{"PaymentSuccess", func() string {
+			return b.GetPaymentSuccessTemplate(evil, "ORD1", "套餐", 10, "支付宝", "2026-01-01")
+		}},
+		{"DeviceUpgrade", func() string {
+			return b.GetDeviceUpgradePaymentSuccessTemplate(evil, "ORD1", 10, "支付宝", "2026-01-01", 3, 5, 2, 30, "2026-01-01", "2026-02-01")
+		}},
+		{"AbnormalLogin", func() string {
+			return b.GetAbnormalLoginAlertTemplate(evil, "2026-01-01", "1.2.3.4", evil, true, false)
+		}},
+		{"Welcome", func() string {
+			return b.GetWelcomeTemplate(evil, evilWithQuote, "https://example.com/login", true, evil)
+		}},
 		{"UserCreated", func() string { return b.GetUserCreatedTemplate(evil, evilWithQuote, evil, "2026-01-01", 3) }},
 		{"PasswordChanged", func() string { return b.GetPasswordChangedTemplate(evil, "2026-01-01", "https://example.com") }},
 		{"SubscriptionReset", func() string { return b.GetSubscriptionResetTemplate(evil, "u", "c", "2026-01-01", "2026-01-01", evil) }},
 		{"AccountDeletion", func() string { return b.GetAccountDeletionTemplate(evil, "2026-01-01", evil, "30天") }},
 		{"ExpirationReminder", func() string { return b.GetExpirationReminderTemplate(evil, evil, "2026-01-01", 3, 3, 1, false) }},
-		{"RenewalConfirmation", func() string { return b.GetRenewalConfirmationTemplate(evil, evil, "2026-01-01", "2026-02-01", "2026-01-01", 10) }},
+		{"RenewalConfirmation", func() string {
+			return b.GetRenewalConfirmationTemplate(evil, evil, "2026-01-01", "2026-02-01", "2026-01-01", 10)
+		}},
 		{"Marketing", func() string { return b.GetMarketingEmailTemplate(evil, evil) }},
 		{"Broadcast", func() string { return b.GetBroadcastNotificationTemplate(evil, evil) }},
 		{"AdminNotificationOrder", func() string {

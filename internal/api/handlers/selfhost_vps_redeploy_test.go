@@ -7,9 +7,9 @@ import (
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/selfhost"
 
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-	"gorm.io/driver/sqlite"
 )
 
 // setupRedeployTestDB 创建内存 SQLite 测试库，并插入一个"已部署"的自建节点。
@@ -256,4 +256,3 @@ func TestMain(m *testing.M) {
 	}
 	os.Exit(code)
 }
-
