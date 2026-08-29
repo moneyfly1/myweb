@@ -7,7 +7,7 @@ import (
 type SystemConfig struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	Key         string    `gorm:"type:varchar(100);uniqueIndex:idx_key_category;not null" json:"key"`
-	Value       string    `gorm:"type:text" json:"value"`
+	Value       string    `gorm:"type:longtext" json:"value"` // config_update_logs 实测 91KB，超过 MySQL text 上限 64KB
 	Type        string    `gorm:"type:varchar(50);not null" json:"type"`
 	Category    string    `gorm:"type:varchar(50);uniqueIndex:idx_key_category;not null" json:"category"`
 	DisplayName string    `gorm:"type:varchar(100);not null" json:"display_name"`
