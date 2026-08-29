@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	crand "crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -9,8 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
+	"log/slog"
 	"math"
 	"math/big"
 	"os"
@@ -483,27 +484,67 @@ func FindEnabledPaymentConfig(db *gorm.DB, payType string) (models.PaymentConfig
 // 日志记录器
 // ==========================================
 
-type beijingTimeWriter struct {
-	writer io.Writer
-}
-
-func (w *beijingTimeWriter) Write(p []byte) (n int, err error) {
-	beijingTime := GetBeijingTime().Format("2006/01/02 15:04:05")
-	timestamp := fmt.Sprintf("[%s] ", beijingTime)
-	_, err = w.writer.Write([]byte(timestamp))
-	if err != nil {
-		return 0, err
-	}
-	return w.writer.Write(p)
-}
-
+// Logger 封装 log/slog，保留原有的格式化字符串 API（Info/Error/Warn）
 type Logger struct {
-	infoLog  *log.Logger
-	errorLog *log.Logger
-	warnLog  *log.Logger
+	slog *slog.Logger
 }
 
 var AppLogger *Logger
+
+// parseLogLevel 从 LOG_LEVEL 环境变量解析日志级别（默认 info）
+func parseLogLevel(level string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
+// teeHandler 将日志同时写入多个 handler（文件 + 控制台）
+type teeHandler struct {
+	handlers []slog.Handler
+}
+
+func (t *teeHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	for _, h := range t.handlers {
+		if h.Enabled(ctx, level) {
+			return true
+		}
+	}
+	return false
+}
+
+func (t *teeHandler) Handle(ctx context.Context, r slog.Record) error {
+	for _, h := range t.handlers {
+		if h.Enabled(ctx, r.Level) {
+			if err := h.Handle(ctx, r); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (t *teeHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	handlers := make([]slog.Handler, len(t.handlers))
+	for i, h := range t.handlers {
+		handlers[i] = h.WithAttrs(attrs)
+	}
+	return &teeHandler{handlers: handlers}
+}
+
+func (t *teeHandler) WithGroup(name string) slog.Handler {
+	handlers := make([]slog.Handler, len(t.handlers))
+	for i, h := range t.handlers {
+		handlers[i] = h.WithGroup(name)
+	}
+	return &teeHandler{handlers: handlers}
+}
 
 func InitLogger(logDir string) error {
 	// 清理并验证日志目录路径
@@ -516,85 +557,81 @@ func InitLogger(logDir string) error {
 		return err
 	}
 
-	infoLogPath := filepath.Join(cleanLogDir, "app.log")
-	errorLogPath := filepath.Join(cleanLogDir, "error.log")
+	// 日志级别：LOG_LEVEL 环境变量控制（debug/info/warn/error），默认 info
+	level := parseLogLevel(os.Getenv("LOG_LEVEL"))
 
-	infoFile, err := os.OpenFile(infoLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	logPath := filepath.Join(cleanLogDir, "app.log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return err
 	}
 
-	errorFile, err := os.OpenFile(errorLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
-	if err != nil {
-		return err
+	opts := &slog.HandlerOptions{
+		Level:     level,
+		AddSource: true, // 记录调用位置（文件:行号）
 	}
 
-	infoWriter := &beijingTimeWriter{writer: infoFile}
-	errorWriter := &beijingTimeWriter{writer: errorFile}
-	warnWriter := &beijingTimeWriter{writer: os.Stdout}
+	// 双输出：JSON 文件 + JSON 控制台（便于 systemd journald 采集）
+	fileHandler := slog.NewJSONHandler(logFile, opts)
+	consoleHandler := slog.NewJSONHandler(os.Stdout, opts)
 
-	AppLogger = &Logger{
-		infoLog:  log.New(infoWriter, "[INFO] ", log.Lshortfile),
-		errorLog: log.New(errorWriter, "[ERROR] ", log.Lshortfile),
-		warnLog:  log.New(warnWriter, "[WARN] ", 0),
-	}
+	AppLogger = &Logger{slog: slog.New(&teeHandler{handlers: []slog.Handler{fileHandler, consoleHandler}})}
+	slog.SetDefault(AppLogger.slog)
 
 	return nil
 }
 
 func (l *Logger) Info(format string, v ...interface{}) {
-	if l != nil && l.infoLog != nil {
-		l.infoLog.Printf(format, v...)
+	if l != nil && l.slog != nil {
+		l.slog.Info(fmt.Sprintf(format, v...))
 	}
 }
 
 func (l *Logger) Error(format string, v ...interface{}) {
-	if l != nil && l.errorLog != nil {
-		l.errorLog.Printf(format, v...)
+	if l != nil && l.slog != nil {
+		l.slog.Error(fmt.Sprintf(format, v...))
 	}
 }
 
 func (l *Logger) Warn(format string, v ...interface{}) {
-	if l != nil && l.warnLog != nil {
-		l.warnLog.Printf(format, v...)
+	if l != nil && l.slog != nil {
+		l.slog.Warn(fmt.Sprintf(format, v...))
 	}
 }
 
 func LogUserActivity(userID uint, activityType, description string) {
-	if AppLogger != nil {
-		AppLogger.Info("用户活动: user_id=%d, type=%s, description=%s", userID, activityType, description)
-	}
+	slog.Info("用户活动", "user_id", userID, "type", activityType, "description", description)
 }
 
 func LogAudit(userID uint, actionType, resourceType string, resourceID uint, description string) {
-	if AppLogger != nil {
-		AppLogger.Info("审计日志: user_id=%d, action=%s, resource=%s:%d, description=%s",
-			userID, actionType, resourceType, resourceID, description)
-	}
+	slog.Info("审计日志", "user_id", userID, "action", actionType, "resource_type", resourceType, "resource_id", resourceID, "description", description)
 }
 
+// LogInfo 兼容旧版格式化字符串 API，底层输出结构化 JSON。
 func LogInfo(format string, v ...interface{}) {
-	if AppLogger != nil {
-		AppLogger.Info(format, v...)
-	} else {
-		log.Printf("[INFO] "+format, v...)
-	}
+	slog.Info(fmt.Sprintf(format, v...))
 }
 
 func LogWarn(format string, v ...interface{}) {
-	if AppLogger != nil {
-		AppLogger.Warn(format, v...)
-	} else {
-		log.Printf("[WARN] "+format, v...)
-	}
+	slog.Warn(fmt.Sprintf(format, v...))
 }
 
 func LogErrorMsg(format string, v ...interface{}) {
-	if AppLogger != nil {
-		AppLogger.Error(format, v...)
-	} else {
-		log.Printf("[ERROR] "+format, v...)
-	}
+	slog.Error(fmt.Sprintf(format, v...))
+}
+
+// LogInfoContext / LogWarnContext / LogErrorContext：结构化日志（key-value 字段），
+// 携带 context（可从中提取 request_id 等追踪字段）。
+func LogInfoContext(ctx context.Context, msg string, args ...any) {
+	slog.InfoContext(ctx, msg, args...)
+}
+
+func LogWarnContext(ctx context.Context, msg string, args ...any) {
+	slog.WarnContext(ctx, msg, args...)
+}
+
+func LogErrorContext(ctx context.Context, msg string, args ...any) {
+	slog.ErrorContext(ctx, msg, args...)
 }
 
 // ==========================================
