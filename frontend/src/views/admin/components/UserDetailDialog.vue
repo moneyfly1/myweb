@@ -791,7 +791,7 @@
 
 <script>
 import { adminAPI } from '@/utils/api'
-import { formatDate as formatDateUtil } from '@/utils/date'
+import { formatDate as formatDateUtil, formatLocation } from '@/utils/date'
 import { ElMessage } from '@/utils/elementPlusServices'
 import PaginationBar from '@/components/PaginationBar.vue'
 import AppDrawer from '@/components/AppDrawer.vue'
@@ -1104,6 +1104,10 @@ export default {
     },
     displayLocation(loc) {
       if (!loc) return '-'
+      // 后端已返回"国家, 城市"格式，直接用公共 formatLocation 解析；
+      // 兼容旧 JSON / 对象 / 纯文本格式
+      const formatted = formatLocation(loc)
+      if (formatted) return formatted
       const country = this.getLocationCountry(loc)
       return country || '-'
     },

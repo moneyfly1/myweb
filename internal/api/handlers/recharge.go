@@ -42,7 +42,7 @@ func formatRechargeRecord(record models.RechargeRecord, includeUser bool, includ
 	if includeLocation && ipAddress != "-" && geoip.IsEnabled() {
 		locationStr := geoip.GetLocationWithCache(ipAddress)
 		if locationStr.Valid {
-			location = locationStr.String
+			location = utils.FormatLocation(locationStr.String)
 		}
 	}
 

@@ -158,7 +158,7 @@ func formatDeviceList(devices []models.Device) []gin.H {
 		}
 		ipAddress := formatIP(getString(d.IPAddress))
 		// 使用数据库中已存储的位置信息，避免实时查询 GeoIP
-		location := getString(d.Location)
+		location := utils.FormatLocation(getString(d.Location))
 
 		list = append(list, gin.H{
 			"id":                 d.ID,
@@ -2067,11 +2067,11 @@ func GetConfigUpdateConfig(c *gin.Context) {
 
 	configMap := make(map[string]interface{})
 	defaultConfig := map[string]interface{}{
-		"urls":              []string{},
-		"filter_keywords":   []string{},
-		"url_filter_flags":  []string{}, // 与 urls 一一对应："1"=启用过滤关键词 "0"=不过滤
-		"enable_schedule":   false,
-		"schedule_interval": 3600,
+		"urls":                 []string{},
+		"filter_keywords":      []string{},
+		"url_filter_flags":     []string{}, // 与 urls 一一对应："1"=启用过滤关键词 "0"=不过滤
+		"enable_schedule":      false,
+		"schedule_interval":    3600,
 		"manual_node_position": -1,
 	}
 

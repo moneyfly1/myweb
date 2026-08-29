@@ -610,7 +610,7 @@ func checkAndSendAbnormalLoginAlert(db *gorm.DB, userID uint, current *models.Lo
 
 	locationStr := ""
 	if current.Location.Valid {
-		locationStr = current.Location.String
+		locationStr = utils.FormatLocation(current.Location.String)
 	}
 	loginTimeStr := utils.FormatBeijingTime(current.LoginTime)
 	templateBuilder := email.NewEmailTemplateBuilder()
