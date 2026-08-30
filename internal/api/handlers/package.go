@@ -86,6 +86,19 @@ func CreatePackage(c *gin.Context) {
 		return
 	}
 
+	if req.Price < 0 {
+		utils.ErrorResponse(c, http.StatusBadRequest, "套餐价格不能为负数", nil)
+		return
+	}
+	if req.DurationDays <= 0 {
+		utils.ErrorResponse(c, http.StatusBadRequest, "套餐时长必须大于0", nil)
+		return
+	}
+	if req.DeviceLimit < 0 {
+		utils.ErrorResponse(c, http.StatusBadRequest, "设备数量不能为负数", nil)
+		return
+	}
+
 	db := database.GetDB()
 	pkg := models.Package{
 		Name:          req.Name,

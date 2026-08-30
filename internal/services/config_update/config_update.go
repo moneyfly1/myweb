@@ -2697,13 +2697,25 @@ func (s *ConfigUpdateService) generateSingBoxConfig(proxies []*ProxyNode) string
 
 	var outbounds []singOutbound
 	outbounds = append(outbounds, singOutbound{Type: "direct", Tag: "DIRECT"})
+	// sing-box 要求 outbound tag 全局唯一，重名节点需加后缀去重，否则客户端解析报 duplicate tag
+	seenTags := map[string]bool{"DIRECT": true}
 
 	for _, n := range proxies {
 		if n.Server == "baidu.com" {
 			continue
 		}
 		m := s.nodeToMap(n)
-		ob := singOutbound{Tag: n.Name, Server: fmt.Sprintf("%v", m["server"]), Port: n.Port}
+		tag := n.Name
+		if seenTags[tag] {
+			base := tag
+			i := 2
+			for seenTags[fmt.Sprintf("%s-%d", base, i)] {
+				i++
+			}
+			tag = fmt.Sprintf("%s-%d", base, i)
+		}
+		seenTags[tag] = true
+		ob := singOutbound{Tag: tag, Server: fmt.Sprintf("%v", m["server"]), Port: n.Port}
 
 		switch n.Type {
 		case "ss":
