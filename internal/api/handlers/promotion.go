@@ -5,9 +5,11 @@ import (
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -43,13 +45,103 @@ func GetAdminPromotions(c *gin.Context) {
 	})
 }
 
+// promotionRequest 管理端创建/更新营销活动请求。
+// 前端 el-date-picker value-format="YYYY-MM-DD HH:mm:ss"，Go time.Time JSON 只接受 RFC3339，
+// 因此用 string 接收后再按两种格式解析，避免保存必失败。
+type promotionRequest struct {
+	Name          string  `json:"name"`
+	Type          string  `json:"type"`
+	DiscountType  string  `json:"discount_type"`
+	DiscountValue float64 `json:"discount_value"`
+	MinAmount     float64 `json:"min_amount"`
+	MaxDiscount   float64 `json:"max_discount"`
+	PackageIDs    string  `json:"package_ids"`
+	StartTime     string  `json:"start_time"`
+	EndTime       string  `json:"end_time"`
+	IsActive      bool    `json:"is_active"`
+	Description   string  `json:"description"`
+}
+
+// parsePromotionTime 解析前端时间字符串，兼容 "2006-01-02 15:04:05" 与 RFC3339
+func parsePromotionTime(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	layouts := []string{
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05Z07:00",
+		time.RFC3339,
+	}
+	var lastErr error
+	for _, layout := range layouts {
+		if t, err := time.ParseInLocation(layout, s, utils.BeijingTZ); err == nil {
+			return t, nil
+		} else {
+			lastErr = err
+		}
+	}
+	return time.Time{}, lastErr
+}
+
+func applyPromotionRequest(promo *models.Promotion, req *promotionRequest) error {
+	promo.Name = req.Name
+	promo.Type = req.Type
+	promo.DiscountType = req.DiscountType
+	promo.DiscountValue = req.DiscountValue
+	promo.MinAmount = req.MinAmount
+	promo.MaxDiscount = req.MaxDiscount
+	if req.PackageIDs != "" {
+		promo.PackageIDs = sql.NullString{String: req.PackageIDs, Valid: true}
+	} else {
+		promo.PackageIDs = sql.NullString{}
+	}
+	if req.StartTime != "" {
+		t, err := parsePromotionTime(req.StartTime)
+		if err != nil {
+			return fmt.Errorf("开始时间格式错误")
+		}
+		promo.StartTime = t
+	}
+	if req.EndTime != "" {
+		t, err := parsePromotionTime(req.EndTime)
+		if err != nil {
+			return fmt.Errorf("结束时间格式错误")
+		}
+		promo.EndTime = t
+	}
+	promo.IsActive = req.IsActive
+	if req.Description != "" {
+		promo.Description = sql.NullString{String: req.Description, Valid: true}
+	} else {
+		promo.Description = sql.NullString{}
+	}
+	return nil
+}
+
 // 管理端 - 创建促销活动
 func CreatePromotion(c *gin.Context) {
-	var promo models.Promotion
-	if err := c.ShouldBindJSON(&promo); err != nil {
+	var req promotionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", nil)
 		return
 	}
+	if strings.TrimSpace(req.Name) == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "活动名称不能为空", nil)
+		return
+	}
+	if strings.TrimSpace(req.Type) == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "活动类型不能为空", nil)
+		return
+	}
+	if strings.TrimSpace(req.DiscountType) == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "优惠类型不能为空", nil)
+		return
+	}
+
+	var promo models.Promotion
+	if err := applyPromotionRequest(&promo, &req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+
 	db := database.GetDB()
 	if err := db.Create(&promo).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建失败", nil)
@@ -68,8 +160,13 @@ func UpdatePromotion(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusNotFound, "活动不存在", nil)
 		return
 	}
-	if err := c.ShouldBindJSON(&promo); err != nil {
+	var req promotionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", nil)
+		return
+	}
+	if err := applyPromotionRequest(&promo, &req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
 	db.Save(&promo)

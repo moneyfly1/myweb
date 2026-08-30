@@ -347,7 +347,7 @@ func GetRegionStats(c *gin.Context) {
 		UserID   sql.NullInt64  `gorm:"column:user_id"`
 		Location sql.NullString `gorm:"column:location"`
 		IP       sql.NullString `gorm:"column:ip_address"`
-		LastAt   time.Time      `gorm:"column:last_at"`
+		LastAt   sql.NullString `gorm:"column:last_at"` // SQLite created_at 为 TEXT，不能直接扫入 time.Time
 	}
 	var auditCombos []auditCombo
 	if err := db.Table("audit_logs").
@@ -503,7 +503,7 @@ func GetRegionStats(c *gin.Context) {
 
 	for _, combo := range auditCombos {
 		if combo.UserID.Valid {
-			registerCombo(utils.MustSafeInt64ToUint(combo.UserID.Int64), combo.Location.String, combo.IP.String, combo.LastAt)
+			registerCombo(utils.MustSafeInt64ToUint(combo.UserID.Int64), combo.Location.String, combo.IP.String, parseLastAt(combo.LastAt))
 		}
 	}
 	for _, combo := range activityCombos {
@@ -524,4 +524,27 @@ func GetRegionStats(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"regions": regions,
 	})
+}
+
+// parseLastAt 将 MAX(created_at) 的字符串结果解析为 time.Time。
+// SQLite 存的是 "2006-01-02 15:04:05"（或带时区/毫秒），MySQL 可能返回 time.Time 序列化格式，
+// 统一按常见格式解析；解析失败返回零值（不影响地区分布统计本身）。
+func parseLastAt(s sql.NullString) time.Time {
+	if !s.Valid || strings.TrimSpace(s.String) == "" {
+		return time.Time{}
+	}
+	val := strings.TrimSpace(s.String)
+	formats := []string{
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+		time.RFC3339Nano,
+		time.RFC3339,
+	}
+	for _, f := range formats {
+		if t, err := time.ParseInLocation(f, val, utils.BeijingTZ); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }
