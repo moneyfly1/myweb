@@ -1,117 +1,617 @@
-# CBoard - 现代化订阅管理系统
+# 🚀 CBoard - 现代化订阅管理系统
 
-[English](README.md) | 中文
+> **CBoard**（CBoard-Go）是一个为 VPN / 代理服务商设计的高性能、现代化订阅管理系统（机场面板）。
+> Go 后端 + Vue 3 前端，内存占用仅 **35 - 95 MB**，提供 **371 个 API 路由**，覆盖从注册、订阅分发、设备管理、支付订单到自建节点运维的**全链路运营能力**。
 
 ---
 
-## 📖 系统简介
+## 📖 目录
 
-**CBoard** 是一个现代化的高性能订阅管理系统，专为 VPN/代理服务提供商设计。使用 Go 语言构建，相比 Python 版本可节省 **70-90% 的内存占用**，同时保持完整的功能特性。
+- [💡 系统简介与设计理念](#-系统简介与设计理念)
+- [✨ 核心特性](#-核心特性)
+- [🏗️ 技术栈](#️-技术栈)
+- [📋 系统要求](#-系统要求)
+- [📊 功能清单](#-功能清单)
+- [🔬 核心设计详解](#-核心设计详解)
+- [🚀 安装指南](#-安装指南)
+- [👤 管理员账户管理](#-管理员账户管理)
+- [⚙️ 配置说明](#️-配置说明)
+- [💾 数据库备份](#-数据库备份)
+- [🔧 故障排查](#-故障排查)
+- [📄 许可证](#-许可证)
 
-### 💡 项目初衷
+---
 
-本项目最初是为了解决一个实际需求：**将多个机场的订阅资源安全地分享给朋友，同时防止资源被滥用**。
+## 💡 系统简介与设计理念
 
-**核心场景：**
-- 拥有多个机场订阅，流量用不完，希望分享给外贸朋友使用
-- 购买的机场套餐通常不限制设备数量，但需要控制分享范围
-- 通过设备数量限制来防止朋友将订阅再次分享给他人
-- 但存在一个问题：朋友可能将节点信息下载下来单独使用，这样就失去了控制
+### 项目初衷
 
-**解决方案：**
-- 系统支持定期重置订阅地址（建议每天或每两天重置一次）
-- 自动采集和聚合多个机场的订阅地址
-- 生成新的聚合订阅链接分享给朋友
-- 通过设备数量限制和订阅地址定期更新，有效防止资源被滥用
+CBoard 最初源于一个非常实际的个人需求：**将多个机场的订阅资源安全地分享给朋友，同时防止资源被滥用**。
 
-**适用场景：**
-- 个人分享：将机场资源分享给少量朋友，控制使用范围
-- 小规模商业化：如果朋友较多，也可以进行小规模商业化运营
+**典型场景：**
 
-这种设计既保证了资源的有效利用，又通过技术手段防止了资源的滥用和泄露。
+- 🧑‍🤝‍🧑 手头有多个机场订阅、流量用不完，希望分享给外贸 / 出海办公的朋友使用；
+- 🎫 购买的机场套餐通常不限制设备数量，但需要**控制分享范围**；
+- 🚫 通过**设备数量限制**来防止朋友将订阅再次转发给他人；
+- ⚠️ 但仅限制设备还不够——朋友可能把节点信息下载下来单独使用，彻底脱离控制。
 
-### 🎯 核心特性
+**CBoard 的解决方案：**
 
-#### 核心功能
-- 🚀 **高性能**: 内存占用仅 35-95 MB（Python 版本 300-850 MB）
-- ⚡ **快速启动**: 毫秒级启动时间
-- 🔒 **安全可靠**: JWT 认证、密码加密、SQL 注入防护
-- 📦 **功能完整**: 包含所有核心业务功能
-- 🎨 **现代化前端**: Vue 3 + Element Plus，响应式设计
-- 🐳 **易于部署**: 支持无宝塔 VPS 一键脚本（install-vps.sh）与宝塔面板脚本（install.sh）
+- 🔄 **定期重置订阅地址**（建议每天或每两天重置一次），让"下载节点单独使用"失去意义；
+- 🧬 **自动采集与聚合**多个机场的订阅地址，生成统一的聚合订阅链接；
+- 📱 **设备指纹 + 设备数量限制**，杜绝订阅二次扩散；
+- 🎯 既能保证资源被有效利用，又通过技术手段防止资源滥用与泄露。
 
-#### 业务功能
-- 💳 **多支付方式**: 支持支付宝、微信支付、易支付、Apple Pay
-- 👥 **用户管理**: 完整的用户系统，包含等级、邀请、奖励
-- 📊 **数据分析**: DAU/WAU/MAU 统计、留存分析、流失预警
-- 🎫 **工单系统**: 内置客户支持系统
-- 📚 **知识库系统**: 完整的帮助文档，包含 Clash 系列教程
-- 🎁 **每日签到**: 随机奖励（0.1-1 元）提升用户活跃度
-- 🎉 **营销活动**: 灵活的促销活动（限时抢购、新用户优惠、会员日）
-- 📱 **移动端优化**: 完整的响应式设计，抽屉组件全屏显示
-- ⚙️ **Clash 配置**: 专业的 Clash 订阅配置系统，支持 16 个代理组和 3376 条分流规则
+### 设计理念
+
+| 理念 | 说明 |
+|------|------|
+| ⚡ **高性能** | 采用 Go 语言构建，内存占用仅 35-95 MB（同类 Python 面板通常需要 300-850 MB），毫秒级启动 |
+| 🔒 **安全可靠** | JWT 双令牌认证、bcrypt 密码加密、登录限流与暴力破解检测、敏感字段脱敏、CORS/CSRF 防护 |
+| 🧩 **功能完整** | 覆盖机场运营全链路：注册认证、订阅分发、设备管控、套餐订单、支付、工单、邀请、营销、统计 |
+| 🐳 **易于部署** | 支持宝塔面板、无宝塔 VPS 一键脚本、Docker Compose 三种部署方式，开箱即用 |
+
+---
+
+## ✨ 核心特性
+
+### 核心能力
+
+- 🚀 **极致性能**：内存占用仅 35-95 MB，Go 并发模型 + 异步 goroutine 通知，高并发下依然稳定
+- ⚡ **快速启动**：毫秒级冷启动，SQLite 默认零配置即可运行
+- 🔒 **企业级安全**：JWT + 刷新令牌 + 黑名单、bcrypt 加密、登录限流、暴力破解检测、敏感字段脱敏、验证码原子消费、CORS/CSRF 防护
+- 📦 **功能完整**：371 个 API 路由，覆盖用户端 16 个页面 + 管理端 26 个页面
+- 🎨 **现代化前端**：Vue 3 + Element Plus 响应式设计，深色 / 浅色主题，移动端抽屉全屏适配
+- 🐳 **三种部署**：宝塔面板脚本 / 无宝塔 VPS 一键脚本 / Docker Compose
+
+### 业务能力
+
+- 🌐 **智能订阅分发**：按客户端 UA 自动识别 9 大类客户端并分发对应格式（Clash / Clash Meta / Stash / Surge / Loon / QuantumultX / Sing-box / Shadowrocket / v2rayN）
+- 🧠 **协议版本感知**：按客户端版本过滤新协议——老版 Clash 只推 SS/VMess，Clash Meta 与 sing-box 全量推送，Shadowrocket 按构建号判断
+- 🖥️ **自建节点（特色）**：SSH 全自动部署 sing-box，支持 15 种协议，30s 心跳 + 3min 超时离线判定，远程管理（重置 UUID / 改密码 / 改端口 / 重装 / 流量配额），证书自动续期
+- 💳 **多支付方式**：支付宝、微信支付、易支付、码支付、Apple Pay、**Stripe / PayPal / USDT（国际支付）**
+- 📊 **数据分析**：DAU/WAU/MAU 统计、留存分析、流失预警、收入统计、节点健康监控
+- 🎫 **运营套件**：工单系统、知识库、邀请返利、优惠券、每日签到、营销活动（限时抢购 / 新用户优惠 / 会员日）
+- 🧬 **节点采集**：从订阅地址自动采集节点、Clash 配置导入、节点去重（Type:Server:Port）、分组与批量测速
+- 💾 **自动备份**：数据库自动备份并推送至 GitHub / Gitee，升级前只读预检工具
 
 ---
 
 ## 🏗️ 技术栈
 
-### 后端
-- **Web 框架**: [Gin](https://github.com/gin-gonic/gin) - 高性能 HTTP Web 框架
-- **ORM**: [GORM](https://gorm.io/) - Go 语言优秀的 ORM 库
-- **数据库**: SQLite（默认）/ MySQL 5.7+ / PostgreSQL 12+
-- **认证**: JWT（JSON Web Tokens）
-- **配置管理**: Viper
-- **编程语言**: Go 1.21+
+### 后端（Go）
 
-### 前端
-- **框架**: Vue 3（组合式 API）
-- **UI 库**: Element Plus
-- **构建工具**: Vite
-- **状态管理**: Pinia
-- **路由**: Vue Router 4
+| 组件 | 技术 | 说明 |
+|------|------|------|
+| 语言 | **Go 1.21+** | 高性能、低内存、天然并发 |
+| Web 框架 | [Gin](https://github.com/gin-gonic/gin) | 高性能 HTTP 框架 |
+| ORM | [GORM](https://gorm.io/) | 功能强大的 ORM 库 |
+| 数据库 | **SQLite**（默认）/ MySQL 5.7+ / PostgreSQL 12+ | 多数据库即插即用 |
+| 认证 | JWT（JSON Web Tokens） | 双令牌 + 黑名单 |
+| 配置 | [Viper](https://github.com/spf13/viper) | 环境变量 / .env 文件 |
+| 缓存 | **Redis（可选）** | 支付回调、订阅缓存、GeoIP 查询加速、任务队列 |
+
+### 前端（Vue 3）
+
+| 组件 | 技术 |
+|------|------|
+| 框架 | Vue 3（组合式 API） |
+| UI 库 | Element Plus |
+| 构建工具 | Vite |
+| 状态管理 | Pinia |
+| 路由 | Vue Router 4 |
+| 图表 | ECharts |
 
 ---
 
 ## 📋 系统要求
 
-### 最低配置要求
-- **CPU**: 1 核心（推荐 2 核心+）
-- **内存**: 512 MB（推荐 1 GB+）
-- **磁盘**: 10 GB（推荐 20 GB+）
-- **操作系统**: Ubuntu 18.04+ / Debian 10+ / CentOS 7+
+### 最低配置
+
+| 资源 | 最低要求 | 推荐 |
+|------|----------|------|
+| CPU | 1 核 | 2 核+ |
+| 内存 | 512 MB | 1 GB+（面板本体仅需 35-95 MB） |
+| 磁盘 | 10 GB | 20 GB+ |
+| 操作系统 | Ubuntu 18.04+ / Debian 10+ / CentOS 7+ | 任意主流 Linux 发行版 |
 
 ### 软件要求
-- **Go**: 1.21+（安装脚本会自动安装）
-- **Node.js**: 16+（用于前端构建，安装脚本会自动安装）
-- **Nginx**：宝塔环境由面板提供；无宝塔时由 `install-vps.sh` 自动安装
-- **数据库**: SQLite（默认，无需安装）或 MySQL/PostgreSQL
+
+| 组件 | 要求 | 说明 |
+|------|------|------|
+| Go | 1.21+ | 安装脚本会自动安装 |
+| Node.js | 16+ | 仅前端构建需要，安装脚本会自动安装 |
+| Nginx | 任意版本 | 宝塔环境由面板提供；无宝塔时由 `install-vps.sh` 自动安装 |
+| 数据库 | SQLite（默认，零配置）或 MySQL / PostgreSQL | 高流量生产建议 MySQL / PostgreSQL |
+| Redis | 可选 | 不配置自动禁用缓存，功能不受影响 |
+
+---
+
+## 📊 功能清单
+
+### 🧑‍💻 用户端（16 个页面）
+
+| 页面 | 核心功能 |
+|------|----------|
+| 📊 Dashboard | 账户概览、订阅状态、流量统计、公告、快捷入口 |
+| 🔗 Subscription | 订阅 URL 生成 / 复制 / 二维码、重置订阅、发送订阅邮件、转换余额、多客户端订阅分发 |
+| 📱 Devices | 设备列表、设备指纹识别、设备数量限制、添加 / 删除设备、在线设备追踪 |
+| 📦 Packages | 套餐展示、购买、续费、升级 |
+| 🧾 Orders | 订单创建 / 取消 / 支付 / 历史查询 |
+| 🌍 Nodes | 节点列表、分组（按地区）、延迟测速、专线节点展示 |
+| ❓ Help | 帮助中心、使用教程、常见问题 |
+| 👤 Profile | 个人资料编辑、头像、签名 |
+| 🕐 LoginHistory | 登录历史、登录设备、异常登录提醒 |
+| 🎫 Tickets | 工单创建 / 回复 / 状态跟踪 / 附件 |
+| 🎁 Invites | 邀请码生成、邀请关系、邀请奖励 |
+| 📚 Knowledge | 知识库文章浏览、Clash 系列教程 |
+| ⚙️ UserSettings | 账户安全（改密 / 邮箱）、通知设置、主题偏好 |
+| 💳 PaymentReturn | 支付回调结果页 |
+| 🔐 UnifiedAuth | 统一登录 / 注册页（支持邮箱验证码、邀请码注册、找回密码） |
+| 🎰 签到 | 每日签到随机奖励（0.1-1 元），提升用户活跃度 |
+
+#### 认证体系
+
+- ✅ 注册 / 登录（用户名或邮箱）
+- ✅ JWT 双令牌（访问令牌 + 刷新令牌）与刷新机制
+- ✅ 找回密码（邮箱验证码 / 重置链接）
+- ✅ 邮箱验证码注册、邀请码注册
+- ✅ 登录限流与暴力破解检测
+
+#### 订阅体系
+
+- ✅ 订阅 URL 生成（UUID 订阅标识）
+- ✅ 设备管理（设备指纹识别，防多设备共享）
+- ✅ 订阅重置（防止节点信息被剥离单独使用）
+- ✅ 发送订阅到邮箱（SMTP）
+- ✅ 订阅余额转换（流量/余额互转）
+
+#### 多客户端订阅分发
+
+| 客户端 | 分发格式 | 说明 |
+|--------|----------|------|
+| Clash | YAML | 16 个代理组 + 3376 条分流规则 |
+| Clash Meta | YAML | 支持新协议（Reality / Hysteria2 / TUIC 等） |
+| Stash | YAML | Apple 生态 Clash 客户端 |
+| Surge | 专用配置 | Apple 生态 |
+| Loon | 专用配置 | Apple 生态 |
+| QuantumultX | 专用配置 | Apple 生态 |
+| sing-box | JSON | 新一代全平台客户端 |
+| Shadowrocket | 专用配置 | iOS，按构建号判断能力 |
+| v2rayN | 专用格式 | Windows 主流客户端 |
+
+> 客户端类型通过 **User-Agent（UA）自动识别**，无需用户手动选择；也支持 `&filter=` 参数做路由过滤。
+
+### 🛠️ 管理端（26 个页面）
+
+| 页面 | 核心功能 |
+|------|----------|
+| 📊 Dashboard | 全局概览、关键指标、收入 / 用户趋势 |
+| 👥 Users | 用户筛选 / 编辑 / 禁用 / 批量操作、重置密码、**登录为用户**、发送邮件、签到记录 |
+| 🚨 AbnormalUsers | 异常用户识别（恶意注册、异常流量、滥用嫌疑） |
+| 🌍 Nodes | 节点 CRUD、节点采集、批量导入、批量测速、健康监控、去重（Type:Server:Port）、分组 |
+| ⚡ CustomNodes | 专线节点创建（链接导入 / 手动填写）、分配 / 取消分配、到期管理、测速 |
+| 🖥️ SelfHostNodes | **自建节点**：SSH 全自动部署 sing-box、15 种协议、心跳维护、远程管理、证书续期 |
+| 🔗 Subscriptions | 订阅管理、批量操作、到期提醒、订阅统计 |
+| 🧾 Orders | 订单查看 / 处理 / 导出（CSV/Excel）、批量操作、状态追踪 |
+| 📦 Packages | 套餐 CRUD、定价、启用 / 停用、显示顺序 |
+| 💳 PaymentConfig | 支付宝 / 微信 / 易支付 / 码支付 / Apple Pay / **Stripe / PayPal / USDT** 支付配置 |
+| ⚙️ Settings | 系统设置：通用 / 注册 / 通知 / 公告 / 安全 / 主题 / 邀请 / 管理员通知 / 节点健康 / 备份 / 仓库同步 / 协议过滤 / GeoIP |
+| 🧩 Config | 高级配置管理 |
+| 📈 Statistics | 用户统计、订单统计、收入统计、订阅统计 |
+| 📊 Analytics | DAU/WAU/MAU、留存分析、流失预警、地区分析 |
+| 📧 EmailQueue | 邮件队列查看、重试、状态管理 |
+| 📄 EmailDetail | 邮件详情、模板变量、发送记录 |
+| 📜 Logs | 应用日志查看 |
+| 🗄️ SystemLogs | 系统日志、审计日志 |
+| 🎟️ Coupons | 优惠券 CRUD：折扣券 / 固定金额券、验证、使用追踪、过期管理 |
+| 🎫 Tickets | 工单处理、回复、分配、优先级、附件 |
+| 🎁 Invites | 邀请码生成、邀请关系、奖励规则 |
+| 👑 UserLevels | 用户等级管理（含折扣体系） |
+| 📚 Knowledge | 知识库文章 CRUD、分类、教程维护 |
+| 🎉 Promotions | 营销活动：限时抢购、新用户优惠、会员日 |
+| 👤 Profile | 管理员个人资料 |
+| 🔄 ConfigUpdate | 配置热更新 |
+
+#### 用户管理能力
+
+- ✅ 筛选（用户名 / 邮箱 / 状态 / 等级 / 注册时间）
+- ✅ 编辑 / 禁用 / 启用 / 批量操作
+- ✅ 重置密码
+- ✅ **登录为用户**（模拟登录，方便排查用户问题）
+- ✅ 发送邮件（验证码、通知）
+- ✅ 签到记录查询
+
+#### 节点管理能力
+
+- ✅ 普通节点：采集 / 手动导入 / CRUD / 批量测速 / 健康检查
+- ✅ 专线节点：链接导入、分配与取消分配、独立到期时间
+- ✅ 自建节点：SSH 部署、远程管理、心跳监控（详见核心设计详解）
+
+#### 自建节点（CBoard 特色功能）
+
+| 能力 | 说明 |
+|------|------|
+| 🔑 SSH 全自动部署 | 一键远程安装 sing-box 并生成节点 |
+| 🧬 15 种协议 | VLESS+WS、Reality 系列、Hysteria2、TUIC、AnyTLS、SS 等 |
+| 💓 心跳维护 | 30s 心跳上报，3min 无心跳判离线 |
+| 🔁 多协议共享 UUID | 同一节点多协议共享同一 UUID，客户端配置简单 |
+| 🚦 流量配额 | 流量超限自动屏蔽，续费后自动恢复 |
+| 🔐 远程管理 | 重置 UUID、改密码、改端口、重装、流量配额调整 |
+| 🏅 证书续期 | acme.sh 证书自动续期，无需人工干预 |
+
+---
+
+## 🔬 核心设计详解
+
+### 1️⃣ 订阅分发设计
+
+CBoard 的订阅分发是整个系统的核心，设计上兼顾**兼容性**与**先进性**：
+
+#### UA 自动识别与格式分发
+
+- 系统读取订阅请求的 **User-Agent**，自动识别客户端类型并返回对应格式（Clash YAML / Clash Meta / Stash / Surge / Loon / QuantumultX / sing-box JSON / Shadowrocket / v2rayN）；
+- 未知客户端返回通用格式，保证最大兼容性。
+
+#### 按客户端版本过滤新协议
+
+不同客户端对新协议的支持差异巨大，盲目全推会导致老客户端无法解析：
+
+| 客户端 | 协议推送策略 |
+|--------|--------------|
+| 老版 Clash | 只推 SS / VMess 等经典协议 |
+| Clash Meta / sing-box | 全量推送（Reality、Hysteria2、TUIC 等） |
+| Shadowrocket | 按构建号判断能力，渐进推送 |
+| 其他客户端 | 按协议白名单过滤 |
+
+#### 多层过滤体系
+
+- **exclude 参数过滤**：URL 中指定 `&exclude=协议名` 排除指定协议；
+- **DB 协议白名单**：管理端在「协议过滤」中配置允许下发的协议全集；
+- **按 IP 地区分发**：结合 GeoIP（GeoLite2-City.mmdb）按用户出口 IP 地区差异化分发节点；
+- **&filter= 路由过滤**：订阅链接携带 filter 参数，按节点分组 / 地区筛选下发。
+
+#### 聚合订阅
+
+- 自动采集多个机场的订阅地址，聚合去重（基于 Type:Server:Port）后统一分发；
+- 定期重置订阅地址 + 设备数限制，从机制上防止订阅被剥离滥用。
+
+### 2️⃣ 自建节点设计
+
+自建节点（SelfHostNodes）是 CBoard 的特色能力，把「买 VPS 自己搭节点」的运维成本降到最低：
+
+#### 部署流程
+
+1. 管理端录入 VPS 的 SSH 连接信息（IP / 端口 / 用户名 / 密码或密钥）；
+2. 系统通过 SSH 上传安装脚本，**自动安装 sing-box** 并生成节点配置；
+3. 探测公网 IP，构造节点链接**回传面板**并注册节点；
+4. 节点上启动**后台心跳守护进程**，周期性向面板上报状态。
+
+#### 心跳与离线判定
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| 心跳间隔 | 30 秒 | 节点脚本上报间隔 |
+| 心跳超时 | 3 分钟 | 超时即判定节点离线 |
+| 安装令牌有效期 | 30 分钟 | 防止安装令牌被滥用 |
+
+#### 协议支持（15 种）
+
+VLESS + WS、VLESS + Reality（Reality / Reality Vision / gRPC Reality）、Hysteria2、TUIC、AnyTLS、Shadowsocks 等，同一节点**多协议共享同一 UUID**，客户端侧配置极简。
+
+#### 资源管控
+
+- **流量配额**：节点流量超限自动屏蔽，防止超卖与滥用；
+- **证书自动续期**：内置 acme.sh 集成，证书到期自动续签；
+- **远程管理**：重置 UUID、修改密码、修改端口、重装系统，全部后台一键完成。
+
+### 3️⃣ 安全设计
+
+| 安全机制 | 实现 |
+|----------|------|
+| 🔑 认证 | JWT 访问令牌 + 刷新令牌，刷新令牌支持黑名单吊销 |
+| 🔐 密码 | bcrypt 加盐哈希，不存明文 |
+| 🚦 登录限流 | 基于 IP 的速率限制器，连续失败锁定（默认 15 分钟） |
+| 🛡️ 暴力破解检测 | 失败次数累计，自动锁定账户 / IP |
+| 🙈 敏感字段脱敏 | 密码、令牌、支付密钥等敏感字段一律脱敏输出 |
+| 🎫 验证码 | 邮箱验证码原子消费，防止重放与并发抢兑 |
+| 🌐 CORS/CSRF | 白名单式 CORS 配置（`BACKEND_CORS_ORIGINS`）+ CSRF 防护中间件 |
+| 🧹 路径安全 | GeoIP 路径、上传路径做路径遍历防护（`safePathJoin`） |
+| 🪵 可信代理 | `TRUSTED_PROXIES` 配置，确保真实客户端 IP 获取正确 |
+
+#### 数据库保护
+
+- 启动时若检测到 SQLite 文件不存在（即将创建全新库），会**大声告警**，提示检查 `DATABASE_URL` 路径，避免"重启后数据消失"的误操作；
+- 管理员账户每次启动时校验 `ADMIN_PASSWORD`，确保固定密码可用、账户始终处于激活状态（即使被锁定，重启后也能登录）。
+
+### 4️⃣ 性能设计
+
+| 设计 | 说明 |
+|------|------|
+| 💾 低内存 | Go 运行时 + 单体架构，内存占用 35-95 MB |
+| 🧠 Redis 缓存（可选） | 支付回调、订阅数据、GeoIP 查询缓存加速；不配置时自动降级为直查，功能无损 |
+| 🔄 任务队列 | 基于 Redis 的任务队列 + worker，异步消费耗时任务 |
+| ⚡ 异步通知 | goroutine 异步发送邮件 / Telegram / Bark 通知，不阻塞主流程 |
+| 🗄️ 数据库索引 | 提供性能索引 SQL（`docs/sql/performance_indexes.sql`），高流量场景可手动启用 |
+| 📊 调度器 | 定时任务（签到结算、节点健康检查、订阅重置、备份）由调度器统一管理，可 `DISABLE_SCHEDULE_TASKS` 关闭 |
 
 ---
 
 ## 🚀 安装指南
 
-### 两种安装方式一览
+CBoard 提供 **三种部署方式**，按环境选择：
 
-| 项目 | 方式一：无宝塔（纯 VPS） | 方式二：有宝塔面板 |
-|------|--------------------------|---------------------|
-| **适用场景** | 新 VPS、未安装宝塔的服务器 | 已安装宝塔面板的服务器 |
-| **安装脚本** | `install-vps.sh` | `install.sh` |
-| **项目目录** | 默认 `/opt/cboard`（可自定义） | 宝塔网站根目录，如 `/www/wwwroot/你的域名` |
-| **环境准备** | 脚本自动安装 Nginx、Go、Node.js、Certbot | 需先在宝塔「添加站点」，代码放入该站点目录 |
-| **一键程度** | 一条命令下载脚本并运行，按提示输入即可 | 先创建站点 → 放入代码 → 运行脚本 → 选菜单 1 |
-
-**如何选择：**
-
-- **没有宝塔**：用 **方式一**。SSH 登录 VPS 后执行一条命令即可开始安装，脚本会自动装好所有依赖并部署。
-- **已有宝塔**：用 **方式二**。在宝塔里先为域名添加一个站点，把代码放到该站点目录，再在目录里运行 `install.sh`，选择「一键全自动部署」。
-
-下文分别说明两种方式的**前置条件**、**安装步骤**和**安装后管理**，结构一致，便于对照。
+| 方式 | 适用场景 | 安装工具 | 难度 |
+|------|----------|----------|------|
+| 🐳 **Docker** | 任意 Linux 服务器（推荐生产使用） | `docker compose up -d` | ⭐ |
+| 🖥️ **无宝塔 VPS** | 纯 VPS、未装宝塔 | `install-vps.sh` 一键脚本 | ⭐⭐ |
+| 🧱 **宝塔面板** | 已安装宝塔面板 | `install.sh` + 面板建站 | ⭐⭐ |
 
 ---
 
-### 方式一：无宝塔（纯 VPS）— 使用 install-vps.sh
+### 🐳 方式一：Docker 部署（推荐）
 
-**适用**：Ubuntu / Debian / CentOS，未安装宝塔。脚本会自动安装 Nginx、Go、Node.js、Certbot 并完成部署。
+Docker 部署是**最干净、最可复现**的方式：一条命令构建并启动，数据通过卷持久化，升级只需重新构建镜像。
+
+#### ① 前置条件
+
+| 项 | 要求 |
+|----|------|
+| Docker | 20.10+ |
+| Docker Compose | v2（`docker compose` 子命令） |
+| 操作系统 | 任意支持 Docker 的 Linux 发行版 |
+| 端口 | 8000（应用端口）需放行 |
+
+```bash
+# 验证环境
+docker --version
+docker compose version
+```
+
+#### ② 克隆代码
+
+```bash
+git clone https://github.com/moneyfly1/myweb.git cboard
+cd cboard
+```
+
+#### ③ 配置 .env（关键！）
+
+```bash
+cp .env .env  # 项目已自带 .env，直接编辑即可
+vim .env
+```
+
+**必须修改的两个变量：**
+
+```env
+# ⚠️ 生产环境必须修改！JWT 签名密钥，建议 32 位以上随机字符串
+SECRET_KEY=请替换为一段足够长的随机字符串（例如 openssl rand -hex 32）
+
+# 数据库连接（Docker 默认 SQLite，路径相对于容器内 /root/）
+DATABASE_URL=sqlite:///./cboard.db
+```
+
+> 💡 生成强随机密钥：`openssl rand -hex 32`
+
+**推荐同时设置管理员固定密码**（首次启动自动创建管理员时使用，避免随机密码）：
+
+```env
+ADMIN_PASSWORD=你的强密码（至少 6 位）
+# ADMIN_USERNAME=admin       # 可选，覆盖默认用户名
+# ADMIN_EMAIL=admin@example.com  # 可选，覆盖默认邮箱
+```
+
+其他常用配置（按需修改）：
+
+```env
+HOST=0.0.0.0          # 监听地址，Docker 内必须为 0.0.0.0
+PORT=8000             # 端口，与 docker-compose.yml 映射保持一致
+DEBUG=false           # 生产环境关闭调试模式
+BACKEND_CORS_ORIGINS=https://yourdomain.com,http://localhost:5173  # CORS 白名单
+# SMTP_HOST=smtp.qq.com        # 邮件服务（找回密码、通知等需要）
+# SMTP_PORT=587
+# SMTP_USERNAME=your-email@qq.com
+# SMTP_PASSWORD=your-smtp-password
+```
+
+#### ④ 启动服务
+
+```bash
+docker compose up -d --build
+```
+
+首次启动会执行两阶段构建（见下方「Docker 镜像构建说明」），耗时约 1-5 分钟。
+
+验证启动状态：
+
+```bash
+docker compose ps          # 查看容器状态（应为 Up）
+docker compose logs -f app # 查看启动日志
+```
+
+看到以下日志即启动成功：
+
+```
+服务器启动在 0.0.0.0:8000
+管理员账号已自动创建 / 管理员账号已就绪
+```
+
+#### ⑤ 创建管理员
+
+**方式 A：环境变量自动创建（推荐）**
+
+首次启动前在 `.env` 中设置 `ADMIN_PASSWORD`（见第 ③ 步）。容器首次启动检测到全新数据库时，会自动以该密码创建管理员（用户名默认 `admin`）。若未设置，系统生成**随机密码**并打印在启动日志中：
+
+```bash
+docker compose logs app | grep "初始密码"
+```
+
+**方式 B：宿主机运行管理脚本**
+
+数据库文件通过卷挂载在宿主机（`./cboard.db`），可在宿主机项目目录直接运行官方管理脚本：
+
+```bash
+# 创建 / 重置管理员密码（宿主机需安装 Go 1.21+）
+go run scripts/admin_tool.go "你的新密码"
+
+# 通过环境变量指定账号信息
+export ADMIN_USERNAME="admin"
+export ADMIN_EMAIL="admin@your-domain.com"
+export ADMIN_PASSWORD="YourStrongPassword123!"
+go run scripts/admin_tool.go
+```
+
+**方式 C：进入容器查看 / 操作**
+
+```bash
+# 进入容器
+docker compose exec app sh
+
+# 查看当前管理员状态（容器内无 Go 工具链，主要用于排查日志与文件）
+ls -la /root/          # 确认 cboard.db 与 uploads 已挂载
+```
+
+> 说明：运行镜像为精简 Alpine，不包含 Go 工具链，`create_admin` 类命令请使用宿主机脚本（方式 B）或环境变量（方式 A），二者操作的是同一个挂载出来的 `cboard.db`。
+
+#### ⑥ 访问系统
+
+| 入口 | 地址 |
+|------|------|
+| 用户前台 | `http://服务器IP:8000` |
+| 管理后台 | `http://服务器IP:8000/admin/login` |
+| 健康检查 | `http://服务器IP:8000/health` |
+
+> 生产环境建议前置 Nginx / Caddy 反向代理并配置 HTTPS（`80/443` 对外，`8000` 仅内网监听）。
+
+#### 📦 数据持久化说明
+
+Docker 部署的数据**全部保存在宿主机挂载目录**中，删除 / 重建容器不影响数据：
+
+| 卷挂载 | 宿主机路径 | 容器内路径 | 内容 |
+|--------|-----------|-----------|------|
+| SQLite 数据库 | `./cboard.db` | `/root/cboard.db` | 全部业务数据（用户、订阅、订单、节点等） |
+| 上传目录 | `./uploads` | `/root/uploads` | 头像、附件、工单附件、备份文件、日志 |
+
+**备份时只需要复制这两个文件 / 目录：**
+
+```bash
+cp cboard.db /backup/cboard-$(date +%F).db
+cp -r uploads /backup/uploads-$(date +%F)
+```
+
+#### 🐳 Docker 镜像构建说明（Dockerfile）
+
+```dockerfile
+# 构建阶段
+FROM golang:1.24-alpine AS builder
+WORKDIR /app
+# cgo 依赖（mattn/go-sqlite3 需要 gcc 与 musl 头文件）
+RUN apk add --no-cache gcc musl-dev
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+# SQLite 驱动为 cgo 实现，必须 CGO_ENABLED=1
+RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o cboard-go cmd/server/main.go
+
+# 运行阶段
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates tzdata
+ENV TZ=Asia/Shanghai
+WORKDIR /root/
+COPY --from=builder /app/cboard-go .
+EXPOSE 8000
+CMD ["./cboard-go"]
+```
+
+**设计要点：**
+
+- 🏗️ **两阶段构建**：builder 阶段编译（含 gcc/musl-dev 以满足 SQLite cgo 驱动），运行阶段只拷贝二进制，镜像体积最小化；
+- ⏰ **时区**：运行镜像预设 `TZ=Asia/Shanghai`，保证日志与业务时间正确；
+- 🔐 **证书**：安装 `ca-certificates`，保证 HTTPS 出站（SMTP、支付回调、GitHub 备份）正常；
+- 🗜️ **裁剪**：`-trimpath -ldflags="-s -w"` 去除调试信息，进一步减小体积。
+
+#### 🗄️ 可选：使用 MySQL
+
+默认使用 SQLite（零配置、单文件）。高并发生产环境可切换 MySQL：
+
+**① 编辑 `docker-compose.yml`，取消 MySQL 服务注释：**
+
+```yaml
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=mysql://cboard_user:cboard_password@mysql:3306/cboard_db?charset=utf8mb4&parseTime=True&loc=Local
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=false
+    volumes:
+      - ./cboard.db:/root/cboard.db
+      - ./uploads:/root/uploads
+    depends_on:
+      - mysql
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpassword
+      - MYSQL_DATABASE=cboard_db
+      - MYSQL_USER=cboard_user
+      - MYSQL_PASSWORD=cboard_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+
+volumes:
+  mysql_data:
+```
+
+**② 修改 `DATABASE_URL` 为 MySQL 连接串：**
+
+```env
+DATABASE_URL=mysql://cboard_user:cboard_password@mysql:3306/cboard_db?charset=utf8mb4&parseTime=True&loc=Local
+```
+
+> 连接串格式：`mysql://用户名:密码@主机:3306/库名?charset=utf8mb4&parseTime=True&loc=Local`
+> 容器间通信使用服务名 `mysql`（compose 内部网络），宿主机访问用 `127.0.0.1:3306`。
+
+**③ 重启：**
+
+```bash
+docker compose up -d --build
+```
+
+**💡 从 SQLite 迁移到 MySQL：** 项目提供官方迁移脚本（宿主机 Go 环境）：
+
+```bash
+go run ./cmd/migrate -sqlite ./cboard.db -mysql "cboard_user:cboard_password@tcp(127.0.0.1:3306)/cboard_db?charset=utf8mb4&parseTime=True&loc=Local"
+```
+
+> 迁移脚本**只读源库（SQLite）**、只写目标库（MySQL），迁移前请先备份 SQLite 文件。
+
+#### 🔧 Docker 常见问题
+
+| 问题 | 解决方案 |
+|------|----------|
+| **端口被占用**（`bind: address already in use`） | ① `lsof -i :8000` 找到占用进程；② 杀掉进程或修改 `docker-compose.yml` 的映射端口（如 `"8001:8000"`） |
+| **容器内文件权限问题**（数据库只读 / 上传失败） | ① 宿主机执行 `chmod -R 755 cboard.db uploads`；② 检查挂载目录属主，必要时 `chown -R 1000:1000`（Alpine 默认非 root 用户） |
+| **时区不正确** | 运行镜像已内置 `TZ=Asia/Shanghai`；如自定义 Dockerfile，需安装 `tzdata` 并设置 `ENV TZ=Asia/Shanghai` |
+| **数据库被"重置"了（数据消失）** | 检查启动目录与 `DATABASE_URL`：SQLite 相对路径基于容器工作目录 `/root/`，确认卷挂载路径与 `DATABASE_URL` 一致；启动日志中的「⚠️ 即将创建全新数据库」告警即为信号 |
+| **构建缓慢 / 拉取依赖失败** | 配置 Go 代理：构建命令前加 `export GOPROXY=https://goproxy.cn,direct`，或修改 Dockerfile 中 `go mod download` 前添加该环境变量 |
+| **后端起不来，日志报 Redis 错误** | 无需处理——Redis 连不上会自动禁用缓存并降级运行，功能不受影响 |
+| **想改 .env 后生效** | 修改宿主机 `.env` 后执行 `docker compose up -d`（会重新读取环境变量并重建容器） |
+
+---
+
+### 🖥️ 方式二：无宝塔（纯 VPS）一键部署
+
+**适用**：Ubuntu / Debian / CentOS，未安装宝塔。脚本自动安装 Nginx、Go、Node.js、Certbot 并完成全流程部署。
 
 #### 前置条件
 
@@ -119,634 +619,344 @@
 |----|------|
 | 系统 | Ubuntu 18.04+ / Debian 10+ / CentOS 7+ |
 | 配置 | 至少 1 核 CPU、512 MB 内存、10 GB 磁盘 |
-| 域名 | 已绑定且 DNS 已解析到本机 IP |
+| 域名 | 已绑定且 DNS 解析到本机 IP |
 | 端口 | 80、443 已开放 |
 
 #### 安装步骤
 
-**1. 下载并运行脚本（需 root）**
-
 ```bash
+# 1. 下载并运行脚本（需 root）
 curl -sL https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh -o install-vps.sh
 sudo bash install-vps.sh
+
+# 2. 按提示输入域名、项目目录（默认 /opt/cboard）、管理员信息
+# 3. 脚本自动完成：装依赖 → 拉代码 → 装 Go/Node → 编译后端/构建前端
+#    → 生成 .env → 配 Nginx → 申请 SSL → 创建 systemd 服务并启动
 ```
 
-**2. 按提示输入**
-
-- **域名**：如 `example.com`（需已解析）
-- **项目目录**：直接回车即用默认 `/opt/cboard`，或填自定义路径
-- **管理员用户名 / 邮箱 / 密码**：按需填写（邮箱必填）
-
-**3. 自动执行内容**
-
-脚本会：安装依赖 → 从 GitHub 拉取代码（若失败见下）→ 安装 Go、Node.js → 编译后端、构建前端 → 生成 `.env` → 配置 Nginx、申请 SSL → 创建 systemd 服务并启动。
-
-**4. 验证**
+#### 验证
 
 - 前端：`https://你的域名`
 - 管理后台：`https://你的域名/admin/login`
 - 健康检查：`https://你的域名/health`
 
-**国内网络 GitHub 克隆失败时**：先手动把代码放到安装目录（如 `/opt/cboard`），再重新运行脚本，在「是否删除并重新下载」时选 **n**。详见：[VPS 部署教程 - 克隆失败时如何继续](./docs/VPS部署教程-无宝塔.md#克隆失败时如何继续代码下载失败)。
+#### 安装后管理
 
-#### 安装后管理（无宝塔）
+```bash
+systemctl start/stop/restart/status cboard   # 服务管理
+journalctl -u cboard -f                       # 实时日志
+tail -f /opt/cboard/server.log                # 应用日志
+# 修改配置：编辑 /opt/cboard/.env 后 systemctl restart cboard
+```
 
-- **项目目录**：默认 `/opt/cboard`（若安装时改过，请替换为实际路径）
-- **服务**：`systemctl start/stop/restart/status cboard`
-- **日志**：`journalctl -u cboard -f` 或 `tail -f /opt/cboard/server.log`
-- **配置**：编辑 `/opt/cboard/.env` 后执行 `systemctl restart cboard`
-
-更多故障排除见 [安装问题排查指南](./docs/故障排查/安装问题排查指南.md)，或 [VPS 部署教程（无宝塔）](./docs/VPS部署教程-无宝塔.md)。
+> ⚠️ 国内网络 GitHub 克隆失败时：先把代码手动放入安装目录（如 `/opt/cboard`），重新运行脚本并在「是否删除并重新下载」时选 **n**。
 
 ---
 
-### 方式二：有宝塔面板 — 使用 install.sh
+### 🧱 方式三：宝塔面板部署
 
-**适用**：已安装宝塔的服务器。先在宝塔中为域名「添加站点」，在站点根目录放入代码，再运行 `install.sh` 完成编译与 Nginx 配置。
-
-#### 前置条件
-
-| 项 | 要求 |
-|----|------|
-| 宝塔 | 已安装宝塔面板（建议 7.0+） |
-| 系统 | Ubuntu 18.04+ / Debian 10+ / CentOS 7+ |
-| 配置 | 至少 1 核 CPU、512 MB 内存、10 GB 磁盘 |
-| 域名 | 已在宝塔中添加站点并绑定 |
+**适用**：已安装宝塔面板的服务器，先建站再跑脚本。
 
 #### 安装步骤
 
-**1. 在宝塔中创建网站**
+1. **宝塔建站**：登录宝塔 → 网站 → 添加站点 → 填写域名，根目录如 `/www/wwwroot/example.com`（PHP 选纯静态即可，无需建数据库）；
+2. **放入代码**（任选其一）：
+   ```bash
+   # SSH 方式
+   cd /www/wwwroot/example.com && rm -f index.html
+   git clone https://github.com/moneyfly1/myweb.git .
+   ```
+   或使用宝塔文件管理器 / 本地上传（SCP）；
+3. **运行安装脚本**：
+   ```bash
+   cd /www/wwwroot/example.com
+   chmod +x install.sh
+   sudo ./install.sh
+   ```
+4. 按提示输入项目目录、域名、管理员用户名/邮箱/密码，首次安装选菜单 **1（一键全自动部署）**；
+5. 脚本自动：装 Go/Node → 编译后端/构建前端 → 配置 Nginx 反代 → 申请 SSL → 创建 systemd 服务并启动。
 
-- 登录宝塔 → **网站** → **添加站点**
-- 填写域名（如 `example.com`），根目录一般为 `/www/wwwroot/example.com`
-- 不需创建 FTP/数据库，PHP 选纯静态或任意均可
-- 记下**网站根目录**，后续代码放在此目录
+#### 安装后管理
 
-**2. 将代码放入网站目录**
-
-任选一种方式：
-
-- **SSH**：`cd /www/wwwroot/example.com` → `rm -f index.html` → `git clone https://github.com/moneyfly1/myweb.git .`
-- **宝塔文件管理器**：进入该目录，终端中执行 `git clone https://github.com/moneyfly1/myweb.git .`
-- **本地上传**：用 SCP 等将项目文件上传到该目录
-
-确认目录内有 `install.sh`、`go.mod`、`frontend` 等。
-
-**3. 运行安装脚本**
-
-```bash
-cd /www/wwwroot/example.com   # 替换为你的站点目录
-chmod +x install.sh
-sudo ./install.sh
-```
-
-**4. 按提示输入**
-
-- 项目目录：通常直接回车（使用当前目录）
-- 域名、管理员用户名、邮箱、密码：按需填写
-
-**5. 选择菜单选项**
-
-首次安装选 **1（一键全自动部署）**。脚本会：安装/检测 Go、Node.js → 编译后端、构建前端 → 配置 Nginx 反代 → 申请 SSL → 创建 systemd 服务并启动。
-
-**6. 验证**
-
-- 前端：`https://你的域名`
-- 管理后台：`https://你的域名/admin/login`
-- 健康检查：`https://你的域名/health`
-
-#### 安装后管理（宝塔）
-
-- **项目目录**：即站点根目录，如 `/www/wwwroot/example.com`
-- **服务**：`systemctl start/stop/restart/status cboard`，或在项目目录运行 `sudo ./install.sh` 通过菜单选择重启/查看状态/日志等
-- **Nginx**：宝塔 → **网站** → 对应站点 → **设置** → **配置文件**（脚本已写入反代，一般无需改）
-- **防火墙**：宝塔 **安全** 中放行 80、443 即可
-
-更多问题见 [安装问题排查指南](./docs/故障排查/安装问题排查指南.md)。
-
----
-
-### 安装方式对照小结
-
-| 操作 | 方式一（无宝塔） | 方式二（宝塔） |
-|------|------------------|----------------|
-| 项目目录 | `/opt/cboard`（默认） | `/www/wwwroot/你的域名` |
-| 首次安装 | `curl ... \| sudo bash` 运行 `install-vps.sh` | 宝塔建站 → 放代码 → `sudo ./install.sh` 选 1 |
-| 重启服务 | `systemctl restart cboard` | 同上，或 `./install.sh` 选 8 |
-| 查看日志 | `journalctl -u cboard -f` 或 `tail -f 项目目录/server.log` | 同上 |
-| 修改配置 | 编辑 `项目目录/.env` 后 `systemctl restart cboard` | 同上 |
+| 操作 | 方法 |
+|------|------|
+| 重启服务 | `systemctl restart cboard` 或项目目录 `sudo ./install.sh` 选 8 |
+| 查看日志 | `journalctl -u cboard -f` 或 `tail -f 项目目录/server.log` |
+| Nginx | 宝塔 → 网站 → 站点 → 设置 → 配置文件（脚本已写入反代） |
+| 防火墙 | 宝塔「安全」中放行 80、443 |
+| 创建/重置管理员 | `sudo ./install.sh` 选 2 |
 
 ---
 
 ## 👤 管理员账户管理
 
-以下命令需在**项目目录**下执行。项目目录按安装方式区分：
-- **方式一（无宝塔）**：默认 `/opt/cboard`
-- **方式二（宝塔）**：宝塔站点根目录，如 `/www/wwwroot/example.com`
-
 ### 创建管理员账户
 
-管理员账户可以在安装过程中创建，也可以后续单独创建。
+**系统首次启动自动创建**（三种部署方式通用）：
 
-#### 方法一：使用安装脚本（仅宝塔）
+- 全新数据库启动时自动创建管理员（默认用户名 `admin`、邮箱 `admin@example.com`）；
+- 若 `.env` 设置了 `ADMIN_PASSWORD`：使用该固定密码创建（推荐，可预测）；
+- 若未设置：生成 **16 位随机密码**并打印在启动日志 `server.log` 的「初始密码」中，**仅显示一次**，请立即保存并登录修改。
 
-在**宝塔**安装时，进入项目目录后运行 `sudo ./install.sh`，选择 **2（创建/重置管理员账号）**，按提示输入用户名、邮箱、密码即可。无宝塔安装没有此菜单，用下面的方法二。
-
-#### 方法二：使用 Go 脚本（通用）
-
-在项目目录下执行 `go run scripts/admin_tool.go` 即可。支持两种用法：
-
-- **直接运行**：不设环境变量时使用默认值（用户名 `admin`、邮箱 `admin@your-domain.com`、密码 `admin123`），或按脚本提示输入。
-- **环境变量**：生产环境建议先设置再运行，避免弱密码：
-  ```bash
-  export ADMIN_USERNAME="admin"
-  export ADMIN_EMAIL="admin@your-domain.com"
-  export ADMIN_PASSWORD="YourStrongPassword123!"
-  go run scripts/admin_tool.go
-  ```
-  若管理员已存在，脚本会更新该账户信息。
-
-### 修改管理员密码
-
-如果忘记管理员密码，可以通过以下方式重置：
+**手动创建 / 重置（宿主机 Go 环境）：**
 
 ```bash
-# 进入项目目录
-cd /www/wwwroot/example.com
+cd /项目目录
+go run scripts/admin_tool.go                # 交互式创建（默认 admin/admin123，生产勿用）
+go run scripts/admin_tool.go "新密码"        # 直接重置管理员密码
 
-# 运行密码修改脚本（替换为您的实际密码）
-go run scripts/admin_tool.go YourNewPassword123!
-
-# 示例
-go run scripts/admin_tool.go Sikeming001@
+# 生产推荐：环境变量方式
+export ADMIN_USERNAME="admin"
+export ADMIN_EMAIL="admin@your-domain.com"
+export ADMIN_PASSWORD="YourStrongPassword123!"
+go run scripts/admin_tool.go
 ```
 
-**说明**：
-- 密码长度至少 6 位
-- 脚本会自动查找管理员账户（用户名或邮箱为 `admin` 或配置的邮箱）
-- 如果找不到管理员账户，请先创建账户
+> 若管理员已存在，脚本会更新该账户信息；密码长度至少 6 位。
 
-### 升级前数据库预检（重要：升级不再"赌"）
+### 让管理员密码"固定不变"（推荐）
+
+在 `.env` 中设置环境变量，**重新部署 / 换数据库都会使用这个密码**，不再随机：
+
+```env
+ADMIN_PASSWORD=你的强密码
+# ADMIN_USERNAME=admin
+# ADMIN_EMAIL=admin@example.com
+```
+
+> 注意：`ADMIN_PASSWORD` 在管理员已存在时每次启动都会校验并重置为该密码，保证固定密码始终可用；同时确保管理员账户始终处于激活 / 已验证状态（被锁定重启后也能登录）。
+
+### 解锁被锁定的账户
+
+账户因多次登录失败被锁定（或 IP 被限流）时：
+
+```bash
+# 解锁管理员（用户名或邮箱）
+go run scripts/unlock_user.go admin
+go run scripts/unlock_user.go admin@your-domain.com
+
+# 解锁普通用户
+go run scripts/unlock_user.go user@your-domain.com
+```
+
+解锁操作会：清除所有登录失败记录、设置账户为激活状态（`IsActive=true`）、设置账户为已验证状态（`IsVerified=true`）。
+
+> 若仍无法登录，可能是 **IP 被速率限制器锁定**（基于 IP，锁定 15 分钟）：等待 15 分钟、更换 IP（VPN / 移动网络）、或重启服务器清空内存中的限流记录。
+
+### 升级前数据库预检（升级不再"赌"）
 
 担心旧数据库与新代码不匹配导致升级失败？升级前先用**只读预检工具**检查数据库兼容性（不修改任何数据）：
 
 ```bash
 # 1. 先复制一份生产数据库作为副本（切勿直接指向生产库）
-cp /www/wwwroot/example.com/cboard.db /root/preflight.db
+cp /项目目录/cboard.db /root/preflight.db
 
 # 2. 运行预检（指向副本，只读检查）
-cd /www/wwwroot/example.com
+cd /项目目录
 go run ./scripts/db_preflight /root/preflight.db
 ```
 
-输出会逐项列出：核心表是否齐全、金额单位是否需要分→元迁移（含条数与换算预览）、
-是否有重复邀请关系、旧版节点表是否将重建、缺失列等，并给出结论：
-**✅ 可直接升级 / ⚠️ 可升级（升级时自动处理）/ ❌ 有阻塞问题**。
+输出会逐项列出：核心表是否齐全、金额单位是否需要分→元迁移（含条数与换算预览）、是否有重复邀请关系、旧版节点表是否将重建、缺失列等，并给出结论：
 
-预检通过后建议再在副本上"试跑"新版本一次确认，再正式执行 install.sh 选项 11 升级
-（升级脚本会自动备份数据库到 uploads/backups/upgrade_pre_<时间戳>.db，失败可回滚）。
+- ✅ **可直接升级**
+- ⚠️ **可升级（升级时自动处理）**
+- ❌ **有阻塞问题**
 
-### 让管理员密码"固定不变"（推荐）
+预检通过后建议先在副本上"试跑"新版本确认，再正式升级（升级脚本会自动备份数据库到 `uploads/backups/upgrade_pre_<时间戳>.db`，失败可回滚）。
 
-系统首次启动遇到**全新数据库**时会自动创建 admin，默认生成**随机密码**（打印在启动日志 `server.log` 的"初始密码"中，仅显示一次）。
-想要部署时可预测的固定密码，在 `.env` 中设置环境变量即可（重新部署/换数据库都会用这个密码，不再随机）：
+### 管理员权限一览
 
-```bash
-ADMIN_PASSWORD=你的强密码
-# 可选覆盖管理员用户名/邮箱
-# ADMIN_USERNAME=admin
-# ADMIN_EMAIL=admin@example.com
-```
-
-> 注意：`ADMIN_PASSWORD` 只在**首次创建管理员**时生效；已存在的管理员密码不会被覆盖（如需改密请用上方 `admin_tool` 命令）。
-
-### 解锁用户账户
-
-如果账户因多次登录失败被锁定，可以通过以下方式解锁：
-
-```bash
-# 进入项目目录
-cd /www/wwwroot/example.com
-
-# 解锁管理员账户（使用用户名）
-go run scripts/unlock_user.go admin
-
-# 或使用邮箱解锁
-go run scripts/unlock_user.go admin@your-domain.com
-
-# 解锁普通用户账户
-go run scripts/unlock_user.go user@your-domain.com
-```
-
-**说明**：
-- 脚本支持使用用户名或邮箱解锁
-- 可以解锁管理员账户和普通用户账户
-- 解锁操作会：
-  - 清除所有登录失败记录
-  - 设置账户为激活状态（`IsActive=true`）
-  - 设置账户为已验证状态（`IsVerified=true`）
-
-**注意事项**：
-- 如果仍然无法登录，可能是 IP 地址被速率限制器锁定
-- 速率限制器基于 IP 地址，锁定时间为 15 分钟
-- 解决方案：
-  - 等待 15 分钟后重试
-  - 更换 IP 地址（使用 VPN 或移动网络）
-  - 重启服务器以清除内存中的速率限制记录
-
-### 管理员登录
-
-1. **访问管理员登录页面**
-   - 地址：`https://yourdomain.com/admin/login`
-   - 或：`https://yourdomain.com/#/admin/login`
-
-2. **输入登录凭据**
-   - **用户名**：您创建的管理员用户名（默认：`admin`）
-   - **密码**：您设置的管理员密码
-   - 支持使用用户名或邮箱登录
-
-3. **登录后功能**
-   - 进入管理员后台
-   - 可以访问所有管理功能
-
-### 管理员权限
-
-管理员拥有以下完整权限：
-
-- **用户管理**：创建、编辑、删除、查看用户，批量操作
-- **订阅管理**：创建、编辑、删除订阅，批量操作，到期提醒
-- **订单管理**：查看、处理订单，订单导出
-- **套餐管理**：创建、编辑、删除套餐，定价管理
-- **节点管理**：添加、编辑、删除节点，批量导入，节点测试
-- **支付配置**：配置支付宝、微信支付、易支付、Apple Pay 等
-- **系统配置**：系统设置、通知设置、邮件配置
-- **统计和监控**：数据统计、地区分析、用户分析
-- **工单管理**：处理用户工单，回复工单
-- **设备管理**：查看用户设备，管理设备限制
-- **邀请码管理**：生成、管理邀请码
-- **日志管理**：查看系统日志、登录历史、操作日志
-
-### 常见问题
-
-**Q: 忘记管理员密码怎么办？**
-A: 使用 `go run scripts/admin_tool.go <新密码>` 重置密码。
-
-**Q: 管理员账户被锁定了怎么办？**
-A: 使用 `go run scripts/unlock_user.go admin` 解锁账户。
-
-**Q: 如何创建多个管理员账户？**
-A: 目前系统只支持一个管理员账户。如果需要多个管理员，可以创建普通用户并赋予相应权限（需要修改代码）。
-
-**Q: 安装时没有创建管理员账户怎么办？**
-A: 运行 `go run scripts/admin_tool.go` 创建管理员账户。
-
-**Q: 如何验证管理员账户是否创建成功？**
-A: 尝试登录管理员后台，或检查数据库中的 `users` 表，查看 `is_admin` 字段为 `true` 的记录。
-
----
-
-## 📊 功能列表
-
-### ✅ 核心功能
-
-#### 用户管理
-- [x] 用户注册和登录
-- [x] JWT 认证
-- [x] 邮箱密码重置
-- [x] 邮箱验证
-- [x] 用户资料管理
-- [x] 登录历史记录
-- [x] 用户活动日志
-- [x] 用户等级系统（含折扣）
-- [x] 账户安全（支持 2FA）
-
-#### 订阅管理
-- [x] 订阅创建和续费
-- [x] 设备数量限制管理
-- [x] 到期时间控制
-- [x] 订阅重置
-- [x] 多种订阅类型
-- [x] 订阅链接生成（Clash/V2Ray 格式）
-- [x] Clash 配置模板系统（16 个代理组，3376 条规则）
-- [x] 设备管理（添加、删除、查看）
-- [x] 在线设备追踪
-- [x] 设备指纹识别和 UA 检测
-
-#### 订单管理
-- [x] 订单创建和处理
-- [x] 套餐订单
-- [x] 设备升级订单
-- [x] 订单取消
-- [x] 订单状态追踪
-- [x] 订单历史
-- [x] 订单导出（CSV/Excel）
-- [x] 批量操作
-
-#### 支付集成
-- [x] 支付宝集成
-- [x] 微信支付集成
-- [x] 易支付集成（支持支付宝、微信、QQ钱包）
-- [x] Apple Pay 集成
-- [x] 余额支付
-- [x] 混合支付（余额 + 第三方）
-- [x] 支付回调处理
-- [x] 支付交易追踪
-- [x] 充值管理
-
-#### 套餐管理
-- [x] 套餐 CRUD 操作
-- [x] 套餐定价
-- [x] 套餐启用/停用
-- [x] 套餐功能配置
-- [x] 套餐显示顺序
-
-#### 优惠券系统
-- [x] 优惠券创建和管理
-- [x] 折扣券（百分比）
-- [x] 固定金额券
-- [x] 优惠券代码验证
-- [x] 优惠券使用追踪
-- [x] 优惠券过期管理
-
-#### 邀请系统
-- [x] 邀请码生成
-- [x] 邀请关系追踪
-- [x] 邀请人奖励
-- [x] 被邀请人奖励
-- [x] 最低订单金额要求
-- [x] 仅新用户奖励
-- [x] 奖励自动分配
-
-#### 节点管理
-- [x] 节点采集（从订阅地址自动采集）
-- [x] 节点手动导入（链接导入、手动填写、Clash 配置导入）
-- [x] 节点 CRUD 操作
-- [x] 节点健康监控和自动检查
-- [x] 节点状态追踪（在线/离线/超时）
-- [x] 节点测速（单个/批量）
-- [x] 节点去重（基于 Type:Server:Port）
-- [x] 节点分组（按地区）
-- [x] 节点订阅集成
-
-#### 专线节点系统
-- [x] 专线节点创建（链接导入、手动填写）
-- [x] 专线节点编辑和删除
-- [x] 专线节点分配（单个/批量分配给用户）
-- [x] 专线节点取消分配
-- [x] 专线节点测速（单个/批量）
-- [x] 到期时间管理（独立到期时间或跟随用户订阅到期）
-- [x] 用户专属节点分配（支持仅专线节点或普通+专线节点）
-
-#### 设备管理
-- [x] 设备识别和指纹识别
-- [x] 设备数量限制执行
-- [x] 设备删除
-- [x] 设备信息追踪（UA、IP 等）
-- [x] 在线设备监控
-- [x] 批量设备操作
-
-#### 通知系统
-- [x] 邮件通知（SMTP 配置）
-- [x] Telegram Bot 通知（管理员通知）
-- [x] Bark iOS 推送通知（管理员通知）
-- [x] 客户邮件通知（订阅到期提醒、新用户注册、新订单等）
-- [x] 管理员通知（订单支付、用户注册、订阅重置、订阅到期等事件）
-
-#### 工单系统
-- [x] 工单创建
-- [x] 工单回复
-- [x] 工单状态管理
-- [x] 工单附件
-- [x] 工单分配
-- [x] 工单优先级
-
-#### 统计和监控
-- [x] 仪表盘统计
-- [x] 用户统计
-- [x] 订单统计
-- [x] 收入统计
-- [x] 订阅统计
-- [x] 系统日志
-- [x] 审计日志
-- [x] 实时监控
-
-#### 系统配置
-- [x] 系统设置管理（网站信息、Logo、域名、GeoIP 数据库）
-- [x] 支付配置（支付宝、微信支付、易支付、Apple Pay）
-- [x] 邮件配置（SMTP 服务器设置）
-- [x] 安全设置（登录失败限制、账户锁定、IP 白名单、会话超时）
-- [x] 注册设置（开放注册、邮箱验证、密码要求、邀请码、新用户默认订阅）
-- [x] 主题设置（默认主题、用户自定义权限、可用主题列表）
-- [x] 公告管理（登录公告弹窗）
-- [x] 节点健康检查设置（检查间隔、延迟阈值、测试超时、测速 URL）
-- [x] 备份设置（Gitee/GitHub 自动备份）
-
-#### 备份和恢复
-- [x] 数据库备份
-- [x] 配置备份
-- [x] 自动备份调度
-- [x] 备份文件管理
+- 👥 用户管理：创建 / 编辑 / 删除 / 禁用 / 批量操作 / 重置密码 / 登录为用户 / 发邮件
+- 🔗 订阅管理：CRUD / 批量 / 到期提醒
+- 🧾 订单管理：查看 / 处理 / 导出
+- 📦 套餐管理：CRUD / 定价
+- 🌍 节点管理：采集 / 导入 / 测速 / 健康监控 / 自建节点
+- 💳 支付配置：支付宝 / 微信 / 易支付 / 码支付 / Apple Pay / Stripe / PayPal / USDT
+- ⚙️ 系统配置：通用 / 注册 / 通知 / 公告 / 安全 / 主题 / 备份 / 协议过滤 / GeoIP
+- 📈 统计监控：数据统计 / 地区分析 / 用户分析
+- 🎫 工单管理：处理 / 回复 / 分配
+- 📱 设备管理：查看 / 限制管理
+- 🎁 邀请码管理：生成 / 管理
+- 📜 日志管理：系统日志 / 登录历史 / 操作日志
 
 ---
 
 ## ⚙️ 配置说明
 
-### 环境变量
+### 环境变量总表
 
-主配置文件：`.env`
+主配置文件：`.env`（Viper 加载，环境变量优先级更高）。
+
+| 变量 | 必填 | 默认值 | 说明 |
+|------|:----:|--------|------|
+| `HOST` | 否 | `127.0.0.1` | 监听地址；Docker 内必须为 `0.0.0.0` |
+| `PORT` | 否 | `8000` | 服务端口 |
+| `DEBUG` | 否 | `false` | 调试模式（生产必须 false） |
+| `DATABASE_URL` | 否 | `sqlite:///./cboard.db` | 数据库连接串：`sqlite:///./路径` 或 `mysql://user:pass@host:3306/db?charset=utf8mb4&parseTime=True&loc=Local` |
+| `SECRET_KEY` | **是** | 无 | **JWT 签名密钥，生产必须改为 32 位以上随机字符串** |
+| `BACKEND_CORS_ORIGINS` | 否 | localhost 列表 | CORS 白名单，逗号分隔，生产替换为你的域名 |
+| `PROJECT_NAME` | 否 | `CBoard Go` | 项目名称（邮件署名等） |
+| `VERSION` | 否 | `1.0.0` | 版本号 |
+| `API_V1_STR` | 否 | `/api/v1` | API 前缀 |
+| `ADMIN_PASSWORD` | 否 | 随机生成 | 管理员固定密码（首次创建 & 每次启动校验重置） |
+| `ADMIN_USERNAME` | 否 | `admin` | 默认管理员用户名 |
+| `ADMIN_EMAIL` | 否 | `admin@example.com` | 默认管理员邮箱 |
+| `SMTP_HOST` | 否 | 空 | SMTP 服务器地址（邮件功能需要） |
+| `SMTP_PORT` | 否 | `587` | SMTP 端口 |
+| `SMTP_USERNAME` | 否 | 空 | SMTP 账号 |
+| `SMTP_PASSWORD` | 否 | 空 | SMTP 密码 / 授权码 |
+| `SMTP_FROM_EMAIL` | 否 | 空 | 发件邮箱 |
+| `SMTP_FROM_NAME` | 否 | `CBoard Modern` | 发件人名称 |
+| `SMTP_ENCRYPTION` | 否 | `tls` | 加密方式（tls / none 等） |
+| `UPLOAD_DIR` | 否 | `uploads` | 上传目录（头像 / 附件 / 备份 / 日志） |
+| `MAX_FILE_SIZE` | 否 | `10485760` | 上传文件大小上限（字节，默认 10 MB） |
+| `DISABLE_SCHEDULE_TASKS` | 否 | `false` | 是否禁用定时任务 |
+| `TRUSTED_PROXIES` | 否 | 空 | 可信反向代理 IP 列表（保证真实客户端 IP） |
+| `GEOIP_DB_PATH` | 否 | `./GeoLite2-City.mmdb` | GeoIP 数据库路径（不存在时自动下载） |
+| `REDIS_ADDR` | 否 | 空 | Redis 地址（如 `localhost:6379`），不配则禁用缓存 |
+| `REDIS_PASSWORD` | 否 | 空 | Redis 密码（可选） |
+
+### Redis 可选配置
 
 ```env
-# 服务器配置
-HOST=127.0.0.1          # 只监听本地，通过 Nginx 反向代理
-PORT=8000               # 后端服务端口
-
-# 数据库配置（SQLite）
-DATABASE_URL=sqlite:///./cboard.db
-
-# JWT 配置（生产环境必须修改！）
-SECRET_KEY=your-secret-key-here-change-in-production-min-32-chars
-
-# CORS 配置（替换为您的域名）
-BACKEND_CORS_ORIGINS=https://yourdomain.com,http://yourdomain.com
-
-# 邮件配置（可选，请按实际 SMTP 服务填写）
-SMTP_HOST=
-SMTP_PORT=587
-SMTP_USERNAME=
-SMTP_PASSWORD=
-SMTP_FROM_EMAIL=
-
-# 调试模式
-DEBUG=false
+# 配置后大幅提升 GeoIP 查询等缓存性能；不配置则自动禁用缓存，功能不受影响
+REDIS_ADDR=localhost:6379
+# REDIS_PASSWORD=your_password_here
 ```
 
-### Nginx 配置
-
-| 方式 | 说明 |
-|------|------|
-| **方式二（宝塔）** | 安装脚本会自动写入站点 Nginx 配置；修改：宝塔 → **网站** → 对应站点 → **设置** → **配置文件** → 保存并重载。 |
-| **方式一（无宝塔）** | 脚本会生成 `/etc/nginx/sites-available/cboard`（CentOS 为 `/etc/nginx/conf.d/cboard.conf`）；修改后执行 `nginx -t` 与 `systemctl reload nginx`。 |
-
----
-
-## 🛠️ 管理脚本使用说明
-
-### 服务管理方式
-
-| 环境 | 推荐方式 | 说明 |
-|------|----------|------|
-| **宝塔** | 项目目录下 `sudo ./install.sh` | 通过菜单选 6/7/8/9 查看状态、日志、重启、停止；选 2 可创建/重置管理员 |
-| **无宝塔** | systemd | 未使用 install.sh，直接用 `systemctl start/stop/restart/status cboard` |
-
-以下 **systemd 命令两种部署方式均可使用**（无宝塔必用，宝塔也可用）：
+快速启动 Redis：
 
 ```bash
-# 启动服务
-systemctl start cboard
+docker run -d --name redis -p 6379:6379 redis:alpine
+```
 
-# 停止服务
-systemctl stop cboard
+### Nginx 反代参考
 
-# 重启服务
-systemctl restart cboard
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com;
+    # 生产请配置 443 + SSL
 
-# 查看状态
-systemctl status cboard
-
-# 查看日志
-journalctl -u cboard -f
-
-# 设置开机自启
-systemctl enable cboard
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # 如需要 SSE 实时日志：
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+    }
+}
 ```
 
 ---
 
-## 📝 数据库备份
+## 💾 数据库备份
 
-系统支持**自动备份数据库并上传到 GitHub 或 Gitee**。在管理员后台 **系统设置 → 备份设置** 中配置后，可按计划自动备份并推送到远程仓库。配置与使用请参考：
+### 自动备份（推荐）
 
-- [备份设置说明](./docs/配置/备份设置说明.md) — 自动备份、Gitee/GitHub 开关与测试
-- [GitHub 配置说明](./docs/配置/GitHub配置说明.md) — 备份到 GitHub 的详细步骤
-- [Gitee 配置说明](./docs/配置/Gitee配置说明.md) — 备份到 Gitee 的详细步骤
+系统支持**自动备份数据库并上传到 GitHub / Gitee**：
 
-管理员也可通过 **后台备份** 或接口 `POST /api/v1/admin/backup` 手动触发备份并上传。
+1. 管理后台 → **系统设置 → 备份设置**；
+2. 配置备份计划与仓库（GitHub / Gitee）；
+3. 系统按计划自动备份并推送远程仓库，实现异地容灾。
 
----
+相关文档：`docs/配置/备份设置说明.md`、`docs/配置/GitHub配置说明.md`、`docs/配置/Gitee配置说明.md`
 
-## ⚠️ 重要注意事项
+### 手动备份
 
-1. **首次设置**
-   - 安装后，立即更改默认管理员密码
-   - 更新 `.env` 文件中的 `SECRET_KEY`
-   - 配置邮件设置以支持密码重置和通知
+```bash
+# 方式一：后台触发（管理端操作）
+POST /api/v1/admin/backup
 
-2. **数据库**
-   - 默认使用 SQLite（无需安装）
-   - 高流量生产环境建议使用 MySQL 或 PostgreSQL
-   - 定期备份至关重要
+# 方式二：直接复制数据库文件（Docker / 非 Docker 通用）
+cp cboard.db cboard-$(date +%F).db
+tar czf backup-$(date +%F).tar.gz cboard.db uploads
+```
 
-3. **安全**
-   - 永远不要将 `.env` 文件提交到版本控制
-   - 所有账户使用强密码
-   - 生产环境启用 HTTPS
-   - 定期更新依赖
+### 升级保护
 
-4. **性能**
-   - 高流量场景建议使用 MySQL/PostgreSQL
-   - 为静态文件启用 Nginx 缓存
-   - 定期监控服务器资源
-
-5. **更新**
-   - 更新前始终备份数据库
-   - 先在测试环境测试更新
-   - 更新前查看更新日志
+- 升级前务必先备份（或使用 `scripts/db_preflight` 只读预检）；
+- 升级脚本会自动备份数据库到 `uploads/backups/upgrade_pre_<时间戳>.db`，失败可回滚。
 
 ---
 
-## 📚 文档
+## 🔧 故障排查
 
-### 快速开始与迁移
-| 文档 | 说明 |
+### 常见问题速查
+
+| 症状 | 可能原因 | 解决方案 |
+|------|----------|----------|
+| **服务无法启动** | 端口被占用 / 配置错误 | `lsof -i :8000` 查占用；检查 `.env` 语法与 `DATABASE_URL` 路径；查看日志 `journalctl -u cboard -f` 或 `docker compose logs app` |
+| **502 Bad Gateway** | 后端未启动 / 端口不匹配 | 确认 8000 端口进程存在；检查 Nginx `proxy_pass` 端口与 `.env` 的 `PORT` 一致 |
+| **数据库"数据消失"** | 启动目录 / `DATABASE_URL` 变化导致连到新库 | 启动日志出现「⚠️ 即将创建全新数据库」即为信号；核对路径与卷挂载；旧文件未被删除，找到后改回路径即可 |
+| **管理员无法登录** | 密码错误 / 账户被锁 / IP 被限流 | `go run scripts/admin_tool.go "新密码"` 重置；`go run scripts/unlock_user.go admin` 解锁；IP 限流等待 15 分钟 |
+| **邮件发送失败** | SMTP 配置错误 / 端口被墙 | 检查 SMTP_HOST/PORT/USERNAME/PASSWORD；QQ 邮箱需使用**授权码**而非登录密码；25 端口常被运营商屏蔽，改用 465/587 |
+| **GeoIP 功能未生效** | mmdb 文件缺失 | 系统会自动下载 `GeoLite2-City.mmdb`；手动下载：`https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb` |
+| **支付回调失败** | 回调地址错误 / CORS | 确认支付平台配置的回调 URL 指向 `/api/v1/payment/...` 回调端点；检查 DEBUG 日志 |
+| **订阅无法更新** | 客户端 UA 未知 / 订阅过期 | 检查节点订阅 URL 是否有效；UA 未知时返回通用格式；确认订阅未过期 |
+| **节点全部离线** | 心跳超时 / 自建节点脚本问题 | 自建节点心跳 30s/超时 3min；检查节点服务器 sing-box 进程与 `cboard-heartbeat` 服务 |
+| **Docker 端口冲突** | 8000 被占用 | 修改 `docker-compose.yml` 端口映射为 `"8001:8000"` |
+
+### 日志位置
+
+| 日志 | 路径 |
 |------|------|
-| [快速启动指南](./docs/migration/QUICK_START.md) | 新功能快速启动指南 |
-| [迁移指南](./docs/migration/MIGRATION_GUIDE.md) | 将新功能迁移到现有数据库 |
-| [生产环境就绪报告](./docs/reports/PRODUCTION_READY_REPORT.md) | 最新生产环境部署报告 |
+| 应用日志 | `项目目录/server.log` 或 `项目目录/uploads/logs/app.log` |
+| 服务日志 | `journalctl -u cboard -f`（非 Docker） |
+| 容器日志 | `docker compose logs -f app`（Docker） |
 
-### 部署与故障排查
+### 健康检查
 
-| 文档 | 说明 |
-|------|------|
-| [文档目录](./docs/README.md) | 完整文档索引（功能 + 配置 + 部署） |
-| [VPS 部署教程（无宝塔）](./docs/VPS部署教程-无宝塔.md) | 纯 VPS 一键部署步骤 |
-| [安装问题排查指南](./docs/故障排查/安装问题排查指南.md) | 常见安装与运行故障排查 |
-| [API 文档](./docs/API文档.md) | 接口说明（认证、用户、订阅、订单、支付、管理员等） |
-
-### 功能说明
-
-| 文档 | 说明 |
-|------|------|
-| [列表功能索引](./docs/功能/列表功能索引.md) | 所有列表功能索引与导航 |
-| [文档目录](./docs/README.md#中文) | 用户/订阅/订单/节点/工单/设备/登录历史/异常用户/数据分析等说明 |
-
-### 后台与配置说明
-
-#### 支付配置
-- [支付宝配置说明](./docs/配置/支付宝配置说明.md) - 支付宝开放平台与系统后台配置
-- [易支付配置指南](./docs/配置/易支付配置指南.md) - 易支付配置与使用
-
-#### 通知配置
-- [邮件服务器配置说明](./docs/配置/邮件服务器配置说明.md) - SMTP 邮件服务器配置
-- [Telegram 通知配置说明](./docs/配置/Telegram通知配置说明.md) - Telegram Bot 通知配置
-- [Bark 通知配置说明](./docs/配置/Bark通知配置说明.md) - Bark iOS 推送通知配置
-- [客户通知设置说明](./docs/配置/客户通知设置说明.md) - 客户邮件通知开关配置
-
-#### 系统设置
-- [基本设置说明](./docs/配置/基本设置说明.md) - 网站信息、Logo、域名、GeoIP 等
-- [注册设置说明](./docs/配置/注册设置说明.md) - 注册流程、密码要求、新用户默认订阅
-- [安全设置与限制说明](./docs/配置/安全设置与限制说明.md) - 登录失败限制、锁定、IP 白名单、解锁方法
-- [主题设置说明](./docs/配置/主题设置说明.md) - 默认主题、用户自定义权限、可用主题
-- [公告管理说明](./docs/配置/公告管理说明.md) - 登录公告弹窗配置
-
-#### 节点与备份
-- [采集地址配置说明](./docs/配置/采集地址配置说明.md) - 节点采集地址（订阅 URL）配置
-- [节点健康检查设置说明](./docs/配置/节点健康检查设置说明.md) - 节点自动检查间隔、延迟阈值等
-- [备份设置说明](./docs/配置/备份设置说明.md) - 自动备份、Gitee/GitHub 备份配置
-- [GitHub 配置说明](./docs/配置/GitHub配置说明.md) - 备份到 GitHub 的详细配置
-- [Gitee 配置说明](./docs/配置/Gitee配置说明.md) - 备份到 Gitee 的详细配置
-
----
-
-## 📞 技术支持
-
-如遇到问题：
-
-1. **查看日志**（项目目录：无宝塔一般为 `/opt/cboard`，宝塔一般为 `/www/wwwroot/你的域名`）：
-   - 应用日志：`项目目录/server.log` 或 `项目目录/uploads/logs/app.log`
-   - 服务日志：`journalctl -u cboard -f`
-
-2. **检查系统状态**：
-   - 系统资源：`htop` 或 `free -h`
-   - 健康检查：`curl http://127.0.0.1:8000/health`
-   - 服务状态：`systemctl status cboard`
-
-3. **常见问题与排查**：参见 [安装问题排查指南](./docs/故障排查/安装问题排查指南.md)（含服务无法启动、502、SSL、数据库权限、API 无法访问、管理员登录等）。
+```bash
+curl http://127.0.0.1:8000/health
+# 返回 OK 即服务正常
+```
 
 ---
 
 ## 📄 许可证
 
-本项目采用 MIT 许可证。
+本项目采用 **MIT 许可证**。
+
+```
+MIT License
+
+Copyright (c) 2024 CBoard
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ---
 
+## 🙏 致谢
+
+- [Gin](https://github.com/gin-gonic/gin) - 高性能 Web 框架
+- [GORM](https://gorm.io/) - Go ORM 库
+- [Vue 3](https://vuejs.org/) / [Element Plus](https://element-plus.org/) - 现代化前端
+- [sing-box](https://github.com/SagerNet/sing-box) - 自建节点核心代理
+- [GeoLite2](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) - 地理位置数据库
+
 ---
 
-## 🆕 最新更新
-
----
-
-**最后更新**: 2026-02-10  
-**版本**: v1.1.0  
-**状态**: ✅ 生产就绪
-
+**最后更新**：2025  
+**版本**：v1.x  
+**状态**：✅ 生产就绪
