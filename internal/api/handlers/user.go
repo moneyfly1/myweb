@@ -261,7 +261,8 @@ func GetUsers(c *gin.Context) {
 		switch st {
 		case "active":
 			query = query.Where("is_active = ?", true)
-		case "inactive":
+		case "inactive", "disabled":
+			// disabled 与 inactive 同语义：账号被禁用/未激活
 			query = query.Where("is_active = ?", false)
 		case "admin":
 			query = query.Where("is_admin = ?", true)

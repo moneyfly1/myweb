@@ -219,6 +219,13 @@ func (s *OrderService) DeleteOrders(orderIDs []uint) (int64, error) {
 			ids = append(ids, order.ID)
 		}
 
+		// 全部为已支付/已退款订单时无可删除项：直接返回成功，
+		// 避免空切片触发 GORM "WHERE conditions required" 500
+		if len(ids) == 0 {
+			deleted = 0
+			return nil
+		}
+
 		result := tx.Delete(&models.Order{}, ids)
 		if result.Error != nil {
 			return result.Error
