@@ -41,7 +41,6 @@ This directory contains docs for deployment, migration, API, features, configura
 
 | 文档 | 说明 |
 |------|------|
-| [安全修复计划](./安全/SECURITY_FIX_PLAN.md) | 安全修复实施计划 |
 | [GeoIP 升级说明](./地理位置/GEOIP_UPGRADE.md) | GeoIP 升级步骤与注意事项 |
 | [GeoIP 数据库说明](./地理位置/GEOIP_DATABASES.md) | 各 GeoIP 数据库选型与配置 |
 | [城市翻译说明](./地理位置/CITY_TRANSLATION.md) | 城市名称翻译映射说明 |
@@ -60,6 +59,7 @@ This directory contains docs for deployment, migration, API, features, configura
 | [订阅重置功能说明](./功能/订阅重置功能说明.md) | 用户重置订阅、管理员重置订阅、订阅延长 |
 | [节点管理功能说明](./功能/节点管理功能说明.md) | 节点采集、导入、管理 |
 | [节点手动导入说明](./功能/节点手动导入说明.md) | 节点链接导入、手动填写、Clash 配置导入 |
+| [自建节点管理说明](./功能/自建节点管理说明.md) | VPS 全自动部署 sing-box、远程管理、证书续期 |
 | [专线节点管理说明](./功能/专线节点管理说明.md) | 专线节点创建、分配、取消分配、删除、测速 |
 | [节点测速说明](./功能/节点测速说明.md) | 节点测速、批量测速、测速原理 |
 | [工单管理功能说明](./功能/工单管理功能说明.md) | 工单处理、回复、状态管理 |
@@ -94,6 +94,8 @@ This directory contains docs for deployment, migration, API, features, configura
 | [基本设置说明](./配置/基本设置说明.md) | 网站信息、Logo、域名、GeoIP 等 |
 | [注册设置说明](./配置/注册设置说明.md) | 注册流程、密码要求、新用户默认订阅 |
 | [安全设置与限制说明](./配置/安全设置与限制说明.md) | 登录失败限制、锁定、IP 白名单、解锁方法 |
+| [国际支付配置说明](./配置/国际支付配置说明.md) | Stripe / PayPal / USDT 国际支付配置 |
+| [协议过滤与客户端版本过滤说明](./配置/协议过滤与客户端版本过滤说明.md) | 客户端版本过滤 / 协议白名单互斥机制 |
 | [主题设置说明](./配置/主题设置说明.md) | 默认主题、用户自定义权限、可用主题 |
 | [公告管理说明](./配置/公告管理说明.md) | 登录公告弹窗配置 |
 
@@ -139,7 +141,6 @@ This directory contains docs for deployment, migration, API, features, configura
 | Document | Description |
 |----------|-------------|
 | [API Documentation](./接口/API文档.md) | API details for auth, users, subscriptions, orders and admin |
-| [Security Fix Plan](./安全/SECURITY_FIX_PLAN.md) | Security remediation plan |
 | [GeoIP Upgrade](./地理位置/GEOIP_UPGRADE.md) | GeoIP upgrade instructions |
 | [GeoIP Databases](./地理位置/GEOIP_DATABASES.md) | GeoIP database options and setup |
 
