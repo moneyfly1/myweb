@@ -416,6 +416,46 @@ func generatePaymentURL(db *gorm.DB, order *models.Order, paymentConfig *models.
 			return markPendingTransactionsFailed(err)
 		}
 		return url, nil
+	case "stripe":
+		service, err := payment.NewStripeService(paymentConfig)
+		if err != nil {
+			return markPendingTransactionsFailed(err)
+		}
+		email := ""
+		if order.UserID > 0 {
+			var user models.User
+			if err := db.First(&user, order.UserID).Error; err == nil {
+				email = user.Email
+			}
+		}
+		url, err := service.CreatePayment(order, amount, email)
+		if err != nil {
+			return markPendingTransactionsFailed(err)
+		}
+		return url, nil
+	case "paypal":
+		service, err := payment.NewPayPalService(paymentConfig)
+		if err != nil {
+			return markPendingTransactionsFailed(err)
+		}
+		url, err := service.CreatePayment(order, amount, "")
+		if err != nil {
+			return markPendingTransactionsFailed(err)
+		}
+		return url, nil
+	case "usdt":
+		// USDT：返回特殊标记，前端展示钱包地址二维码（无跳转 URL）
+		service, err := payment.NewUSDTService(paymentConfig)
+		if err != nil {
+			return markPendingTransactionsFailed(err)
+		}
+		info, err := service.CreatePayment(order, amount)
+		if err != nil {
+			return markPendingTransactionsFailed(err)
+		}
+		// 序列化为 JSON 放入 payment_url（前端识别 usdt: 前缀解析）
+		infoJSON, _ := json.Marshal(info)
+		return "usdt:" + string(infoJSON), nil
 	default:
 		if paymentConfig.PayType == "yipay" || strings.HasPrefix(paymentConfig.PayType, "yipay_") {
 			service, err := payment.NewYipayService(paymentConfig)
