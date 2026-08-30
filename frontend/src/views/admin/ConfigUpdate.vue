@@ -505,19 +505,20 @@ export default {
         try {
           await getStatus()
           await getLogs() // 强制同步获取最新日志，确保完全实时
-        } finally {
-          // 组件已卸载时不再续订定时器
-          if (pollingStopped) {
-            isLogPolling.value = false
-            return
-          }
-          // 如果状态仍然在运行，1.5秒后继续拉取
-          if (status.value.is_running) {
-            pollingTimer = setTimeout(poll, 1500)
-          } else {
-            stopPolling()
-            await getLogs() // 任务结束，最后拉取一次最终日志
-          }
+        } catch (error) {
+          console.error('轮询获取失败', error)
+        }
+        // 组件已卸载时不再续订定时器
+        if (pollingStopped) {
+          isLogPolling.value = false
+          return
+        }
+        // 如果状态仍然在运行，1.5秒后继续拉取
+        if (status.value.is_running) {
+          pollingTimer = setTimeout(poll, 1500)
+        } else {
+          stopPolling()
+          await getLogs() // 任务结束，最后拉取一次最终日志
         }
       }
       

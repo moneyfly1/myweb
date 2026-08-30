@@ -485,8 +485,13 @@ func verifyRegisterCode(db *gorm.DB, emailStr, code string) error {
 		return fmt.Errorf("验证码已过期，请重新获取验证码")
 	}
 
-	verificationCode.MarkAsUsed()
-	db.Save(&verificationCode)
+	// 原子标记已用，防止并发请求同时消费同一验证码
+	result := db.Model(&models.VerificationCode{}).
+		Where("id = ? AND used = ?", verificationCode.ID, 0).
+		Update("used", 1)
+	if result.Error != nil || result.RowsAffected == 0 {
+		return fmt.Errorf("验证码已被使用，请重新获取验证码")
+	}
 	return nil
 }
 
@@ -835,34 +840,42 @@ func processInviteCode(db *gorm.DB, inviteCodeStr string, newUserID uint) {
 	}
 }
 
-// distributeInviteRewardAfterCommit 在注册事务提交后发放即时邀请奖励
+// distributeInviteRewardAfterCommit 在注册事务提交后发放即时邀请奖励。
+// 使用事务 + 行锁，与订单路径 processInviteRewardsTx 串行化，避免并发重复发奖。
 func distributeInviteRewardAfterCommit(db *gorm.DB, inviteeID uint) {
-	var relation models.InviteRelation
-	if err := db.Where("invitee_id = ? AND inviter_reward_given = ? AND invitee_reward_given = ?",
-		inviteeID, false, false).First(&relation).Error; err != nil {
-		return
-	}
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var relation models.InviteRelation
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("invitee_id = ? AND inviter_reward_given = ? AND invitee_reward_given = ?", inviteeID, false, false).
+			First(&relation).Error; err != nil {
+			return nil // 无待发放关系
+		}
 
-	var inviteCode models.InviteCode
-	if err := db.First(&inviteCode, relation.InviteCodeID).Error; err != nil {
-		return
-	}
+		var inviteCode models.InviteCode
+		if err := tx.First(&inviteCode, relation.InviteCodeID).Error; err != nil {
+			return nil
+		}
 
-	// 仅处理无最低消费要求的即时奖励
-	if inviteCode.MinOrderAmount > 0 {
-		return
-	}
+		// 仅处理无最低消费要求的即时奖励
+		if inviteCode.MinOrderAmount > 0 {
+			return nil
+		}
 
-	distributeReward(db, relation.InviterID, relation.InviterRewardAmount, inviteeID, &relation, true)
-	distributeReward(db, inviteeID, relation.InviteeRewardAmount, inviteeID, &relation, false)
+		distributeReward(tx, relation.InviterID, relation.InviterRewardAmount, inviteeID, &relation, true)
+		distributeReward(tx, inviteeID, relation.InviteeRewardAmount, inviteeID, &relation, false)
+		return nil
+	})
+	if err != nil {
+		utils.LogError("distributeInviteRewardAfterCommit: transaction failed", err, map[string]interface{}{"invitee_id": inviteeID})
+	}
 }
 
-func distributeReward(db *gorm.DB, userID uint, amount float64, relatedUserID uint, relation *models.InviteRelation, isInviter bool) {
+func distributeReward(tx *gorm.DB, userID uint, amount float64, relatedUserID uint, relation *models.InviteRelation, isInviter bool) {
 	if amount <= 0 {
 		return
 	}
 	var user models.User
-	if err := db.First(&user, userID).Error; err != nil {
+	if err := tx.First(&user, userID).Error; err != nil {
 		return
 	}
 
@@ -875,15 +888,15 @@ func distributeReward(db *gorm.DB, userID uint, amount float64, relatedUserID ui
 		updates["total_invite_count"] = gorm.Expr("total_invite_count + 1")
 	}
 
-	if err := db.Model(&user).Updates(updates).Error; err == nil {
+	if err := tx.Model(&user).Updates(updates).Error; err == nil {
 		// 刷新余额用于日志记录
-		db.First(&user, user.ID)
+		tx.First(&user, user.ID)
 		if isInviter {
 			relation.InviterRewardGiven = true
 		} else {
 			relation.InviteeRewardGiven = true
 		}
-		db.Save(relation)
+		tx.Save(relation)
 		if utils.AppLogger != nil {
 			utils.AppLogger.Info("processInviteCode: ✅ 发放奖励 - user_id=%d, amount=%.2f, related_id=%d", userID, amount, relatedUserID)
 		}
@@ -1416,6 +1429,12 @@ func VerifyCode(c *gin.Context) {
 	ipAddress := utils.GetRealClientIP(c)
 	identifier := utils.NormalizeEmail(req.Email)
 
+	// 校验码用途需与发送时的 purpose 一致，避免跨用途消耗（如用注册码烧掉他人重置码）
+	purpose := "register"
+	if req.Type == "email_change" {
+		purpose = "email_change"
+	}
+
 	fiveMinutesAgo := utils.GetBeijingTime().Add(-5 * time.Minute)
 	var failedAttempts int64
 	db.Model(&models.VerificationAttempt{}).
@@ -1425,23 +1444,23 @@ func VerifyCode(c *gin.Context) {
 	if failedAttempts >= 5 {
 		utils.CreateSecurityLog(c, "verify_code_rate_limit", "MEDIUM",
 			"验证码尝试次数过多（5分钟内失败≥5次）",
-			map[string]interface{}{"email": identifier, "ip": ipAddress, "purpose": "register"})
+			map[string]interface{}{"email": identifier, "ip": ipAddress, "purpose": purpose})
 		utils.ErrorResponse(c, http.StatusTooManyRequests, "验证码尝试次数过多，请5分钟后再试", nil)
 		return
 	}
 
 	var verificationCode models.VerificationCode
-	if err := db.Where("LOWER(email) = ? AND code = ? AND used = ?", identifier, req.Code, 0).Order("created_at DESC").First(&verificationCode).Error; err != nil {
+	if err := db.Where("LOWER(email) = ? AND code = ? AND used = ? AND purpose = ?", identifier, req.Code, 0, purpose).Order("created_at DESC").First(&verificationCode).Error; err != nil {
 		attempt := models.VerificationAttempt{
 			Email:     identifier,
 			IPAddress: database.NullString(ipAddress),
 			Success:   false,
-			Purpose:   "register",
+			Purpose:   purpose,
 		}
 		db.Create(&attempt)
 		utils.CreateSecurityLog(c, "verification_code_failed", "MEDIUM",
 			"验证码校验失败: 验证码错误或已使用",
-			map[string]interface{}{"email": identifier, "ip": ipAddress, "purpose": "register"})
+			map[string]interface{}{"email": identifier, "ip": ipAddress, "purpose": purpose})
 		utils.ErrorResponse(c, http.StatusBadRequest, "验证码错误或已使用", err)
 		return
 	}
@@ -1451,12 +1470,12 @@ func VerifyCode(c *gin.Context) {
 			Email:     identifier,
 			IPAddress: database.NullString(ipAddress),
 			Success:   false,
-			Purpose:   "register",
+			Purpose:   purpose,
 		}
 		db.Create(&attempt)
 		utils.CreateSecurityLog(c, "verification_code_failed", "MEDIUM",
 			"验证码校验失败: 验证码已过期",
-			map[string]interface{}{"email": identifier, "ip": ipAddress, "purpose": "register"})
+			map[string]interface{}{"email": identifier, "ip": ipAddress, "purpose": purpose})
 		utils.ErrorResponse(c, http.StatusBadRequest, "验证码已过期", nil)
 		return
 	}
