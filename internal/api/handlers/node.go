@@ -851,13 +851,32 @@ func TestNode(c *gin.Context) {
 	svc := node_health.NewNodeHealthService()
 
 	if nodeID > 1000000 {
+		// 虚拟 ID 约定：>1000000 的 ID 表示专线节点 ID + 1000000（见 GetUserNodes 合并列表）。
+		// 但普通节点表自增 ID 可能已超过 1000000，需先确认该 ID 是否为真实普通节点，
+		// 避免普通节点被误判为专线虚拟 ID（与 BatchDeleteNodes 的处理一致）。
+		var realNode models.Node
+		if err := db.First(&realNode, nodeID).Error; err == nil {
+			res, err := svc.TestNode(&realNode)
+			if err != nil {
+				utils.ErrorResponse(c, http.StatusInternalServerError, "测试节点失败", err)
+				return
+			}
+			if err := svc.UpdateNodeStatus(res); err != nil {
+				log.Printf("failed to update node status: %v", err)
+			}
+			clearNodeCaches()
+			utils.CreateAuditLogSimple(c, "test_node", "node", realNode.ID, fmt.Sprintf("管理员操作: 测试节点 %s 结果 %s 延迟 %dms", realNode.Name, res.Status, res.Latency))
+			utils.SuccessResponse(c, http.StatusOK, "", res)
+			return
+		}
+
 		customNodeID := uint(nodeID - 1000000)
 		var customNode models.CustomNode
 		if err := db.First(&customNode, customNodeID).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
-				utils.ErrorResponse(c, http.StatusNotFound, "专线节点不存在", err)
+				utils.ErrorResponse(c, http.StatusNotFound, "节点不存在", err)
 			} else {
-				utils.ErrorResponse(c, http.StatusInternalServerError, "获取专线节点失败", err)
+				utils.ErrorResponse(c, http.StatusInternalServerError, "获取节点失败", err)
 			}
 			return
 		}
@@ -956,14 +975,31 @@ func BatchTestNodes(c *gin.Context) {
 	db := database.GetDB()
 	svc := node_health.NewNodeHealthService()
 
-	// 分离专线虚拟 ID（>1000000）：service 的 BatchTestNodes 只查普通节点表，
-	// 专线节点逐个走 TestNode（其内部已处理虚拟 ID 分支，见 TestNode 实现）
+	// 分离专线虚拟 ID（>1000000）：service 的 BatchTestNodes 只查普通节点表。
+	// 普通节点表自增 ID 可能已超过 1000000，需先确认 ID 是否真实存在（普通节点优先），
+	// 确认不是普通节点后再按专线虚拟 ID 处理（与 BatchDeleteNodes 的处理一致）。
 	var normalIDs, customIDs []uint
+	var maybeCustomIDs []uint
 	for _, id := range req.NodeIDs {
 		if id > 1000000 {
-			customIDs = append(customIDs, id)
+			maybeCustomIDs = append(maybeCustomIDs, id)
 		} else {
 			normalIDs = append(normalIDs, id)
+		}
+	}
+	if len(maybeCustomIDs) > 0 {
+		var existingNodeIDs []uint
+		db.Model(&models.Node{}).Where("id IN ?", maybeCustomIDs).Pluck("id", &existingNodeIDs)
+		existingSet := make(map[uint]bool, len(existingNodeIDs))
+		for _, id := range existingNodeIDs {
+			existingSet[id] = true
+		}
+		for _, id := range maybeCustomIDs {
+			if existingSet[id] {
+				normalIDs = append(normalIDs, id)
+			} else {
+				customIDs = append(customIDs, id)
+			}
 		}
 	}
 

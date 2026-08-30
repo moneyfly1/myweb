@@ -869,18 +869,17 @@ func GetOrders(c *gin.Context) {
 		keyword = c.Query("search")
 	}
 
-	isAdmin, exists := c.Get("is_admin")
-	admin := exists && isAdmin.(bool)
-
 	db := database.GetDB()
 	var orders []models.Order
 	var total int64
 
 	query := db.Model(&models.Order{}).Preload("User").Preload("Package").Preload("Coupon")
 
-	if !admin {
-		query = query.Where("user_id = ?", user.ID)
-	}
+	// 用户端订单列表始终只显示当前用户自己的订单（包括管理员账号），
+	// 与 GetOrderStatusByNo / CancelPendingOrder 的 user_id 过滤保持一致，
+	// 避免 admin 在用户端看到全部订单却无法查看/取消他人订单的不一致行为。
+	// 管理员查看全部订单请使用管理端 GET /admin/orders。
+	query = query.Where("user_id = ?", user.ID)
 
 	// 关键词搜索：订单号/套餐名/支付方式（用户端此前为假搜索，keyword 被后端忽略）
 	if keyword != "" {
