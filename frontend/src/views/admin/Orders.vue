@@ -736,7 +736,7 @@
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onActivated} from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from '@/utils/elementPlusServices'
 import {
@@ -1416,6 +1416,11 @@ export default {
       if (route.query.search) searchForm.keyword = String(route.query.search).trim()
       loadOrders()
       loadStatistics()
+    })
+
+    // keep-alive 激活时刷新数据（避免显示缓存旧数据）
+    onActivated(() => {
+      loadOrders()
     })
 
     return {

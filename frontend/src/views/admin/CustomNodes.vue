@@ -731,7 +731,7 @@
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, computed, watch } from 'vue'
+import { ref, reactive, onMounted, computed, watch, onActivated} from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { 
   Plus, Refresh, Search, Connection, Delete, 
@@ -1553,6 +1553,11 @@ export default {
       loadSettings() // 先加载保存的设置
       loadCustomNodes()
       loadSelfHostNodes()
+    })
+
+    // keep-alive 激活时刷新数据（避免显示缓存旧数据）
+    onActivated(() => {
+      loadCustomNodes()
     })
     return {
       isMobile, viewMode, gridOrientation, gridColumns, gridSize, tableRef, columnWidths, loading, saving, parsing, customNodes, selectedNodes,

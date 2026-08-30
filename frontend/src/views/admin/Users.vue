@@ -799,7 +799,7 @@
   </div>
 </template>
 <script>
-import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, onActivated, watch, nextTick } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import {
   Plus, Edit, Delete, Search, Refresh, Switch, Key, Close, Filter,
@@ -1748,6 +1748,10 @@ export default {
     onMounted(() => {
       loadUsers()
       window.addEventListener('subscription-device-limit-updated', loadUsers)
+    })
+    // keep-alive 激活时刷新数据（避免显示缓存旧数据）
+    onActivated(() => {
+      loadUsers()
     })
     onUnmounted(() => {
       window.removeEventListener('subscription-device-limit-updated', loadUsers)

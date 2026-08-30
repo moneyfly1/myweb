@@ -518,7 +518,9 @@
   </div>
 </template>
 <script setup>
-import { computed, ref, reactive, onMounted } from 'vue'
+defineOptions({ name: 'AdminInvites' })
+
+import { computed, ref, reactive, onMounted, onActivated} from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Search, Filter, Refresh, Setting, Delete } from '@element-plus/icons-vue'
 import { inviteAPI } from '@/utils/api'
@@ -937,6 +939,10 @@ const formatDate = (dateString) => {
 }
 onMounted(() => {
   loadInviteSettings()
+  loadData()
+})
+// keep-alive 激活时刷新数据
+onActivated(() => {
   loadData()
 })
 </script>

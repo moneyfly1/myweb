@@ -763,7 +763,7 @@
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed, watch, onActivated} from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from '@/utils/elementPlusServices'
 import {
@@ -2013,6 +2013,11 @@ export default {
           currentPage.value = 1
         }
       }
+      loadSubscriptions()
+    })
+
+    // keep-alive 激活时刷新数据（避免显示缓存旧数据）
+    onActivated(() => {
       loadSubscriptions()
     })
     onUnmounted(() => {
