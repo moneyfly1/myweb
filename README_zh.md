@@ -378,42 +378,31 @@ cd cboard
 #### ③ 配置 .env（关键！）
 
 ```bash
-cp .env .env  # 项目已自带 .env，直接编辑即可
+cp .env.example .env
 vim .env
 ```
 
-**必须修改的两个变量：**
+**必须修改的变量（不改会导致启动失败或安全隐患）：**
+
+| 变量 | 必改原因 | 示例 |
+|------|---------|------|
+| `SECRET_KEY` | ⚠️ 必须改为强随机串！docker-compose 中 `${SECRET_KEY:?}` 未设置会**直接报错拒绝启动**；弱密钥在生产模式也会被拒绝 | `openssl rand -hex 32` 的输出 |
+| `ADMIN_PASSWORD` | 首次启动自动创建管理员时使用。不设置则默认 `admin123`（不安全） | 你的强密码（至少 6 位） |
+
+**推荐一并设置（可选但建议）：**
 
 ```env
-# ⚠️ 生产环境必须修改！JWT 签名密钥，建议 32 位以上随机字符串
-SECRET_KEY=请替换为一段足够长的随机字符串（例如 openssl rand -hex 32）
-
-# 数据库连接（Docker 默认 SQLite，路径相对于容器内 /root/）
-DATABASE_URL=sqlite:///./cboard.db
+ADMIN_USERNAME=admin                # 可选，覆盖默认用户名
+ADMIN_EMAIL=admin@example.com       # 可选，覆盖默认邮箱
+SMTP_HOST=smtp.qq.com               # 邮件服务（验证码/通知），可选
+SMTP_PORT=587
+SMTP_USERNAME=your-email@qq.com
+SMTP_PASSWORD=your-smtp-password
+PANEL_PUBLIC_URL=https://your-domain.com  # 有自建节点时必配（节点回传地址）
+TRUSTED_PROXIES=127.0.0.1,::1             # 部署在 Nginx/Cloudflare 后必配
 ```
 
-> 💡 生成强随机密钥：`openssl rand -hex 32`
-
-**推荐同时设置管理员固定密码**（首次启动自动创建管理员时使用，避免随机密码）：
-
-```env
-ADMIN_PASSWORD=你的强密码（至少 6 位）
-# ADMIN_USERNAME=admin       # 可选，覆盖默认用户名
-# ADMIN_EMAIL=admin@example.com  # 可选，覆盖默认邮箱
-```
-
-其他常用配置（按需修改）：
-
-```env
-HOST=0.0.0.0          # 监听地址，Docker 内必须为 0.0.0.0
-PORT=8000             # 端口，与 docker-compose.yml 映射保持一致
-DEBUG=false           # 生产环境关闭调试模式
-BACKEND_CORS_ORIGINS=https://yourdomain.com,http://localhost:5173  # CORS 白名单
-# SMTP_HOST=smtp.qq.com        # 邮件服务（找回密码、通知等需要）
-# SMTP_PORT=587
-# SMTP_USERNAME=your-email@qq.com
-# SMTP_PASSWORD=your-smtp-password
-```
+> **不需要修改的变量**：`HOST`（Docker 内必须 0.0.0.0，已默认）、`PORT`（与 compose 映射一致，已默认）、`DATABASE_URL`（默认 SQLite 到挂载目录，已默认）、`DEBUG`（默认 false 生产安全）。
 
 #### ④ 启动服务
 
@@ -421,7 +410,7 @@ BACKEND_CORS_ORIGINS=https://yourdomain.com,http://localhost:5173  # CORS 白名
 docker compose up -d --build
 ```
 
-首次启动会执行两阶段构建（见下方「Docker 镜像构建说明」），耗时约 1-5 分钟。
+首次启动执行**三阶段构建**（后端 + 前端 + 运行镜像，见下方「Docker 镜像构建说明」），耗时约 1-5 分钟。
 
 验证启动状态：
 
@@ -441,38 +430,22 @@ docker compose logs -f app # 查看启动日志
 
 **方式 A：环境变量自动创建（推荐）**
 
-首次启动前在 `.env` 中设置 `ADMIN_PASSWORD`（见第 ③ 步）。容器首次启动检测到全新数据库时，会自动以该密码创建管理员（用户名默认 `admin`）。若未设置，系统生成**随机密码**并打印在启动日志中：
+首次启动前在 `.env` 中设置 `ADMIN_PASSWORD`（见第 ③ 步）。容器首次启动检测到全新数据库时，会自动以该密码创建管理员（用户名/邮箱由 `ADMIN_USERNAME`/`ADMIN_EMAIL` 指定，默认 `admin`）。**之后每次重启都会校验该密码**，即使管理员被锁定，重启后也能恢复登录。
+
+若未设置 `ADMIN_PASSWORD`，系统生成**随机密码**并打印在启动日志中：
 
 ```bash
 docker compose logs app | grep "初始密码"
 ```
 
-**方式 B：宿主机运行管理脚本**
-
-数据库文件通过卷挂载在宿主机（`./cboard.db`），可在宿主机项目目录直接运行官方管理脚本：
+**方式 B：进入容器查看**
 
 ```bash
-# 创建 / 重置管理员密码（宿主机需安装 Go 1.21+）
-go run scripts/admin_tool.go "你的新密码"
-
-# 通过环境变量指定账号信息
-export ADMIN_USERNAME="admin"
-export ADMIN_EMAIL="admin@your-domain.com"
-export ADMIN_PASSWORD="YourStrongPassword123!"
-go run scripts/admin_tool.go
-```
-
-**方式 C：进入容器查看 / 操作**
-
-```bash
-# 进入容器
 docker compose exec app sh
-
-# 查看当前管理员状态（容器内无 Go 工具链，主要用于排查日志与文件）
-ls -la /root/          # 确认 cboard.db 与 uploads 已挂载
+ls -la /root/data/   # 确认 cboard.db 已生成
 ```
 
-> 说明：运行镜像为精简 Alpine，不包含 Go 工具链，`create_admin` 类命令请使用宿主机脚本（方式 B）或环境变量（方式 A），二者操作的是同一个挂载出来的 `cboard.db`。
+> 说明：运行镜像为精简 Alpine，不包含 Go 工具链，创建管理员请用环境变量（方式 A），数据保存在挂载目录。
 
 #### ⑥ 访问系统
 
@@ -490,43 +463,55 @@ Docker 部署的数据**全部保存在宿主机挂载目录**中，删除 / 重
 
 | 卷挂载 | 宿主机路径 | 容器内路径 | 内容 |
 |--------|-----------|-----------|------|
-| SQLite 数据库 | `./cboard.db` | `/root/cboard.db` | 全部业务数据（用户、订阅、订单、节点等） |
-| 上传目录 | `./uploads` | `/root/uploads` | 头像、附件、工单附件、备份文件、日志 |
+| SQLite 数据目录 | `./data` | `/root/data` | 业务数据（cboard.db 及 WAL 日志） |
+| 上传目录 | `./uploads` | `/root/uploads` | 头像、附件、备份文件、日志 |
 
-**备份时只需要复制这两个文件 / 目录：**
+> ⚠️ 挂载**目录**而非单个 `.db` 文件：SQLite 运行时生成 `cboard.db-shm`/`cboard.db-wal`（WAL 模式），且首次启动若宿主机无文件，Docker 单文件挂载会创建**目录**导致启动失败——本配置已改为目录挂载规避此坑。
+
+**备份时只需复制这两个目录：**
 
 ```bash
-cp cboard.db /backup/cboard-$(date +%F).db
+cp -r data /backup/data-$(date +%F)
 cp -r uploads /backup/uploads-$(date +%F)
 ```
 
 #### 🐳 Docker 镜像构建说明（Dockerfile）
 
+三阶段构建（后端编译 + 前端构建 + 运行镜像）：
+
 ```dockerfile
-# 构建阶段
+# 阶段 1：后端构建（golang:1.24-alpine）
 FROM golang:1.24-alpine AS builder
-WORKDIR /app
-# cgo 依赖（mattn/go-sqlite3 需要 gcc 与 musl 头文件）
+# gcc/musl-dev 满足 SQLite cgo 驱动
 RUN apk add --no-cache gcc musl-dev
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-# SQLite 驱动为 cgo 实现，必须 CGO_ENABLED=1
 RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o cboard-go cmd/server/main.go
 
-# 运行阶段
+# 阶段 2：前端构建（node:20-alpine，Vite 7 需要 Node 20+）
+FROM node:20-alpine AS frontend-builder
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install --legacy-peer-deps
+COPY frontend/ .
+RUN npm run build
+
+# 阶段 3：运行镜像（alpine）
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates tzdata
 ENV TZ=Asia/Shanghai
 WORKDIR /root/
 COPY --from=builder /app/cboard-go .
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 EXPOSE 8000
 CMD ["./cboard-go"]
 ```
 
 **设计要点：**
 
-- 🏗️ **两阶段构建**：builder 阶段编译（含 gcc/musl-dev 以满足 SQLite cgo 驱动），运行阶段只拷贝二进制，镜像体积最小化；
+- 🏗️ **三阶段构建**：后端编译 + 前端构建分离，运行阶段只拷贝二进制和前端产物，镜像体积最小化；
+- ⚡ **前端必须构建**：后端从 `./frontend/dist` 提供静态文件，缺失会导致前端 404（旧版 Dockerfile 的缺陷，已修复）；
+- 🟢 **Node 20+**：前端使用 Vite 7，Node 18 会构建失败（已修复）；
 - ⏰ **时区**：运行镜像预设 `TZ=Asia/Shanghai`，保证日志与业务时间正确；
 - 🔐 **证书**：安装 `ca-certificates`，保证 HTTPS 出站（SMTP、支付回调、GitHub 备份）正常；
 - 🗜️ **裁剪**：`-trimpath -ldflags="-s -w"` 去除调试信息，进一步减小体积。
@@ -535,7 +520,7 @@ CMD ["./cboard-go"]
 
 默认使用 SQLite（零配置、单文件）。高并发生产环境可切换 MySQL：
 
-**① 编辑 `docker-compose.yml`，取消 MySQL 服务注释：**
+**① 编辑 `docker-compose.yml`，取消 MySQL 服务注释并修改 app 的 DATABASE_URL：**
 
 ```yaml
 services:
@@ -544,13 +529,10 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=mysql://cboard_user:cboard_password@mysql:3306/cboard_db?charset=utf8mb4&parseTime=True&loc=Local
-      - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
-      - HOST=0.0.0.0
-      - PORT=8000
-      - DEBUG=false
+      - DATABASE_URL=mysql://cboard_user:cboard_password@mysql:3306/cboard_db?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai
+      - SECRET_KEY=${SECRET_KEY:?请在 .env 中设置 SECRET_KEY}
     volumes:
-      - ./cboard.db:/root/cboard.db
+      - ./data:/root/data
       - ./uploads:/root/uploads
     depends_on:
       - mysql
@@ -558,6 +540,7 @@ services:
 
   mysql:
     image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
     environment:
       - MYSQL_ROOT_PASSWORD=rootpassword
       - MYSQL_DATABASE=cboard_db
@@ -575,10 +558,10 @@ volumes:
 **② 修改 `DATABASE_URL` 为 MySQL 连接串：**
 
 ```env
-DATABASE_URL=mysql://cboard_user:cboard_password@mysql:3306/cboard_db?charset=utf8mb4&parseTime=True&loc=Local
+DATABASE_URL=mysql://cboard_user:cboard_password@mysql:3306/cboard_db?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai
 ```
 
-> 连接串格式：`mysql://用户名:密码@主机:3306/库名?charset=utf8mb4&parseTime=True&loc=Local`
+> 连接串格式：`mysql://用户名:密码@主机:3306/库名?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai`
 > 容器间通信使用服务名 `mysql`（compose 内部网络），宿主机访问用 `127.0.0.1:3306`。
 
 **③ 重启：**
@@ -590,7 +573,7 @@ docker compose up -d --build
 **💡 从 SQLite 迁移到 MySQL：** 项目提供官方迁移脚本（宿主机 Go 环境）：
 
 ```bash
-go run ./cmd/migrate -sqlite ./cboard.db -mysql "cboard_user:cboard_password@tcp(127.0.0.1:3306)/cboard_db?charset=utf8mb4&parseTime=True&loc=Local"
+go run ./cmd/migrate -sqlite ./data/cboard.db -mysql "cboard_user:cboard_password@tcp(127.0.0.1:3306)/cboard_db?charset=utf8mb4&parseTime=True&loc=Local"
 ```
 
 > 迁移脚本**只读源库（SQLite）**、只写目标库（MySQL），迁移前请先备份 SQLite 文件。
@@ -600,10 +583,12 @@ go run ./cmd/migrate -sqlite ./cboard.db -mysql "cboard_user:cboard_password@tcp
 | 问题 | 解决方案 |
 |------|----------|
 | **端口被占用**（`bind: address already in use`） | ① `lsof -i :8000` 找到占用进程；② 杀掉进程或修改 `docker-compose.yml` 的映射端口（如 `"8001:8000"`） |
-| **容器内文件权限问题**（数据库只读 / 上传失败） | ① 宿主机执行 `chmod -R 755 cboard.db uploads`；② 检查挂载目录属主，必要时 `chown -R 1000:1000`（Alpine 默认非 root 用户） |
+| **容器启动报 `SECRET_KEY` 未设置** | 在 `.env` 中设置强密钥：`SECRET_KEY=$(openssl rand -hex 32)`，再 `docker compose up -d` |
+| **前端页面 404** | 确认镜像已包含前端：`docker compose exec app ls /root/frontend/dist/index.html`；旧镜像需重新 `--build` |
+| **容器内文件权限问题**（数据库只读 / 上传失败） | ① 宿主机执行 `chmod -R 755 data uploads`；② 检查挂载目录属主，必要时 `chown -R 1000:1000` |
 | **时区不正确** | 运行镜像已内置 `TZ=Asia/Shanghai`；如自定义 Dockerfile，需安装 `tzdata` 并设置 `ENV TZ=Asia/Shanghai` |
-| **数据库被"重置"了（数据消失）** | 检查启动目录与 `DATABASE_URL`：SQLite 相对路径基于容器工作目录 `/root/`，确认卷挂载路径与 `DATABASE_URL` 一致；启动日志中的「⚠️ 即将创建全新数据库」告警即为信号 |
-| **构建缓慢 / 拉取依赖失败** | 配置 Go 代理：构建命令前加 `export GOPROXY=https://goproxy.cn,direct`，或修改 Dockerfile 中 `go mod download` 前添加该环境变量 |
+| **数据库被"重置"了（数据消失）** | 检查启动目录与 `DATABASE_URL`：SQLite 相对路径基于容器工作目录 `/root/`，确认卷挂载路径与 `DATABASE_URL` 一致（应为 `./data:/root/data`） |
+| **构建缓慢 / 拉取依赖失败** | 配置 Go 代理：构建命令前加 `export GOPROXY=https://goproxy.cn,direct`，或修改 Dockerfile 中 `go mod download` 前添加该环境变量；npm 可用 `--registry=https://registry.npmmirror.com` |
 | **后端起不来，日志报 Redis 错误** | 无需处理——Redis 连不上会自动禁用缓存并降级运行，功能不受影响 |
 | **想改 .env 后生效** | 修改宿主机 `.env` 后执行 `docker compose up -d`（会重新读取环境变量并重建容器） |
 
@@ -685,6 +670,22 @@ tail -f /opt/cboard/server.log                # 应用日志
 | Nginx | 宝塔 → 网站 → 站点 → 设置 → 配置文件（脚本已写入反代） |
 | 防火墙 | 宝塔「安全」中放行 80、443 |
 | 创建/重置管理员 | `sudo ./install.sh` 选 2 |
+
+---
+
+## 🎯 三种部署方式：管理员与域名配置时机对比
+
+| 部署方式 | 域名在哪配置 | 管理员在哪配置 | 配置时机 |
+|---------|-------------|---------------|---------|
+| **宝塔（install.sh）** | **宝塔添加站点时**（域名 = 站点目录名，脚本自动取 `basename 项目目录`） | 运行脚本后选**菜单 2**「创建/重置管理员账号」交互填写（用户名/邮箱/密码） | 部署完成后随时可改 |
+| **无宝塔（install-vps.sh）** | **运行脚本时交互输入**（提示"域名 (如 example.com)"） | **运行脚本时交互输入**（脚本提示填写管理员用户名/邮箱/密码） | 安装过程中 |
+| **Docker** | `.env` 中 `PANEL_PUBLIC_URL`（仅自建节点回传需要；纯订阅无需域名） | `.env` 中 `ADMIN_USERNAME`/`ADMIN_EMAIL`/`ADMIN_PASSWORD`，首次启动自动创建 | 启动前配置 `.env` |
+
+**关键说明：**
+
+- **宝塔**：域名不是填在 .env 里的，而是**宝塔建站时确定**（如站点目录 `/www/wwwroot/你的域名`），脚本用目录名做域名配置 Nginx。管理员用脚本菜单 2 管理。
+- **Docker**：管理员完全通过 `.env` 环境变量注入，首次启动自动创建；之后每次重启校验密码（管理员被锁也能自动解锁）。
+- **无宝塔**：域名和管理员都在 `install-vps.sh` 运行过程中交互输入，一步到位。
 
 ---
 
@@ -792,7 +793,7 @@ go run ./scripts/db_preflight /root/preflight.db
 | `HOST` | 否 | `127.0.0.1` | 监听地址；Docker 内必须为 `0.0.0.0` |
 | `PORT` | 否 | `8000` | 服务端口 |
 | `DEBUG` | 否 | `false` | 调试模式（生产必须 false） |
-| `DATABASE_URL` | 否 | `sqlite:///./cboard.db` | 数据库连接串：`sqlite:///./路径` 或 `mysql://user:pass@host:3306/db?charset=utf8mb4&parseTime=True&loc=Local` |
+| `DATABASE_URL` | 否 | `sqlite:///./data/cboard.db` | 数据库连接串：SQLite（Docker 默认，数据在 `./data`）或 `mysql://user:pass@host:3306/db?charset=utf8mb4&parseTime=True&loc=Local` |
 | `SECRET_KEY` | **是** | 无 | **JWT 签名密钥，生产必须改为 32 位以上随机字符串** |
 | `BACKEND_CORS_ORIGINS` | 否 | localhost 列表 | CORS 白名单，逗号分隔，生产替换为你的域名 |
 | `PROJECT_NAME` | 否 | `CBoard Go` | 项目名称（邮件署名等） |
