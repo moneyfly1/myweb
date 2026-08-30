@@ -292,8 +292,11 @@ func sanitizeErrorPath(errMsg string) string {
 		lastPart := parts[len(parts)-1]
 		// 如果包含文件名，尝试提取
 		if strings.Contains(lastPart, ".") {
-			// 保留文件名部分
-			return strings.Join(parts[len(parts)-2:], "/")
+			// 保留最后两个部分（目录名和文件名），只有一段时直接返回该段
+			if len(parts) >= 2 {
+				return strings.Join(parts[len(parts)-2:], "/")
+			}
+			return lastPart
 		}
 	}
 	return errMsg

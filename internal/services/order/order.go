@@ -1335,7 +1335,7 @@ func (s *OrderService) processInviteRewardsTx(tx *gorm.DB, order *models.Order, 
 	if inviteCode.NewUserOnly {
 		var orderCount int64
 		tx.Model(&models.Order{}).Where("user_id = ? AND status = ?", order.UserID, "paid").Count(&orderCount)
-		if orderCount > 1 {
+		if orderCount > 0 {
 			if utils.AppLogger != nil {
 				utils.AppLogger.Info("processInviteRewards: ⏸️ 不是新用户订单，不发放奖励 - order_id=%d, order_count=%d",
 					order.ID, orderCount)
