@@ -228,3 +228,21 @@ func (s *ConfigUpdateService) isClientCapabilityFilterEnabled() bool {
 	}
 	return cfg.Value == "true" || cfg.Value == "1"
 }
+
+// applySubscriptionFilters 应用订阅协议过滤，客户端过滤与协议白名单互斥：
+//   - 客户端版本过滤开启：遵循客户端能力原则——按客户端类型/版本过滤其不支持的协议，
+//     跳过 DB 协议白名单（避免白名单误删客户端实际支持的协议）；
+//   - 客户端版本过滤关闭：使用协议过滤——按 DB 配置的协议白名单（clash_protocols /
+//     universal_protocols）过滤。
+//
+// exclude 参数过滤在两种模式下都生效（用户显式指定排除的协议）。
+func (s *ConfigUpdateService) applySubscriptionFilters(nodes []*ProxyNode, filterType, userAgent string, excluded map[string]bool) []*ProxyNode {
+	if s.isClientCapabilityFilterEnabled() {
+		// 客户端过滤优先：按客户端能力过滤，忽略 DB 协议白名单
+		nodes = s.filterProxiesByExcludedProtocols(nodes, excluded)
+		return s.filterProxiesByClientCapability(nodes, userAgent)
+	}
+	// 客户端过滤关闭：使用 DB 协议白名单
+	nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter(filterType))
+	return s.filterProxiesByExcludedProtocols(nodes, excluded)
+}
