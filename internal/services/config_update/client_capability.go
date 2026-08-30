@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"cboard-go/internal/models"
 )
 
 // ============================================================
@@ -179,8 +181,15 @@ func getClientCapabilities(clientType string) *clientCapabilities {
 }
 
 // filterProxiesByClientCapability 按客户端能力过滤协议。
-// 仅在能识别客户端且该客户端有规则时过滤；否则原样返回（保持现状）。
+// 受系统设置「协议过滤」页的客户端版本过滤开关控制：
+//   - 开关关闭（client_capability_filter_enabled=false）时不执行任何过滤，全部节点下发
+//   - 开关开启时：仅在能识别客户端且该客户端有规则时过滤；否则原样返回
 func (s *ConfigUpdateService) filterProxiesByClientCapability(proxies []*ProxyNode, userAgent string) []*ProxyNode {
+	// 检查总开关（存于 system_configs: category=protocol_filter, key=client_capability_filter_enabled）
+	if !s.isClientCapabilityFilterEnabled() {
+		return proxies
+	}
+
 	clientType, version, ok := detectClientVersion(userAgent)
 	if !ok {
 		return proxies
@@ -203,4 +212,19 @@ func (s *ConfigUpdateService) filterProxiesByClientCapability(proxies []*ProxyNo
 		result = append(result, p)
 	}
 	return result
+}
+
+// isClientCapabilityFilterEnabled 读取客户端版本过滤总开关。
+// 默认开启（true）；管理员可在系统设置 → 协议过滤 页面关闭，
+// 关闭后所有客户端均收到全量节点（避免老客户端订阅异常或节点过少）。
+func (s *ConfigUpdateService) isClientCapabilityFilterEnabled() bool {
+	if s == nil || s.db == nil {
+		return true
+	}
+	var cfg models.SystemConfig
+	if err := s.db.Where("category = ? AND key = ?", "protocol_filter", "client_capability_filter_enabled").First(&cfg).Error; err != nil {
+		// 未配置时默认开启（与历史行为一致）
+		return true
+	}
+	return cfg.Value == "true" || cfg.Value == "1"
 }
