@@ -417,7 +417,7 @@ const riskLevelMap = {
   low: { tag: 'info', text: '低危' }
 }
 export default {
-  name: 'AbnormalUsers',
+  name: 'AdminAbnormalUsers',
   components: {
     Refresh, View, Check, Search, AppDrawer, PaginationBar, EmptyState, ResponsiveDataView
   },
