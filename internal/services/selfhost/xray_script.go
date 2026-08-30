@@ -170,28 +170,20 @@ install_acme() {
         curl -fsSL https://raw.githubusercontent.com/acmesh-official/acme.sh/master/acme.sh | sh -s email="${EMAIL}" >/dev/null 2>&1 || \
         warn "acme.sh 安装失败（证书将由客户端信任跳过）"
     fi
+    # 确保 acme.sh 自动续期定时任务存在（证书已存在/重新搭建场景同样需要）
+    /root/.acme.sh/acme.sh --install-cronjob >/dev/null 2>&1 || true
 }
-apply_cert() {
-    if [ -z "$DOMAIN" ]; then info "无域名，跳过证书"; return; fi
-    install_acme
+# 安装续期 hook：acme 更新证书后自动复制到 sing-box 目录并重载服务
+# （无论证书是已存在还是新申请，都必须配置，否则重装后证书过期无人处理）
+setup_renew_hook() {
+    local DOMAIN="$1"
+    local CERT_DIR="/etc/sing-box/cert"
+    mkdir -p "$CERT_DIR"
     if [ -f "/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer" ]; then
-        info "证书已存在: ${DOMAIN}"
-        CERT_DIR="/etc/sing-box/cert"
-        mkdir -p "$CERT_DIR"
         cp "/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer" "$CERT_DIR/fullchain.pem"
         cp "/root/.acme.sh/${DOMAIN}_ecc/${DOMAIN}.key" "$CERT_DIR/privkey.pem"
-        return
     fi
-    info "申请证书: ${DOMAIN}..."
-    /root/.acme.sh/acme.sh --issue -d "${DOMAIN}" --standalone --keylength ec-256 --force 2>/dev/null || \
-    warn "证书申请失败（可能端口被占或 DNS 未解析），TLS 协议可能不可用"
-    if [ -f "/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer" ]; then
-        CERT_DIR="/etc/sing-box/cert"
-        mkdir -p "$CERT_DIR"
-        cp "/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer" "$CERT_DIR/fullchain.pem"
-        cp "/root/.acme.sh/${DOMAIN}_ecc/${DOMAIN}.key" "$CERT_DIR/privkey.pem"
-        # 安装续期 hook：acme 更新证书后自动复制到 sing-box 目录并重载服务
-        cat > "/root/.acme.sh/${DOMAIN}_ecc/renew_hook.sh" <<EOF
+    cat > "/root/.acme.sh/${DOMAIN}_ecc/renew_hook.sh" <<EOF
 #!/bin/bash
 CERT_DIR="/etc/sing-box/cert"
 mkdir -p "\$CERT_DIR"
@@ -199,8 +191,23 @@ cp "/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer" "\$CERT_DIR/fullchain.pem"
 cp "/root/.acme.sh/${DOMAIN}_ecc/${DOMAIN}.key" "\$CERT_DIR/privkey.pem"
 systemctl restart sing-box 2>/dev/null || true
 EOF
-        chmod +x "/root/.acme.sh/${DOMAIN}_ecc/renew_hook.sh"
-        /root/.acme.sh/acme.sh --install-cert -d "${DOMAIN}" --ecc             --reloadcmd "bash /root/.acme.sh/${DOMAIN}_ecc/renew_hook.sh" >/dev/null 2>&1 || true
+    chmod +x "/root/.acme.sh/${DOMAIN}_ecc/renew_hook.sh"
+    /root/.acme.sh/acme.sh --install-cert -d "${DOMAIN}" --ecc --reloadcmd "bash /root/.acme.sh/${DOMAIN}_ecc/renew_hook.sh" >/dev/null 2>&1 || true
+    info "证书自动续期已配置（到期前自动更新并重载 sing-box）"
+}
+apply_cert() {
+    if [ -z "$DOMAIN" ]; then info "无域名，跳过证书"; return; fi
+    install_acme
+    if [ -f "/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer" ]; then
+        info "证书已存在: ${DOMAIN}"
+        setup_renew_hook "${DOMAIN}"
+        return
+    fi
+    info "申请证书: ${DOMAIN}..."
+    /root/.acme.sh/acme.sh --issue -d "${DOMAIN}" --standalone --keylength ec-256 --force 2>/dev/null || \
+    warn "证书申请失败（可能端口被占或 DNS 未解析），TLS 协议可能不可用"
+    if [ -f "/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer" ]; then
+        setup_renew_hook "${DOMAIN}"
         info "证书已申请（含自动续期）"
     fi
 }
