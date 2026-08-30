@@ -291,6 +291,11 @@
               <el-option label="码支付-支付宝" value="codepay_alipay" />
               <el-option label="码支付-微信" value="codepay_wxpay" />
             </el-option-group>
+            <el-option-group label="国际支付">
+              <el-option label="Stripe 信用卡" value="stripe" />
+              <el-option label="PayPal" value="paypal" />
+              <el-option label="USDT 加密货币" value="usdt" />
+            </el-option-group>
           </el-select>
         </el-form-item>
         <template v-if="['alipay', 'wechat'].includes(configForm.pay_type)">
@@ -444,6 +449,62 @@
             <el-input v-model="configForm.wechat_api_key" />
           </el-form-item>
         </template>
+        <template v-if="configForm.pay_type === 'stripe'">
+          <el-form-item label="Stripe Secret Key">
+            <template v-if="isMobile"><div class="mobile-label">Stripe Secret Key</div></template>
+            <el-input v-model="configForm.stripe_secret_key" type="password" show-password placeholder="sk_live_..." class="full-width-control" />
+            <div class="form-tip">在 Stripe Dashboard → Developers → API keys 获取。</div>
+          </el-form-item>
+          <el-form-item label="Webhook Secret">
+            <template v-if="isMobile"><div class="mobile-label">Webhook Secret</div></template>
+            <el-input v-model="configForm.stripe_webhook_secret" type="password" show-password placeholder="whsec_..." class="full-width-control" />
+            <div class="form-tip">
+              在 Stripe Dashboard → Developers → Webhooks 配置，URL 填：{{ baseUrl }}/api/v1/payment/notify/stripe<br />
+              事件选择：checkout.session.completed
+            </div>
+          </el-form-item>
+        </template>
+        <template v-if="configForm.pay_type === 'paypal'">
+          <el-form-item label="PayPal Client ID">
+            <template v-if="isMobile"><div class="mobile-label">PayPal Client ID</div></template>
+            <el-input v-model="configForm.paypal_client_id" placeholder="客户端ID" class="full-width-control" />
+          </el-form-item>
+          <el-form-item label="PayPal Secret">
+            <template v-if="isMobile"><div class="mobile-label">PayPal Secret</div></template>
+            <el-input v-model="configForm.paypal_secret" type="password" show-password placeholder="客户端密钥" class="full-width-control" />
+          </el-form-item>
+          <el-form-item label="Webhook ID">
+            <template v-if="isMobile"><div class="mobile-label">Webhook ID</div></template>
+            <el-input v-model="configForm.paypal_webhook_id" placeholder="Webhook ID" class="full-width-control" />
+            <div class="form-tip">
+              在 PayPal Developer → Webhooks 创建，URL 填：{{ baseUrl }}/api/v1/payment/notify/paypal<br />
+              事件选择：PAYMENT.CAPTURE.COMPLETED
+            </div>
+          </el-form-item>
+          <el-form-item label="沙箱模式">
+            <el-switch v-model="configForm.paypal_sandbox" />
+            <div class="form-tip">开启后使用 PayPal 沙箱环境测试</div>
+          </el-form-item>
+        </template>
+        <template v-if="configForm.pay_type === 'usdt'">
+          <el-form-item label="USDT 钱包地址">
+            <template v-if="isMobile"><div class="mobile-label">USDT 钱包地址</div></template>
+            <el-input v-model="configForm.wallet_address" placeholder="TRC20/ERC20 收款地址" class="full-width-control" />
+          </el-form-item>
+          <el-form-item label="网络">
+            <template v-if="isMobile"><div class="mobile-label">网络</div></template>
+            <el-select v-model="configForm.usdt_network" class="full-width-control">
+              <el-option label="TRC20 (推荐)" value="TRC20" />
+              <el-option label="ERC20" value="ERC20" />
+              <el-option label="BEP20" value="BEP20" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="确认数">
+            <template v-if="isMobile"><div class="mobile-label">确认数</div></template>
+            <el-input-number v-model="configForm.usdt_confirmations" :min="1" :max="12" />
+            <div class="form-tip">区块链确认数要求，建议 TRC20 填 1</div>
+          </el-form-item>
+        </template>
         <el-form-item label="同步回调地址">
           <template v-if="isMobile"><div class="mobile-label">同步回调地址</div></template>
           <el-input v-model="configForm.return_url" placeholder="支付完成后跳转的地址" />
@@ -533,7 +594,10 @@ const PAYMENT_TYPES = {
   'yipay_qqpay': { label: '易支付-QQ钱包', tag: 'warning' },
   'codepay': { label: '码支付', tag: 'danger' },
   'codepay_alipay': { label: '码支付-支付宝', tag: 'danger' },
-  'codepay_wxpay': { label: '码支付-微信', tag: 'danger' }
+  'codepay_wxpay': { label: '码支付-微信', tag: 'danger' },
+  'stripe': { label: 'Stripe 信用卡', tag: 'primary' },
+  'paypal': { label: 'PayPal', tag: 'info' },
+  'usdt': { label: 'USDT 加密货币', tag: 'warning' }
 }
 const DEFAULT_FORM_STATE = {
   pay_type: '',
@@ -555,6 +619,15 @@ const DEFAULT_FORM_STATE = {
   yipay_md5_key: '',
   codepay_gateway_url: '',
   codepay_supported_types: ['alipay', 'wxpay'],
+  stripe_secret_key: '',
+  stripe_webhook_secret: '',
+  paypal_client_id: '',
+  paypal_secret: '',
+  paypal_webhook_id: '',
+  paypal_sandbox: false,
+  wallet_address: '',
+  usdt_network: 'TRC20',
+  usdt_confirmations: 1,
   return_url: '',
   notify_url: '',
   status: 1,
@@ -789,6 +862,24 @@ export default {
           gateway_url: gatewayUrl,
           api_url: apiUrl
         }
+      } else if (configForm.pay_type === 'stripe') {
+        data.stripe_secret_key = configForm.stripe_secret_key || ''
+        data.config_json = {
+          webhook_secret: configForm.stripe_webhook_secret || ''
+        }
+      } else if (configForm.pay_type === 'paypal') {
+        data.paypal_client_id = configForm.paypal_client_id || ''
+        data.paypal_secret = configForm.paypal_secret || ''
+        data.config_json = {
+          webhook_id: configForm.paypal_webhook_id || '',
+          sandbox: !!configForm.paypal_sandbox
+        }
+      } else if (configForm.pay_type === 'usdt') {
+        data.wallet_address = configForm.wallet_address || ''
+        data.config_json = {
+          network: configForm.usdt_network || 'TRC20',
+          confirmations: configForm.usdt_confirmations || 1
+        }
       }
       return data
     }
@@ -849,6 +940,18 @@ export default {
         specificData.codepay_supported_types = json.supported_types || ['alipay', 'wxpay']
       } else if (['codepay_alipay', 'codepay_wxpay'].includes(config.pay_type)) {
         specificData.codepay_gateway_url = json.gateway_url || (json.api_url ? json.api_url.replace('/xpay/epay/mapi.php', '') : '')
+      } else if (config.pay_type === 'stripe') {
+        specificData.stripe_secret_key = config.stripe_secret_key || ''
+        specificData.stripe_webhook_secret = json.webhook_secret || ''
+      } else if (config.pay_type === 'paypal') {
+        specificData.paypal_client_id = config.paypal_client_id || ''
+        specificData.paypal_secret = config.paypal_secret || ''
+        specificData.paypal_webhook_id = json.webhook_id || ''
+        specificData.paypal_sandbox = !!json.sandbox
+      } else if (config.pay_type === 'usdt') {
+        specificData.wallet_address = config.wallet_address || ''
+        specificData.usdt_network = json.network || 'TRC20'
+        specificData.usdt_confirmations = json.confirmations || 1
       } else {
         specificData.yipay_type = json.yipay_type
         specificData.yipay_pid = json.yipay_pid
