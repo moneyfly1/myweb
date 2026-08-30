@@ -869,7 +869,7 @@
           <div class="switch-card mb-3">
             <div class="switch-card-content">
               <span class="title">客户端版本过滤</span>
-              <span class="desc">按客户端类型与版本自动过滤其不支持的新协议（如老版 Clash 不推送 VLESS/Reality/Hysteria2 等）。关闭后所有客户端均收到全量节点，避免个别客户端订阅异常或节点过少。</span>
+              <span class="desc">开启：遵循客户端能力过滤——按客户端类型与版本自动过滤其不支持的新协议（如老版 Clash 不推送 VLESS/Reality/Hysteria2 等），此模式下方的协议白名单不生效。关闭：使用协议白名单过滤——按下方勾选的协议控制各环境推送范围。</span>
             </div>
             <el-switch v-model="protocolFilterSettings.client_capability_filter_enabled" />
           </div>
