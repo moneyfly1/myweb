@@ -107,12 +107,24 @@ func GetSelfHostNodeStatus(c *gin.Context) {
 	})
 }
 
-// GetSelfHostNodes 管理端自建节点视图列表。
-// GET /admin/nodes/selfhost
+// GetSelfHostNodes 管理端自建节点视图列表（分页）。
+// GET /admin/nodes/selfhost?page=1&page_size=20
 func GetSelfHostNodes(c *gin.Context) {
 	db := database.GetDB()
+
+	p := utils.ParsePagination(c)
+	page, pageSize := p.Page, p.Size
+
+	query := db.Model(&models.CustomNode{}).Where("self_hosted = ?", true)
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取自建节点列表失败", err)
+		return
+	}
+
 	var nodes []models.CustomNode
-	if err := db.Where("self_hosted = ?", true).Order("created_at DESC").Find(&nodes).Error; err != nil {
+	if err := query.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&nodes).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取自建节点列表失败", err)
 		return
 	}
@@ -150,7 +162,9 @@ func GetSelfHostNodes(c *gin.Context) {
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"list":  list,
-		"total": len(list),
+		"total": total,
+		"page":  page,
+		"size":  pageSize,
 	})
 }
 
