@@ -2806,13 +2806,13 @@ func UpdateAdminProfile(c *gin.Context) {
 	}
 
 	var req struct {
-		DisplayName string `json:"display_name"`
-		AvatarURL   string `json:"avatar_url"`
-		Avatar      string `json:"avatar"`
-		Phone       string `json:"phone"`
-		Bio         string `json:"bio"`
-		Theme       string `json:"theme"`
-		Language    string `json:"language"`
+		DisplayName *string `json:"display_name"`
+		AvatarURL   string  `json:"avatar_url"`
+		Avatar      string  `json:"avatar"`
+		Phone       *string `json:"phone"`
+		Bio         *string `json:"bio"`
+		Theme       string  `json:"theme"`
+		Language    string  `json:"language"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -2840,28 +2840,38 @@ func UpdateAdminProfile(c *gin.Context) {
 		return
 	}
 
-	configUpdates := map[string]string{
+	// 指针字段：nil=未提交（不动原值），空串=清空，非空=更新
+	configUpdates := map[string]*string{
 		"display_name": req.DisplayName,
 		"phone":        req.Phone,
 		"bio":          req.Bio,
 	}
 
 	for key, value := range configUpdates {
-		if value != "" {
-			if err := updateUserConfig(db, user.ID, "admin_profile", key, value); err != nil {
-				utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("更新%s失败", key), err)
-				return
-			}
+		if value == nil {
+			continue
+		}
+		if err := updateUserConfig(db, user.ID, "admin_profile", key, *value); err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("更新%s失败", key), err)
+			return
 		}
 	}
 
 	responseConfigs := map[string]string{
-		"display_name": req.DisplayName,
-		"phone":        req.Phone,
-		"bio":          req.Bio,
+		"display_name": getProfileConfigValue(req.DisplayName),
+		"phone":        getProfileConfigValue(req.Phone),
+		"bio":          getProfileConfigValue(req.Bio),
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "个人资料更新成功", buildProfileResponse(user, responseConfigs))
+}
+
+// getProfileConfigValue 指针字段取实际值（nil 视为空串）
+func getProfileConfigValue(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 
 func GetLoginHistory(c *gin.Context) {

@@ -4,6 +4,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
+	"database/sql"
 	"fmt"
 	"net/http"
 
@@ -159,12 +160,34 @@ func GetAdminKnowledgeArticles(c *gin.Context) {
 	})
 }
 
+// articleRequest 管理端文章创建/更新请求。
+// Summary 用普通 string 接收（前端表单恒带 summary，空串也带），
+// 避免 sql.NullString 无法绑定普通字符串导致 400。
+type articleRequest struct {
+	CategoryID uint   `json:"category_id"`
+	Title      string `json:"title"`
+	Content    string `json:"content"`
+	Summary    string `json:"summary"`
+	SortOrder  int    `json:"sort_order"`
+	IsActive   bool   `json:"is_active"`
+}
+
 // 管理端 - 创建文章
 func CreateKnowledgeArticle(c *gin.Context) {
-	var article models.KnowledgeArticle
-	if err := c.ShouldBindJSON(&article); err != nil {
+	var req articleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", nil)
 		return
+	}
+	article := models.KnowledgeArticle{
+		CategoryID: req.CategoryID,
+		Title:      req.Title,
+		Content:    req.Content,
+		SortOrder:  req.SortOrder,
+		IsActive:   req.IsActive,
+	}
+	if req.Summary != "" {
+		article.Summary = sql.NullString{String: req.Summary, Valid: true}
 	}
 	db := database.GetDB()
 	if err := db.Create(&article).Error; err != nil {
@@ -184,9 +207,20 @@ func UpdateKnowledgeArticle(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusNotFound, "文章不存在", nil)
 		return
 	}
-	if err := c.ShouldBindJSON(&article); err != nil {
+	var req articleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", nil)
 		return
+	}
+	article.CategoryID = req.CategoryID
+	article.Title = req.Title
+	article.Content = req.Content
+	article.SortOrder = req.SortOrder
+	article.IsActive = req.IsActive
+	if req.Summary != "" {
+		article.Summary = sql.NullString{String: req.Summary, Valid: true}
+	} else {
+		article.Summary = sql.NullString{}
 	}
 	db.Save(&article)
 	utils.CreateAuditLogSimple(c, "update_knowledge_article", "knowledge_article", article.ID, fmt.Sprintf("更新知识库文章: %s", article.Title))
