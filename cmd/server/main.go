@@ -108,19 +108,22 @@ func main() {
 	}
 
 	if _, err := os.Stat(cleanGeoipPath); os.IsNotExist(err) {
-		log.Println("GeoIP 数据库文件不存在，尝试自动下载...")
-		if err := downloadGeoIPDatabase(cleanGeoipPath); err != nil {
-			log.Printf("自动下载 GeoIP 数据库失败: %v", err)
-			log.Println("提示: 如需启用地理位置解析，请手动下载 GeoLite2-City.mmdb 文件")
-			log.Println("下载地址: https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb")
-		} else {
-			log.Println("GeoIP 数据库自动下载成功")
-		}
+		// 数据库文件缺失：异步下载，绝不阻塞服务启动（部署/升级/重启都不应被 GeoIP 下载拖慢）
+		log.Println("GeoIP 数据库文件不存在，将在后台异步下载（不阻塞启动）...")
+		go func(path string) {
+			if err := downloadGeoIPDatabase(path); err != nil {
+				log.Printf("自动下载 GeoIP 数据库失败: %v", err)
+				log.Println("提示: 如需启用地理位置解析，可稍后在系统设置 → GeoIP 手动更新，或下载 GeoLite2-City.mmdb 到项目目录")
+			} else {
+				log.Println("GeoIP 数据库自动下载成功，正在加载...")
+				geoip.InitGeoIP(path)
+			}
+		}(cleanGeoipPath)
 	}
 
 	if err := geoip.InitGeoIP(cleanGeoipPath); err != nil {
 		log.Printf("GeoIP 初始化失败（地理位置解析功能已禁用）: %v", err)
-		log.Println("提示: 如需启用地理位置解析，请下载 GeoLite2-City.mmdb 文件")
+		log.Println("提示: 如需启用地理位置解析，请在系统设置 → GeoIP 中更新数据库，或下载 GeoLite2-City.mmdb 文件")
 		log.Println("下载地址: https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb")
 	} else {
 		log.Println("GeoIP 数据库已加载，地理位置解析功能已启用")
@@ -186,7 +189,9 @@ func downloadGeoIPDatabase(filePath string) error {
 	}
 	defer out.Close()
 
-	resp, err := http.Get(url)
+	// 带超时的客户端（30s），避免下载挂起
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
 	if err != nil {
 		return fmt.Errorf("下载失败: %w", err)
 	}
@@ -196,9 +201,14 @@ func downloadGeoIPDatabase(filePath string) error {
 		return fmt.Errorf("下载失败，状态码: %d", resp.StatusCode)
 	}
 
-	_, err = io.Copy(out, resp.Body)
+	// 限制大小 200MB，防止异常下载撑满磁盘
+	written, err := io.Copy(out, io.LimitReader(resp.Body, 200<<20))
 	if err != nil {
 		return fmt.Errorf("保存文件失败: %w", err)
+	}
+	if written >= 200<<20 {
+		_ = os.Remove(cleanPath)
+		return fmt.Errorf("下载内容超过 200MB 限制，已中止")
 	}
 
 	return nil
