@@ -179,6 +179,11 @@ func CreateSystemConfig(c *gin.Context) {
 		return
 	}
 
+	if strings.TrimSpace(req.Key) == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "配置 key 不能为空", nil)
+		return
+	}
+
 	db := database.GetDB()
 	q := db.Where("key = ?", req.Key)
 	if req.Category != "" {
@@ -247,6 +252,11 @@ func UpdateSystemConfig(c *gin.Context) {
 		return
 	}
 
+	if strings.TrimSpace(key) == "" || key == "batch" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "配置 key 不能为空", nil)
+		return
+	}
+
 	category := req.Category
 	if category == "" {
 		category = CatSystem
@@ -276,6 +286,41 @@ func UpdateSystemConfig(c *gin.Context) {
 	utils.CreateAuditLogSimple(c, "update_system_config", "system_config", config.ID, fmt.Sprintf("管理员操作: 更新系统配置 %s (category=%s)", config.Key, config.Category))
 	go cache_service.NewCacheService().ClearSystemConfigCache(config.Category)
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", config)
+}
+
+// DeleteSystemConfig 删除单个系统配置（按 key + 可选 category 精确删除）
+func DeleteSystemConfig(c *gin.Context) {
+	key := c.Param("key")
+	if strings.TrimSpace(key) == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "配置 key 不能为空", nil)
+		return
+	}
+
+	db := database.GetDB()
+	category := c.Query("category")
+
+	q := db.Where("key = ?", key)
+	if category != "" {
+		q = q.Where("category = ?", category)
+	}
+
+	var config models.SystemConfig
+	if err := q.First(&config).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "配置不存在", nil)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "查询配置失败", err)
+		}
+		return
+	}
+
+	if err := db.Delete(&config).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除配置失败", err)
+		return
+	}
+	utils.CreateAuditLogSimple(c, "delete_system_config", "system_config", config.ID, fmt.Sprintf("管理员操作: 删除系统配置 %s (category=%s)", config.Key, config.Category))
+	go cache_service.NewCacheService().ClearSystemConfigCache(config.Category)
+	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
 }
 
 func GetAdminSettings(c *gin.Context) {

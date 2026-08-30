@@ -549,6 +549,7 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/configs", handlers.GetSystemConfigs)
 			admin.POST("/configs", handlers.CreateSystemConfig)
 			admin.PUT("/configs/:key", handlers.UpdateSystemConfig)
+			admin.DELETE("/configs/:key", handlers.DeleteSystemConfig)
 
 			admin.POST("/upload", handlers.UploadFile)
 

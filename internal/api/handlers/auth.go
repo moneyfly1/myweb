@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/mail"
 	"strconv"
 	"strings"
 	"time"
@@ -1370,6 +1371,10 @@ func SendVerificationCode(c *gin.Context) {
 			return
 		}
 		req.Email = utils.NormalizeEmail(req.Email)
+		if !isValidEmailFormat(req.Email) {
+			utils.ErrorResponse(c, http.StatusBadRequest, "邮箱格式不正确", nil)
+			return
+		}
 
 		purpose := "register"
 		if req.Type == "email_change" {
@@ -1500,4 +1505,17 @@ func generateVerificationCode() string {
 	code := int(b[0])<<24 | int(b[1])<<16 | int(b[2])<<8 | int(b[3])
 	code = 100000 + (code % 900000)
 	return fmt.Sprintf("%06d", code)
+}
+
+// isValidEmailFormat 校验邮箱基本格式（标准库 net/mail 解析）
+func isValidEmailFormat(email string) bool {
+	if email == "" || len(email) > 254 {
+		return false
+	}
+	addr, err := mail.ParseAddress(email)
+	if err != nil {
+		return false
+	}
+	// 拒绝带显示名的输入（如 "Name <a@b.com>"），只接受纯邮箱
+	return addr.Address == email
 }
