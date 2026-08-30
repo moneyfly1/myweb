@@ -194,6 +194,20 @@ func DeploySelfHostVPS(c *gin.Context) {
 		return
 	}
 
+	// 先验证 SSH 凭据可用再重置节点（避免密码错误/SSH 不可达时破坏现有节点，
+	// 见 DeploySelfHostVPSDomain 同注释）
+	client, err := sshdeploy.Dial(sshdeploy.Credentials{
+		Host:     host,
+		Port:     sshPort,
+		User:     sshUser,
+		Password: pass,
+	}, 15*time.Second)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadGateway, "SSH 连接失败: "+err.Error(), err)
+		return
+	}
+	defer client.Close()
+
 	// 1. 创建占位记录（含 SSH 信息）或复用已有记录，获得 install_id/token
 	node, installID, token, reused, err := prepareSelfHostNodeForDeploy(db, name, req.Protocol, host, sshPort, sshUser, req.ReuseNodeID)
 	if err != nil {
@@ -232,18 +246,6 @@ func DeploySelfHostVPS(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成安装脚本失败: "+err.Error(), err)
 		return
 	}
-
-	client, err := sshdeploy.Dial(sshdeploy.Credentials{
-		Host:     host,
-		Port:     sshPort,
-		User:     sshUser,
-		Password: pass,
-	}, 15*time.Second)
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusBadGateway, "SSH 连接失败: "+err.Error(), err)
-		return
-	}
-	defer client.Close()
 
 	// 脚本里的回传地址需为 VPS 可访问地址：把脚本中的面板地址替换为 SSH 目标主机视角不可行，
 	// 直接复用面板地址（若面板在公网可达则正常；本地开发场景由反向隧道转发）。
@@ -402,6 +404,16 @@ func DeploySelfHostVPSDomain(c *gin.Context) {
 		return
 	}
 
+	// 先验证 SSH 凭据可用再重置节点（避免密码错误/SSH 不可达时破坏现有节点：
+	// prepareSelfHostNodeForDeploy 会把节点置为 pending+禁用+换 install_id，
+	// 若此时 SSH 连接失败，节点将无法恢复。提前 Dial 可让失败发生在任何 DB 变更之前）
+	client, err := sshdeploy.Dial(sshdeploy.Credentials{Host: host, Port: sshPort, User: sshUser, Password: pass}, 15*time.Second)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadGateway, "SSH 连接失败: "+err.Error(), err)
+		return
+	}
+	defer client.Close()
+
 	node, installID, token, reused, err := prepareSelfHostNodeForDeploy(db, name, protoList[0].Key, host, sshPort, sshUser, req.ReuseNodeID)
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "准备自建节点失败: "+err.Error(), err)
@@ -441,13 +453,6 @@ func DeploySelfHostVPSDomain(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成部署脚本失败: "+err.Error(), err)
 		return
 	}
-
-	client, err := sshdeploy.Dial(sshdeploy.Credentials{Host: host, Port: sshPort, User: sshUser, Password: pass}, 15*time.Second)
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusBadGateway, "SSH 连接失败: "+err.Error(), err)
-		return
-	}
-	defer client.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
