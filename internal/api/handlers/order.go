@@ -135,6 +135,7 @@ func formatOrderData(order models.Order) gin.H {
 	return gin.H{
 		"id":                     order.ID,
 		"order_no":               order.OrderNo,
+		"record_type":            "order", // 与充值记录(record_type=recharge)区分，前端据此渲染操作按钮
 		"user_id":                order.UserID,
 		"user":                   userInfo,
 		"package_id":             pkgID,
@@ -187,6 +188,40 @@ func resolveOrderNotificationPackageName(order models.Order) string {
 	return packageName
 }
 
+// paymentTypeDisplayName 将支付类型代码映射为可读名称（通知/邮件展示用）
+func paymentTypeDisplayName(payType string) string {
+	switch payType {
+	case "alipay":
+		return "支付宝"
+	case "wechat":
+		return "微信支付"
+	case "applepay":
+		return "Apple Pay"
+	case "stripe":
+		return "Stripe 信用卡"
+	case "paypal":
+		return "PayPal"
+	case "usdt":
+		return "USDT 加密货币"
+	case "yipay":
+		return "易支付"
+	case "yipay_alipay":
+		return "易支付-支付宝"
+	case "yipay_wxpay":
+		return "易支付-微信"
+	case "yipay_qqpay":
+		return "易支付-QQ钱包"
+	case "codepay":
+		return "码支付"
+	case "codepay_alipay":
+		return "码支付-支付宝"
+	case "codepay_wxpay":
+		return "码支付-微信"
+	default:
+		return payType
+	}
+}
+
 func sendOrderCreatedNotifications(db *gorm.DB, orderNo string) {
 	var latestOrder models.Order
 	if err := db.Preload("Package").Where("order_no = ?", orderNo).First(&latestOrder).Error; err != nil {
@@ -208,6 +243,14 @@ func sendOrderCreatedNotifications(db *gorm.DB, orderNo string) {
 	paymentMethod := "待选择"
 	if latestOrder.PaymentMethodName.Valid && strings.TrimSpace(latestOrder.PaymentMethodName.String) != "" {
 		paymentMethod = latestOrder.PaymentMethodName.String
+	} else if latestOrder.PaymentMethodID.Valid && latestOrder.PaymentMethodID.Int64 > 0 {
+		// 订单有支付配置 ID 但名称未写入时，从支付配置反查可读名称
+		var pm models.PaymentConfig
+		if err := db.First(&pm, latestOrder.PaymentMethodID.Int64).Error; err == nil && pm.PayType != "" {
+			if name := paymentTypeDisplayName(pm.PayType); name != "" {
+				paymentMethod = name
+			}
+		}
 	}
 	packageName := resolveOrderNotificationPackageName(latestOrder)
 	notificationService := notification.NewNotificationService()
