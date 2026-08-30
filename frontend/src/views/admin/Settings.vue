@@ -866,6 +866,13 @@
 
         <!-- ==================== 协议过滤 ==================== -->
         <el-tab-pane label="协议过滤" name="protocol-filter">
+          <div class="switch-card mb-3">
+            <div class="switch-card-content">
+              <span class="title">客户端版本过滤</span>
+              <span class="desc">按客户端类型与版本自动过滤其不支持的新协议（如老版 Clash 不推送 VLESS/Reality/Hysteria2 等）。关闭后所有客户端均收到全量节点，避免个别客户端订阅异常或节点过少。</span>
+            </div>
+            <el-switch v-model="protocolFilterSettings.client_capability_filter_enabled" />
+          </div>
           <div class="notification-layout">
             <div class="notification-panel">
               <div class="panel-header">
@@ -1244,7 +1251,8 @@ export default {
       backup_clean_enabled: true, backup_log_retention_days: 7
     })
     const protocolFilterSettings = reactive({
-      clash_protocols: [...ALL_PROTOCOLS], universal_protocols: [...ALL_PROTOCOLS]
+      clash_protocols: [...ALL_PROTOCOLS], universal_protocols: [...ALL_PROTOCOLS],
+      client_capability_filter_enabled: true
     })
     const repoSyncSettings = reactive({
       repo_sync_enabled: false, repo_sync_token: '',
@@ -1445,6 +1453,9 @@ export default {
           if (pf.universal_protocols) {
             try { protocolFilterSettings.universal_protocols = typeof pf.universal_protocols === 'string' ? JSON.parse(pf.universal_protocols) : pf.universal_protocols }
             catch { protocolFilterSettings.universal_protocols = [...ALL_PROTOCOLS] }
+          }
+          if (pf.client_capability_filter_enabled !== undefined) {
+            protocolFilterSettings.client_capability_filter_enabled = toBool(pf.client_capability_filter_enabled)
           }
         }
         if (data.repo_sync) {
