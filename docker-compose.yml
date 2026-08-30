@@ -6,19 +6,44 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=sqlite:///./cboard.db
-      - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
+      # 数据库：挂载目录 /root/data 下的 cboard.db（避免单文件挂载导致首次启动失败）
+      - DATABASE_URL=sqlite:///./data/cboard.db
+      # 必须设置强密钥！生成：openssl rand -hex 32
+      # 否则生产模式（ENV=production）会拒绝启动
+      - SECRET_KEY=${SECRET_KEY:?请在 .env 中设置 SECRET_KEY（openssl rand -hex 32）}
       - HOST=0.0.0.0
       - PORT=8000
-      - DEBUG=false
+      - DEBUG=${DEBUG:-false}
+      # 管理员账户（首次启动自动创建；不设置则默认 admin/admin123）
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      # 邮件（可选，用于验证码/通知）
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-CBoard Modern}
+      - SMTP_ENCRYPTION=${SMTP_ENCRYPTION:-tls}
+      # Redis 缓存（可选，加速 GeoIP/订阅）
+      - REDIS_ADDR=${REDIS_ADDR:-}
+      # 可信代理（部署在 Nginx/Cloudflare 后必配）
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-127.0.0.1,::1}
+      # 自建节点回传地址（有自建节点时必配）
+      - PANEL_PUBLIC_URL=${PANEL_PUBLIC_URL:-}
     volumes:
-      - ./cboard.db:/root/cboard.db
+      # 挂载【目录】而非单文件：SQLite 数据 + WAL 日志都持久化，且首次启动不会因目录/文件混淆失败
+      - ./data:/root/data
       - ./uploads:/root/uploads
     restart: unless-stopped
 
   # MySQL 可选（如果需要使用 MySQL）
+  # 使用前：取消下方注释，并把 app 的 DATABASE_URL 改为
+  #   mysql://cboard_user:cboard_password@mysql:3306/cboard_db?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai
   # mysql:
   #   image: mysql:8.0
+  #   command: --default-authentication-plugin=mysql_native_password
   #   environment:
   #     - MYSQL_ROOT_PASSWORD=rootpassword
   #     - MYSQL_DATABASE=cboard_db
@@ -29,6 +54,5 @@ services:
   #   ports:
   #     - "3306:3306"
 
-# volumes:
-#   mysql_data:
-
+volumes:
+  mysql_data:

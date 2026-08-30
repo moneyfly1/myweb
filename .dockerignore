@@ -1,0 +1,24 @@
+# 构建上下文排除（避免 node_modules、数据库、日志等大文件进入镜像构建）
+node_modules
+frontend/node_modules
+frontend/dist
+*.db
+*.db-shm
+*.db-wal
+*.db.bak.*
+*.log
+*.pid
+.git
+.gitignore
+docs
+audit-moneyfly
+.gocache
+.gomodcache
+.gopath
+bin
+cboard.db
+server
+server-linux
+cboard
+test.db
+*.mmdb

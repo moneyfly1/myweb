@@ -392,7 +392,7 @@ CBoard offers **three officially supported installation methods**:
 
 ### 🐳 Method 3: Docker (Recommended for Isolated Deployments) — *Most Detailed*
 
-This is the officially supported container deployment. It uses a **two-stage Dockerfile** (multi-arch capable, Alpine-based) and a **docker-compose.yml** with a bind-mounted SQLite database so your data lives on the host.
+This is the officially supported container deployment. It uses a **three-stage Dockerfile** (backend build + frontend build + runtime) and a **docker-compose.yml** with bind-mounted **directories** so your data (SQLite + WAL logs + uploads) lives on the host.
 
 #### Prerequisites
 
@@ -418,55 +418,34 @@ cd cboard
 
 #### Step ② — Configure `.env` (critical!)
 
-Copy the sample and edit it:
+Copy the sample template and edit it:
 
 ```bash
-cp .env .env.bak          # keep the original as reference
-# then edit .env with your values
+cp .env.example .env
+vim .env
 ```
 
-**Minimum required changes:**
+**MUST change (build/startup will FAIL otherwise):**
+
+| Variable | Why | Example |
+|----------|-----|---------|
+| `SECRET_KEY` | ⚠️ `docker-compose.yml` uses `${SECRET_KEY:?}` — compose **refuses to start** if unset; weak keys are also rejected in production mode | output of `openssl rand -hex 32` |
+| `ADMIN_PASSWORD` | Used to auto-create the admin at first boot. Defaults to `admin123` (insecure) if unset | your strong password (≥ 6 chars) |
+
+**Recommended (optional):**
 
 ```env
-# 🔑 MUST CHANGE — strong random secret ≥ 32 bytes!
-#   generate one with:  openssl rand -base64 48
-SECRET_KEY=REPLACE-WITH-A-LONG-RANDOM-SECRET-AT-LEAST-32-BYTES-LONG
-
-# 🗄️ Database (SQLite default — keep as is unless using MySQL)
-DATABASE_URL=sqlite:///./cboard.db
-
-# 👤 Admin bootstrap (admin is auto-created at first boot)
-ADMIN_USERNAME=admin
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=REPLACE-WITH-A-STRONG-ADMIN-PASSWORD
-
-# 🌐 CORS — list your real domains (no wildcard allowed!)
-BACKEND_CORS_ORIGINS=https://panel.example.com,https://admin.example.com
-```
-
-> 🔐 `SECRET_KEY` is validated at startup: shorter than 32 bytes, placeholder strings (`your-secret-key`, `change-me`, `default`, …) or low-entropy keys are rejected in production mode (`ENV=production`). Generate a real one:
->
-> ```bash
-> openssl rand -base64 48
-> ```
-
-Optional but recommended in production — SMTP for email notifications, and Redis for caching:
-
-```env
-# ✉️ SMTP (optional)
-SMTP_HOST=smtp.example.com
+ADMIN_USERNAME=admin                # override default username
+ADMIN_EMAIL=admin@example.com       # override default email
+SMTP_HOST=smtp.example.com          # email notifications (optional)
 SMTP_PORT=587
 SMTP_USERNAME=no-reply@example.com
 SMTP_PASSWORD=your-smtp-password
-SMTP_FROM_EMAIL=no-reply@example.com
-SMTP_FROM_NAME=CBoard
-SMTP_ENCRYPTION=tls
-
-# ⚡ Redis (optional; auto-disabled if absent)
-REDIS_ADDR=localhost:6379
-REDIS_PASSWORD=
-REDIS_DB=0
+PANEL_PUBLIC_URL=https://your-domain.com  # REQUIRED if you use self-hosted nodes (agent callback)
+TRUSTED_PROXIES=127.0.0.1,::1             # REQUIRED behind Nginx/Cloudflare
 ```
+
+> **Leave as-is** (already correct for Docker): `HOST=0.0.0.0`, `PORT=8000`, `DATABASE_URL=sqlite:///./data/cboard.db`, `DEBUG=false`.
 
 #### Step ③ — Build & start
 
@@ -474,134 +453,139 @@ REDIS_DB=0
 docker compose up -d --build
 ```
 
-Watch the startup log (first build downloads Go modules and the Alpine base image, takes a few minutes):
+First start runs a **three-stage build** (backend + frontend + runtime image, see below), takes ~1–5 minutes.
 
 ```bash
-docker compose logs -f app
+docker compose ps          # status should be "Up"
+docker compose logs -f app # watch startup logs
 ```
 
-You should eventually see:
+Success looks like:
 
 ```
-✅ 管理员账号已自动创建          (or: 管理员账号已就绪)
-数据库迁移成功 / AutoMigrate done
+服务器启动在 0.0.0.0:8000
+管理员账号已自动创建 / 管理员账号已就绪
 ```
 
-Check status:
+#### Step ④ — Admin account
+
+**Method A: auto-created via env vars (recommended)**
+
+Set `ADMIN_PASSWORD` in `.env` before first boot (Step ②). The container auto-creates the admin (username/email from `ADMIN_USERNAME`/`ADMIN_EMAIL`, default `admin`) on a fresh database. The password is **re-verified on every restart** — even if the admin gets locked out, a restart unlocks it.
+
+If `ADMIN_PASSWORD` is unset, a **random password** is printed in the startup log:
 
 ```bash
-docker compose ps
-curl -s http://127.0.0.1:8000/health
+docker compose logs app | grep "初始密码"
 ```
 
-#### Step ④ — Create the admin account
-
-**Method A (recommended): environment bootstrap.**
-
-The server auto-creates the admin on first boot from `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` (defaults: `admin` / `admin@example.com` / `admin123` if unset). If you did **not** set `ADMIN_PASSWORD`, a **random one-time password is printed in the logs**:
+**Method B: inspect inside the container**
 
 ```bash
-docker compose logs app | grep -i -A2 "初始密码\|initial password"
+docker compose exec app sh
+ls -la /root/data/   # confirm cboard.db exists
 ```
 
-If you **set** `ADMIN_PASSWORD` in `.env`, every container restart re-ensures that password and force-unlocks the admin account — so resetting the admin password is as simple as editing `.env` and restarting:
+> The runtime image is minimal Alpine without Go toolchain — create/reset the admin via env vars (Method A); data lives on the host mount.
 
-```bash
-docker compose restart app
-```
+#### Step ⑤ — Access
 
-**Method B: run the admin tool inside the container (`create_admin` equivalent).**
-
-The image ships only the server binary, so compile the tool once and copy it in:
-
-```bash
-# Build the admin tool with a one-off Go builder container (CGO needed for SQLite)
-docker run --rm -v "$PWD":/app -w /app golang:1.24-alpine \
-  sh -c "apk add --no-cache gcc musl-dev && CGO_ENABLED=1 go build -o cboard-admin ./scripts/admin_tool"
-
-# Copy it into the running container and execute
-docker cp cboard-admin "$(docker compose ps -q app)":/root/
-docker compose exec app ./cboard-admin
-```
-
-The tool prints account info, verifies the bcrypt hash, and confirms the login URL. To **reset the admin password** from inside the container:
-
-```bash
-docker compose exec app ./cboard-admin 'YourNewStrongPassword123!'
-```
-
-#### Step ⑤ — Access the panel
-
-| What | URL |
-|---|---|
-| User panel | `http://SERVER_IP:8000` |
+| Entry | URL |
+|-------|-----|
+| User frontend | `http://SERVER_IP:8000` |
 | Admin panel | `http://SERVER_IP:8000/admin/login` |
 | Health check | `http://SERVER_IP:8000/health` |
 
-> 🌐 Behind a domain? Point Nginx (or Caddy/Cloudflare Tunnel) at `http://127.0.0.1:8000` and enable HTTPS. Example Nginx snippet:
->
-> ```nginx
-> server {
->     listen 443 ssl http2;
->     server_name panel.example.com;
->     location / {
->         proxy_pass http://127.0.0.1:8000;
->         proxy_set_header Host $host;
->         proxy_set_header X-Real-IP $remote_addr;
->         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
->         proxy_set_header X-Forwarded-Proto $scheme;
->     }
-> }
-> ```
+> For production, put Nginx/Caddy in front with HTTPS (expose `80/443`, keep `8000` internal).
 
-#### Data persistence 🗄️
+#### 📦 Data persistence
 
-The compose file **bind-mounts** two host paths into the container:
+All data lives in **host-mounted directories** — deleting/recreating the container keeps data:
 
-| Host path | Container path | Purpose |
-|---|---|---|
-| `./cboard.db` | `/root/cboard.db` | SQLite database (single file; ignore `cboard.db-shm` / `cboard.db-wal` — they are WAL journals) |
-| `./uploads` | `/root/uploads` | Uploaded assets, GeoIP DB, logs (`uploads/logs/`) |
+| Mount | Host path | Container path | Contents |
+|-------|-----------|----------------|----------|
+| SQLite data dir | `./data` | `/root/data` | cboard.db + WAL/SHM logs |
+| Uploads | `./uploads` | `/root/uploads` | avatars, attachments, backups, logs |
 
-Because the database lives on the host, containers can be destroyed and recreated without data loss:
+> ⚠️ Mount **directories**, not a single `.db` file: SQLite writes `cboard.db-shm`/`cboard.db-wal` (WAL mode), and Docker creates a **directory** when the host file doesn't exist, breaking first boot — fixed by directory mounts.
+
+**Backup = copy these two directories:**
 
 ```bash
-# Safe upgrade flow
-docker compose pull            # if using a registry image
-docker compose up -d --build
-docker compose restart app
+cp -r data /backup/data-$(date +%F)
+cp -r uploads /backup/uploads-$(date +%F)
 ```
 
-> ✅ Docker deployment uses **SQLite by default** — no database container required. Volumes and permissions are managed by the bind mounts.
+#### 🐳 Docker image build (Dockerfile)
 
-#### Optional: switch to MySQL 🗄️
+Three stages (backend compile + frontend build + runtime):
 
-1. **Uncomment** the `mysql` service block in `docker-compose.yml`.
-2. Set the app to use MySQL — change `DATABASE_URL` to a string containing `mysql` (the driver is selected by substring match) and provide the `MYSQL_*` connection vars:
+```dockerfile
+# Stage 1: backend build (golang:1.24-alpine)
+FROM golang:1.24-alpine AS builder
+RUN apk add --no-cache gcc musl-dev          # for SQLite cgo driver
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o cboard-go cmd/server/main.go
+
+# Stage 2: frontend build (node:20-alpine — Vite 7 needs Node 20+)
+FROM node:20-alpine AS frontend-builder
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install --legacy-peer-deps
+COPY frontend/ .
+RUN npm run build
+
+# Stage 3: runtime (alpine)
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates tzdata
+ENV TZ=Asia/Shanghai
+WORKDIR /root/
+COPY --from=builder /app/cboard-go .
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+EXPOSE 8000
+CMD ["./cboard-go"]
+```
+
+**Design notes:**
+
+- 🏗️ **Three-stage build**: backend + frontend separated; runtime only ships the binary + dist → minimal image.
+- ⚡ **Frontend MUST be built**: backend serves static files from `./frontend/dist`; without it the UI 404s (a defect in the old Dockerfile — fixed).
+- 🟢 **Node 20+**: the frontend uses Vite 7; Node 18 fails the build (fixed).
+- ⏰ **Timezone**: runtime image ships `TZ=Asia/Shanghai`.
+- 🔐 **Certs**: `ca-certificates` for HTTPS outbound (SMTP, payment callbacks, GitHub backup).
+- 🗜️ **Trimmed**: `-trimpath -ldflags="-s -w"` shrinks the binary.
+
+#### 🗄️ Optional: switch to MySQL
+
+Default is SQLite (zero-config). For high-concurrency production, switch to MySQL:
+
+**① Edit `docker-compose.yml` — uncomment the mysql service and change the app DATABASE_URL:**
 
 ```yaml
 services:
   app:
+    build: .
+    ports:
+      - "8000:8000"
     environment:
-      - DATABASE_URL=mysql://cboard          # "mysql" triggers the MySQL driver
-      - MYSQL_HOST=mysql                     # service name, not localhost!
-      - MYSQL_PORT=3306
-      - MYSQL_USER=cboard_user
-      - MYSQL_PASSWORD=cboard_password       # change it!
-      - MYSQL_DATABASE=cboard_db
-    # Optional: stop mounting the SQLite file once MySQL is authoritative
-    # volumes:
-    #   - ./uploads:/root/uploads
+      - DATABASE_URL=mysql://cboard_user:cboard_password@mysql:3306/cboard_db?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai
+      - SECRET_KEY=${SECRET_KEY:?set in .env}
+    volumes:
+      - ./data:/root/data
+      - ./uploads:/root/uploads
     depends_on:
       - mysql
+    restart: unless-stopped
 
   mysql:
     image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
     environment:
-      - MYSQL_ROOT_PASSWORD=rootpassword     # change it!
+      - MYSQL_ROOT_PASSWORD=rootpassword
       - MYSQL_DATABASE=cboard_db
       - MYSQL_USER=cboard_user
-      - MYSQL_PASSWORD=cboard_password       # change it!
+      - MYSQL_PASSWORD=cboard_password
     volumes:
       - mysql_data:/var/lib/mysql
     ports:
@@ -611,27 +595,41 @@ volumes:
   mysql_data:
 ```
 
-3. Restart:
+**② Set `DATABASE_URL` to the MySQL DSN:**
 
-```bash
-docker compose up -d
-docker compose logs -f app
+```env
+DATABASE_URL=mysql://cboard_user:cboard_password@mysql:3306/cboard_db?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai
 ```
 
-> ℹ️ The DSN is built internally from the `MYSQL_*` vars with `charset=utf8mb4&parseTime=True&loc=Asia/Shanghai`; `DATABASE_URL` itself only needs to contain `mysql` (or set `USE_MYSQL=true`). `MYSQL_HOST` must be the compose **service name** (`mysql`), not `localhost`.
->
-> ⚠️ MySQL data lives in the named volume `mysql_data` — back it up with `mysqldump` (see [Database Backup](#-database-backup)).
+> Containers reach MySQL by service name `mysql` (compose network); from the host use `127.0.0.1:3306`.
 
-#### Docker maintenance commands
+**③ Restart:**
 
 ```bash
-docker compose ps                 # status
-docker compose logs -f app        # follow logs
-docker compose restart app        # restart (re-ensures ADMIN_PASSWORD)
-docker compose down               # stop containers (data persists on host)
-docker compose down -v            # ⚠️ DESTROYS mysql_data volume only
-docker compose up -d --build      # rebuild after code/config change
+docker compose up -d --build
 ```
+
+**💡 Migrate from SQLite to MySQL** (host Go toolchain):
+
+```bash
+go run ./cmd/migrate -sqlite ./data/cboard.db -mysql "cboard_user:cboard_password@tcp(127.0.0.1:3306)/cboard_db?charset=utf8mb4&parseTime=True&loc=Local"
+```
+
+> The migration script only **reads** the SQLite source and only **writes** the MySQL target — back up the SQLite file first.
+
+#### 🔧 Docker troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| **Port in use** (`bind: address already in use`) | `lsof -i :8000`; kill the process or remap (e.g. `"8001:8000"`) in `docker-compose.yml` |
+| **Container refuses to start: `SECRET_KEY` unset** | Set a strong key in `.env`: `SECRET_KEY=$(openssl rand -hex 32)`, then `docker compose up -d` |
+| **Frontend 404** | Confirm the image ships dist: `docker compose exec app ls /root/frontend/dist/index.html`; rebuild with `--build` if using an old image |
+| **File permission issues** (DB read-only / uploads fail) | `chmod -R 755 data uploads` on host; `chown -R 1000:1000` if needed |
+| **Wrong timezone** | Runtime image ships `TZ=Asia/Shanghai`; if you customise the Dockerfile, install `tzdata` and `ENV TZ=Asia/Shanghai` |
+| **DB "reset" (data gone)** | Check cwd and `DATABASE_URL`: SQLite relative path is based on container workdir `/root/`; confirm mount matches (`./data:/root/data`) |
+| **Slow build / dependency fetch failure** | `export GOPROXY=https://goproxy.cn,direct` before build; npm `--registry=https://registry.npmmirror.com` |
+| **Redis errors at startup** | Ignore — Redis auto-disables and the app degrades gracefully |
+| **`.env` changes not applied** | Edit host `.env`, then `docker compose up -d` (re-reads env and recreates the container) |
 
 ---
 
@@ -682,6 +680,22 @@ The script installs Go/Node.js, compiles the backend, builds the frontend, confi
 4. Verify: `https://yourdomain.com` (user), `https://yourdomain.com/admin/login` (admin), `https://yourdomain.com/health`.
 
 > If GitHub cloning fails (mainland China), place the code in the site directory manually and re-run `install.sh`, answering **n** to "Delete and re-download?".
+
+---
+
+## 🎯 Where Admin & Domain Are Configured (all 3 methods)
+
+| Method | Domain configured | Admin configured | When |
+|--------|-------------------|------------------|------|
+| **BaoTa (`install.sh`)** | **In BaoTa when creating the site** (domain = site directory name; the script derives it via `basename PROJECT_DIR`) | Run the script and choose **menu 2** "Create/Reset Admin Account" (interactive username/email/password) | After deployment, anytime |
+| **Bare VPS (`install-vps.sh`)** | **Prompted during the script run** ("域名 (如 example.com)") | **Prompted during the script run** (username/email/password) | During installation |
+| **Docker** | `.env` → `PANEL_PUBLIC_URL` (only needed for self-hosted node callbacks; not required for pure subscription) | `.env` → `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD`, auto-created at first boot | Before startup, in `.env` |
+
+**Key notes:**
+
+- **BaoTa**: the domain is NOT set in `.env` — it's determined when you create the site in BaoTa (e.g. site dir `/www/wwwroot/your-domain`); the script uses that name for Nginx. Manage the admin via script menu 2.
+- **Docker**: the admin comes entirely from `.env` env vars and is auto-created at first boot; every restart re-verifies the password (auto-unlocks a locked-out admin).
+- **Bare VPS**: domain and admin are entered interactively during `install-vps.sh`, one shot.
 
 ---
 
@@ -744,7 +758,7 @@ Configuration lives in **`.env`** (Viper reads the file, and real environment va
 
 | Variable | Default | Description |
 |---|---|---|
-| `DATABASE_URL` | `sqlite:///./cboard.db` | `sqlite:///...` = SQLite; containing `mysql` = MySQL; containing `postgresql` = PostgreSQL |
+| `DATABASE_URL` | `sqlite:///./data/cboard.db` | SQLite (Docker default, data in `./data`); containing `mysql` = MySQL; containing `postgresql` = PostgreSQL |
 | `USE_MYSQL` | *(empty)* | `true` forces MySQL driver |
 | `USE_POSTGRES` | *(empty)* | `true` forces PostgreSQL driver |
 | `MYSQL_HOST` / `MYSQL_PORT` | `localhost` / `3306` | MySQL connection |
@@ -873,7 +887,7 @@ The admin panel provides **Backup settings** (Settings → Backup): scheduled au
 | **Permission denied on `cboard.db`** | The container writes as `root`; if the host file is owned by another user, `sudo chown -R root:root cboard.db uploads` (or `chmod 660`). The startup log will say if it cannot open the DB |
 | **Timezone wrong in logs** | The image already sets `ENV TZ=Asia/Shanghai`; for other zones add `TZ=Your/Zone` to the app `environment:` (or `-e TZ=UTC`) |
 | Container keeps restarting | `docker compose logs app`; typical causes: weak `SECRET_KEY` in `ENV=production`, DB file not writable, MySQL not ready yet (add `depends_on`/retry when using MySQL) |
-| **Fresh DB created unexpectedly in Docker** | Working directory inside the container is `/root/` and `DATABASE_URL=sqlite:///./cboard.db` resolves to `/root/cboard.db` — which is the bind mount `./cboard.db`. If the host file is missing/renamed, a new DB appears; restore from backup |
+| **Fresh DB created unexpectedly in Docker** | Working directory inside the container is `/root/` and `DATABASE_URL=sqlite:///./data/cboard.db` resolves to `/root/data/cboard.db` — which is the bind mount `./data`. If the host dir is missing/renamed, a new DB appears; restore from backup |
 | MySQL "connection refused" at startup | MySQL container still booting; wait, or add `depends_on: mysql` + healthcheck; verify `MYSQL_HOST=mysql` (service name), not `localhost` |
 | WAL files growing (`cboard.db-wal/-shm`) | Normal SQLite WAL behavior; checkpointed automatically. Back up with `.backup` (hot) or after `docker compose stop app` |
 | Image build fails on `go mod download` | Network issue pulling modules — retry, or set `GOPROXY=https://goproxy.cn,direct` as a build arg |
