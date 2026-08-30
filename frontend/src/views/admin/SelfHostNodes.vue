@@ -67,37 +67,43 @@
           class="selfhost-guide"
         />
 
-        <!-- 已保存的 VPS 档案（一键重新搭建） -->
-        <div v-if="savedVpsList.length" class="saved-vps-block">
-          <div class="saved-vps-block-head">
-            <span class="saved-vps-block-title"><el-icon><Connection /></el-icon> 已保存的 VPS</span>
-            <el-button size="small" text bg @click="loadSavedVps" :loading="savedVpsLoading">
+        <!-- 已保存的 VPS 档案（一键重新搭建，默认折叠节省空间） -->
+        <div v-if="savedVpsList.length" class="saved-vps-block" :class="{ collapsed: !savedVpsExpanded }">
+          <div class="saved-vps-block-head" @click="savedVpsExpanded = !savedVpsExpanded">
+            <span class="saved-vps-block-title">
+              <el-icon class="saved-vps-arrow" :class="{ 'is-expanded': savedVpsExpanded }"><ArrowDown /></el-icon>
+              <el-icon><Connection /></el-icon> 已保存的 VPS
+              <el-tag size="small" type="info" round effect="plain" class="saved-vps-count">{{ savedVpsList.length }}</el-tag>
+            </span>
+            <el-button size="small" text bg @click.stop="loadSavedVps" :loading="savedVpsLoading">
               <el-icon><Refresh /></el-icon>刷新
             </el-button>
           </div>
-          <div class="saved-vps-grid">
-            <div v-for="v in savedVpsList" :key="v.key" class="saved-vps-card">
-              <div class="saved-vps-card-head">
-                <span class="vps-address">{{ v.ssh_host }}<span v-if="v.ssh_port !== 22">:{{ v.ssh_port }}</span></span>
-                <el-tag v-if="v.has_password" type="success" size="small" effect="plain">已存密码</el-tag>
-                <el-tag v-else type="warning" size="small" effect="plain">需输密码</el-tag>
-              </div>
-              <div class="vps-meta">
-                <div class="vps-meta-row" v-if="v.node_name"><span class="meta-label">上次节点</span><span class="meta-value">{{ v.node_name }}</span></div>
-                <div class="vps-meta-row" v-if="v.domain"><span class="meta-label">域名</span><span class="meta-value">{{ v.domain }}</span></div>
-                <div class="vps-meta-row"><span class="meta-label">协议</span><span class="meta-value">{{ formatVpsProtocols(v) }}</span></div>
-                <div class="vps-meta-row"><span class="meta-label">节点数</span><span class="meta-value">{{ v.node_count }}</span></div>
-              </div>
-              <div class="saved-vps-actions">
-                <el-button size="small" type="primary" :loading="redeployingVpsKey === v.key" @click="redeploySavedVps(v)">
-                  <el-icon><VideoPlay /></el-icon>一键重新搭建
-                </el-button>
-                <el-button size="small" plain @click="editSavedVps(v)">
-                  <el-icon><Edit /></el-icon>编辑搭建
-                </el-button>
+          <el-collapse-transition>
+            <div v-show="savedVpsExpanded" class="saved-vps-grid">
+              <div v-for="v in savedVpsList" :key="v.key" class="saved-vps-card">
+                <div class="saved-vps-card-head">
+                  <span class="vps-address">{{ v.ssh_host }}<span v-if="v.ssh_port !== 22">:{{ v.ssh_port }}</span></span>
+                  <el-tag v-if="v.has_password" type="success" size="small" effect="plain">已存密码</el-tag>
+                  <el-tag v-else type="warning" size="small" effect="plain">需输密码</el-tag>
+                </div>
+                <div class="vps-meta">
+                  <div class="vps-meta-row" v-if="v.node_name"><span class="meta-label">上次节点</span><span class="meta-value">{{ v.node_name }}</span></div>
+                  <div class="vps-meta-row" v-if="v.domain"><span class="meta-label">域名</span><span class="meta-value">{{ v.domain }}</span></div>
+                  <div class="vps-meta-row"><span class="meta-label">协议</span><span class="meta-value">{{ formatVpsProtocols(v) }}</span></div>
+                  <div class="vps-meta-row"><span class="meta-label">节点数</span><span class="meta-value">{{ v.node_count }}</span></div>
+                </div>
+                <div class="saved-vps-actions">
+                  <el-button size="small" type="primary" :loading="redeployingVpsKey === v.key" @click="redeploySavedVps(v)">
+                    <el-icon><VideoPlay /></el-icon>一键重新搭建
+                  </el-button>
+                  <el-button size="small" plain @click="editSavedVps(v)">
+                    <el-icon><Edit /></el-icon>编辑搭建
+                  </el-button>
+                </div>
               </div>
             </div>
-          </div>
+          </el-collapse-transition>
         </div>
 
         <el-empty v-if="!selfHostLoading && selfHostNodes.length === 0" description="暂无自建节点，点击右上角「VPS自动搭建」创建" :image-size="100" />
@@ -580,6 +586,7 @@ const vpsForm = reactive({
 // 已保存的 VPS 档案（后端按 ssh_host 去重聚合，含上次域名/协议/节点数）
 const savedVpsList = ref([])
 const savedVpsLoading = ref(false)
+const savedVpsExpanded = ref(false) // 默认折叠，节省页面空间，需要时点击展开
 const redeployingVpsKey = ref('')
 const selectedSavedVps = ref('') // 弹窗内下拉选中项（保留旧交互）
 const savedSelectedHasPassword = ref(false)
@@ -1108,6 +1115,25 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
+  cursor: pointer;
+  user-select: none;
+  padding: 6px 4px;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+.saved-vps-block-head:hover {
+  background: var(--el-fill-color-light);
+}
+.saved-vps-arrow {
+  transition: transform 0.25s;
+  font-size: 14px;
+  color: var(--el-text-color-secondary);
+}
+.saved-vps-arrow.is-expanded {
+  transform: rotate(180deg);
+}
+.saved-vps-count {
+  margin-left: 2px;
 }
 .saved-vps-block-title {
   font-size: 14px;
