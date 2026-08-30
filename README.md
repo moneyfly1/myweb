@@ -345,7 +345,7 @@ VLESS + WebSocket (WS) · VLESS + Reality · VLESS + Reality + Vision · VLESS +
 |---|---|
 | **Authentication** | JWT **access token** (HS256, default 1h, configurable via `JWT_EXPIRE_HOURS`) + **refresh token** (default 30d via `REFRESH_TOKEN_EXPIRE_DAYS`); refresh rotation and **token blacklist** for logout/revocation |
 | **Passwords** | **bcrypt** hashing (cost-adaptive, `$2a/$2b/$2y`); the admin tool verifies hash format on creation |
-| **Brute-force defense** | Per-IP + per-account **login rate limiting** with progressive lockout; locked accounts can be unlocked with `scripts/unlock_user.go` (admin account is force-unlocked on restart when `ADMIN_PASSWORD` is set) |
+| **Brute-force defense** | Per-IP + per-account **login rate limiting** with progressive lockout; locked accounts can be unlocked with `scripts/unlock_user` (admin account is force-unlocked on restart when `ADMIN_PASSWORD` is set) |
 | **Data masking** | Sensitive fields (tokens, secrets, partial emails/phones) are **masked** in API responses and logs |
 | **Verification codes** | **Atomic** email verification codes — single-use, expiry-checked, race-safe (no double-redemption) |
 | **CORS/CSRF** | CORS origins are an explicit **whitelist**; wildcard `*` and `null` are **rejected at startup** (`validateConfig`); JWT-in-header authentication mitigates CSRF |
@@ -707,15 +707,15 @@ The script installs Go/Node.js, compiles the backend, builds the frontend, confi
 |---|---|---|
 | **Install script** | `sudo ./install.sh` → menu option 2 | BaoTa / VPS installs |
 | **Env bootstrap** | `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env` | Auto-created on first server boot; re-ensured (password + unlock) on every restart |
-| **Admin tool (create/update)** | `go run scripts/admin_tool.go` | Existing deployment; env vars optional (defaults: `admin` / `admin@example.com` / `admin123`) |
+| **Admin tool (create/update)** | `go run scripts/admin_tool` | Existing deployment; env vars optional (defaults: `admin` / `admin@example.com` / `admin123`) |
 | **Docker** | `ADMIN_PASSWORD` in `.env` (auto) — or `docker compose exec app ./cboard-admin` | See Docker section above |
 
 ### Reset / unlock
 
 | Operation | Command |
 |---|---|
-| Reset admin password | `go run scripts/admin_tool.go 'NewStrongPassword123!'` |
-| Unlock a locked account | `go run scripts/unlock_user.go admin` (username) or `go run scripts/unlock_user.go user@example.com` (email) |
+| Reset admin password | `go run scripts/admin_tool 'NewStrongPassword123!'` |
+| Unlock a locked account | `go run scripts/unlock_user admin` (username) or `go run scripts/unlock_user user@example.com` (email) |
 | Force password + unlock (non-interactive) | Set `ADMIN_PASSWORD` in `.env`, then restart the service/container |
 
 > ℹ️ `ensureDefaultAdmin()` runs at every startup: if the admin does not exist it is created; if `ADMIN_PASSWORD` is set it guarantees the password matches and the account is active/verified/unlocked — a practical self-healing guard against lockouts.
@@ -874,8 +874,8 @@ The admin panel provides **Backup settings** (Settings → Backup): scheduled au
 | Service won't start | `journalctl -u cboard -f`; verify `.env`, port 8000 free (`ss -tlnp \| grep 8000`), disk space |
 | 502 Bad Gateway (behind Nginx) | `systemctl status cboard`; confirm `proxy_pass http://127.0.0.1:8000`; check `netstat -tlnp \| grep 8000` |
 | "⚠️ 未找到现有数据库文件，即将创建【全新】数据库" | `DATABASE_URL` points to a path where no DB exists — **do not restart blindly**; restore the real file or fix the path |
-| Admin password lost | `go run scripts/admin_tool.go 'NewPassword123!'`, or set `ADMIN_PASSWORD` in `.env` and restart |
-| Account locked after failed logins | `go run scripts/unlock_user.go <username-or-email>` |
+| Admin password lost | `go run scripts/admin_tool 'NewPassword123!'`, or set `ADMIN_PASSWORD` in `.env` and restart |
+| Account locked after failed logins | `go run scripts/unlock_user <username-or-email>` |
 | Redis connection failed | `systemctl status redis`; `redis-cli ping` (expect `PONG`); ensure `REDIS_ADDR`/`REDIS_PASSWORD` match |
 | SSL certificate failed | Domain must resolve to the server; port 80 must be open for Let's Encrypt |
 

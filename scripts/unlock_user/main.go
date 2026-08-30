@@ -13,10 +13,10 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("用法: go run scripts/unlock_user.go <用户名或邮箱>")
-		fmt.Println("示例: go run scripts/unlock_user.go admin")
-		fmt.Println("示例: go run scripts/unlock_user.go admin@example.com")
-		fmt.Println("示例: go run scripts/unlock_user.go user@example.com")
+		fmt.Println("用法: go run scripts/unlock_user <用户名或邮箱>")
+		fmt.Println("示例: go run scripts/unlock_user admin")
+		fmt.Println("示例: go run scripts/unlock_user admin@example.com")
+		fmt.Println("示例: go run scripts/unlock_user user@example.com")
 		os.Exit(1)
 	}
 

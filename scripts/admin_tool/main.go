@@ -51,8 +51,26 @@ func updatePassword(db *gorm.DB, newPassword string) {
 		os.Exit(1)
 	}
 
+	// 支持环境变量覆盖管理员身份（与主程序 ensureDefaultAdmin 一致）
+	username := os.Getenv("ADMIN_USERNAME")
+	if username == "" {
+		username = "admin"
+	}
+	email := os.Getenv("ADMIN_EMAIL")
+	if email == "" {
+		email = "admin@example.com"
+	}
+
 	var user models.User
-	err := db.Where("username = ? OR email = ?", "admin", "admin@example.com").First(&user).Error
+	// 先按用户名精确匹配；未命中再按邮箱匹配。
+	// 不要用 username = ? OR email = ? 的单查询——用户名命中 A、邮箱命中 B 时会误改错误用户的密码。
+	err := db.Where("username = ?", username).First(&user).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.Fatalf("查询管理员失败: %v", err)
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		err = db.Where("email = ?", email).First(&user).Error
+	}
 	if err != nil {
 		log.Fatalf("未找到管理员账号: %v\n请先创建管理员账号", err)
 	}

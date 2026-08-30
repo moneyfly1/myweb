@@ -703,14 +703,14 @@ tail -f /opt/cboard/server.log                # 应用日志
 
 ```bash
 cd /项目目录
-go run scripts/admin_tool.go                # 交互式创建（默认 admin/admin123，生产勿用）
-go run scripts/admin_tool.go "新密码"        # 直接重置管理员密码
+go run scripts/admin_tool                # 交互式创建（默认 admin/admin123，生产勿用）
+go run scripts/admin_tool "新密码"        # 直接重置管理员密码
 
 # 生产推荐：环境变量方式
 export ADMIN_USERNAME="admin"
 export ADMIN_EMAIL="admin@your-domain.com"
 export ADMIN_PASSWORD="YourStrongPassword123!"
-go run scripts/admin_tool.go
+go run scripts/admin_tool
 ```
 
 > 若管理员已存在，脚本会更新该账户信息；密码长度至少 6 位。
@@ -733,11 +733,11 @@ ADMIN_PASSWORD=你的强密码
 
 ```bash
 # 解锁管理员（用户名或邮箱）
-go run scripts/unlock_user.go admin
-go run scripts/unlock_user.go admin@your-domain.com
+go run scripts/unlock_user admin
+go run scripts/unlock_user admin@your-domain.com
 
 # 解锁普通用户
-go run scripts/unlock_user.go user@your-domain.com
+go run scripts/unlock_user user@your-domain.com
 ```
 
 解锁操作会：清除所有登录失败记录、设置账户为激活状态（`IsActive=true`）、设置账户为已验证状态（`IsVerified=true`）。
@@ -893,7 +893,7 @@ tar czf backup-$(date +%F).tar.gz cboard.db uploads
 | **服务无法启动** | 端口被占用 / 配置错误 | `lsof -i :8000` 查占用；检查 `.env` 语法与 `DATABASE_URL` 路径；查看日志 `journalctl -u cboard -f` 或 `docker compose logs app` |
 | **502 Bad Gateway** | 后端未启动 / 端口不匹配 | 确认 8000 端口进程存在；检查 Nginx `proxy_pass` 端口与 `.env` 的 `PORT` 一致 |
 | **数据库"数据消失"** | 启动目录 / `DATABASE_URL` 变化导致连到新库 | 启动日志出现「⚠️ 即将创建全新数据库」即为信号；核对路径与卷挂载；旧文件未被删除，找到后改回路径即可 |
-| **管理员无法登录** | 密码错误 / 账户被锁 / IP 被限流 | `go run scripts/admin_tool.go "新密码"` 重置；`go run scripts/unlock_user.go admin` 解锁；IP 限流等待 15 分钟 |
+| **管理员无法登录** | 密码错误 / 账户被锁 / IP 被限流 | `go run scripts/admin_tool "新密码"` 重置；`go run scripts/unlock_user admin` 解锁；IP 限流等待 15 分钟 |
 | **邮件发送失败** | SMTP 配置错误 / 端口被墙 | 检查 SMTP_HOST/PORT/USERNAME/PASSWORD；QQ 邮箱需使用**授权码**而非登录密码；25 端口常被运营商屏蔽，改用 465/587 |
 | **GeoIP 功能未生效** | mmdb 文件缺失 | 系统会自动下载 `GeoLite2-City.mmdb`；手动下载：`https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb` |
 | **支付回调失败** | 回调地址错误 / CORS | 确认支付平台配置的回调 URL 指向 `/api/v1/payment/...` 回调端点；检查 DEBUG 日志 |
