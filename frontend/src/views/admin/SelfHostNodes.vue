@@ -5,7 +5,7 @@
         <div class="card-header">
           <div class="header-title">
             <span class="title-text">自建节点</span>
-            <el-tag v-if="selfHostNodes.length" type="info" round size="small" class="count-tag">{{ selfHostNodes.length }}</el-tag>
+            <el-tag v-if="selfHostPagination.total" type="info" round size="small" class="count-tag">{{ selfHostPagination.total }}</el-tag>
           </div>
           <div class="header-actions" v-if="!isMobile">
             <el-button type="primary" @click="openVpsDialog">
@@ -209,6 +209,18 @@
             </div>
           </div>
         </div>
+        <!-- 分页（与其它管理页一致的公共组件） -->
+        <div class="pagination-wrapper" v-if="selfHostPagination.total > 0">
+          <PaginationBar
+            v-model:current-page="selfHostPagination.page"
+            v-model:page-size="selfHostPagination.size"
+            :total="selfHostPagination.total"
+            :page-sizes="[10, 20, 50, 100]"
+            background
+            @current-change="handleSelfHostPageChange"
+            @size-change="handleSelfHostSizeChange"
+          />
+        </div>
       </div>
     </el-card>
 
@@ -399,10 +411,12 @@ import { formatFileSize } from '@/utils/format'
 import { copyToClipboard } from '@/utils/textSelection'
 import { confirmAction } from '@/utils/confirmAction'
 import { useMobile } from '@/composables/useMobile'
+import PaginationBar from '@/components/PaginationBar.vue'
 
 const isMobile = useMobile()
 const selfHostNodes = ref([])
 const selfHostLoading = ref(false)
+const selfHostPagination = reactive({ page: 1, size: 10, total: 0 })
 
 const selfHostStatusMap = { pending: '等待安装', online: '在线', offline: '离线', expired: '已过期', canceled: '已取消' }
 const selfHostStatusTypeMap = { pending: 'warning', online: 'success', offline: 'danger', expired: 'info', canceled: 'info' }
@@ -417,17 +431,33 @@ const formatTime = (t) => {
 const loadSelfHostNodes = async () => {
   selfHostLoading.value = true
   try {
-    const res = await adminAPI.getSelfHostNodes()
+    const res = await adminAPI.getSelfHostNodes({
+      page: selfHostPagination.page,
+      page_size: selfHostPagination.size,
+    })
     if (res.data?.success) {
       selfHostNodes.value = res.data.data?.list || []
+      selfHostPagination.total = res.data.data?.total || 0
       // 并行加载每个节点的分配客户
       selfHostNodes.value.forEach(n => loadAssignments(n))
+      // 翻页后清空选中，避免跨页误操作
+      selectedSelfHost.value = []
     }
   } catch (e) {
     console.warn('加载自建节点失败', e)
   } finally {
     selfHostLoading.value = false
   }
+}
+
+// 分页事件（与其它管理页一致的公共组件回调）
+const handleSelfHostPageChange = () => {
+  loadSelfHostNodes()
+}
+const handleSelfHostSizeChange = (size) => {
+  selfHostPagination.size = size
+  selfHostPagination.page = 1
+  loadSelfHostNodes()
 }
 
 // ===== 批量选择与操作 =====

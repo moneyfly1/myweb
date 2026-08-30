@@ -658,7 +658,7 @@ export const adminAPI = {
   selfHostResetTraffic: (id) => api.post(`/admin/custom-nodes/selfhost/${id}/reset-traffic`),
   selfHostUpdateSSH: (id, data) => api.post(`/admin/custom-nodes/selfhost/${id}/update-ssh`, data),
   selfHostBatchManage: (data) => api.post('/admin/custom-nodes/selfhost/batch-manage', data),
-  getSelfHostNodes: () => api.get('/admin/custom-nodes/selfhost'),
+  getSelfHostNodes: (params) => api.get('/admin/custom-nodes/selfhost', { params }),
   getSelfHostNodeStatus: (id) => api.get(`/admin/custom-nodes/selfhost/${id}`),
   selfHostManage: (id, action, data = {}) => api.post(`/admin/custom-nodes/selfhost/${id}/manage`, { action, ...data }),
   getUserCustomNodes: (userId) => api.get(`/admin/users/${userId}/custom-nodes`),
