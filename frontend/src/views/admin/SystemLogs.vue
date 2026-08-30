@@ -831,6 +831,8 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
   align-items: center;
   min-width: 0;
   align-self: end;
+  /* 在筛选网格中独占一行，避免 4 个按钮挤在窄格里换行错乱 */
+  grid-column: 1 / -1;
 }
 .filter-actions .el-button {
   margin-left: 0;
