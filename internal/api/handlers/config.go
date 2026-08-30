@@ -832,7 +832,8 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 	}
 
 	// 下载文件（限时 60s、限大小 200MB，防止网络黑洞挂起请求或写满磁盘）
-	tmpFile := filepath.Join(os.TempDir(), filename+".tmp")
+	// 使用唯一临时文件名（随机后缀），避免并发下载互相覆盖/误删导致 rename 失败
+	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("%s.%d.tmp", filename, time.Now().UnixNano()))
 
 	// 验证URL以防止SSRF攻击
 	if err := utils.ValidateHTTPURL(url); err != nil {
@@ -897,9 +898,14 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 		log.Printf("failed to close file: %v", err)
 	}
 
-	// 移动到目标位置
-	targetPath := filepath.Join(".", filename)
-	if err := os.Rename(tmpFile, targetPath); err != nil {
+	// 移动到目标位置：使用绝对路径（基于进程 cwd），确保目标目录存在
+	// 若跨文件系统或异常导致 rename 失败，回退为 copy+remove（保证更新成功）
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
+	targetPath := filepath.Join(cwd, filename)
+	if err := moveFileAtomic(tmpFile, targetPath); err != nil {
 		_ = os.Remove(tmpFile) // Ignore error, best effort cleanup
 		utils.ErrorResponse(c, http.StatusInternalServerError, "替换文件失败", err)
 		return
@@ -918,6 +924,42 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 		"filename": filename,
 		"size":     formatFileSize(written),
 	})
+}
+
+// moveFileAtomic 原子移动文件：优先 rename（同文件系统内），
+// 跨文件系统（EXDEV）或目标目录异常时回退为 copy+remove，保证更新不失败。
+func moveFileAtomic(src, dst string) error {
+	// 确保目标目录存在
+	if dir := filepath.Dir(dst); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("创建目标目录失败: %w", err)
+		}
+	}
+
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	}
+
+	// rename 失败（如跨文件系统）→ 回退为复制
+	in, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("打开临时文件失败: %w", err)
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("创建目标文件失败: %w", err)
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		_ = os.Remove(dst)
+		return fmt.Errorf("复制文件失败: %w", err)
+	}
+	if err := out.Close(); err != nil {
+		return fmt.Errorf("关闭目标文件失败: %w", err)
+	}
+	return nil
 }
 
 func GetGeoIPStatus(c *gin.Context) {
