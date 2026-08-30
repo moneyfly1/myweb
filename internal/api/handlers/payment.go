@@ -45,6 +45,9 @@ func GetPaymentMethods(c *gin.Context) {
 		"applepay":       "Apple Pay",
 		"codepay_alipay": "码支付-支付宝",
 		"codepay_wxpay":  "码支付-微信",
+		"stripe":         "Stripe 信用卡",
+		"paypal":         "PayPal",
+		"usdt":           "USDT 加密货币",
 	}
 
 	yipaySubTypeMap := map[string]string{
@@ -545,6 +548,12 @@ func PaymentNotify(c *gin.Context) {
 
 	db := database.GetDB()
 
+	// ===== Stripe / PayPal Webhook 特殊处理（JSON body + 签名头，非表单参数）=====
+	if paymentType == "stripe" || paymentType == "paypal" {
+		handleWebhookNotify(c, db, paymentType)
+		return
+	}
+
 	params := make(map[string]string)
 
 	if c.Request.Method == "POST" {
@@ -682,6 +691,15 @@ func PaymentNotify(c *gin.Context) {
 			verified = codepayService.VerifyNotify(params)
 			utils.LogInfo("PaymentNotify: 码支付签名验证结果 - verified=%v, payment_type=%s, order_no=%s", verified, paymentType, params["out_trade_no"])
 		}
+	case effectivePayType == "stripe":
+		// Stripe 通过 Webhook 回调（POST /api/v1/payment/notify/stripe），不走表单参数
+		verified = true
+	case effectivePayType == "paypal":
+		// PayPal 通过 Webhook 回调（POST /api/v1/payment/notify/paypal），不走表单参数
+		verified = true
+	case effectivePayType == "usdt":
+		// USDT 通过独立确认接口核对，不走表单参数
+		verified = true
 	default:
 		utils.LogError("PaymentNotify: unsupported effective pay_type", nil, map[string]interface{}{
 			"effective_pay_type": effectivePayType,
@@ -916,6 +934,108 @@ func PaymentNotify(c *gin.Context) {
 		"payment_type": paymentType,
 	})
 
+	paymentCallbackAck(c, paymentType, true, "OK")
+}
+
+// handleWebhookNotify 处理 Stripe / PayPal 的 Webhook 回调（JSON body + 签名头）。
+func handleWebhookNotify(c *gin.Context, db *gorm.DB, paymentType string) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.String(http.StatusBadRequest, "读取请求体失败")
+		return
+	}
+
+	paymentConfig, err := utils.FindEnabledPaymentConfig(db, paymentType)
+	if err != nil {
+		utils.LogError("handleWebhookNotify: payment config not found", err, map[string]interface{}{
+			"payment_type": paymentType,
+		})
+		c.String(http.StatusBadRequest, "支付配置不存在")
+		return
+	}
+
+	var orderNo string
+	var verified bool
+
+	switch paymentType {
+	case "stripe":
+		service, err := payment.NewStripeService(&paymentConfig)
+		if err != nil {
+			utils.LogError("handleWebhookNotify: stripe service init failed", err, nil)
+			c.String(http.StatusBadRequest, "Stripe 配置错误")
+			return
+		}
+		event, err := service.VerifyWebhook(body, c.GetHeader("Stripe-Signature"))
+		if err != nil {
+			utils.LogError("handleWebhookNotify: stripe webhook verify failed", err, nil)
+			c.String(http.StatusBadRequest, "签名验证失败")
+			return
+		}
+		if event.IsPaid() {
+			orderNo = event.ExtractOrderNo()
+			verified = true
+		} else {
+			// 非支付事件（如 payment_intent.created），直接 ACK 不处理
+			c.String(http.StatusOK, "OK")
+			return
+		}
+
+	case "paypal":
+		service, err := payment.NewPayPalService(&paymentConfig)
+		if err != nil {
+			utils.LogError("handleWebhookNotify: paypal service init failed", err, nil)
+			c.String(http.StatusBadRequest, "PayPal 配置错误")
+			return
+		}
+		headers := map[string]string{
+			"PAYPAL-AUTH-ALGO":          c.GetHeader("PAYPAL-AUTH-ALGO"),
+			"PAYPAL-CERT-URL":           c.GetHeader("PAYPAL-CERT-URL"),
+			"PAYPAL-TRANSMISSION-ID":    c.GetHeader("PAYPAL-TRANSMISSION-ID"),
+			"PAYPAL-TRANSMISSION-SIG":   c.GetHeader("PAYPAL-TRANSMISSION-SIG"),
+			"PAYPAL-TRANSMISSION-TIME":  c.GetHeader("PAYPAL-TRANSMISSION-TIME"),
+		}
+		ok, err := service.VerifyWebhook(body, headers)
+		if err != nil || !ok {
+			utils.LogError("handleWebhookNotify: paypal webhook verify failed", err, nil)
+			c.String(http.StatusBadRequest, "签名验证失败")
+			return
+		}
+		var payload payment.PayPalWebhookPayload
+		if err := json.Unmarshal(body, &payload); err != nil {
+			c.String(http.StatusBadRequest, "事件解析失败")
+			return
+		}
+		if payload.IsPaid() {
+			orderNo = payload.ExtractOrderNo()
+			verified = true
+		} else {
+			c.String(http.StatusOK, "OK")
+			return
+		}
+	}
+
+	if !verified || orderNo == "" {
+		c.String(http.StatusOK, "OK")
+		return
+	}
+
+	// 复用统一订单完成逻辑
+	orderService := orderServicePkg.NewOrderService()
+	_, err = orderService.FinalizePaidOrder(orderNo, orderServicePkg.FinalizePaidOrderOptions{
+		PaymentMethodName: paymentType,
+		PaymentMethodID:   paymentConfig.ID,
+		IPAddress:         utils.GetRealClientIP(c),
+	})
+	if err != nil {
+		utils.LogError("handleWebhookNotify: failed to finalize paid order", err, map[string]interface{}{
+			"order_no": orderNo, "payment_type": paymentType,
+		})
+		c.String(http.StatusBadRequest, "处理失败")
+		return
+	}
+
+	utils.LogInfo("handleWebhookNotify: 订单已支付 - order_no=%s, payment_type=%s", orderNo, paymentType)
+	sendPaymentNotifications(db, orderNo)
 	paymentCallbackAck(c, paymentType, true, "OK")
 }
 
