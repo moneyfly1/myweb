@@ -2469,30 +2469,35 @@ func (s *ConfigUpdateService) generateClientConfig(token, clientIP, userAgent, s
 	case "clash", "clashmeta", "stash":
 		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
 		nodes = s.filterProxiesByExcludedProtocols(nodes, excludedProtocols)
+		nodes = s.filterProxiesByClientCapability(nodes, userAgent)
 		config := s.generateClashYAML(nodes, ctx)
 		return config, "text/yaml; charset=utf-8", subName + ".yaml"
 
 	case "surge":
 		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
 		nodes = s.filterProxiesByExcludedProtocols(nodes, excludedProtocols)
+		nodes = s.filterProxiesByClientCapability(nodes, userAgent)
 		config := s.generateSurgeConfig(nodes, siteURL)
 		return config, "text/plain; charset=utf-8", subName + ".conf"
 
 	case "singbox", "sing-box":
 		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
 		nodes = s.filterProxiesByExcludedProtocols(nodes, excludedProtocols)
+		nodes = s.filterProxiesByClientCapability(nodes, userAgent)
 		config := s.generateSingBoxConfig(nodes)
 		return config, "application/json; charset=utf-8", subName + ".json"
 
 	case "quantumult", "quantumultx":
 		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
 		nodes = s.filterProxiesByExcludedProtocols(nodes, excludedProtocols)
+		nodes = s.filterProxiesByClientCapability(nodes, userAgent)
 		config := s.generateQuantumultXConfig(nodes, siteURL)
 		return config, "text/plain; charset=utf-8", subName + ".conf"
 
 	case "loon":
 		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
 		nodes = s.filterProxiesByExcludedProtocols(nodes, excludedProtocols)
+		nodes = s.filterProxiesByClientCapability(nodes, userAgent)
 		config := s.generateLoonConfig(nodes, siteURL)
 		return config, "text/plain; charset=utf-8", subName + ".conf"
 
@@ -2502,6 +2507,7 @@ func (s *ConfigUpdateService) generateClientConfig(token, clientIP, userAgent, s
 		isV2rayN := strings.Contains(uaLower, "v2rayn")
 		nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("universal_protocols"))
 		nodes = s.filterProxiesByExcludedProtocols(nodes, excludedProtocols)
+		nodes = s.filterProxiesByClientCapability(nodes, userAgent)
 		if isV2rayN {
 			filtered := nodes[:0]
 			for _, n := range nodes {
