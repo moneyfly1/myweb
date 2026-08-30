@@ -354,7 +354,9 @@
   </div>
 </template>
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+defineOptions({ name: 'AdminCoupons' })
+
+import { ref, reactive, computed, onMounted, onActivated} from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Plus, Search, Filter, Refresh } from '@element-plus/icons-vue'
 import { couponAPI, packageAPI } from '@/utils/api'
@@ -640,6 +642,11 @@ onMounted(() => {
   loadCoupons()
   loadPackages()
 })
+
+    // keep-alive 激活时刷新数据（避免显示缓存旧数据）
+    onActivated(() => {
+      loadCoupons()
+    })
 </script>
 <style scoped lang="scss">
 .admin-coupons {

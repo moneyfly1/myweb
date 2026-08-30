@@ -256,7 +256,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive } from 'vue'
+defineOptions({ name: 'AdminPromotions' })
+
+import { ref, onMounted, reactive, onActivated} from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Plus } from '@element-plus/icons-vue'
 import { promotionAPI } from '@/utils/api'
@@ -485,6 +487,10 @@ const resetFilter = () => {
 }
 
 onMounted(() => {
+  loadData()
+})
+// keep-alive 激活时刷新数据
+onActivated(() => {
   loadData()
 })
 </script>

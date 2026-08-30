@@ -146,7 +146,12 @@
           </el-breadcrumb>
         </div>
         <div class="page-content">
-          <router-view />
+          <!-- keep-alive：缓存已访问的管理页，切换菜单不重复加载数据/JS，提升流畅度 -->
+          <router-view v-slot="{ Component }">
+            <keep-alive :include="adminKeepAlivePages">
+              <component :is="Component" />
+            </keep-alive>
+          </router-view>
         </div>
       </div>
     </main>
@@ -174,6 +179,18 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+
+// keep-alive 缓存的管理页组件名（按 name 匹配；被缓存的页面切换不重新加载数据/JS）
+// 列表类页面缓存收益最大；不需要实时刷新的页面均可加入
+const adminKeepAlivePages = [
+  'AdminDashboard', 'AdminUsers', 'AdminAbnormalUsers', 'AdminNodes',
+  'AdminCustomNodes', 'AdminSelfHostNodes', 'AdminSubscriptions', 'AdminOrders',
+  'AdminPackages', 'AdminPaymentConfig', 'AdminSettings', 'AdminConfig',
+  'AdminStatistics', 'AdminEmailQueue', 'AdminLogs', 'AdminSystemLogs',
+  'AdminCoupons', 'AdminTickets', 'AdminInvites', 'AdminUserLevels',
+  'AdminKnowledge', 'AdminAnalytics', 'AdminPromotions', 'AdminProfile',
+  'AdminConfigUpdate',
+]
 import {
   ArrowDown,
   Brush,

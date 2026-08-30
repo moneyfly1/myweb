@@ -472,7 +472,7 @@ const handleResponse = (response, defaultErrorMsg) => {
   }
 }
 export default {
-  name: 'EmailQueue',
+  name: 'AdminEmailQueue',
   components: {
     Refresh, Search, View, Delete, AppDrawer, EmptyState, FormActionBar, PaginationBar, ResponsiveDataView
   },

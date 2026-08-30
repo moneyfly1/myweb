@@ -338,6 +338,8 @@
   </div>
 </template>
 <script setup>
+defineOptions({ name: 'AdminUserLevels' })
+
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Plus, InfoFilled, Filter, Refresh, Document, User, Setting, Opportunity } from '@element-plus/icons-vue'

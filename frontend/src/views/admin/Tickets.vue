@@ -388,7 +388,9 @@
   </div>
 </template>
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+defineOptions({ name: 'AdminTickets' })
+
+import { ref, reactive, computed, onMounted, onActivated} from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
@@ -600,6 +602,10 @@ const resetFilters = () => {
 }
 onMounted(async () => {
   await Promise.all([loadStatistics(), loadTickets()])
+})
+// keep-alive 激活时刷新数据
+onActivated(() => {
+  loadTickets()
 })
 </script>
 <style scoped lang="scss">

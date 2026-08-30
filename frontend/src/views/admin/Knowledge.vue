@@ -294,7 +294,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive } from 'vue'
+defineOptions({ name: 'AdminKnowledge' })
+
+import { ref, onMounted, reactive, onActivated} from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { FolderAdd, DocumentAdd, Search, Folder, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook, Clock, View } from '@element-plus/icons-vue'
 import { knowledgeAPI } from '@/utils/api'
@@ -544,6 +546,12 @@ onMounted(() => {
     loadArticles()
   ])
 })
+
+    // keep-alive 激活时刷新数据（避免显示缓存旧数据）
+    onActivated(() => {
+      loadArticles()
+      loadCategories()
+    })
 </script>
 
 <style scoped>

@@ -34,6 +34,8 @@
   </div>
 </template>
 <script setup>
+defineOptions({ name: 'AdminLogs' })
+
 import { ref } from 'vue'
 import RegistrationLogs from './logs/RegistrationLogs.vue'
 import SubscriptionLogs from './logs/SubscriptionLogs.vue'

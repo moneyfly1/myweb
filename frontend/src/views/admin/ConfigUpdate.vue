@@ -306,7 +306,7 @@ import { confirmClear } from '@/utils/confirmAction'
 import Sortable from 'sortablejs'
 
 export default {
-  name: 'ConfigUpdate',
+  name: 'AdminConfigUpdate',
   components: {
     VideoPlay, VideoPause, View, Refresh, Check, Delete, Plus,
     Connection, Filter, Warning, Document, Rank, Monitor, User

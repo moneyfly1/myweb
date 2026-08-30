@@ -408,6 +408,8 @@
 </template>
 
 <script setup>
+defineOptions({ name: 'AdminSelfHostNodes' })
+
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Promotion, DocumentCopy, Refresh, Setting, Operation, ArrowDown, Connection, VideoPlay, Edit } from '@element-plus/icons-vue'

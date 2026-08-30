@@ -556,7 +556,7 @@
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, onActivated} from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { 
   Plus, Refresh, Search, Connection, Delete, 
@@ -1069,6 +1069,11 @@ export default {
       copyToClipboard(nodeLink.value, '复制成功')
     }
     onMounted(() => {
+      loadNodes()
+    })
+
+    // keep-alive 激活时刷新数据（避免显示缓存旧数据）
+    onActivated(() => {
       loadNodes()
     })
     return {
