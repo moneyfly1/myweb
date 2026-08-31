@@ -432,13 +432,29 @@
                     </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
-                        <el-dropdown-item
-                          v-for="app in platform.apps"
-                          :key="app.downloadKey"
-                          :command="app.downloadKey"
-                        >
-                          {{ app.name }}<template v-if="appVersion(app)">（v{{ appVersion(app) }}）</template>
-                        </el-dropdown-item>
+                        <template v-for="app in platform.apps" :key="app.downloadKey">
+                          <!-- macOS 且配置了 Apple 芯片版：拆分为两个架构选项 -->
+                          <template v-if="isMacPlatform(platform) && app.downloadKeyArm">
+                            <el-dropdown-item
+                              :command="app.downloadKeyArm"
+                              :divided="true"
+                            >
+                              <span class="client-download-option">
+                                {{ app.name }}（Apple 芯片）
+                                <el-tag size="small" type="success" effect="plain">ARM</el-tag>
+                              </span>
+                            </el-dropdown-item>
+                            <el-dropdown-item :command="app.downloadKey">
+                              <span class="client-download-option">
+                                {{ app.name }}（Intel）
+                                <el-tag size="small" type="info" effect="plain">x64</el-tag>
+                              </span>
+                            </el-dropdown-item>
+                          </template>
+                          <el-dropdown-item v-else :command="app.downloadKey">
+                            {{ app.name }}<template v-if="appVersion(app)">（v{{ appVersion(app) }}）</template>
+                          </el-dropdown-item>
+                        </template>
                       </el-dropdown-menu>
                     </template>
                   </el-dropdown>
@@ -1367,9 +1383,10 @@ const downloadApp = async (appName) => {
     'shadowrocket_url': null // Shadowrocket 使用 App Store 链接
   }
   const clientKey = clientKeyMap[appName]
-  // 架构感知：macOS 下 Apple 芯片优先 arm 键
-  const app = (platforms.value || []).flatMap(p => p.apps || []).find(a => a.downloadKey === appName || a.downloadKeyArm === appName)
-  const keys = app ? [app.downloadKey, app.downloadKeyArm].filter(Boolean) : [appName]
+  // 用户显式选择的下载键：Apple 芯片键（*_macos_arm_url）只匹配 arm 配置；Intel 键只匹配 intel 配置。
+  // 这样用户在 Apple 芯片 Mac 上也能手动选 Intel 版（或反之），不被系统架构自动覆盖。
+  const isArmKey = /arm/i.test(appName)
+  const keys = [appName]
   const configUrl = pickConfiguredUrl(keys, softwareConfig.value || {})
   if (configUrl) {
     safeOpen(resolvePanDownloadUrl(configUrl))
@@ -1383,7 +1400,8 @@ const downloadApp = async (appName) => {
     try {
       ElMessage.info('正在获取最新下载链接...')
       const { getClientDownloadUrl, getClientReleasesUrl } = await import('@/utils/githubDownload')
-      const downloadUrl = await getClientDownloadUrl(clientKey, softwareConfig.value || {})
+      const forcedArch = isArmKey ? 'apple' : null
+      const downloadUrl = await getClientDownloadUrl(clientKey, softwareConfig.value || {}, forcedArch)
       safeOpen(downloadUrl)
       ElMessage.success('已打开下载页面')
     } catch (error) {
@@ -1421,6 +1439,10 @@ const downloadDashboardClient = (downloadKey) => {
     return
   }
   downloadApp(downloadKey)
+}
+// isMacPlatform 判断平台是否为 macOS（用于拆分 Apple 芯片 / Intel 下载选项）
+const isMacPlatform = (platform) => {
+  return platform && String(platform.name || '').toLowerCase() === 'macos'
 }
 const openDashboardClientTutorial = (clientId) => {
   if (!clientId) {
@@ -3786,5 +3808,16 @@ onUnmounted(() => {
   .dashboard-container .dashboard-main-aside {
     grid-template-columns: 1fr !important;
   }
+}
+
+/* 客户端下载下拉：macOS 架构选项 */
+.client-download-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.client-download-option .el-tag {
+  margin-left: 2px;
 }
 </style>

@@ -113,3 +113,6 @@ cboard.db.*.bak.*
 .gomodcache/
 audit-moneyfly/
 .gopath/
+
+# pi 插件本地配置（含密钥，勿提交）
+.pi/

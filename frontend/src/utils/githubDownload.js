@@ -373,8 +373,12 @@ export async function getGitHubDownloadUrl(repo, os, arch, configKey = null, sof
     return toResolverURL(`https://github.com/${repo}/releases/latest`)
   }
 }
-export async function getClientDownloadUrl(clientKey, softwareConfig = {}) {
+// getClientDownloadUrl 获取客户端最新下载地址。
+// forcedArch 可选：强制指定架构（'apple' | 'intel' | 'x64' | 'arm64' ...），
+// 用于用户在 macOS 上手动选择 Apple 芯片 / Intel 版本，避免被系统检测覆盖。
+export async function getClientDownloadUrl(clientKey, softwareConfig = {}, forcedArch = null) {
   const { os, arch } = detectSystem()
+  const resolvedArch = forcedArch || arch
   // 统一使用 CLIENT_CONFIGS 作为唯一真相源（此前同表在此与 getClientReleasesUrl 各复制一份）
   // 键名大小写不敏感：Help.vue 传入 'flclash'/'v2rayng' 而表内为 'FlClash'/'v2rayNG'
   const client = resolveClientConfig(clientKey)
@@ -403,7 +407,7 @@ export async function getClientDownloadUrl(clientKey, softwareConfig = {}) {
     }
     return toResolverURL(`https://github.com/${client.repo}/releases/latest`)
   }
-  return await getGitHubDownloadUrl(client.repo, os, arch, client.name, softwareConfig)
+  return await getGitHubDownloadUrl(client.repo, os, resolvedArch, client.name, softwareConfig)
 }
 
 // resolveClientConfig 大小写不敏感地从 CLIENT_CONFIGS 查找客户端
