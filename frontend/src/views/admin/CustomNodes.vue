@@ -384,12 +384,45 @@
           <el-tab-pane label="订阅导入" name="subscription">
             <div class="import-section">
               <el-alert title="粘贴订阅链接，系统自动拉取并解析（支持 base64 订阅、Clash YAML、节点链接列表等格式）" type="info" :closable="false" show-icon />
+              <!-- 已导入订阅：更新 / 删除 -->
+              <div v-if="subscriptionList.length > 0" class="subscription-manage-section">
+                <div class="sub-section-label">已导入的订阅（{{ subscriptionList.length }}）</div>
+                <div
+                  v-for="sub in subscriptionList"
+                  :key="sub.url"
+                  class="subscription-item"
+                >
+                  <div class="subscription-item-main">
+                    <div class="subscription-item-url" :title="sub.url">{{ sub.url }}</div>
+                    <div class="subscription-item-count">共 {{ sub.node_count }} 个节点</div>
+                  </div>
+                  <div class="subscription-item-actions">
+                    <el-button size="small" type="primary" plain @click="handleUpdateSubscription(sub)">
+                      更新此订阅
+                    </el-button>
+                    <el-button size="small" type="danger" plain @click="handleDeleteSubscription(sub)">
+                      删除
+                    </el-button>
+                  </div>
+                </div>
+                <el-divider />
+              </div>
+              <!-- 导入新订阅 / 更换订阅地址 -->
+              <div class="sub-section-label">导入新订阅或更换订阅地址</div>
               <el-input
                 v-model="subUrlInput"
                 placeholder="请输入订阅链接，如 https://example.com/sub?token=xxx"
                 class="subscription-url-input"
                 clearable
               />
+              <div class="sub-replace-row">
+                <el-checkbox v-model="subReplaceMode" class="sub-replace-checkbox">
+                  <span class="sub-replace-label">替换模式</span>
+                </el-checkbox>
+                <span class="subscription-tip">
+                  {{ subReplaceMode ? '将删除该订阅地址下原有节点，按最新订阅内容重建（适用于订阅地址更换或内容更新）' : '仅追加新节点，已存在的节点自动跳过（推荐用于订阅内容增量同步）' }}
+                </span>
+              </div>
               <div class="subscription-tip">
                 导入前请确认订阅链接可正常访问；解析出的节点将自动添加为专线节点。
               </div>
@@ -1019,9 +1052,11 @@ export default {
       addNodeTab.value = 'link'
       nodeLinkInput.value = ''
       subUrlInput.value = ''
+      subReplaceMode.value = false
       parsedNode.value = null
       Object.assign(vpsForm, { name: '', ssh_host: '', ssh_pass: '' })
       resetNodeForm()
+      loadSubscriptionList()
       showAddDialog.value = true
     }
     const handleNodeDrawerClosed = () => {
@@ -1255,14 +1290,28 @@ export default {
       }
       importingSubscription.value = true
       try {
-        const res = await adminAPI.importCustomNodeSubscription(url)
+        // 替换模式：更新该订阅地址下原有节点
+        const res = subReplaceMode.value
+          ? await adminAPI.updateCustomNodeSubscription(url)
+          : await adminAPI.importCustomNodeSubscription(url)
         const data = res.data?.data ?? {}
         const imported = data.imported ?? 0
+        const removed = data.removed ?? 0
         const total = data.total ?? imported
-        if (imported > 0) {
+        if (subReplaceMode.value) {
+          if (imported > 0 || removed > 0) {
+            ElMessage.success(res.data?.message || `订阅更新完成：新增 ${imported} 个节点，移除 ${removed} 个旧节点`)
+            showAddDialog.value = false
+            loadCustomNodes()
+            loadSubscriptionList()
+          } else {
+            ElMessage.warning(res.data?.message || '订阅中没有解析到可更新的节点')
+          }
+        } else if (imported > 0) {
           ElMessage.success(`订阅解析出 ${total} 个节点，成功导入 ${imported} 个`)
           showAddDialog.value = false
           loadCustomNodes()
+          loadSubscriptionList()
         } else {
           ElMessage.warning(res.data?.message || '订阅中没有解析到节点')
         }
@@ -1274,6 +1323,69 @@ export default {
         }
       } finally {
         importingSubscription.value = false
+      }
+    }
+    // ==================== 已导入订阅管理（更新 / 删除） ====================
+    const subscriptionList = ref([])
+    const subReplaceMode = ref(false)
+    const loadSubscriptionList = async () => {
+      try {
+        const res = await adminAPI.getCustomNodeSubscriptions()
+        if (res.data?.success) {
+          subscriptionList.value = res.data.data?.list || []
+        }
+      } catch (e) {
+        console.warn('加载已导入订阅失败', e)
+      }
+    }
+    const handleUpdateSubscription = async (sub) => {
+      try {
+        await ElMessageBox.confirm(
+          `将重新拉取订阅并替换该订阅下的全部节点（当前 ${sub.node_count} 个旧节点会被移除，按最新内容重建）。确定继续？`,
+          '更新订阅',
+          { type: 'warning', confirmButtonText: '更新', cancelButtonText: '取消' }
+        )
+      } catch {
+        return
+      }
+      importingSubscription.value = true
+      try {
+        const res = await adminAPI.updateCustomNodeSubscription(sub.url)
+        const data = res.data?.data ?? {}
+        if (res.data?.success && (data.imported > 0 || data.removed > 0)) {
+          ElMessage.success(res.data.message || '订阅更新完成')
+          loadCustomNodes()
+          loadSubscriptionList()
+        } else {
+          ElMessage.warning(res.data?.message || '订阅中没有解析到可更新的节点')
+        }
+      } catch (e) {
+        ElMessage.error('更新订阅失败: ' + (e.response?.data?.message || e.message))
+      } finally {
+        importingSubscription.value = false
+      }
+    }
+    const handleDeleteSubscription = async (sub) => {
+      try {
+        await ElMessageBox.confirm(
+          `将删除该订阅导入的全部 ${sub.node_count} 个专线节点（含已分配用户的关联）。确定继续？`,
+          '删除订阅节点',
+          { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+        )
+      } catch {
+        return
+      }
+      try {
+        const res = await adminAPI.deleteCustomNodeSubscription(sub.url)
+        if (res.data?.success) {
+          ElMessage.success(res.data.message || '删除成功')
+          loadCustomNodes()
+          loadSubscriptionList()
+        } else {
+          ElMessage.error(res.data?.message || '删除失败')
+        }
+      } catch (e) {
+        ElMessage.error('删除订阅节点失败: ' + (e.response?.data?.message || e.message))
       }
     }
     // ==================== VPS 自动搭建 ====================
@@ -1553,11 +1665,13 @@ export default {
       loadSettings() // 先加载保存的设置
       loadCustomNodes()
       loadSelfHostNodes()
+      loadSubscriptionList()
     })
 
     // keep-alive 激活时刷新数据（避免显示缓存旧数据）
     onActivated(() => {
       loadCustomNodes()
+      loadSubscriptionList()
     })
     return {
       isMobile, viewMode, gridOrientation, gridColumns, gridSize, tableRef, columnWidths, loading, saving, parsing, customNodes, selectedNodes,
@@ -1566,6 +1680,7 @@ export default {
       searchKeyword, filters, pagination, nodeForm, nodeFormRef, rules,
       nodeTypeGroups,
       nodeLinkInput, parsedNode, nodeLink, testingFromLink, subUrlInput, importingSubscription,
+      subReplaceMode, subscriptionList, handleUpdateSubscription, handleDeleteSubscription,
       deployingVPS, vpsForm, deploySelfHostVPSNode,
       selfHostNodes, selfHostLoading, loadSelfHostNodes, onSelfHostManage, managingSelfHostId,
       selfHostStatusMap, selfHostStatusTypeMap, formatBytes2, formatTime2,
@@ -1995,6 +2110,75 @@ export default {
     font-size: 12px;
     color: #909399;
     line-height: 1.5;
+  }
+
+  /* 已导入订阅管理 */
+  .subscription-manage-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 4px;
+  }
+
+  .sub-section-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #303133;
+  }
+
+  .subscription-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
+    background: #f5f7fa;
+  }
+
+  .subscription-item-main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .subscription-item-url {
+    font-size: 12px;
+    color: #606266;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  .subscription-item-count {
+    font-size: 12px;
+    color: #909399;
+    margin-top: 2px;
+  }
+
+  .subscription-item-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .sub-replace-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .sub-replace-checkbox {
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .sub-replace-label {
+    font-weight: 500;
+    color: #303133;
   }
 
   .parsed-preview {

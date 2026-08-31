@@ -639,6 +639,12 @@ export const adminAPI = {
   // 后端最多 3 次重试、每次最长 60s（最坏约 186s），故超时设 200s；
   // _retry 标记跳过 axios 超时自动重试，避免慢订阅源被重复导入。
   importCustomNodeSubscription: (url) => api.post('/admin/custom-nodes/import-subscription', { url }, { timeout: 200000, _retry: true }),
+  // 更新订阅：replace=true 时替换该订阅 URL 下原有节点（旧节点删除、按最新内容重建）
+  updateCustomNodeSubscription: (url) => api.post('/admin/custom-nodes/import-subscription', { url, replace: true }, { timeout: 200000, _retry: true }),
+  // 已导入的订阅 URL 列表（含节点数），供更新/更换订阅使用
+  getCustomNodeSubscriptions: () => api.get('/admin/custom-nodes/subscriptions'),
+  // 删除某订阅 URL 下导入的全部节点
+  deleteCustomNodeSubscription: (url) => api.post('/admin/custom-nodes/delete-subscription', { url }),
   updateCustomNode: (id, data) => api.put(`/admin/custom-nodes/${id}`, data),
   deleteCustomNode: (id) => api.delete(`/admin/custom-nodes/${id}`),
   batchDeleteCustomNodes: (nodeIds) => api.post('/admin/custom-nodes/batch-delete', { node_ids: nodeIds }),

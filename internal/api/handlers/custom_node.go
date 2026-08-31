@@ -408,7 +408,7 @@ func ImportCustomNodeLinks(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	imported, errorCount, errors := importCustomNodesFromLinks(db, req.Links, "link")
+	imported, errorCount, errors := importCustomNodesFromLinks(db, req.Links, "link", "")
 	utils.CreateAuditLogSimple(c, "import_custom_node_links", "custom_node", 0, fmt.Sprintf("管理员操作: 导入专线节点链接 成功 %d 失败 %d", imported, errorCount))
 	if imported > 0 {
 		clearNodeCaches()
@@ -421,10 +421,15 @@ func ImportCustomNodeLinks(c *gin.Context) {
 	})
 }
 
-// ImportCustomNodeSubscription 从订阅链接拉取并自动解析节点，导入为专线节点
+// ImportCustomNodeSubscription 从订阅链接拉取并自动解析节点，导入为专线节点。
+// 支持两种语义：
+//   - replace=true（更新订阅）：替换该订阅 URL 下原有节点（旧节点删除、按最新内容重建），
+//     适用于「订阅地址更换」或「订阅内容更新」——用新订阅替换旧订阅导入的节点；
+//   - replace=false（默认，追加导入）：仅追加新节点，已存在的 (protocol, domain, port) 跳过。
 func ImportCustomNodeSubscription(c *gin.Context) {
 	var req struct {
-		URL string `json:"url" binding:"required"`
+		URL     string `json:"url" binding:"required"`
+		Replace bool   `json:"replace"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -435,6 +440,37 @@ func ImportCustomNodeSubscription(c *gin.Context) {
 	urlStr := strings.TrimSpace(req.URL)
 	if urlStr == "" || (!strings.HasPrefix(urlStr, "http://") && !strings.HasPrefix(urlStr, "https://")) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请输入有效的 http/https 订阅链接", nil)
+		return
+	}
+
+	db := database.GetDB()
+
+	// 更新/替换模式：先拉取订阅，成功后删除该 URL 下旧节点并写入最新节点
+	if req.Replace {
+		added, kept, removed, errs := updateCustomNodeSubscription(db, urlStr, true)
+		if len(errs) > 0 && added == 0 && removed == 0 {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "更新订阅失败", fmt.Errorf("%s", errs[0]))
+			return
+		}
+		clearNodeCaches()
+		utils.CreateAuditLogSimple(c, "update_custom_node_subscription", "custom_node", 0,
+			fmt.Sprintf("管理员操作: 更新订阅 %s 新增 %d 保留 %d 移除 %d", urlStr, added, kept, removed))
+		msg := fmt.Sprintf("订阅更新完成：新增 %d 个节点", added)
+		if removed > 0 {
+			msg += fmt.Sprintf("，移除 %d 个旧节点", removed)
+		}
+		if len(errs) > 0 {
+			msg += fmt.Sprintf("（%d 个解析失败）", len(errs))
+		}
+		utils.SuccessResponse(c, http.StatusOK, msg, gin.H{
+			"imported":    added,
+			"removed":     removed,
+			"kept":        kept,
+			"error_count": len(errs),
+			"errors":      errs,
+			"total":       added + kept,
+			"message":     msg,
+		})
 		return
 	}
 
@@ -474,8 +510,7 @@ func ImportCustomNodeSubscription(c *gin.Context) {
 		return
 	}
 
-	db := database.GetDB()
-	imported, errorCount, errors := importCustomNodesFromLinks(db, links, "subscription")
+	imported, errorCount, errors := importCustomNodesFromLinks(db, links, "subscription", urlStr)
 	utils.CreateAuditLogSimple(c, "import_custom_node_subscription", "custom_node", 0, fmt.Sprintf("管理员操作: 导入专线节点订阅 %s 解析 %d 个 成功 %d 失败 %d", urlStr, len(links), imported, errorCount))
 	if imported > 0 {
 		clearNodeCaches()
@@ -489,9 +524,74 @@ func ImportCustomNodeSubscription(c *gin.Context) {
 	})
 }
 
+// ListCustomNodeSubscriptions 返回已导入的订阅 URL 集合（按 SourceURL 聚合，含节点数量），
+// 供前端「更新订阅 / 更换订阅地址」选择使用。
+func ListCustomNodeSubscriptions(c *gin.Context) {
+	db := database.GetDB()
+	type subItem struct {
+		URL       string `json:"url"`
+		NodeCount int64  `json:"node_count"`
+	}
+	items := make([]subItem, 0)
+	var subURLs []string
+	if err := db.Model(&models.CustomNode{}).
+		Where("source = ? AND source_url <> ''", "subscription").
+		Distinct("source_url").Pluck("source_url", &subURLs).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "查询订阅列表失败", err)
+		return
+	}
+	for _, u := range subURLs {
+		var cnt int64
+		db.Model(&models.CustomNode{}).Where("source_url = ?", u).Count(&cnt)
+		items = append(items, subItem{URL: u, NodeCount: cnt})
+	}
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"list": items, "total": len(items)})
+}
+
+// DeleteCustomNodeSubscription 删除某订阅 URL 下导入的全部专线节点（含已分配关联），
+// 用于「更换订阅地址」时清理旧订阅导入的节点。
+func DeleteCustomNodeSubscription(c *gin.Context) {
+	var req struct {
+		URL string `json:"url" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
+		return
+	}
+	urlStr := strings.TrimSpace(req.URL)
+	if urlStr == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "请输入订阅链接", nil)
+		return
+	}
+	db := database.GetDB()
+	var oldNodes []models.CustomNode
+	db.Where("source = ? AND source_url = ?", "subscription", urlStr).Find(&oldNodes)
+	if len(oldNodes) == 0 {
+		utils.SuccessResponse(c, http.StatusOK, "该订阅下没有可删除的节点", gin.H{"removed": 0})
+		return
+	}
+	oldIDs := make([]uint, 0, len(oldNodes))
+	for _, cn := range oldNodes {
+		oldIDs = append(oldIDs, cn.ID)
+	}
+	if err := db.Where("custom_node_id IN ?", oldIDs).Delete(&models.UserCustomNode{}).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "清理旧节点分配失败", err)
+		return
+	}
+	if err := db.Delete(&models.CustomNode{}, "id IN ?", oldIDs).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "删除节点失败", err)
+		return
+	}
+	clearNodeCaches()
+	utils.CreateAuditLogSimple(c, "delete_custom_node_subscription", "custom_node", 0,
+		fmt.Sprintf("管理员操作: 删除订阅 %s 下 %d 个节点", urlStr, len(oldIDs)))
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("已删除 %d 个节点", len(oldIDs)), gin.H{"removed": len(oldIDs)})
+}
+
 // importCustomNodesFromLinks 解析节点链接并创建专线节点，返回成功数、失败数与错误明细。
-// source 标识节点来源: manual / link / subscription
-func importCustomNodesFromLinks(db *gorm.DB, links []string, source string) (imported, errorCount int, errors []string) {
+// source 标识节点来源: manual / link / subscription / selfhost；
+// sourceURL 为订阅导入时的来源订阅 URL（仅 subscription 来源使用，用于更新/替换定位）。
+func importCustomNodesFromLinks(db *gorm.DB, links []string, source string, sourceURL string) (imported, errorCount int, errors []string) {
 	// 基于 (protocol, domain, port) 预加载现有专线节点用于去重，
 	// 避免重复导入同一链接创建重复节点
 	var existing []models.CustomNode
@@ -534,14 +634,15 @@ func importCustomNodesFromLinks(db *gorm.DB, links []string, source string) (imp
 		}
 
 		newNodes = append(newNodes, models.CustomNode{
-			Name:     truncateNodeName(name),
-			Protocol: parsed.Type,
-			Domain:   parsed.Server,
-			Port:     parsed.Port,
-			Config:   configStr,
-			Status:   "inactive",
-			IsActive: true,
-			Source:   source,
+			Name:      truncateNodeName(name),
+			Protocol:  parsed.Type,
+			Domain:    parsed.Server,
+			Port:      parsed.Port,
+			Config:    configStr,
+			Status:    "inactive",
+			IsActive:  true,
+			Source:    source,
+			SourceURL: sourceURL,
 		})
 	}
 
@@ -555,6 +656,105 @@ func importCustomNodesFromLinks(db *gorm.DB, links []string, source string) (imp
 		imported = len(newNodes)
 	}
 	return imported, errorCount, errors
+}
+
+// updateCustomNodeSubscription 拉取订阅 URL 并替换（而非追加）原有专线节点。
+// 返回 (新增数, 保留数, 删除数, 错误列表)。
+// replaceAll=true 时：先删除「全部 subscription 来源」的旧节点（含已分配关联），
+// 再写入最新解析结果 —— 适用于「更换订阅地址」或「订阅内容整体更新」，保证订阅节点集合与最新订阅一致；
+// replaceAll=false 时仅追加新节点（旧节点保留，适合订阅地址未变但内容更新时增量同步）。
+func updateCustomNodeSubscription(db *gorm.DB, urlStr string, replaceAll bool) (added, kept, removed int, errs []string) {
+	svc := config_update.NewConfigUpdateService()
+	nodes, err := svc.FetchNodesFromURLs([]string{urlStr})
+	if err != nil {
+		return 0, 0, 0, []string{fmt.Sprintf("获取订阅失败: %s", err.Error())}
+	}
+	if len(nodes) == 0 {
+		return 0, 0, 0, []string{"订阅获取失败或内容中没有解析到节点，请检查订阅链接是否可访问"}
+	}
+
+	links := make([]string, 0, len(nodes))
+	seen := make(map[string]bool)
+	for _, n := range nodes {
+		link, _ := n["url"].(string)
+		link = strings.TrimSpace(link)
+		if link != "" && !seen[link] {
+			seen[link] = true
+			links = append(links, link)
+		}
+	}
+	if len(links) == 0 {
+		return 0, 0, 0, []string{"订阅内容中没有解析到节点"}
+	}
+
+	if replaceAll {
+		// 全量替换：删除全部订阅来源的旧节点（含已分配关联），再写入新节点。
+		// 不限定 source_url —— 更换订阅地址时旧地址的节点一并清除。
+		var oldNodes []models.CustomNode
+		db.Where("source = ?", "subscription").Find(&oldNodes)
+		if len(oldNodes) > 0 {
+			oldIDs := make([]uint, 0, len(oldNodes))
+			for _, cn := range oldNodes {
+				oldIDs = append(oldIDs, cn.ID)
+			}
+			if err := db.Where("custom_node_id IN ?", oldIDs).Delete(&models.UserCustomNode{}).Error; err != nil {
+				return 0, 0, 0, []string{fmt.Sprintf("清理旧节点分配失败: %s", err.Error())}
+			}
+			if err := db.Delete(&models.CustomNode{}, "id IN ?", oldIDs).Error; err != nil {
+				return 0, 0, 0, []string{fmt.Sprintf("删除旧节点失败: %s", err.Error())}
+			}
+			removed = len(oldIDs)
+		}
+	}
+
+	// 写入新节点（基于现有库中去重）
+	var existing []models.CustomNode
+	db.Select("protocol", "domain", "port").Find(&existing)
+	existingKeys := make(map[string]bool, len(existing))
+	for _, cn := range existing {
+		existingKeys[fmt.Sprintf("%s:%s:%d", cn.Protocol, cn.Domain, cn.Port)] = true
+	}
+
+	seenLinks := make(map[string]bool)
+	var newNodes []models.CustomNode
+	for _, link := range links {
+		parsed, err := config_update.ParseNodeLink(link)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("链接解析失败: %s", err.Error()))
+			continue
+		}
+		dupKey := fmt.Sprintf("%s:%s:%d", parsed.Type, parsed.Server, parsed.Port)
+		if seenLinks[dupKey] || existingKeys[dupKey] {
+			continue
+		}
+		seenLinks[dupKey] = true
+
+		configJSON, _ := json.Marshal(parsed)
+		configStr := string(configJSON)
+		name := parsed.Name
+		if name == "" {
+			name = fmt.Sprintf("%s-%s", parsed.Type, parsed.Server)
+		}
+		newNodes = append(newNodes, models.CustomNode{
+			Name:      truncateNodeName(name),
+			Protocol:  parsed.Type,
+			Domain:    parsed.Server,
+			Port:      parsed.Port,
+			Config:    configStr,
+			Status:    "inactive",
+			IsActive:  true,
+			Source:    "subscription",
+			SourceURL: urlStr,
+		})
+	}
+	if len(newNodes) > 0 {
+		if err := db.CreateInBatches(newNodes, 100).Error; err != nil {
+			errs = append(errs, fmt.Sprintf("批量写入节点失败: %s", err.Error()))
+			return added, kept, removed, errs
+		}
+		added = len(newNodes)
+	}
+	return added, kept, removed, errs
 }
 
 func UpdateCustomNode(c *gin.Context) {
