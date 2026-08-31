@@ -393,13 +393,25 @@
                   class="subscription-item"
                 >
                   <div class="subscription-item-main">
-                    <div class="subscription-item-url" :title="sub.url">{{ sub.url }}</div>
+                    <div class="subscription-item-url" :title="sub.url">
+                      <template v-if="isLegacySubscription(sub.url)">历史订阅导入节点（旧版数据，无原始订阅地址）</template>
+                      <template v-else>{{ sub.url }}</template>
+                    </div>
                     <div class="subscription-item-count">共 {{ sub.node_count }} 个节点</div>
                   </div>
                   <div class="subscription-item-actions">
-                    <el-button size="small" type="primary" plain @click="handleUpdateSubscription(sub)">
-                      更新此订阅
-                    </el-button>
+                    <template v-if="isLegacySubscription(sub.url)">
+                      <el-tooltip content="历史导入节点无原始订阅地址，可通过下方「替换模式」导入新订阅整体替换" placement="top">
+                        <el-button size="small" type="warning" plain @click="handleReplaceLegacy(sub)">
+                          用新订阅替换
+                        </el-button>
+                      </el-tooltip>
+                    </template>
+                    <template v-else>
+                      <el-button size="small" type="primary" plain @click="handleUpdateSubscription(sub)">
+                        更新此订阅
+                      </el-button>
+                    </template>
                     <el-button size="small" type="danger" plain @click="handleDeleteSubscription(sub)">
                       删除
                     </el-button>
@@ -1328,6 +1340,10 @@ export default {
     // ==================== 已导入订阅管理（更新 / 删除） ====================
     const subscriptionList = ref([])
     const subReplaceMode = ref(false)
+    // isLegacySubscription 判断是否为历史导入节点（旧版数据无原始订阅地址，用占位 URL 标记）
+    const isLegacySubscription = (url) => {
+      return typeof url === 'string' && url.startsWith('legacy://')
+    }
     const loadSubscriptionList = async () => {
       try {
         const res = await adminAPI.getCustomNodeSubscriptions()
@@ -1337,6 +1353,13 @@ export default {
       } catch (e) {
         console.warn('加载已导入订阅失败', e)
       }
+    }
+    // handleReplaceLegacy 历史订阅节点：引导用户输入新订阅地址 + 替换模式，整体替换旧节点
+    const handleReplaceLegacy = (sub) => {
+      addNodeTab.value = 'subscription'
+      subReplaceMode.value = true
+      subUrlInput.value = ''
+      ElMessage.info('请在下方输入新的订阅链接，将以「替换模式」导入，整体替换历史节点')
     }
     const handleUpdateSubscription = async (sub) => {
       try {
@@ -1680,7 +1703,7 @@ export default {
       searchKeyword, filters, pagination, nodeForm, nodeFormRef, rules,
       nodeTypeGroups,
       nodeLinkInput, parsedNode, nodeLink, testingFromLink, subUrlInput, importingSubscription,
-      subReplaceMode, subscriptionList, handleUpdateSubscription, handleDeleteSubscription,
+      subReplaceMode, subscriptionList, handleUpdateSubscription, handleDeleteSubscription, handleReplaceLegacy, isLegacySubscription,
       deployingVPS, vpsForm, deploySelfHostVPSNode,
       selfHostNodes, selfHostLoading, loadSelfHostNodes, onSelfHostManage, managingSelfHostId,
       selfHostStatusMap, selfHostStatusTypeMap, formatBytes2, formatTime2,
