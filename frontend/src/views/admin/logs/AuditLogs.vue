@@ -3,9 +3,11 @@
     <div class="filter-bar desktop-only">
       <el-input v-model="filter.keyword" placeholder="搜索操作描述/邮箱" clearable class="filter-keyword" @input="debouncedFetch" @clear="fetch" @keyup.enter="fetch" />
       <el-date-picker v-model="filter.timeRange" type="datetimerange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD HH:mm:ss" class="filter-date" @change="fetch" />
-      <el-button type="primary" @click="fetch" :loading="loading">搜索</el-button>
-      <el-button @click="resetFilter">重置</el-button>
-      <el-button type="danger" plain :loading="clearing" @click="runCleanup">清空日志</el-button>
+      <div class="filter-actions">
+        <el-button type="primary" @click="fetch" :loading="loading">搜索</el-button>
+        <el-button @click="resetFilter">重置</el-button>
+        <el-button type="danger" plain :loading="clearing" @click="runCleanup">清空日志</el-button>
+      </div>
     </div>
     <ResponsiveDataView
       :data="list"

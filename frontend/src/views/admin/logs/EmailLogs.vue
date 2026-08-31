@@ -20,10 +20,12 @@
         class="filter-date"
         @change="fetch"
       />
+      <div class="filter-actions">
       <el-button type="primary" @click="fetch" :loading="loading">搜索</el-button>
       <el-button @click="resetFilter">重置</el-button>
           <el-button type="danger" plain :loading="clearing" @click="runCleanup">清空</el-button>
-    </div>
+
+      </div>    </div>
     <div class="filter-bar mobile-only">
       <el-form label-position="top" class="mobile-filter-form">
         <el-form-item label="收件人"><el-input v-model="filter.keyword" placeholder="收件人邮箱" clearable @input="debouncedFetch" @clear="fetch" /></el-form-item>
