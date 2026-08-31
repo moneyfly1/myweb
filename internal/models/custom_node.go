@@ -18,6 +18,7 @@ type CustomNode struct {
 	ExpireTime       *time.Time `json:"expire_time,omitempty"`
 	FollowUserExpire bool       `gorm:"default:false" json:"follow_user_expire"`
 	Source           string     `gorm:"type:varchar(20);default:''" json:"source"` // 节点来源: manual / link / subscription / selfhost
+	SourceURL        string     `gorm:"type:varchar(512);default:''" json:"source_url,omitempty"` // 订阅导入时的来源订阅 URL（用于更新/替换）
 
 	// 自建节点（一键部署）字段
 	SelfHosted       bool       `gorm:"default:false" json:"self_hosted"`                      // 是否为自建节点
