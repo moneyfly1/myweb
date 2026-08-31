@@ -1110,6 +1110,7 @@ const adminNotificationEvents = [
   { label: '发送订阅', key: 'admin_notify_subscription_sent' },
   { label: '重置订阅', key: 'admin_notify_subscription_reset' },
   { label: '订阅到期', key: 'admin_notify_subscription_expired' },
+  { label: '订阅即将到期', key: 'admin_notify_subscription_expiry_warning' },
   { label: '用户提交工单', key: 'admin_notify_ticket_created' },
   { label: '工单新回复', key: 'admin_notify_ticket_replied' },
   { label: '异常登录', key: 'admin_notify_abnormal_login' }

@@ -279,6 +279,22 @@ func (s *Scheduler) sendExpirationReminders(subscriptions []models.Subscription,
 					"expired_time": utils.FormatBeijingTime(utils.GetBeijingTime()),
 				})
 			}(sub)
+		} else {
+			// 订阅即将到期（提前 1/3/7 天提醒）：同步通知管理员，便于跟进续费
+			go func(sub models.Subscription, days int) {
+				notificationService := notification.NewNotificationService()
+				expireTime := "未设置"
+				if !sub.ExpireTime.IsZero() {
+					expireTime = utils.FormatBeijingTime(sub.ExpireTime)
+				}
+				_ = notificationService.SendAdminNotification("subscription_expiry_warning", map[string]interface{}{
+					"username":       sub.User.Username,
+					"email":          sub.User.Email,
+					"package_name":   packageName,
+					"expire_time":    expireTime,
+					"remaining_days": days,
+				})
+			}(sub, remainingDays)
 		}
 	}
 }
