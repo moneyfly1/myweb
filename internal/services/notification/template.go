@@ -33,6 +33,8 @@ func (b *MessageTemplateBuilder) BuildTelegramMessage(notificationType string, d
 		return b.buildSubscriptionResetTelegram(data)
 	case "subscription_expired":
 		return b.buildSubscriptionExpiredTelegram(data)
+	case "subscription_expiry_warning":
+		return b.buildSubscriptionExpiryWarningTelegram(data)
 	case "user_created":
 		return b.buildUserCreatedTelegram(data)
 	case "subscription_created":
@@ -70,6 +72,8 @@ func (b *MessageTemplateBuilder) BuildBarkMessage(notificationType string, data 
 		return b.buildSubscriptionResetBark(data)
 	case "subscription_expired":
 		return b.buildSubscriptionExpiredBark(data)
+	case "subscription_expiry_warning":
+		return b.buildSubscriptionExpiryWarningBark(data)
 	case "user_created":
 		return b.buildUserCreatedBark(data)
 	case "subscription_created":
@@ -315,6 +319,19 @@ func (b *MessageTemplateBuilder) buildSubscriptionSentTelegram(data map[string]i
 	username := getString(data, "username", "N/A")
 	email := getString(data, "email", "N/A")
 	sendTime := getString(data, "send_time", "N/A")
+	universalURL := getString(data, "universal_url", "")
+	clashURL := getString(data, "clash_url", "")
+
+	urlSection := ""
+	if universalURL != "" || clashURL != "" {
+		urlSection = "\n\n┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n┃  🔗 订阅地址\n┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+		if universalURL != "" {
+			urlSection += fmt.Sprintf("\n\n🔗 通用订阅:\n<code>%s</code>", universalURL)
+		}
+		if clashURL != "" {
+			urlSection += fmt.Sprintf("\n\n⚡ Clash 订阅:\n<code>%s</code>", clashURL)
+		}
+	}
 
 	return fmt.Sprintf(`📧 <b>订阅邮件发送</b>
 
@@ -325,11 +342,12 @@ func (b *MessageTemplateBuilder) buildSubscriptionSentTelegram(data map[string]i
 👤 <b>用户账号</b>: <code>%s</code>
 📧 <b>用户邮箱</b>: %s
 🕐 <b>发送时间</b>: %s
+%s
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃  ✅ <b>订阅信息已发送至用户邮箱</b>
 ┃  📡 <b>包含订阅地址和配置信息</b>
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, username, email, sendTime)
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, username, email, sendTime, urlSection)
 }
 
 func (b *MessageTemplateBuilder) buildSubscriptionResetTelegram(data map[string]interface{}) string {
@@ -674,6 +692,8 @@ func (b *MessageTemplateBuilder) buildSubscriptionSentBark(data map[string]inter
 	username := getString(data, "username", "N/A")
 	email := getString(data, "email", "N/A")
 	sendTime := getString(data, "send_time", "N/A")
+	universalURL := getString(data, "universal_url", "")
+	clashURL := getString(data, "clash_url", "")
 
 	title := "📧 订阅邮件发送"
 	body := fmt.Sprintf(`┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -682,12 +702,24 @@ func (b *MessageTemplateBuilder) buildSubscriptionSentBark(data map[string]inter
 
 👤 用户账号: %s
 📧 用户邮箱: %s
-🕐 发送时间: %s
+🕐 发送时间: %s`, username, email, sendTime)
+
+	if universalURL != "" || clashURL != "" {
+		body += "\n\n┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n┃  🔗 订阅地址\n┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+		if universalURL != "" {
+			body += fmt.Sprintf("\n\n🔗 通用订阅:\n%s", universalURL)
+		}
+		if clashURL != "" {
+			body += fmt.Sprintf("\n\n⚡ Clash 订阅:\n%s", clashURL)
+		}
+	}
+
+	body += `
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃  ✅ 订阅信息已发送至用户邮箱
 ┃  📡 包含订阅地址和配置信息
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, username, email, sendTime)
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`
 
 	return title, body
 }
@@ -734,6 +766,59 @@ func (b *MessageTemplateBuilder) buildSubscriptionExpiredBark(data map[string]in
 ┃  以恢复服务
 ┃  📧 过期提醒已发送至用户邮箱
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, username, email, expireTime)
+
+	return title, body
+}
+
+// buildSubscriptionExpiryWarningTelegram 订阅到期提前提醒（管理员侧）
+func (b *MessageTemplateBuilder) buildSubscriptionExpiryWarningTelegram(data map[string]interface{}) string {
+	username := getString(data, "username", "N/A")
+	email := getString(data, "email", "N/A")
+	packageName := getString(data, "package_name", "未知套餐")
+	expireTime := getString(data, "expire_time", "N/A")
+	remainingDays := getInt(data, "remaining_days", 0)
+
+	return fmt.Sprintf(`⏰ <b>订阅即将到期</b>
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  ⚠️ <b>到期提醒</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+👤 <b>用户账号</b>: <code>%s</code>
+📧 <b>用户邮箱</b>: %s
+📦 <b>套餐名称</b>: %s
+🕐 <b>到期时间</b>: %s
+📅 <b>剩余天数</b>: <b>%d 天</b>
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  💡 <b>建议提醒用户及时续费</b>
+┃  📧 <b>到期提醒邮件已发送至用户</b>
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, username, email, packageName, expireTime, remainingDays)
+}
+
+// buildSubscriptionExpiryWarningBark 订阅到期提前提醒（Bark）
+func (b *MessageTemplateBuilder) buildSubscriptionExpiryWarningBark(data map[string]interface{}) (string, string) {
+	username := getString(data, "username", "N/A")
+	email := getString(data, "email", "N/A")
+	packageName := getString(data, "package_name", "未知套餐")
+	expireTime := getString(data, "expire_time", "N/A")
+	remainingDays := getInt(data, "remaining_days", 0)
+
+	title := "⏰ 订阅即将到期"
+	body := fmt.Sprintf(`┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  ⚠️ 到期提醒
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+👤 用户账号: %s
+📧 用户邮箱: %s
+📦 套餐名称: %s
+🕐 到期时间: %s
+📅 剩余天数: %d 天
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  💡 建议提醒用户及时续费
+┃  📧 到期提醒邮件已发送至用户
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`, username, email, packageName, expireTime, remainingDays)
 
 	return title, body
 }

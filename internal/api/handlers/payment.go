@@ -1167,6 +1167,16 @@ func sendPaymentNotifications(db *gorm.DB, orderNo string) {
 				baseURL := templateBuilder.GetBaseURL()
 				universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s", baseURL, subscriptionInfo.SubscriptionURL)
 				clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s", baseURL, subscriptionInfo.SubscriptionURL)
+				multi := map[string]string{
+					"universal":    universalURL,
+					"clash":        clashURL,
+					"stash":        fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=stash", baseURL, subscriptionInfo.SubscriptionURL),
+					"surge":        fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=surge", baseURL, subscriptionInfo.SubscriptionURL),
+					"quantumultx":  fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=quantumultx", baseURL, subscriptionInfo.SubscriptionURL),
+					"loon":         fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=loon", baseURL, subscriptionInfo.SubscriptionURL),
+					"singbox":      fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=singbox", baseURL, subscriptionInfo.SubscriptionURL),
+					"shadowrocket": fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=shadowrocket", baseURL, subscriptionInfo.SubscriptionURL),
+				}
 
 				expireTime := "未设置"
 				remainingDays := 0
@@ -1175,10 +1185,9 @@ func sendPaymentNotifications(db *gorm.DB, orderNo string) {
 					remainingDays, _ = utils.RemainingDays(subscriptionInfo.ExpireTime, utils.GetBeijingTime())
 				}
 
-				content := templateBuilder.GetSubscriptionTemplate(
+				content := templateBuilder.GetMultiSubscriptionTemplate(
 					latestUser.Username,
-					universalURL,
-					clashURL,
+					multi,
 					expireTime,
 					remainingDays,
 					subscriptionInfo.DeviceLimit,
