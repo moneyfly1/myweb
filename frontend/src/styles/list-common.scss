@@ -503,6 +503,24 @@
     justify-self: end;
   }
 
+  // 按钮组容器：在 filter-bar grid 中独占一行并右对齐，按钮之间紧凑排列，
+  // 避免按钮被前面的筛选框挤占、或在窄格里换行错乱
+  .filter-bar:not(.mobile-only) > .filter-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    grid-column: 1 / -1;
+    min-width: 0;
+    align-self: end;
+  }
+
+  .filter-bar:not(.mobile-only) > .filter-actions .el-button {
+    flex-shrink: 0;
+    margin-left: 0;
+  }
+
   .filter-grid .filter-actions {
     display: flex;
     flex-wrap: nowrap;
