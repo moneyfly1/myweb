@@ -99,6 +99,39 @@ func buildConfigURLItem(title, desc, url string) string {
                     </div>`, title, desc, url)
 }
 
+// buildMultiSubscriptionURLList 构建全部客户端订阅格式的地址列表。
+// urls 的 key 支持: universal / clash / stash / surge / quantumultx / loon / singbox / shadowrocket
+func buildMultiSubscriptionURLList(urls map[string]string) string {
+	items := []struct {
+		key, title, desc string
+	}{
+		{"universal", "🔗 通用订阅地址", "适用于 V2rayN、Nekoray 等通用客户端（自动识别）"},
+		{"clash", "⚡ Clash 订阅地址", "适用于 Clash、ClashX、Clash for Windows、Clash Meta 等 Clash 类型软件"},
+		{"stash", "📱 Stash 订阅地址", "适用于 iOS Stash 客户端"},
+		{"surge", "🌊 Surge 订阅地址", "适用于 Surge iOS / macOS 客户端"},
+		{"quantumultx", "🔰 Quantumult X 订阅地址", "适用于 Quantumult X iOS 客户端"},
+		{"loon", "🛸 Loon 订阅地址", "适用于 Loon iOS 客户端"},
+		{"singbox", "📦 sing-box 订阅地址", "适用于 sing-box 全平台客户端"},
+		{"shadowrocket", "🚀 Shadowrocket 订阅地址", "适用于 Shadowrocket iOS 客户端"},
+	}
+	var buf strings.Builder
+	for _, it := range items {
+		if u, ok := urls[it.key]; ok && u != "" {
+			buf.WriteString(buildConfigURLItem(it.title, it.desc, u))
+		}
+	}
+	// 兜底：map 为空时尝试 positional 键
+	if buf.Len() == 0 {
+		if u := urls["universal_url"]; u != "" {
+			buf.WriteString(buildConfigURLItem("🔗 通用订阅地址", "适用于 V2rayN、Nekoray 等通用客户端", u))
+		}
+		if u := urls["clash_url"]; u != "" {
+			buf.WriteString(buildConfigURLItem("⚡ Clash 订阅地址", "适用于 Clash 类型软件", u))
+		}
+	}
+	return buf.String()
+}
+
 // --- 邮件模板构建器 ---
 
 type EmailTemplateBuilder struct{}
@@ -237,10 +270,19 @@ func (b *EmailTemplateBuilder) GetPasswordResetVerificationCodeTemplate(username
 }
 
 func (b *EmailTemplateBuilder) GetSubscriptionTemplate(username, universalURL, clashURL, expireTime string, remainingDays, deviceLimit, currentDevices int) string {
+	return b.GetMultiSubscriptionTemplate(username, map[string]string{
+		"universal": universalURL,
+		"clash":     clashURL,
+	}, expireTime, remainingDays, deviceLimit, currentDevices)
+}
+
+// GetMultiSubscriptionTemplate 订阅配置邮件（展示全部客户端订阅格式）。
+// urls 的 key: universal / clash / stash / surge / quantumultx / loon / singbox / shadowrocket
+func (b *EmailTemplateBuilder) GetMultiSubscriptionTemplate(username string, urls map[string]string, expireTime string, remainingDays, deviceLimit, currentDevices int) string {
 	username = escapeHTML(username)
 	title := "服务配置信息"
 
-	urlList := buildConfigURLItem("⚡ Clash 订阅地址：", "适用于 Clash、ClashX、Clash for Windows 等 Clash 类型软件", clashURL)
+	urlList := buildMultiSubscriptionURLList(urls)
 
 	remainingColor := "#e74c3c"
 	if remainingDays > 7 {
@@ -558,13 +600,21 @@ func (b *EmailTemplateBuilder) GetPasswordChangedTemplate(username, changeTime, 
 }
 
 func (b *EmailTemplateBuilder) GetSubscriptionResetTemplate(username, universalURL, clashURL, expireTime, resetTime, resetReason string) string {
+	return b.GetMultiSubscriptionResetTemplate(username, map[string]string{
+		"universal": universalURL,
+		"clash":     clashURL,
+	}, expireTime, resetTime, resetReason)
+}
+
+// GetMultiSubscriptionResetTemplate 订阅重置邮件（展示全部客户端订阅格式）。
+func (b *EmailTemplateBuilder) GetMultiSubscriptionResetTemplate(username string, urls map[string]string, expireTime, resetTime, resetReason string) string {
 	username = escapeHTML(username)
 	expireTime = escapeHTML(expireTime)
 	resetTime = escapeHTML(resetTime)
 	resetReason = escapeHTML(resetReason)
 	title := "订阅重置通知"
 
-	urlList := buildConfigURLItem("⚡ Clash 订阅地址：", "专为移动设备优化，支持规则分流", clashURL)
+	urlList := buildMultiSubscriptionURLList(urls)
 
 	baseURL := b.GetBaseURL()
 
@@ -1032,6 +1082,26 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             <div class="warning-box">
                 <p><strong>💡 提示：</strong>用户订阅已过期，建议引导用户续费以恢复服务。</p>
             </div>`, username, email, expireTime)
+
+	case "subscription_expiry_warning":
+		expireTime := getStringFromData(data, "expire_time", "N/A")
+		packageName := getStringFromData(data, "package_name", "未知套餐")
+		remainingDays := getFloatFromData(data, "remaining_days", 0)
+		content = fmt.Sprintf(`<h2>⏰ 订阅即将到期</h2>
+            <p>系统检测到用户订阅即将到期，请及时跟进续费，详情如下：</p>
+            <div class="warning-box">
+                <h3>📋 到期信息</h3>
+                <table class="info-table">
+                    <tr><th>用户账号</th><td><strong>%s</strong></td></tr>
+                    <tr><th>用户邮箱</th><td>%s</td></tr>
+                    <tr><th>套餐名称</th><td>%s</td></tr>
+                    <tr><th>到期时间</th><td style="color: #f39c12; font-weight: bold;">%s</td></tr>
+                    <tr><th>剩余天数</th><td style="color: #f39c12; font-weight: bold;">%d 天</td></tr>
+                </table>
+            </div>
+            <div class="info-box">
+                <p><strong>💡 提示：</strong>到期提醒邮件已发送至用户，建议通过 Telegram/Bark 或站内消息跟进续费。</p>
+            </div>`, username, email, packageName, expireTime, int(remainingDays))
 
 	case "user_created":
 		createdBy := getStringFromData(data, "created_by", "N/A")

@@ -154,8 +154,10 @@ func asyncNotifyTicketReply(db *gorm.DB, ticket *models.Ticket, user *models.Use
 			go func() {
 				notificationService := notification.NewNotificationService()
 				if notification.ShouldSendCustomerNotificationToUser(&ticketOwner, "ticket_reply", notification.ChannelSystem) {
-					content := fmt.Sprintf("您的工单「%s」有新的管理员回复。", ticket.Title)
-					if err := notificationService.CreateUserSystemNotification(&ticketOwner, "ticket_reply", "工单新回复", content); err != nil {
+					// 站内通知附带本次回复内容与工单编号，方便用户直接查看
+					sysContent := fmt.Sprintf("您的工单「%s」(%s) 有新的管理员回复：\n\n%s",
+						ticket.Title, ticket.TicketNo, replyContent)
+					if err := notificationService.CreateUserSystemNotification(&ticketOwner, "ticket_reply", "工单新回复", sysContent); err != nil {
 						utils.LogErrorMsg("创建工单回复站内通知失败: ticket=%s, user_id=%d, error=%v", ticket.TicketNo, ticketOwner.ID, err)
 					}
 				}

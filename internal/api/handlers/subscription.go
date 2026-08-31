@@ -83,6 +83,14 @@ func getMultiClientSubscriptionURLs(c *gin.Context, subURL string) gin.H {
 	}
 }
 
+// toString 安全地把 interface{} 转成字符串（gin.H 取出的值可能是 string）
+func toString(v interface{}) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
 func getCurrentAdminUsername(c *gin.Context) *string {
 	if user, ok := middleware.GetCurrentUser(c); ok && user != nil {
 		return &user.Username
@@ -1259,12 +1267,22 @@ func ExportSubscriptions(c *gin.Context) {
 
 func sendResetEmail(c *gin.Context, sub models.Subscription, user models.User, reason string) {
 	univ, clash := getSubscriptionURLs(c, sub.SubscriptionURL)
+	allURLs := getMultiClientSubscriptionURLs(c, sub.SubscriptionURL)
 	exp := "未设置"
 	if !sub.ExpireTime.IsZero() {
 		exp = sub.ExpireTime.Format(TimeLayout)
 	}
 	resetTime := utils.GetBeijingTime().Format(TimeLayout)
-	content := email.NewEmailTemplateBuilder().GetSubscriptionResetTemplate(user.Username, univ, clash, exp, resetTime, reason)
+	content := email.NewEmailTemplateBuilder().GetMultiSubscriptionResetTemplate(user.Username, map[string]string{
+		"universal":    univ,
+		"clash":        clash,
+		"stash":        toString(allURLs["stash_url"]),
+		"surge":        toString(allURLs["surge_url"]),
+		"quantumultx":  toString(allURLs["quantumultx_url"]),
+		"loon":         toString(allURLs["loon_url"]),
+		"singbox":      toString(allURLs["singbox_url"]),
+		"shadowrocket": toString(allURLs["shadowrocket_url"]),
+	}, exp, resetTime, reason)
 	if notification.ShouldSendCustomerNotificationToUser(&user, "subscription_reset", notification.ChannelEmail) {
 		_ = email.NewEmailService().QueueEmail(user.Email, "订阅重置通知", content, "subscription_reset")
 	}
@@ -1278,12 +1296,22 @@ func sendResetEmail(c *gin.Context, sub models.Subscription, user models.User, r
 
 func queueSubEmail(c *gin.Context, sub models.Subscription, user models.User) error {
 	univ, clash := getSubscriptionURLs(c, sub.SubscriptionURL)
+	allURLs := getMultiClientSubscriptionURLs(c, sub.SubscriptionURL)
 	exp, days := "未设置", 0
 	if !sub.ExpireTime.IsZero() {
 		exp = sub.ExpireTime.Format(TimeLayout)
 		days, _ = utils.RemainingDays(sub.ExpireTime, utils.GetBeijingTime())
 	}
-	content := email.NewEmailTemplateBuilder().GetSubscriptionTemplate(user.Username, univ, clash, exp, days, sub.DeviceLimit, sub.CurrentDevices)
+	content := email.NewEmailTemplateBuilder().GetMultiSubscriptionTemplate(user.Username, map[string]string{
+		"universal":    univ,
+		"clash":        clash,
+		"stash":        toString(allURLs["stash_url"]),
+		"surge":        toString(allURLs["surge_url"]),
+		"quantumultx":  toString(allURLs["quantumultx_url"]),
+		"loon":         toString(allURLs["loon_url"]),
+		"singbox":      toString(allURLs["singbox_url"]),
+		"shadowrocket": toString(allURLs["shadowrocket_url"]),
+	}, exp, days, sub.DeviceLimit, sub.CurrentDevices)
 	if !notification.ShouldSendCustomerNotificationToUser(&user, "subscription_sent", notification.ChannelEmail) {
 		return nil
 	}
