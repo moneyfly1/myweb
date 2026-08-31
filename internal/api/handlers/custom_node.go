@@ -430,6 +430,7 @@ func ImportCustomNodeSubscription(c *gin.Context) {
 	var req struct {
 		URL     string `json:"url" binding:"required"`
 		Replace bool   `json:"replace"`
+		Mode    string `json:"mode"` // "update" = 增量更新（分配保护）；缺省 = 追加导入
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -445,30 +446,36 @@ func ImportCustomNodeSubscription(c *gin.Context) {
 
 	db := database.GetDB()
 
-	// 更新/替换模式：先拉取订阅，成功后删除该 URL 下旧节点并写入最新节点
-	if req.Replace {
-		added, kept, removed, errs := updateCustomNodeSubscription(db, urlStr, true)
-		if len(errs) > 0 && added == 0 && removed == 0 {
+	// 更新订阅模式（mode=update）：拉取订阅后增量更新（分配保护：已分配节点更新配置、保留分配，绝不移除）。
+	// replace=true：全范围匹配更新（更换订阅地址场景，匹配所有订阅来源节点的同名/同地址节点）；
+	// replace=false：仅更新该订阅 URL 下的节点（同一订阅内容更新，如端口/配置变化）。
+	if req.Mode == "update" {
+		added, updated, kept, errs := updateCustomNodeSubscription(db, urlStr, req.Replace)
+		if len(errs) > 0 && added == 0 && updated == 0 && kept == 0 {
 			utils.ErrorResponse(c, http.StatusInternalServerError, "更新订阅失败", fmt.Errorf("%s", errs[0]))
 			return
 		}
 		clearNodeCaches()
 		utils.CreateAuditLogSimple(c, "update_custom_node_subscription", "custom_node", 0,
-			fmt.Sprintf("管理员操作: 更新订阅 %s 新增 %d 保留 %d 移除 %d", urlStr, added, kept, removed))
+			fmt.Sprintf("管理员操作: 更新订阅 %s 新增 %d 更新 %d 保留 %d", urlStr, added, updated, kept))
 		msg := fmt.Sprintf("订阅更新完成：新增 %d 个节点", added)
-		if removed > 0 {
-			msg += fmt.Sprintf("，移除 %d 个旧节点", removed)
+		if updated > 0 {
+			msg += fmt.Sprintf("，更新 %d 个已有节点（分配保持不变）", updated)
+		}
+		if kept > 0 {
+			msg += fmt.Sprintf("，保留 %d 个订阅中已消失的节点（为避免影响已分配用户，未删除）", kept)
 		}
 		if len(errs) > 0 {
 			msg += fmt.Sprintf("（%d 个解析失败）", len(errs))
 		}
 		utils.SuccessResponse(c, http.StatusOK, msg, gin.H{
 			"imported":    added,
-			"removed":     removed,
+			"updated":     updated,
+			"removed":     0,
 			"kept":        kept,
 			"error_count": len(errs),
 			"errors":      errs,
-			"total":       added + kept,
+			"total":       added + updated + kept,
 			"message":     msg,
 		})
 		return
@@ -658,12 +665,20 @@ func importCustomNodesFromLinks(db *gorm.DB, links []string, source string, sour
 	return imported, errorCount, errors
 }
 
-// updateCustomNodeSubscription 拉取订阅 URL 并替换（而非追加）原有专线节点。
-// 返回 (新增数, 保留数, 删除数, 错误列表)。
-// replaceAll=true 时：先删除「全部 subscription 来源」的旧节点（含已分配关联），
-// 再写入最新解析结果 —— 适用于「更换订阅地址」或「订阅内容整体更新」，保证订阅节点集合与最新订阅一致；
-// replaceAll=false 时仅追加新节点（旧节点保留，适合订阅地址未变但内容更新时增量同步）。
-func updateCustomNodeSubscription(db *gorm.DB, urlStr string, replaceAll bool) (added, kept, removed int, errs []string) {
+// updateCustomNodeSubscription 拉取订阅 URL 并增量更新订阅导入的专线节点。
+// 返回 (新增数, 更新数, 保留数, 错误列表)。
+//
+// 核心原则（分配保护）：已分配给用户的节点在更新后仍保持分配关系，绝不因订阅更新而丢失。
+// 匹配策略：新订阅节点按「名称相同」或「(协议, 域名, 端口) 相同」匹配已有订阅节点——
+//   - 匹配到：更新该节点的配置（Config/名称/端口等），保留节点 ID 与用户分配（UserCustomNode 不动）；
+//   - 未匹配（新节点）：追加创建；
+//   - 订阅中已消失的旧节点（找不到匹配）：保留不删除（避免破坏分配），仅报告数量，
+//     由管理员决定是否手动删除（删除 API 会同时清理分配）。
+//
+// replaceAll=true 时：匹配范围扩大到「全部 subscription 来源」节点（更换订阅地址场景：
+// 新地址的节点会更新旧地址下同名的节点，旧地址独有的节点保留）；
+// replaceAll=false 时：仅匹配「source_url = urlStr」的节点（同一订阅内容更新）。
+func updateCustomNodeSubscription(db *gorm.DB, urlStr string, replaceAll bool) (added, updated, kept int, errs []string) {
 	svc := config_update.NewConfigUpdateService()
 	nodes, err := svc.FetchNodesFromURLs([]string{urlStr})
 	if err != nil {
@@ -687,35 +702,38 @@ func updateCustomNodeSubscription(db *gorm.DB, urlStr string, replaceAll bool) (
 		return 0, 0, 0, []string{"订阅内容中没有解析到节点"}
 	}
 
+	// 加载候选旧节点：replaceAll 时取全部 subscription 来源；否则仅该 URL 下的
+	var oldNodes []models.CustomNode
 	if replaceAll {
-		// 全量替换：删除全部订阅来源的旧节点（含已分配关联），再写入新节点。
-		// 不限定 source_url —— 更换订阅地址时旧地址的节点一并清除。
-		var oldNodes []models.CustomNode
 		db.Where("source = ?", "subscription").Find(&oldNodes)
-		if len(oldNodes) > 0 {
-			oldIDs := make([]uint, 0, len(oldNodes))
-			for _, cn := range oldNodes {
-				oldIDs = append(oldIDs, cn.ID)
+	} else {
+		db.Where("source = ? AND source_url = ?", "subscription", urlStr).Find(&oldNodes)
+	}
+
+	// 建立匹配索引：名称 → 节点；协议:域名:端口 → 节点
+	type matchedInfo struct {
+		node      *models.CustomNode
+		consumed  bool
+	}
+	byName := make(map[string]*matchedInfo, len(oldNodes))
+	byAddr := make(map[string]*matchedInfo, len(oldNodes))
+	for i := range oldNodes {
+		mi := &matchedInfo{node: &oldNodes[i]}
+		nm := strings.TrimSpace(oldNodes[i].Name)
+		if nm != "" {
+			if _, ok := byName[nm]; !ok {
+				byName[nm] = mi
 			}
-			if err := db.Where("custom_node_id IN ?", oldIDs).Delete(&models.UserCustomNode{}).Error; err != nil {
-				return 0, 0, 0, []string{fmt.Sprintf("清理旧节点分配失败: %s", err.Error())}
-			}
-			if err := db.Delete(&models.CustomNode{}, "id IN ?", oldIDs).Error; err != nil {
-				return 0, 0, 0, []string{fmt.Sprintf("删除旧节点失败: %s", err.Error())}
-			}
-			removed = len(oldIDs)
+		}
+		key := fmt.Sprintf("%s:%s:%d", oldNodes[i].Protocol, oldNodes[i].Domain, oldNodes[i].Port)
+		if _, ok := byAddr[key]; !ok {
+			byAddr[key] = mi
 		}
 	}
 
-	// 写入新节点（基于现有库中去重）
-	var existing []models.CustomNode
-	db.Select("protocol", "domain", "port").Find(&existing)
-	existingKeys := make(map[string]bool, len(existing))
-	for _, cn := range existing {
-		existingKeys[fmt.Sprintf("%s:%s:%d", cn.Protocol, cn.Domain, cn.Port)] = true
-	}
-
+	// 解析订阅链接并合并：优先匹配名称，其次匹配地址
 	seenLinks := make(map[string]bool)
+	consumedOld := make(map[*matchedInfo]bool)
 	var newNodes []models.CustomNode
 	for _, link := range links {
 		parsed, err := config_update.ParseNodeLink(link)
@@ -723,11 +741,10 @@ func updateCustomNodeSubscription(db *gorm.DB, urlStr string, replaceAll bool) (
 			errs = append(errs, fmt.Sprintf("链接解析失败: %s", err.Error()))
 			continue
 		}
-		dupKey := fmt.Sprintf("%s:%s:%d", parsed.Type, parsed.Server, parsed.Port)
-		if seenLinks[dupKey] || existingKeys[dupKey] {
+		if seenLinks[fmt.Sprintf("%s:%s:%d", parsed.Type, parsed.Server, parsed.Port)] {
 			continue
 		}
-		seenLinks[dupKey] = true
+		seenLinks[fmt.Sprintf("%s:%s:%d", parsed.Type, parsed.Server, parsed.Port)] = true
 
 		configJSON, _ := json.Marshal(parsed)
 		configStr := string(configJSON)
@@ -735,8 +752,37 @@ func updateCustomNodeSubscription(db *gorm.DB, urlStr string, replaceAll bool) (
 		if name == "" {
 			name = fmt.Sprintf("%s-%s", parsed.Type, parsed.Server)
 		}
+		name = truncateNodeName(name)
+
+		// 匹配已有节点：先按名称，再按地址
+		var match *matchedInfo
+		if m, ok := byName[name]; ok && !consumedOld[m] {
+			match = m
+		} else if m, ok := byAddr[fmt.Sprintf("%s:%s:%d", parsed.Type, parsed.Server, parsed.Port)]; ok && !consumedOld[m] {
+			match = m
+		}
+		if match != nil {
+			// 更新已有节点：保留 ID、分配关系、激活状态、到期时间；仅刷新配置/名称/地址/来源URL
+			consumedOld[match] = true
+			cn := match.node
+			updates := map[string]interface{}{
+				"name":       name,
+				"protocol":   parsed.Type,
+				"domain":     parsed.Server,
+				"port":       parsed.Port,
+				"config":     configStr,
+				"source_url": urlStr,
+			}
+			if err := db.Model(&models.CustomNode{}).Where("id = ?", cn.ID).Updates(updates).Error; err != nil {
+				errs = append(errs, fmt.Sprintf("更新节点 %s 失败: %s", name, err.Error()))
+				continue
+			}
+			updated++
+			continue
+		}
+		// 未匹配：追加新节点
 		newNodes = append(newNodes, models.CustomNode{
-			Name:      truncateNodeName(name),
+			Name:      name,
 			Protocol:  parsed.Type,
 			Domain:    parsed.Server,
 			Port:      parsed.Port,
@@ -747,14 +793,30 @@ func updateCustomNodeSubscription(db *gorm.DB, urlStr string, replaceAll bool) (
 			SourceURL: urlStr,
 		})
 	}
+
+	// 订阅中已消失的旧节点（未匹配到新订阅内容）：保留不删除，仅计入 kept（分配保护）
+	for _, mi := range byName {
+		if !consumedOld[mi] && !mi.consumed {
+			mi.consumed = true
+			kept++
+		}
+	}
+	// byAddr 中未覆盖的（byName 索引与 byAddr 可能指向同一节点，需去重）
+	for _, mi := range byAddr {
+		if !consumedOld[mi] && !mi.consumed {
+			mi.consumed = true
+			kept++
+		}
+	}
+
 	if len(newNodes) > 0 {
 		if err := db.CreateInBatches(newNodes, 100).Error; err != nil {
 			errs = append(errs, fmt.Sprintf("批量写入节点失败: %s", err.Error()))
-			return added, kept, removed, errs
+			return added, updated, kept, errs
 		}
 		added = len(newNodes)
 	}
-	return added, kept, removed, errs
+	return added, updated, kept, errs
 }
 
 func UpdateCustomNode(c *gin.Context) {

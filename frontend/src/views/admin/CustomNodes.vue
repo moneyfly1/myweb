@@ -1308,11 +1308,13 @@ export default {
           : await adminAPI.importCustomNodeSubscription(url)
         const data = res.data?.data ?? {}
         const imported = data.imported ?? 0
+        const updated = data.updated ?? 0
         const removed = data.removed ?? 0
+        const kept = data.kept ?? 0
         const total = data.total ?? imported
         if (subReplaceMode.value) {
-          if (imported > 0 || removed > 0) {
-            ElMessage.success(res.data?.message || `订阅更新完成：新增 ${imported} 个节点，移除 ${removed} 个旧节点`)
+          if (imported > 0 || updated > 0 || kept > 0) {
+            ElMessage.success(res.data?.message || `订阅更新完成：新增 ${imported} 个，更新 ${updated} 个，保留 ${kept} 个`)
             showAddDialog.value = false
             loadCustomNodes()
             loadSubscriptionList()
@@ -1373,9 +1375,12 @@ export default {
       }
       importingSubscription.value = true
       try {
-        const res = await adminAPI.updateCustomNodeSubscription(sub.url)
+        const res = await adminAPI.updateCustomNodeSubscription(sub.url, false)
         const data = res.data?.data ?? {}
-        if (res.data?.success && (data.imported > 0 || data.removed > 0)) {
+        const imported = data.imported ?? 0
+        const updated = data.updated ?? 0
+        const kept = data.kept ?? 0
+        if (res.data?.success && (imported > 0 || updated > 0 || kept > 0)) {
           ElMessage.success(res.data.message || '订阅更新完成')
           loadCustomNodes()
           loadSubscriptionList()
