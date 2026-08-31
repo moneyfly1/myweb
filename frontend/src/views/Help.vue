@@ -52,7 +52,34 @@
               <div class="item-meta">{{ client.description }}</div>
             </div>
             <div class="button-row client-actions">
+              <el-dropdown
+                v-if="hasMacArchChoice(client)"
+                trigger="click"
+                @command="(key) => downloadClient(client, key)"
+              >
+                <el-button type="primary" size="small">
+                  下载
+                  <el-icon><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item :command="macArmKey(client)">
+                      <span class="client-download-option">
+                        {{ client.name }}（Apple 芯片）
+                        <el-tag size="small" type="success" effect="plain">ARM</el-tag>
+                      </span>
+                    </el-dropdown-item>
+                    <el-dropdown-item :command="macIntelKey(client)">
+                      <span class="client-download-option">
+                        {{ client.name }}（Intel）
+                        <el-tag size="small" type="info" effect="plain">x64</el-tag>
+                      </span>
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
               <el-button
+                v-else
                 type="primary"
                 size="small"
                 @click="downloadClient(client)"
@@ -558,6 +585,21 @@ export default {
     const getConfiguredDownloadUrl = (client) => {
       return pickConfiguredUrl(client.downloadKeys, softwareConfig.value || {}, null, client.osKeys)
     }
+    // hasMacArchChoice 判断客户端是否有 macOS 双架构（Apple 芯片 / Intel）可拆分
+    const hasMacArchChoice = (client) => {
+      const macKeys = (client.osKeys?.macos) || []
+      return macKeys.some(k => /arm/i.test(k)) && macKeys.some(k => !/arm/i.test(k))
+    }
+    // macArmKey 返回 macOS Apple 芯片下载配置键（优先 *_macos_arm_url）
+    const macArmKey = (client) => {
+      const macKeys = (client.osKeys?.macos) || []
+      return macKeys.find(k => /arm/i.test(k)) || ''
+    }
+    // macIntelKey 返回 macOS Intel 下载配置键（优先 *_macos_url）
+    const macIntelKey = (client) => {
+      const macKeys = (client.osKeys?.macos) || []
+      return macKeys.find(k => !/arm/i.test(k)) || ''
+    }
     const softwareVersions = ref({})
     const clientVersion = (client) => {
       const key = (client.downloadKeys || []).find(k => {
@@ -614,9 +656,12 @@ export default {
         element.scrollIntoView({ behavior: 'smooth' })
       }
     }
-    const downloadClient = async (client) => {
+    const downloadClient = async (client, archKey = null) => {
       try {
-        const configuredUrl = getConfiguredDownloadUrl(client)
+        // archKey 非空 = 用户显式选择架构（如 *_macos_arm_url / *_macos_url），只查该键
+        const configuredUrl = archKey
+          ? String(softwareConfig.value?.[archKey] || '').trim()
+          : getConfiguredDownloadUrl(client)
         if (configuredUrl) {
           safeOpen(resolvePanDownloadUrl(configuredUrl))
           ElMessage.success('已打开下载页面')
@@ -630,7 +675,8 @@ export default {
           ElMessage.info('正在获取最新下载链接...')
           const { getClientDownloadUrl, getClientReleasesUrl } = await import('@/utils/githubDownload')
           try {
-            const downloadUrl = await getClientDownloadUrl(client.githubKey, softwareConfig.value || {})
+            const forcedArch = archKey && /arm/i.test(archKey) ? 'apple' : null
+            const downloadUrl = await getClientDownloadUrl(client.githubKey, softwareConfig.value || {}, forcedArch)
             const isAccelerated = downloadUrl.includes('ghproxy.com') || downloadUrl.includes('ghproxy.net')
             const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
             if (isMobile) {
@@ -1669,5 +1715,16 @@ export default {
   .contact-item:last-child {
     border-bottom: 0;
   }
+}
+
+/* 客户端下载下拉：macOS 架构选项 */
+.client-download-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.client-download-option .el-tag {
+  margin-left: 2px;
 }
 </style>
