@@ -569,6 +569,7 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/backup/restore", handlers.RestoreBackup)
 
 			admin.GET("/logs/audit", handlers.GetAuditLogs)
+			admin.GET("/dashboard/activity", handlers.GetDashboardActivity)
 			admin.GET("/logs/login-attempts", handlers.GetLoginAttempts)
 			admin.GET("/system-logs", handlers.GetSystemLogs)
 			admin.GET("/logs-stats", handlers.GetLogsStats)
