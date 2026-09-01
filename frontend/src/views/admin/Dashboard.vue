@@ -347,7 +347,8 @@ import {
   Edit,
   Delete,
   Connection,
-  Monitor
+  Monitor,
+  Wallet
 } from '@element-plus/icons-vue'
 import EmptyState from '@/components/EmptyState.vue'
 export default {
@@ -368,7 +369,8 @@ export default {
     Edit,
     Delete,
     Connection,
-    Monitor
+    Monitor,
+    Wallet
   },
   setup() {
     const api = useApi()
@@ -508,7 +510,8 @@ export default {
       const t = String(actionType || '').toLowerCase()
       if (t.includes('register') || t.includes('user_created')) return 'User'
       if (t.includes('password') || t.includes('password_reset')) return 'Key'
-      if (t.includes('order') || t.includes('payment') || t.includes('recharge')) return 'ShoppingCart'
+      if (t.includes('recharge')) return 'Wallet'
+      if (t.includes('order') || t.includes('payment')) return 'ShoppingCart'
       if (t.includes('subscription') || t.includes('subscribe')) return 'Connection'
       if (t.includes('reset') || t.includes('clear')) return 'RefreshRight'
       if (t.includes('device')) return 'Monitor'
@@ -534,35 +537,39 @@ export default {
     const getActivityText = (item) => {
       const who = item.username ? '' : '系统'
       const t = String(item.action_type || '').toLowerCase()
+      // 订单/充值类事件的金额等补充信息由后端 action_description 提供
       const actionMap = {
-        'reset_subscription': '重置了订阅',
+        // 订阅行为
+        'subscription_reset': '重置了订阅地址',
+        'subscription_update': '更新了订阅',
+        'reset_subscription': '重置了订阅地址',
         'batch_reset_subscriptions': '批量重置订阅',
+        'create_subscription': '创建了订阅',
+        // 账户行为
         'security_register_success': '注册了新账号',
         'user_register': '注册了新账号',
         'reset_password': '重置了密码',
+        'change_password': '修改了密码',
         'security_password_reset_requested': '发起了密码重置',
-        'create_custom_order': '下了新订单',
-        'order_created': '创建了订单',
-        'recharge_paid': '充值到账',
-        'update_device_limit': '修改了设备数量限制',
-        'update_expire_time': '修改了订阅到期时间',
-        'batch_assign_custom_nodes': '分配了专线节点',
-        'batch_unassign_custom_nodes': '解绑了专线节点',
         'delete_device': '删除了设备',
-        'admin_delete_device': '删除了设备',
-        'create_custom_node': '创建了专线节点',
-        'delete_custom_node': '删除了专线节点',
+        'clear_user_devices': '清空了设备列表',
+        'create_invite_code': '创建了邀请码',
         'login': '登录了系统',
         'security_login_success': '登录成功',
         'security_login_failed': '登录失败',
-        'security_admin_login_success': '管理员登录成功',
-        'send_subscription_email': '发送了订阅邮件',
-        'batch_send_expire_reminder': '批量发送了到期提醒',
-        'disable_timeout_custom_nodes': '停用了超时专线节点',
-        'enable_all_custom_nodes': '启用了全部专线节点'
+        // 订单 / 充值行为（金额在 action_description）
+        'order_pending': '下了新订单',
+        'order_paid': '支付了订单',
+        'create_custom_order': '下了新订单',
+        'recharge_paid': '充值到账'
       }
       const desc = actionMap[item.action_type] || (item.action_description || item.action_type)
-      return `${who}${desc}`
+      // 订单/充值：金额信息拼到描述末尾
+      let suffix = ''
+      if ((item.source === 'order' || item.source === 'recharge') && item.action_description && !item.action_description.includes('¥')) {
+        suffix = ''
+      }
+      return `${who}${desc}${suffix}`
     }
     const handleActivityClick = (item) => {
       // 有用户ID的可跳转到用户详情；否则跳转到审计日志

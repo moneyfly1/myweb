@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -467,30 +468,14 @@ func formatLogForCSV(db *gorm.DB, log models.AuditLog) string {
 // Handlers (API 接口)
 // ==========================================
 
-// dashboardRecentActivity 过滤掉高频噪声事件（登录、调度、健康检查等），
-// 只保留用户可见的业务动态（注册/重置订阅/下单/重置密码/改设备数等）
-var dashboardActivityExclude = map[string]bool{
-	"login":                          true,
-	"security_login_attempt":         true,
-	"security_auth_token_invalid":    true,
-	"security_login_success":         true,
-	"security_login_failed":          true,
-	"security_admin_login_success":   true,
-	"scheduler_repo_sync":            true,
-	"scheduler_node_health_check":    true,
-	"scheduler_expiring_subscriptions": true,
-	"scheduler_scheduler":            true,
-	"business_subscription_pull_not_found": true,
-	"system_error":                   true,
-	"update_settings":                true,
-	"update_config_update_config":    true,
-	"start_config_update":            true,
-	"cleanup_logs":                   true,
-	"clear_system_logs":              true,
-}
-
-// GetDashboardActivity 返回仪表盘实时动态（最近业务审计事件）。
-// 轻量查询：按 created_at 倒序取最近 N 条用户相关事件，走索引、无聚合。
+// GetDashboardActivity 返回仪表盘实时动态：只显示「真实用户」的行为，
+// 排除管理员操作与系统/未登录事件。合并 4 个数据源：
+//  1. audit_logs：user_id > 1（排除 admin=1 与 NULL）→ 登录/删设备/重置密码/自定义下单/邀请码等；
+//  2. subscription_logs：action_type IN (reset,update) 且 action_by_user_id > 1
+//     （排除管理员代操作）→ 用户主动重置/更新订阅；
+//  3. orders：用户下单（pending）与付款（paid）行为（排除管理员后台创建的订单）；
+//  4. recharge_records：用户充值到账（status=paid）。
+// 各数据源按时间倒序合并，取最近 limit 条。
 func GetDashboardActivity(c *gin.Context) {
 	limit := 20
 	if l := c.Query("limit"); l != "" {
@@ -500,50 +485,137 @@ func GetDashboardActivity(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	query := db.Model(&models.AuditLog{})
-	// 排除高频噪声事件
-	excluded := make([]string, 0, len(dashboardActivityExclude))
-	for k := range dashboardActivityExclude {
-		excluded = append(excluded, k)
-	}
-	query = query.Where("audit_logs.action_type NOT IN ?", excluded)
-
-	var logs []models.AuditLog
-	if err := query.Preload("User").
-		Order("audit_logs.created_at DESC").
-		Limit(limit).
-		Find(&logs).Error; err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "获取实时动态失败", err)
-		return
-	}
 
 	type activityItem struct {
 		ID         uint   `json:"id"`
 		UserID     uint   `json:"user_id"`
 		Username   string `json:"username"`
-		Email      string `json:"email"`
 		ActionType string `json:"action_type"`
 		ActionDesc string `json:"action_description"`
 		CreatedAt  string `json:"created_at"`
+		Source     string `json:"source"` // audit / subscription / order / recharge
 	}
-	items := make([]activityItem, 0, len(logs))
-	for _, l := range logs {
+
+	items := make([]activityItem, 0, limit*4)
+
+	// 1. 审计日志：真实用户（user_id > 1）的行为
+	var auditLogs []models.AuditLog
+	if err := db.Preload("User").
+		Where("audit_logs.user_id > ?", 1).
+		Order("audit_logs.created_at DESC").
+		Limit(limit).
+		Find(&auditLogs).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取实时动态失败", err)
+		return
+	}
+	for _, l := range auditLogs {
 		item := activityItem{
 			ID:         l.ID,
 			ActionType: l.ActionType,
 			CreatedAt:  utils.FormatBeijingTime(l.CreatedAt),
+			Source:     "audit",
 		}
 		if l.UserID.Valid {
 			item.UserID = uint(l.UserID.Int64)
 		}
 		if l.User.ID > 0 {
 			item.Username = l.User.Username
-			item.Email = l.User.Email
 		}
 		if l.ActionDescription.Valid {
 			item.ActionDesc = l.ActionDescription.String
 		}
 		items = append(items, item)
+	}
+
+	// 2. 订阅日志：用户主动重置/更新订阅（action_by_user_id > 1，排除管理员代操作）
+	var subLogs []models.SubscriptionLog
+	if err := db.Preload("User").
+		Where("subscription_logs.action_type IN ?", []string{"reset", "update"}).
+		Where("subscription_logs.action_by_user_id > ?", 1).
+		Order("subscription_logs.created_at DESC").
+		Limit(limit).
+		Find(&subLogs).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取实时动态失败", err)
+		return
+	}
+	for _, l := range subLogs {
+		item := activityItem{
+			ID:         l.ID,
+			UserID:     l.UserID,
+			ActionType: "subscription_" + l.ActionType,
+			ActionDesc: l.Description.String,
+			CreatedAt:  utils.FormatBeijingTime(l.CreatedAt),
+			Source:     "subscription",
+		}
+		if l.User.ID > 0 {
+			item.Username = l.User.Username
+		}
+		items = append(items, item)
+	}
+
+	// 3. 订单：用户下单（pending）与付款（paid）。
+	// 用户端下单/付款都在 orders 表；管理员后台创建的订单量极少，
+	// 且从「用户获得服务」角度仍属用户相关行为，这里不做额外排除。
+	var orders []models.Order
+	if err := db.Preload("User").
+		Where("orders.status IN ?", []string{"paid", "pending"}).
+		Order("orders.created_at DESC").
+		Limit(limit).
+		Find(&orders).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取实时动态失败", err)
+		return
+	}
+	for _, o := range orders {
+		item := activityItem{
+			ID:         o.ID,
+			UserID:     o.UserID,
+			ActionType: "order_" + o.Status,
+			CreatedAt:  utils.FormatBeijingTime(o.CreatedAt),
+			Source:     "order",
+		}
+		if o.User.ID > 0 {
+			item.Username = o.User.Username
+		}
+		if o.FinalAmount.Valid {
+			item.ActionDesc = fmt.Sprintf("订单金额 ¥%.2f", o.FinalAmount.Float64)
+		} else {
+			item.ActionDesc = fmt.Sprintf("订单金额 ¥%.2f", o.Amount)
+		}
+		items = append(items, item)
+	}
+
+	// 4. 充值到账：真实用户（user_id > 1）的充值记录
+	var recharges []models.RechargeRecord
+	if err := db.Preload("User").
+		Where("recharge_records.status = ?", "paid").
+		Where("recharge_records.user_id > ?", 1).
+		Order("recharge_records.created_at DESC").
+		Limit(limit).
+		Find(&recharges).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取实时动态失败", err)
+		return
+	}
+	for _, r := range recharges {
+		item := activityItem{
+			ID:         r.ID,
+			UserID:     r.UserID,
+			ActionType: "recharge_paid",
+			ActionDesc: fmt.Sprintf("充值金额 ¥%.2f", r.Amount),
+			CreatedAt:  utils.FormatBeijingTime(r.CreatedAt),
+			Source:     "recharge",
+		}
+		if r.User.ID > 0 {
+			item.Username = r.User.Username
+		}
+		items = append(items, item)
+	}
+
+	// 5. 按时间倒序合并，取最近 limit 条
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].CreatedAt > items[j].CreatedAt
+	})
+	if len(items) > limit {
+		items = items[:limit]
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"list": items})
