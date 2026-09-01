@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -465,6 +466,88 @@ func formatLogForCSV(db *gorm.DB, log models.AuditLog) string {
 // ==========================================
 // Handlers (API 接口)
 // ==========================================
+
+// dashboardRecentActivity 过滤掉高频噪声事件（登录、调度、健康检查等），
+// 只保留用户可见的业务动态（注册/重置订阅/下单/重置密码/改设备数等）
+var dashboardActivityExclude = map[string]bool{
+	"login":                          true,
+	"security_login_attempt":         true,
+	"security_auth_token_invalid":    true,
+	"security_login_success":         true,
+	"security_login_failed":          true,
+	"security_admin_login_success":   true,
+	"scheduler_repo_sync":            true,
+	"scheduler_node_health_check":    true,
+	"scheduler_expiring_subscriptions": true,
+	"scheduler_scheduler":            true,
+	"business_subscription_pull_not_found": true,
+	"system_error":                   true,
+	"update_settings":                true,
+	"update_config_update_config":    true,
+	"start_config_update":            true,
+	"cleanup_logs":                   true,
+	"clear_system_logs":              true,
+}
+
+// GetDashboardActivity 返回仪表盘实时动态（最近业务审计事件）。
+// 轻量查询：按 created_at 倒序取最近 N 条用户相关事件，走索引、无聚合。
+func GetDashboardActivity(c *gin.Context) {
+	limit := 20
+	if l := c.Query("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 50 {
+			limit = n
+		}
+	}
+
+	db := database.GetDB()
+	query := db.Model(&models.AuditLog{})
+	// 排除高频噪声事件
+	excluded := make([]string, 0, len(dashboardActivityExclude))
+	for k := range dashboardActivityExclude {
+		excluded = append(excluded, k)
+	}
+	query = query.Where("audit_logs.action_type NOT IN ?", excluded)
+
+	var logs []models.AuditLog
+	if err := query.Preload("User").
+		Order("audit_logs.created_at DESC").
+		Limit(limit).
+		Find(&logs).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取实时动态失败", err)
+		return
+	}
+
+	type activityItem struct {
+		ID         uint   `json:"id"`
+		UserID     uint   `json:"user_id"`
+		Username   string `json:"username"`
+		Email      string `json:"email"`
+		ActionType string `json:"action_type"`
+		ActionDesc string `json:"action_description"`
+		CreatedAt  string `json:"created_at"`
+	}
+	items := make([]activityItem, 0, len(logs))
+	for _, l := range logs {
+		item := activityItem{
+			ID:         l.ID,
+			ActionType: l.ActionType,
+			CreatedAt:  utils.FormatBeijingTime(l.CreatedAt),
+		}
+		if l.UserID.Valid {
+			item.UserID = uint(l.UserID.Int64)
+		}
+		if l.User.ID > 0 {
+			item.Username = l.User.Username
+			item.Email = l.User.Email
+		}
+		if l.ActionDescription.Valid {
+			item.ActionDesc = l.ActionDescription.String
+		}
+		items = append(items, item)
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"list": items})
+}
 
 func GetAuditLogs(c *gin.Context) {
 	p := utils.ParsePagination(c)
