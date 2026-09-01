@@ -133,51 +133,52 @@
         <el-card class="dashboard-card">
           <template #header>
             <div class="card-header">
-              <span class="card-title">异常客户</span>
+              <span class="card-title">实时动态</span>
               <div class="header-actions">
-                <el-badge :value="abnormalUsers.length" class="item-count" />
-                <el-button type="text" @click="goToAbnormalUsers" class="view-all-btn">
+                <el-tooltip content="每 60 秒自动刷新" placement="top">
+                  <el-button
+                    type="text"
+                    class="refresh-activity-btn"
+                    :loading="activityLoading"
+                    @click="loadDashboardActivity"
+                  >
+                    <el-icon><Refresh /></el-icon>
+                    <span v-if="activityUpdatedAt" class="activity-updated">{{ activityUpdatedAt }}</span>
+                  </el-button>
+                </el-tooltip>
+                <el-button type="text" @click="goToActivityLogs" class="view-all-btn">
                   查看全部
                   <el-icon><ArrowRight /></el-icon>
                 </el-button>
               </div>
             </div>
           </template>
-          <div class="table-container">
-            <el-table 
-              :data="abnormalUsers.slice(0, 10)" 
-              class="dashboard-table"
-              :show-header="false"
-              size="small"
-              @row-click="handleAbnormalUserClick"
-            >
-              <el-table-column width="40">
-                <template #default="scope">
-                  <div class="abnormal-icon">
-                    <el-icon><Warning /></el-icon>
+          <div class="table-container activity-container">
+            <div v-if="dashboardActivity.length === 0 && !activityLoading" class="activity-empty">
+              <el-icon class="activity-empty-icon"><Bell /></el-icon>
+              <span>暂无业务动态</span>
+            </div>
+            <div v-else class="activity-list">
+              <div
+                v-for="item in dashboardActivity"
+                :key="item.id"
+                class="activity-item"
+                @click="handleActivityClick(item)"
+              >
+                <div class="activity-icon" :class="getActivityIconClass(item.action_type)">
+                  <el-icon><component :is="getActivityIcon(item.action_type)" /></el-icon>
+                </div>
+                <div class="activity-content">
+                  <div class="activity-text">
+                    <template v-if="item.username">
+                      <span class="activity-user">{{ item.username }}</span>
+                    </template>
+                    {{ getActivityText(item) }}
                   </div>
-                </template>
-              </el-table-column>
-              <el-table-column>
-                <template #default="scope">
-                  <div class="abnormal-info clickable-row">
-                    <div class="abnormal-user">{{ scope.row.username }}</div>
-                    <div class="abnormal-email">{{ scope.row.email }}</div>
-                  </div>
-                </template>
-              </el-table-column>
-              <el-table-column width="80" align="right">
-                <template #default="scope">
-                  <el-tag 
-                    :type="getAbnormalTypeType(scope.row.abnormal_type)" 
-                    size="small"
-                    effect="plain"
-                  >
-                    {{ scope.row.abnormal_count }}次
-                  </el-tag>
-                </template>
-              </el-table-column>
-            </el-table>
+                  <div class="activity-time">{{ item.created_at }}</div>
+                </div>
+              </div>
+            </div>
           </div>
         </el-card>
       </el-col>
@@ -323,15 +324,31 @@
   </div>
 </template>
 <script>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { useRouter } from 'vue-router'
 import { useApi } from '@/utils/api'
 import { adminAPI } from '@/utils/api'
 import { formatMoney as formatMoneyUtil } from '@/utils/format'
 import { confirmAction } from '@/utils/confirmAction'
-import { getOrderStatusType, getOrderStatusText, getAbnormalTypeText, getAbnormalTypeType } from '@/utils/statusMaps'
-import { ArrowRight, ShoppingCart, Warning } from '@element-plus/icons-vue'
+import { getOrderStatusType, getOrderStatusText } from '@/utils/statusMaps'
+import {
+  ArrowRight,
+  ShoppingCart,
+  Refresh,
+  Bell,
+  User,
+  Key,
+  Lock,
+  Download,
+  RefreshRight,
+  CircleCheck,
+  Warning,
+  Edit,
+  Delete,
+  Connection,
+  Monitor
+} from '@element-plus/icons-vue'
 import EmptyState from '@/components/EmptyState.vue'
 export default {
   name: 'AdminDashboard',
@@ -339,7 +356,19 @@ export default {
     ArrowRight,
     EmptyState,
     ShoppingCart,
-    Warning
+    Refresh,
+    Bell,
+    User,
+    Key,
+    Lock,
+    Download,
+    RefreshRight,
+    CircleCheck,
+    Warning,
+    Edit,
+    Delete,
+    Connection,
+    Monitor
   },
   setup() {
     const api = useApi()
@@ -352,7 +381,10 @@ export default {
     })
     const recentUsers = ref([])
     const recentOrders = ref([])
-    const abnormalUsers = ref([])
+    const dashboardActivity = ref([])
+    const activityLoading = ref(false)
+    const activityUpdatedAt = ref('')
+    let activityTimer = null
     const expiringSubscriptions = ref([])
     const selectedExpiring = ref([])
     const expiringFilter = ref('all')
@@ -447,57 +479,97 @@ export default {
         recentOrders.value = []
       }
     }
-    const loadAbnormalUsers = async () => {
+    const loadDashboardActivity = async () => {
+      activityLoading.value = true
       try {
-        const response = await api.get('/admin/users/abnormal')
+        const response = await api.get('/admin/dashboard/activity')
         if (response && response.data) {
           if (response.data.success !== false) {
-            // 后端返回 { users, total, page, size }
             const data = response.data.data || response.data
-            const list = Array.isArray(data) ? data : (data.users || [])
-            abnormalUsers.value = list.slice(0, 5)
+            dashboardActivity.value = (data.list || []).slice(0, 12)
+            activityUpdatedAt.value = formatTimeAgo(Date.now())
           } else {
-            abnormalUsers.value = []
+            dashboardActivity.value = []
           }
         } else {
-          abnormalUsers.value = []
+          dashboardActivity.value = []
         }
       } catch (error) {
-        console.error('加载异常用户失败:', error)
-        abnormalUsers.value = []
+        console.error('加载实时动态失败:', error)
+      } finally {
+        activityLoading.value = false
       }
     }
-    const goToAbnormalUsers = () => {
-      router.push('/admin/abnormal-users')
+    const goToActivityLogs = () => {
+      router.push('/admin/logs?tab=audit')
     }
-    const handleAbnormalUserClick = (row) => {
-      confirmAction(
-        `选择操作：`,
-        `用户 ${row.username || row.email}`,
-        {
-          distinguishCancelAndClose: true,
-          confirmButtonText: '查看订阅列表',
-          cancelButtonText: '查看异常详情',
-          type: 'info',
-          showClose: false
-        }
-      ).then(() => {
-        goToUserSubscription(row)
-      }).catch((action) => {
-        if (action === 'cancel') {
-          viewAbnormalUserDetails(row)
-        }
-      })
+    // 事件类型 → 图标组件名
+    const getActivityIcon = (actionType) => {
+      const t = String(actionType || '').toLowerCase()
+      if (t.includes('register') || t.includes('user_created')) return 'User'
+      if (t.includes('password') || t.includes('password_reset')) return 'Key'
+      if (t.includes('order') || t.includes('payment') || t.includes('recharge')) return 'ShoppingCart'
+      if (t.includes('subscription') || t.includes('subscribe')) return 'Connection'
+      if (t.includes('reset') || t.includes('clear')) return 'RefreshRight'
+      if (t.includes('device')) return 'Monitor'
+      if (t.includes('login')) return 'Lock'
+      if (t.includes('delete')) return 'Delete'
+      if (t.includes('update') || t.includes('edit')) return 'Edit'
+      if (t.includes('error') || t.includes('fail')) return 'Warning'
+      if (t.includes('success')) return 'CircleCheck'
+      return 'Bell'
     }
-    const viewAbnormalUserDetails = (row) => {
-      const userId = row.user_id || row.id
-      if (userId) {
-        router.push({
-          path: '/admin/abnormal-users',
-          query: { user_id: userId }
-        })
+    // 事件类型 → 图标颜色 class
+    const getActivityIconClass = (actionType) => {
+      const t = String(actionType || '').toLowerCase()
+      if (t.includes('order') || t.includes('payment') || t.includes('recharge')) return 'activity-icon-money'
+      if (t.includes('password') || t.includes('login')) return 'activity-icon-security'
+      if (t.includes('register') || t.includes('user_created')) return 'activity-icon-user'
+      if (t.includes('subscription')) return 'activity-icon-sub'
+      if (t.includes('delete')) return 'activity-icon-danger'
+      if (t.includes('error') || t.includes('fail')) return 'activity-icon-danger'
+      return ''
+    }
+    // 事件类型 → 中文描述（带主语）
+    const getActivityText = (item) => {
+      const who = item.username ? '' : '系统'
+      const t = String(item.action_type || '').toLowerCase()
+      const actionMap = {
+        'reset_subscription': '重置了订阅',
+        'batch_reset_subscriptions': '批量重置订阅',
+        'security_register_success': '注册了新账号',
+        'user_register': '注册了新账号',
+        'reset_password': '重置了密码',
+        'security_password_reset_requested': '发起了密码重置',
+        'create_custom_order': '下了新订单',
+        'order_created': '创建了订单',
+        'recharge_paid': '充值到账',
+        'update_device_limit': '修改了设备数量限制',
+        'update_expire_time': '修改了订阅到期时间',
+        'batch_assign_custom_nodes': '分配了专线节点',
+        'batch_unassign_custom_nodes': '解绑了专线节点',
+        'delete_device': '删除了设备',
+        'admin_delete_device': '删除了设备',
+        'create_custom_node': '创建了专线节点',
+        'delete_custom_node': '删除了专线节点',
+        'login': '登录了系统',
+        'security_login_success': '登录成功',
+        'security_login_failed': '登录失败',
+        'security_admin_login_success': '管理员登录成功',
+        'send_subscription_email': '发送了订阅邮件',
+        'batch_send_expire_reminder': '批量发送了到期提醒',
+        'disable_timeout_custom_nodes': '停用了超时专线节点',
+        'enable_all_custom_nodes': '启用了全部专线节点'
+      }
+      const desc = actionMap[item.action_type] || (item.action_description || item.action_type)
+      return `${who}${desc}`
+    }
+    const handleActivityClick = (item) => {
+      // 有用户ID的可跳转到用户详情；否则跳转到审计日志
+      if (item.user_id) {
+        goToUserSubscription({ user_id: item.user_id, username: item.username })
       } else {
-        ElMessage.warning('无法获取用户ID')
+        goToActivityLogs()
       }
     }
     const goToUserSubscription = (row) => {
@@ -616,25 +688,38 @@ export default {
           loadStats(),
           loadRecentUsers(),
           loadRecentOrders(),
-          loadAbnormalUsers(),
+          loadDashboardActivity(),
           loadExpiringSubscriptions()
         ])
       } catch (error) {
         console.error('加载仪表盘数据时发生错误:', error)
+      }
+      // 每 60 秒静默刷新实时动态（后台更新，不闪烁不打扰）
+      activityTimer = setInterval(() => {
+        loadDashboardActivity()
+      }, 60000)
+    })
+    onUnmounted(() => {
+      if (activityTimer) {
+        clearInterval(activityTimer)
+        activityTimer = null
       }
     })
     return {
       stats,
       recentUsers,
       recentOrders,
-      abnormalUsers,
+      dashboardActivity,
+      activityLoading,
+      activityUpdatedAt,
+      loadDashboardActivity,
+      goToActivityLogs,
+      getActivityIcon,
+      getActivityIconClass,
+      getActivityText,
+      handleActivityClick,
       getOrderStatusType,
       getOrderStatusText,
-      getAbnormalTypeType,
-      getAbnormalTypeText,
-      goToAbnormalUsers,
-      handleAbnormalUserClick,
-      viewAbnormalUserDetails,
       goToUserSubscription,
       goToOrderUserSubscription,
       formatMoney,
@@ -974,6 +1059,107 @@ export default {
   font-size: 12px;
   line-height: 1.2;
   margin-top: 2px;
+}
+
+/* ===== 实时动态卡片 ===== */
+.activity-container {
+  max-height: 340px;
+  overflow-y: auto;
+}
+.activity-list {
+  display: flex;
+  flex-direction: column;
+}
+.activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--el-border-color-lighter, #f0f0f0);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+.activity-item:hover {
+  background-color: var(--el-color-primary-light-9, #f5f9ff);
+}
+.activity-item:last-child {
+  border-bottom: none;
+}
+.activity-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background-color: var(--el-color-primary-light-8, #e6f1ff);
+  color: var(--el-color-primary, #409eff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.activity-icon-money {
+  background-color: #fdf6ec;
+  color: #e6a23c;
+}
+.activity-icon-security {
+  background-color: #fef0f0;
+  color: #f56c6c;
+}
+.activity-icon-user {
+  background-color: #f0f9eb;
+  color: #67c23a;
+}
+.activity-icon-sub {
+  background-color: #f4f4f5;
+  color: #909399;
+}
+.activity-icon-danger {
+  background-color: #fef0f0;
+  color: #f56c6c;
+}
+.activity-content {
+  flex: 1;
+  min-width: 0;
+}
+.activity-text {
+  font-size: 13px;
+  color: var(--el-text-color-primary, #303133);
+  line-height: 1.4;
+  word-break: break-all;
+}
+.activity-user {
+  font-weight: 600;
+  color: var(--el-color-primary, #409eff);
+  margin-right: 4px;
+}
+.activity-time {
+  font-size: 11px;
+  color: var(--el-text-color-secondary, #909399);
+  margin-top: 3px;
+}
+.activity-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+  color: var(--el-text-color-secondary, #909399);
+  gap: 8px;
+  font-size: 13px;
+}
+.activity-empty-icon {
+  font-size: 28px;
+}
+.refresh-activity-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 6px;
+}
+.activity-updated {
+  font-size: 11px;
+  color: var(--el-text-color-secondary, #909399);
 }
 .table-container .el-table__row {
   height: 48px;
