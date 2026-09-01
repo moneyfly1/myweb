@@ -498,12 +498,15 @@ func GetDashboardActivity(c *gin.Context) {
 
 	items := make([]activityItem, 0, limit*4)
 
-	// 1. 审计日志：真实用户（user_id > 1）的行为
+	// 1. 审计日志：真实用户（user_id > 1）的行为。
+	// 登录事件（login / security_login_success）成对出现且高频，
+	// 这里只保留其中一条（取 login 事件），避免刷屏挤占业务动态。
 	var auditLogs []models.AuditLog
 	if err := db.Preload("User").
 		Where("audit_logs.user_id > ?", 1).
+		Where("audit_logs.action_type NOT IN ?", []string{"security_login_success", "security_login_attempt"}).
 		Order("audit_logs.created_at DESC").
-		Limit(limit).
+		Limit(limit * 3).
 		Find(&auditLogs).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取实时动态失败", err)
 		return
@@ -610,13 +613,33 @@ func GetDashboardActivity(c *gin.Context) {
 		items = append(items, item)
 	}
 
-	// 5. 按时间倒序合并，取最近 limit 条
+	// 5. 按时间倒序合并，取最近 limit 条；
+	// 登录事件高频，限制其占比不超过 50%，保证订阅重置/下单/充值等业务动态可见
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].CreatedAt > items[j].CreatedAt
 	})
-	if len(items) > limit {
-		items = items[:limit]
+	loginCap := limit / 2
+	if loginCap < 3 {
+		loginCap = 3
 	}
+	loginCount := 0
+	filtered := make([]activityItem, 0, len(items))
+	for _, it := range items {
+		if it.ActionType == "login" || it.ActionType == "security_login_success" {
+			if loginCount >= loginCap {
+				continue
+			}
+			loginCount++
+		}
+		filtered = append(filtered, it)
+		if len(filtered) >= limit {
+			break
+		}
+	}
+	if len(filtered) > limit {
+		filtered = filtered[:limit]
+	}
+	items = filtered
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"list": items})
 }
