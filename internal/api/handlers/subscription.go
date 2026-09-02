@@ -1785,12 +1785,13 @@ func GetSubscriptionConfig(c *gin.Context) {
 	}
 
 	// 异步记录设备访问和更新计数（不阻塞配置返回，带超时）
+	mfHeaders := extractMFHeaders(c)
 	if shouldRecord {
-		go func(ctx context.Context, subID, userID uint, ua, ip string) {
+		go func(ctx context.Context, subID, userID uint, ua, ip string, mfh map[string]string) {
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
 
-			if _, err := deviceManager.RecordDeviceAccess(subID, userID, ua, ip, "clash"); err != nil {
+			if _, err := deviceManager.RecordDeviceAccessWithHeaders(subID, userID, ua, ip, "clash", mfh); err != nil {
 				select {
 				case <-ctx.Done():
 					// 超时，不记录错误
@@ -1798,7 +1799,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 					log.Printf("failed to record device access: %v", err)
 				}
 			}
-		}(c.Request.Context(), subscription.ID, subscription.UserID, userAgent, clientIP)
+		}(c.Request.Context(), subscription.ID, subscription.UserID, userAgent, clientIP, mfHeaders)
 
 		go func(ctx context.Context, subID uint) {
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -1998,6 +1999,7 @@ func GetUniversalSubscription(c *gin.Context) {
 		deviceIP := utils.GetRealClientIP(c)
 		deviceUA := c.GetHeader("User-Agent")
 		deviceManager := device.NewDeviceManager()
+		mfHeaders2 := extractMFHeaders(c)
 
 		// 加载用户信息以检查不限制设备标志
 		var user models.User
@@ -2022,11 +2024,11 @@ func GetUniversalSubscription(c *gin.Context) {
 
 		// 异步记录设备访问和更新计数（不阻塞配置返回）
 		if shouldRecord {
-			go func(subID, userID uint, ua, ip string) {
-				if _, err := deviceManager.RecordDeviceAccess(subID, userID, ua, ip, "universal"); err != nil {
+			go func(subID, userID uint, ua, ip string, mfh map[string]string) {
+				if _, err := deviceManager.RecordDeviceAccessWithHeaders(subID, userID, ua, ip, "universal", mfh); err != nil {
 					log.Printf("failed to record device access: %v", err)
 				}
-			}(sub.ID, sub.UserID, deviceUA, deviceIP)
+			}(sub.ID, sub.UserID, deviceUA, deviceIP, mfHeaders2)
 
 			go func(subID uint) {
 				db := database.GetDB()
