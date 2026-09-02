@@ -32,6 +32,21 @@ func respondEmptySubscriptionForBrowser(c *gin.Context) {
 	c.String(http.StatusOK, "")
 }
 
+// extractMFHeaders 提取 MoneyFly 客户端发送的 X-MF-* 自定义设备信息头
+func extractMFHeaders(c *gin.Context) map[string]string {
+	keys := []string{"X-MF-Device-Model", "X-MF-Device-Brand", "X-MF-OS", "X-MF-Device-Type"}
+	headers := make(map[string]string, len(keys))
+	for _, k := range keys {
+		if v := c.GetHeader(k); v != "" {
+			headers[k] = v
+		}
+	}
+	if len(headers) == 0 {
+		return nil
+	}
+	return headers
+}
+
 func isBrowserUserAgent(userAgent string) bool {
 	ua := strings.ToLower(strings.TrimSpace(userAgent))
 	if ua == "" {
@@ -41,7 +56,7 @@ func isBrowserUserAgent(userAgent string) bool {
 	clientMarkers := []string{
 		"clash", "stash", "surge", "quantumult", "loon", "sing-box", "singbox",
 		"shadowrocket", "v2ray", "v2rayn", "v2rayng", "hiddify", "sing-box",
-		"nekobox", "surfboard", "karing", "openclash", "passwall",
+		"nekobox", "surfboard", "karing", "openclash", "passwall", "moneyfly",
 	}
 	for _, marker := range clientMarkers {
 		if strings.Contains(ua, marker) {

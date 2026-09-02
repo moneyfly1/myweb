@@ -58,6 +58,13 @@ type DeviceInfo struct {
 }
 
 func (dm *DeviceManager) ParseUserAgent(userAgent string) *DeviceInfo {
+	return dm.ParseUserAgentWithHeaders(userAgent, nil)
+}
+
+// ParseUserAgentWithHeaders 解析 UA 并用 X-MF-* 自定义头补充缺失字段。
+// MoneyFly 客户端每个请求都会携带 X-MF-Device-Model / X-MF-Device-Brand /
+// X-MF-OS / X-MF-Device-Type 头，确保即使 UA 信息不全也能准确识别设备。
+func (dm *DeviceManager) ParseUserAgentWithHeaders(userAgent string, headers map[string]string) *DeviceInfo {
 	info := &DeviceInfo{
 		SoftwareName:    "Unknown",
 		SoftwareVersion: "",
@@ -105,6 +112,38 @@ func (dm *DeviceManager) ParseUserAgent(userAgent string) *DeviceInfo {
 	info.DeviceType = dm.determineDeviceType(userAgent, info)
 
 	info.DeviceName = dm.generateDeviceName(info)
+
+	// X-MF-* 头补充：MoneyFly 客户端发送的设备详情头，填补 UA 解析不全的字段
+	if headers != nil {
+		if info.OSName == "Unknown" {
+			if osStr := headers["X-MF-OS"]; osStr != "" {
+				parts := strings.SplitN(osStr, " ", 2)
+				info.OSName = parts[0]
+				if len(parts) > 1 {
+					info.OSVersion = parts[1]
+				}
+			}
+		}
+		if info.DeviceModel == "" {
+			if model := headers["X-MF-Device-Model"]; model != "" {
+				info.DeviceModel = model
+			}
+		}
+		if info.DeviceBrand == "" {
+			if brand := headers["X-MF-Device-Brand"]; brand != "" {
+				info.DeviceBrand = brand
+			}
+		}
+		if info.DeviceType == "unknown" {
+			if dtype := headers["X-MF-Device-Type"]; dtype != "" {
+				info.DeviceType = dtype
+			}
+		}
+		// 补充后重新生成设备名
+		if headers["X-MF-OS"] != "" || headers["X-MF-Device-Model"] != "" {
+			info.DeviceName = dm.generateDeviceName(info)
+		}
+	}
 
 	return info
 }
@@ -327,6 +366,7 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		key  string
 		name string
 	}{
+		{"moneyfly", "MoneyFly"},
 		{"hiddifynext", "Hiddify"},
 		{"hiddify-next", "Hiddify"},
 		{"hiddify next", "Hiddify"},
@@ -863,6 +903,10 @@ func (dm *DeviceManager) refreshDeviceInfo(device *models.Device, info *DeviceIn
 }
 
 func (dm *DeviceManager) GenerateDeviceHash(userAgent, ipAddress, deviceID string) string {
+	return dm.GenerateDeviceHashWithHeaders(userAgent, ipAddress, deviceID, nil)
+}
+
+func (dm *DeviceManager) GenerateDeviceHashWithHeaders(userAgent, ipAddress, deviceID string, headers map[string]string) string {
 	if deviceID != "" {
 		hash := sha256.Sum256([]byte("device_id:" + strings.TrimSpace(deviceID)))
 		return hex.EncodeToString(hash[:])
@@ -890,6 +934,16 @@ func (dm *DeviceManager) GenerateDeviceHash(userAgent, ipAddress, deviceID strin
 	}
 	if info.DeviceBrand != "" {
 		features = append(features, "brand:"+info.DeviceBrand)
+	}
+
+	// X-MF-* 头补充（MoneyFly 客户端携带的设备详情，增强设备区分度）
+	if headers != nil {
+		if v := headers["X-MF-Device-Model"]; v != "" && info.DeviceModel == "" {
+			features = append(features, "mf_model:"+v)
+		}
+		if v := headers["X-MF-OS"]; v != "" && info.OSName == "Unknown" {
+			features = append(features, "mf_os:"+v)
+		}
 	}
 
 	deviceString := strings.Join(features, "|")
@@ -943,7 +997,12 @@ func (dm *DeviceManager) updateExistingDeviceAccess(device *models.Device, devic
 }
 
 func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, userAgent, ipAddress, subscriptionType string) (*models.Device, error) {
-	deviceInfo := dm.ParseUserAgent(userAgent)
+	return dm.RecordDeviceAccessWithHeaders(subscriptionID, userID, userAgent, ipAddress, subscriptionType, nil)
+}
+
+// RecordDeviceAccessWithHeaders 记录设备访问（带 X-MF-* 头，MoneyFly 客户端专用）
+func (dm *DeviceManager) RecordDeviceAccessWithHeaders(subscriptionID uint, userID uint, userAgent, ipAddress, subscriptionType string, headers map[string]string) (*models.Device, error) {
+	deviceInfo := dm.ParseUserAgentWithHeaders(userAgent, headers)
 
 	if deviceInfo.SoftwareName == "Unknown" {
 		uaLower := strings.ToLower(userAgent)
@@ -956,7 +1015,7 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 			if strings.Contains(uaLower, keyword) {
 				subscriptionSoftwareKeywords := []string{
 					"shadowrocket", "quantumult", "surge", "loon", "stash",
-					"v2rayn", "clash", "hiddify", "v2ray",
+					"v2rayn", "clash", "hiddify", "v2ray", "moneyfly",
 				}
 				hasSubscriptionSoftware := false
 				for _, swKeyword := range subscriptionSoftwareKeywords {
@@ -976,7 +1035,7 @@ func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, us
 		}
 	}
 
-	deviceHash := dm.GenerateDeviceHash(userAgent, ipAddress, "")
+	deviceHash := dm.GenerateDeviceHashWithHeaders(userAgent, ipAddress, "", headers)
 
 	if existingDevice, exists, err := dm.FindExistingDevice(subscriptionID, userAgent, ipAddress); err != nil {
 		return nil, err
