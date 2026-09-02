@@ -168,6 +168,7 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 
 	clientIP := utils.GetRealClientIP(c)
 	userAgent := c.GetHeader("User-Agent")
+	xbMfHeaders := extractMFHeaders(c)
 
 	// 设备管理
 	deviceManager := device.NewDeviceManager()
@@ -183,9 +184,9 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 	}
 
 	if shouldRecord {
-		go func(subID, userID uint, ua, ip string) {
-			deviceManager.RecordDeviceAccess(subID, userID, ua, ip, subType)
-		}(subscription.ID, subscription.UserID, userAgent, clientIP)
+		go func(subID, userID uint, ua, ip string, mfh map[string]string) {
+			deviceManager.RecordDeviceAccessWithHeaders(subID, userID, ua, ip, subType, mfh)
+		}(subscription.ID, subscription.UserID, userAgent, clientIP, xbMfHeaders)
 
 		go func(subID uint) {
 			db.Model(&models.Subscription{}).Where("id = ?", subID).
@@ -224,6 +225,10 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 func detectClientType(ua string) string {
 	uaLower := strings.ToLower(ua)
 	switch {
+	case strings.Contains(uaLower, "moneyfly"):
+		return "moneyfly"
+	case strings.Contains(uaLower, "hiddify"):
+		return "hiddify"
 	case strings.Contains(uaLower, "clash"):
 		return "clash"
 	case strings.Contains(uaLower, "stash"):
