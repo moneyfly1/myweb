@@ -155,6 +155,7 @@ func formatDeviceList(devices []models.Device) []gin.H {
 	list := make([]gin.H, 0, len(devices))
 	// 列表查询不查询 GeoIP，提升性能
 	// geoEnabled := geoip.IsEnabled()
+	now := utils.GetBeijingTime()
 
 	for _, d := range devices {
 		lastSeen := d.LastAccess.Format(TimeLayout)
@@ -164,6 +165,16 @@ func formatDeviceList(devices []models.Device) []gin.H {
 		ipAddress := utils.FormatIP(utils.GetStringValue(d.IPAddress))
 		// 使用数据库中已存储的位置信息，避免实时查询 GeoIP
 		location := utils.FormatLocation(utils.GetStringValue(d.Location))
+
+		// 在线判定：最近活跃（LastSeen 优先，缺省用 LastAccess）距今 24h 内
+		// 视为在线 —— 与列表统计 total_online 口径一致。
+		// 不能直接拿 is_active：该字段只增不减（注册后保持 true），
+		// 会把已不活跃的设备永远显示为「在线」。
+		activeTime := d.LastAccess
+		if d.LastSeen != nil {
+			activeTime = *d.LastSeen
+		}
+		online := now.Sub(activeTime) <= 24*time.Hour
 
 		list = append(list, gin.H{
 			"id":                 d.ID,
@@ -182,6 +193,7 @@ func formatDeviceList(devices []models.Device) []gin.H {
 			"created_at":         d.CreatedAt.Format(TimeLayout),
 			"is_active":          d.IsActive,
 			"is_allowed":         d.IsAllowed,
+			"online":             online,
 			"user_agent":         utils.GetStringValue(d.UserAgent),
 			"software_name":      utils.GetStringValue(d.SoftwareName),
 			"software_version":   utils.GetStringValue(d.SoftwareVersion),
@@ -684,17 +696,17 @@ func GetUserSubscriptionDevices(c *gin.Context) {
 	page, size, offset := getPagination(c)
 
 	var total int64
-	db.Model(&models.Device{}).Where("subscription_id = ?", sub.ID).Count(&total)
+	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&total)
 
-	// 统计所有设备（不受分页影响）
+	// 统计所有设备（不受分页影响；仅活跃设备 —— 被踢下线/停用的软删行不计）
 	oneDayAgo := time.Now().Add(-24 * time.Hour)
 	var totalOnline, totalMobile, totalDesktop int64
-	db.Model(&models.Device{}).Where("subscription_id = ? AND last_access >= ?", sub.ID, oneDayAgo).Count(&totalOnline)
-	db.Model(&models.Device{}).Where("subscription_id = ? AND device_type = ?", sub.ID, "mobile").Count(&totalMobile)
-	db.Model(&models.Device{}).Where("subscription_id = ? AND device_type = ?", sub.ID, "desktop").Count(&totalDesktop)
+	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ? AND last_access >= ?", sub.ID, true, oneDayAgo).Count(&totalOnline)
+	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ? AND device_type = ?", sub.ID, true, "mobile").Count(&totalMobile)
+	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ? AND device_type = ?", sub.ID, true, "desktop").Count(&totalDesktop)
 
 	var devices []models.Device
-	db.Where("subscription_id = ?", sub.ID).
+	db.Where("subscription_id = ? AND is_active = ?", sub.ID, true).
 		Order("last_access DESC").
 		Offset(offset).
 		Limit(size).
@@ -717,7 +729,8 @@ func GetSubscriptionDevices(c *gin.Context) {
 		return
 	}
 	var devices []models.Device
-	database.GetDB().Where("subscription_id = ?", sub.ID).Find(&devices)
+	// 仅活跃设备（被踢下线/停用的软删行不在列表展示）
+	database.GetDB().Where("subscription_id = ? AND is_active = ?", sub.ID, true).Find(&devices)
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"devices":         formatDeviceList(devices),
 		"device_limit":    sub.DeviceLimit,
@@ -1774,6 +1787,14 @@ func GetSubscriptionConfig(c *gin.Context) {
 		log.Printf("failed to check existing device: %v", findDeviceErr)
 	}
 
+	// 被踢下线检查：该设备曾被从设备列表删除（软删 + KickedAt）→ 拒绝重新
+	// 拉取订阅并明确提示，防止静默重新注册复活
+	if kicked, kickErr := deviceManager.FindKickedDevice(subscription.ID, userAgent, clientIP); kickErr == nil && kicked != nil {
+		utils.ErrorResponse(c, http.StatusForbidden,
+			"此设备已被移除并踢下线,如需继续使用请重新登录或联系客服", nil)
+		return
+	}
+
 	count, _ := device.CountActiveDevices(db, subscription.ID)
 
 	// 检查设备限制（不拦截请求，交由 GenerateClashConfig 返回 YAML 格式错误节点）
@@ -2000,6 +2021,13 @@ func GetUniversalSubscription(c *gin.Context) {
 		deviceUA := c.GetHeader("User-Agent")
 		deviceManager := device.NewDeviceManager()
 		mfHeaders2 := extractMFHeaders(c)
+
+		// 被踢下线检查：该设备曾被从设备列表删除（软删 + KickedAt）→ 拒绝
+		if kicked, kickErr := deviceManager.FindKickedDevice(sub.ID, deviceUA, deviceIP); kickErr == nil && kicked != nil {
+			utils.ErrorResponse(c, http.StatusForbidden,
+				"此设备已被移除并踢下线,如需继续使用请重新登录或联系客服", nil)
+			return
+		}
 
 		// 加载用户信息以检查不限制设备标志
 		var user models.User

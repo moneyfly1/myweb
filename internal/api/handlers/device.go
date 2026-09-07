@@ -113,8 +113,19 @@ func DeleteDevice(c *gin.Context) {
 		return
 	}
 
+	// 删除设备 = 踢下线（软删除）：
+	// - IsActive=false + KickedAt=now：设备立即从活跃列表移除、名额释放，
+	//   该设备再次拉订阅时被拒并提示「已被移除/踢下线」；
+	// - 行保留（不物理删除）：按 device_hash/UA 匹配识别，防止被删设备
+	//   静默重新注册复活（若真删除则下次订阅访问又会新建一行，等于没踢）。
+	now := utils.GetBeijingTime()
 	if err := db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Delete(&device).Error; err != nil {
+		if err := tx.Model(&models.Device{}).Where("id = ?", device.ID).
+			Updates(map[string]interface{}{
+				"is_active":   false,
+				"kicked_at":   now,
+				"last_access": now,
+			}).Error; err != nil {
 			return err
 		}
 		count, _ := devicesvc.CountActiveDevices(tx, device.SubscriptionID)
@@ -124,9 +135,9 @@ func DeleteDevice(c *gin.Context) {
 		return
 	}
 
-	utils.CreateAuditLogSimpleFast(c, "delete_device", "device", device.ID, fmt.Sprintf("用户删除设备: %s", getDeviceDisplayName(&device)))
+	utils.CreateAuditLogSimpleFast(c, "delete_device", "device", device.ID, fmt.Sprintf("用户删除设备(踢下线): %s", getDeviceDisplayName(&device)))
 
-	utils.SuccessResponse(c, http.StatusOK, "设备已删除", nil)
+	utils.SuccessResponse(c, http.StatusOK, "设备已删除并下线", nil)
 }
 
 func RemoveDevice(c *gin.Context) {
