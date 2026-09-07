@@ -174,6 +174,25 @@ func (s *Scheduler) checkExpiringSubscriptionsNow() {
 	}
 }
 
+// hasSentExpirationEmailToday 检查今天（北京时间）是否已对指定邮箱发送过同主题的到期提醒邮件。
+// 用 email_queue 表做幂等依据（无论邮件是否已处理，队列记录即代表本次提醒已触发）。
+func (s *Scheduler) hasSentExpirationEmailToday(toEmail, subject string) bool {
+	db := database.GetDB()
+	if db == nil {
+		return false
+	}
+	now := utils.GetBeijingTime()
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, utils.BeijingTZ)
+	var count int64
+	if err := db.Model(&models.EmailQueue{}).
+		Where("to_email = ? AND email_type = ? AND subject = ? AND created_at >= ?",
+			toEmail, "expiration_reminder", subject, dayStart).
+		Count(&count).Error; err != nil {
+		return false
+	}
+	return count > 0
+}
+
 // groupExpiringSubscriptions 按到期日把订阅分组为：0（当天到期）、1、3、7 天后到期。
 // 不匹配任何档位的订阅（如剩余 2 天）不进入任何分组。
 // 纯函数，便于单元测试。
@@ -255,6 +274,12 @@ func (s *Scheduler) sendExpirationReminders(subscriptions []models.Subscription,
 		}
 
 		if notification.ShouldSendCustomerNotification("subscription_expiry") {
+			// 防重复：同一天（北京时间）对同一用户+同一主题只发一次，
+			// 避免服务在一天内多次重启导致重复发送（线上已发现重复实例）
+			if s.hasSentExpirationEmailToday(sub.User.Email, subject) {
+				utils.LogInfo("订阅到期提醒今日已发送，跳过重复: 用户 %s, 主题 %s", sub.User.Email, subject)
+				continue
+			}
 			if err := emailService.QueueEmail(sub.User.Email, subject, content, "expiration_reminder"); err != nil {
 				utils.LogErrorMsg("发送到期提醒邮件失败: 用户 %s, 错误: %v", sub.User.Email, err)
 			} else {
