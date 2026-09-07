@@ -701,9 +701,11 @@ export default {
       } catch (error) {
         console.error('加载仪表盘数据时发生错误:', error)
       }
-      // 每 60 秒静默刷新实时动态（后台更新，不闪烁不打扰）
+      // 每 60 秒静默刷新实时动态 + 到期列表（客户续费/到期时间更新后自动消失，
+      // 无需手动刷新页面）
       activityTimer = setInterval(() => {
         loadDashboardActivity()
+        loadExpiringSubscriptions()
       }, 60000)
     })
     onUnmounted(() => {
