@@ -99,6 +99,14 @@ func GetUserSubscriptionXBoardCompat(c *gin.Context) {
 		"is_active":       subscription.IsActive,
 	}
 
+	// 账号被禁用（管理员封禁 users.is_active=false）→ 订阅信息按「已停用」
+	// 返回，客户端据此判定受限并给出「联系客服」提示，而不是误判为可用；
+	// 订阅拉取接口本身也会因账号异常返回失效节点（双重拦截）。
+	if !user.IsActive {
+		responseData["status"] = "disabled"
+		responseData["is_active"] = false
+	}
+
 	c.JSON(http.StatusOK, responseData)
 }
 
@@ -173,6 +181,14 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 	// 设备管理
 	deviceManager := device.NewDeviceManager()
 	_, deviceExists, _ := deviceManager.FindExistingDevice(subscription.ID, userAgent, clientIP)
+
+	// 被踢下线检查：该设备曾被从设备列表删除（软删 + KickedAt）→ 拒绝重新
+	// 拉取订阅并明确提示，防止静默重新注册复活
+	if kicked, kickErr := deviceManager.FindKickedDevice(subscription.ID, userAgent, clientIP); kickErr == nil && kicked != nil {
+		utils.ErrorResponse(c, http.StatusForbidden,
+			"此设备已被移除并踢下线,如需继续使用请重新登录或联系客服", nil)
+		return
+	}
 
 	count, _ := device.CountActiveDevices(db, subscription.ID)
 

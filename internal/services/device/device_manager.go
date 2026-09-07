@@ -264,6 +264,38 @@ func (dm *DeviceManager) FindExistingDevice(subscriptionID uint, userAgent, ipAd
 	return nil, false, nil
 }
 
+// FindKickedDevice 查找被「踢下线」的设备（软删行：is_active=false 且
+// KickedAt 非空）。命中说明该设备此前被设备所有者从设备列表删除，当前正在
+// 尝试重新拉取订阅 —— 订阅接口应拒绝并提示「已被移除/踢下线」，
+// 防止其静默重新注册复活（设备名额已释放，不再放行）。
+func (dm *DeviceManager) FindKickedDevice(subscriptionID uint, userAgent, ipAddress string) (*models.Device, error) {
+	deviceHash := dm.GenerateDeviceHash(userAgent, ipAddress, "")
+
+	var device models.Device
+	err := dm.db.Where("device_hash = ? AND subscription_id = ? AND is_active = ? AND kicked_at IS NOT NULL",
+		deviceHash, subscriptionID, false).First(&device).Error
+	if err == nil {
+		return &device, nil
+	}
+	if err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+
+	if userAgent != "" {
+		err = dm.db.Where("subscription_id = ? AND user_agent = ? AND is_active = ? AND kicked_at IS NOT NULL",
+			subscriptionID, userAgent, false).
+			Order("last_access DESC").
+			First(&device).Error
+		if err == nil {
+			return &device, nil
+		}
+		if err != gorm.ErrRecordNotFound {
+			return nil, err
+		}
+	}
+	return nil, nil
+}
+
 func (dm *DeviceManager) deactivateClashMetaAndroidAliasDuplicates(canonical *models.Device, ipAddress string) error {
 	if canonical == nil || canonical.ID == 0 || ipAddress == "" || !dm.isClashMetaAndroidDevice(canonical) {
 		return nil
