@@ -171,7 +171,10 @@ const handleRemove = (f) => {
 }
 
 const handlePreview = (f) => {
-  if (f.file_path) window.open(f.file_path, '_blank')
+  if (f.file_path) {
+    // ?raw=1 独立 CF 缓存键，规避旧的 SPA-fallback HTML 缓存
+    window.open(f.file_path.includes('?') ? f.file_path : f.file_path + '?raw=1', '_blank')
+  }
 }
 
 defineExpose({ clear: () => { fileList.value = []; pushToModel() } })
