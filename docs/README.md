@@ -60,9 +60,9 @@ This directory contains docs for deployment, migration, API, features, configura
 | [节点管理功能说明](./功能/节点管理功能说明.md) | 节点采集、导入、管理 |
 | [节点手动导入说明](./功能/节点手动导入说明.md) | 节点链接导入、手动填写、Clash 配置导入 |
 | [自建节点管理说明](./功能/自建节点管理说明.md) | VPS 全自动部署 sing-box、远程管理、证书续期 |
-| [专线节点管理说明](./功能/专线节点管理说明.md) | 专线节点创建、分配、取消分配、删除、测速 |
+| [专线节点管理说明](./功能/专线节点管理说明.md) | 专线节点创建（链接/订阅导入）、订阅更新与更换、分配、取消分配、删除、测速 |
 | [节点测速说明](./功能/节点测速说明.md) | 节点测速、批量测速、测速原理 |
-| [工单管理功能说明](./功能/工单管理功能说明.md) | 工单处理、回复、状态管理 |
+| [工单管理功能说明](./功能/工单管理功能说明.md) | 工单处理、回复（含图片/视频/附件上传）、状态管理 |
 | [设备管理功能说明](./功能/设备管理功能说明.md) | 设备查看、删除、限制原理 |
 | [设备删除说明](./功能/设备删除说明.md) | 用户删除设备、管理员删除设备 |
 | [登录历史管理功能说明](./功能/登录历史管理功能说明.md) | 登录记录、地区信息 |
@@ -158,9 +158,9 @@ This directory contains docs for deployment, migration, API, features, configura
 | [Subscription Reset](./功能/订阅重置功能说明.md) | User reset subscription, admin reset, extend subscription |
 | [Node Management](./功能/节点管理功能说明.md) | Node collection & import |
 | [Manual Node Import](./功能/节点手动导入说明.md) | Link import, manual entry, Clash config import |
-| [Custom Node Management](./功能/专线节点管理说明.md) | Custom node create, assign, unassign, delete, test |
+| [Custom Node Management](./功能/专线节点管理说明.md) | Custom node create (link / subscription-URL import), refresh & replace, assign, unassign, delete, test |
 | [Node Speed Test](./功能/节点测速说明.md) | Node speed test, batch test, test原理 |
-| [Ticket Management](./功能/工单管理功能说明.md) | Ticket handling |
+| [Ticket Management](./功能/工单管理功能说明.md) | Ticket handling, reply (with image/video/attachment upload) |
 | [Device Management](./功能/设备管理功能说明.md) | Device list & limit |
 | [Device Deletion](./功能/设备删除说明.md) | User delete device, admin delete device |
 | [Login History](./功能/登录历史管理功能说明.md) | Login history |
