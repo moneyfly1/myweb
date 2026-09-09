@@ -40,6 +40,8 @@ func SetupRouter() *gin.Engine {
 	r.GET("/static/*filepath", serveImmutableAsset)
 	r.StaticFile("/favicon.ico", "./frontend/dist/favicon.ico")
 	r.StaticFile("/vite.svg", "./frontend/dist/vite.svg")
+	// 上传文件静态访问（工单附件等存于 uploads/）
+	r.Static("/uploads", "./uploads")
 
 	// GitHub 仓库同步的节点文件公开访问（维护模式下仍可用）
 	r.GET("/repo-sync/*filepath", handlers.ServeRepoSyncFile)
@@ -248,6 +250,8 @@ func SetupRouter() *gin.Engine {
 		{
 			tickets.GET("", handlers.GetTickets)
 			tickets.GET("/unread-count", handlers.GetUnreadTicketRepliesCount)
+			// 附件上传（用户端 + 管理端工单回复共用）
+			tickets.POST("/upload", handlers.UploadTicketAttachment)
 			tickets.GET("/:id", handlers.GetTicket)
 			tickets.POST("", handlers.CreateTicket)
 			tickets.POST("/:id/reply", handlers.ReplyTicket)

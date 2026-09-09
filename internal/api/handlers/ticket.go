@@ -235,10 +235,11 @@ func CreateTicket(c *gin.Context) {
 	}
 
 	var req struct {
-		Title    string `json:"title" binding:"required"`
-		Content  string `json:"content" binding:"required"`
-		Type     string `json:"type"`
-		Priority string `json:"priority"`
+		Title    string                 `json:"title" binding:"required"`
+		Content  string                 `json:"content" binding:"required"`
+		Type     string                 `json:"type"`
+		Priority string                 `json:"priority"`
+		Files    []ticketAttachmentInput `json:"attachments"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -282,6 +283,14 @@ func CreateTicket(c *gin.Context) {
 	if err := database.GetDB().Create(&ticket).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建工单失败", err)
 		return
+	}
+
+	// 绑定已上传附件到工单
+	db := database.GetDB()
+	if len(req.Files) > 0 {
+		if err := bindTicketAttachments(db, ticket.ID, nil, user.ID, req.Files); err != nil {
+			utils.LogErrorMsg("创建工单时绑定附件失败: ticket_id=%d, error=%v", ticket.ID, err)
+		}
 	}
 
 	utils.SetResponseStatus(c, http.StatusCreated)
@@ -525,7 +534,8 @@ func ReplyTicket(c *gin.Context) {
 	}
 
 	var req struct {
-		Content string `json:"content" binding:"required"`
+		Content string                 `json:"content"`
+		Files   []ticketAttachmentInput `json:"attachments"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请求参数错误", err)
@@ -546,7 +556,7 @@ func ReplyTicket(c *gin.Context) {
 	}
 
 	content := truncateString(utils.SanitizeInput(req.Content), 5000)
-	if content == "" {
+	if content == "" && len(req.Files) == 0 {
 		utils.ErrorResponse(c, http.StatusBadRequest, "回复内容不能为空", nil)
 		return
 	}
@@ -561,6 +571,14 @@ func ReplyTicket(c *gin.Context) {
 	if err := db.Create(&reply).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "回复工单失败", err)
 		return
+	}
+
+	// 绑定回复附件
+	if len(req.Files) > 0 {
+		replyID := int64(reply.ID)
+		if err := bindTicketAttachments(db, ticket.ID, &replyID, user.ID, req.Files); err != nil {
+			utils.LogErrorMsg("回复工单时绑定附件失败: ticket_id=%d, reply_id=%d, error=%v", ticket.ID, reply.ID, err)
+		}
 	}
 
 	shouldSaveTicket := false
