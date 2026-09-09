@@ -152,6 +152,7 @@
       mobile-width="94%"
       :loading="creating"
       class="create-ticket-dialog"
+      @closed="createFiles = []"
     >
       <el-form 
         :model="ticketForm" 
@@ -214,6 +215,13 @@
             placeholder="请详细描述您的问题"
           />
         </el-form-item>
+        <el-form-item v-if="!isMobile" label="附件">
+          <TicketAttachmentUpload v-model="createFiles" :limit="9" tip="可选：图片 / 视频 / 文档 / 压缩包，单文件≤30MB" />
+        </el-form-item>
+        <el-form-item v-else label="">
+          <template #label><span class="form-label">附件</span></template>
+          <TicketAttachmentUpload v-model="createFiles" :limit="9" tip="可选：图片/视频/文档/压缩包" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <FormActionBar
@@ -230,6 +238,7 @@
       width="800px"
       mobile-width="94%"
       class="ticket-detail-dialog"
+      @closed="replyFiles = []"
     >
       <div v-if="currentTicket">
         <div class="ticket-detail-header">
@@ -242,6 +251,11 @@
         </div>
         <div class="ticket-content">
           <p>{{ currentTicket.content }}</p>
+          <TicketAttachmentDisplay
+            v-if="ticketOwnAttachments.length"
+            :attachments="ticketOwnAttachments"
+            title=""
+          />
         </div>
         <div class="ticket-replies">
           <h4>回复记录 ({{ currentTicket.replies?.length || 0 }})</h4>
@@ -273,6 +287,11 @@
               <div class="reply-content" :class="{ 'admin-content': reply.is_admin === 'true' || reply.is_admin_reply }">
                 {{ reply.content }}
               </div>
+              <TicketAttachmentDisplay
+                v-if="getReplyAttachments(reply).length"
+                :attachments="getReplyAttachments(reply)"
+                title=""
+              />
             </div>
           </div>
           <EmptyState
@@ -291,6 +310,9 @@
             placeholder="输入回复内容"
             :disabled="replying"
           />
+          <div class="reply-attachment-upload">
+            <TicketAttachmentUpload v-model="replyFiles" :limit="9" tip="可选：图片 / 视频 / 附件" />
+          </div>
           <el-button
             type="primary"
             class="reply-submit-button"
@@ -325,6 +347,8 @@ import EmptyState from '@/components/EmptyState.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import TicketAttachmentUpload from '@/components/tickets/TicketAttachmentUpload.vue'
+import TicketAttachmentDisplay from '@/components/tickets/TicketAttachmentDisplay.vue'
 
 const TICKETS_TABLE_STORAGE_KEY = 'user_tickets_table_settings'
 const ticketTableRef = ref(null)
@@ -371,6 +395,34 @@ const ticketForm = reactive({
   type: 'other',
   priority: 'normal'
 })
+// 附件上传暂存（提交时随工单/回复一起绑定）
+const createFiles = ref([])
+const replyFiles = ref([])
+const resetTicketFiles = () => {
+  createFiles.value = []
+  replyFiles.value = []
+}
+// 工单本体附件（reply_id 为空）
+const ticketOwnAttachments = computed(() => {
+  const all = currentTicket.value?.attachments || []
+  return all.filter(a => a.reply_id == null || a.reply_id === 0 || a.reply_id === '')
+})
+// 取某条回复的附件
+const getReplyAttachments = (reply) => {
+  const all = currentTicket.value?.attachments || []
+  if (reply == null) return []
+  const rid = String(reply.id)
+  return all.filter(a => a.reply_id != null && String(a.reply_id) === rid)
+}
+// 上传组件的返回值结构 → 提交结构 { file_name, file_path, file_size, file_type }
+const normalizeFiles = (files) => {
+  return (files || []).map(f => ({
+    file_name: f.file_name || f.name || '',
+    file_path: f.file_path || f.url || '',
+    file_size: f.file_size || 0,
+    file_type: f.file_type || 'file'
+  })).filter(f => f.file_path)
+}
 const ticketRules = {
   title: [{ required: true, message: '请输入工单标题', trigger: 'blur' }],
   content: [{ required: true, message: '请输入工单内容', trigger: 'blur' }],
@@ -430,7 +482,14 @@ const createTicket = async () => {
     if (valid) {
       creating.value = true
       try {
-        const response = await ticketAPI.createTicket(ticketForm)
+        const payload = {
+          title: ticketForm.title,
+          content: ticketForm.content,
+          type: ticketForm.type,
+          priority: ticketForm.priority,
+          attachments: normalizeFiles(createFiles.value)
+        }
+        const response = await ticketAPI.createTicket(payload)
         if (response.data.success) {
           ElMessage.success('工单创建成功')
           showCreateDialog.value = false
@@ -438,6 +497,7 @@ const createTicket = async () => {
           ticketForm.content = ''
           ticketForm.type = 'other'
           ticketForm.priority = 'normal'
+          createFiles.value = []
           loadTickets()
         }
       } catch (error) {
@@ -482,8 +542,9 @@ const markTicketReadLocally = (ticketId) => {
   })
 }
 const addReply = async () => {
-  if (!replyContent.value.trim()) {
-    ElMessage.warning('请输入回复内容')
+  const hasAttach = replyFiles.value && replyFiles.value.length > 0
+  if (!replyContent.value.trim() && !hasAttach) {
+    ElMessage.warning('请输入回复内容或上传附件')
     return
   }
   if (!currentTicket.value || !currentTicket.value.id) {
@@ -494,10 +555,14 @@ const addReply = async () => {
   if (replying.value) return
   replying.value = true
   try {
-    const response = await ticketAPI.addReply(currentTicket.value.id, { content: replyContent.value })
+    const response = await ticketAPI.addReply(currentTicket.value.id, {
+      content: replyContent.value,
+      attachments: normalizeFiles(replyFiles.value)
+    })
     if (response.data && response.data.success) {
       ElMessage.success('回复成功')
       replyContent.value = ''
+      replyFiles.value = []
       await viewTicket(currentTicket.value.id)
       await loadTickets()
     } else {
