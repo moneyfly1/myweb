@@ -6,7 +6,7 @@
         <!-- 图片预览 -->
         <el-image
           v-if="isImageType(att) || isImageName(att)"
-          :src="att.file_path"
+          :src="assetUrl(att.file_path)"
           :preview-src-list="imageList"
           fit="cover"
           class="attachment-image"
@@ -19,7 +19,7 @@
         </el-image>
         <!-- 视频 -->
         <div v-else-if="isVideoName(att)" class="attachment-video-wrap">
-          <video :src="att.file_path" controls preload="metadata" class="attachment-video"></video>
+          <video :src="assetUrl(att.file_path)" controls preload="metadata" class="attachment-video"></video>
           <div class="video-name">{{ shortName(att) }}</div>
         </div>
         <!-- 其他附件：下载卡片 -->
@@ -62,8 +62,14 @@ const shortName = (att) => {
   const n = att.file_name || ''
   return n.length > 14 ? n.slice(0, 12) + '…' : (n || '附件')
 }
+// assetUrl 给附件 URL 追加 ?raw=1 —— 作为独立的 Cloudflare 缓存键，
+// 规避此前 nginx 误回 SPA fallback 时被 CF 缓存的旧 HTML 响应；后续新回源即得真实文件。
+const assetUrl = (path) => {
+  if (!path) return ''
+  return path.includes('?') ? path : path + '?raw=1'
+}
 const imageList = computed(() => {
-  return (props.attachments || []).filter(a => isImageType(a) || isImageName(a)).map(a => a.file_path)
+  return (props.attachments || []).filter(a => isImageType(a) || isImageName(a)).map(a => assetUrl(a.file_path))
 })
 const formatSize = (bytes) => {
   if (!bytes) return ''
@@ -72,7 +78,7 @@ const formatSize = (bytes) => {
   return (bytes / 1024 / 1024).toFixed(1) + 'MB'
 }
 const openAttachment = (att) => {
-  if (att.file_path) window.open(att.file_path, '_blank')
+  if (att.file_path) window.open(assetUrl(att.file_path), '_blank')
 }
 </script>
 
