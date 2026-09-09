@@ -124,12 +124,12 @@ import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import MobileLogFields from '@/components/MobileLogFields.vue'
 
 const CHANGE_TYPE_MAP = {
-  recharge: '充值', consume: '消费', refund: '退款',
-  commission: '佣金', gift: '赠送', admin_adjust: '管理员调整'
+  recharge: '充值', consume: '消费', refund: '退款', checkin: '签到',
+  promotion: '营销活动', admin_adjust: '管理员调整'
 }
 const getChangeTypeText = (type) => CHANGE_TYPE_MAP[type] || type || '-'
 const getChangeTypeColor = (type) => {
-  const map = { recharge: 'success', consume: 'danger', refund: 'warning', commission: '', gift: 'info', admin_adjust: 'warning' }
+  const map = { recharge: 'success', consume: 'danger', refund: 'warning', checkin: 'info', promotion: 'warning', admin_adjust: 'warning' }
   return map[type] || 'info'
 }
 

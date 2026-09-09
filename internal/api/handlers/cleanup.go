@@ -26,8 +26,8 @@ var cleanupTargets = map[string]cleanupTarget{
 	"audit_logs": {
 		Label: "操作审计日志",
 		Clear: func(db *gorm.DB, before time.Time) *gorm.DB {
-			// 保护登录/注册/签到等安全关键日志：全量清空也不删这三类
-			q := db.Where("action_type NOT IN ?", []string{"login", "register", "checkin"})
+			// 保护安全关键日志：login/register/checkin + security_* 前缀（登录成功/失败/封锁等）
+			q := db.Where(auditLogProtectedPredicate())
 			if !before.IsZero() {
 				q = q.Where("created_at < ?", before)
 			}
