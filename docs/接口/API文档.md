@@ -168,9 +168,10 @@
 |------|------|------|
 | GET | /tickets | 我的工单列表 |
 | GET | /tickets/unread-count | 未读回复数 |
-| GET | /tickets/:id | 工单详情 |
-| POST | /tickets | 创建工单 |
-| POST | /tickets/:id/reply | 回复工单 |
+| GET | /tickets/:id | 工单详情（返回 `attachments`，含 `reply_id` 归属） |
+| POST | /tickets | 创建工单（可带 `attachments`: `file_name/file_path/file_size/file_type`） |
+| POST | /tickets/upload | 附件上传（multipart 字段 `file`，≤30MB，支持图片/视频/文档/压缩包；返回 `url/file_name/file_size/file_type`） |
+| POST | /tickets/:id/reply | 回复工单（可带 `attachments`） |
 | POST | /tickets/:id/replies | 回复工单（同上） |
 | PUT | /tickets/:id | 关闭工单 |
 | GET | /tickets/admin/all | 全部工单（管理员） |
@@ -318,6 +319,9 @@
 | GET | /admin/custom-nodes/:id/users | 节点已分配用户 |
 | POST | /admin/custom-nodes | 创建专线节点 |
 | POST | /admin/custom-nodes/import-links | 批量导入专线链接 |
+| POST | /admin/custom-nodes/import-subscription | 订阅导入/更新（参数 `url` 必填、`replace` bool、`mode="update"` 增量更新；增量更新保留用户分配，消失旧节点不删） |
+| GET | /admin/custom-nodes/subscriptions | 已导入订阅列表（`url` + `node_count`） |
+| POST | /admin/custom-nodes/delete-subscription | 删除某订阅导入的全部节点（含用户分配） |
 | POST | /admin/custom-nodes/batch-delete | 批量删除 |
 | POST | /admin/custom-nodes/batch-assign | 批量分配用户 |
 | POST | /admin/custom-nodes/batch-test | 批量测速 |

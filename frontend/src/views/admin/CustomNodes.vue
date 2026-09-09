@@ -432,7 +432,7 @@
                   <span class="sub-replace-label">替换模式</span>
                 </el-checkbox>
                 <span class="subscription-tip">
-                  {{ subReplaceMode ? '将删除该订阅地址下原有节点，按最新订阅内容重建（适用于订阅地址更换或内容更新）' : '仅追加新节点，已存在的节点自动跳过（推荐用于订阅内容增量同步）' }}
+                  {{ subReplaceMode ? '增量更新该订阅下的节点：匹配到的节点更新配置并保留用户分配，订阅中已消失的旧节点保留不删（适用于更换订阅地址或内容更新，分配保护）' : '仅追加新节点，已存在的节点自动跳过（推荐用于订阅内容增量同步）' }}
                 </span>
               </div>
               <div class="subscription-tip">
@@ -1361,12 +1361,12 @@ export default {
       addNodeTab.value = 'subscription'
       subReplaceMode.value = true
       subUrlInput.value = ''
-      ElMessage.info('请在下方输入新的订阅链接，将以「替换模式」导入，整体替换历史节点')
+      ElMessage.info('请在下方输入新的订阅链接，将以「替换模式」更新历史节点（匹配到的更新配置并保留用户分配，消失的旧节点保留不删）')
     }
     const handleUpdateSubscription = async (sub) => {
       try {
         await ElMessageBox.confirm(
-          `将重新拉取订阅并替换该订阅下的全部节点（当前 ${sub.node_count} 个旧节点会被移除，按最新内容重建）。确定继续？`,
+          `将重新拉取该订阅并增量更新：匹配到的节点更新配置（用户分配保持不变），订阅中已消失的旧节点保留不删。当前该订阅有 ${sub.node_count} 个节点。确定继续？`,
           '更新订阅',
           { type: 'warning', confirmButtonText: '更新', cancelButtonText: '取消' }
         )

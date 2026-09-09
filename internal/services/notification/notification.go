@@ -28,6 +28,7 @@ var (
 		"subscription_sent",
 		"subscription_reset",
 		"subscription_expired",
+		"subscription_expiry_warning",
 		"ticket_created",
 		"ticket_replied",
 		"abnormal_login",

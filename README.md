@@ -199,11 +199,11 @@ The core problem chain that shaped the product:
 
 | Page | Features |
 |---|---|
-| **Dashboard** | Real-time overview: users, orders, revenue, active subscriptions, system status |
+| **Dashboard** | Real-time overview: users, orders, revenue, active subscriptions, **live user-activity feed** (registrations / subscription resets / orders / recharges, 60s polling), 7-day expiring customers |
 | **Users** | Filter/search users, edit, disable, **batch operations**, **reset password**, **login as user**, **send email**, view check-in logs, GeoIP info |
 | **AbnormalUsers** | Flagged/abnormal accounts (locked, inactive, unusual login patterns) for review |
 | **Nodes** | Regular node CRUD, node collection from upstream subscription URLs, manual import (link / Clash config / manual entry), **batch test**, **deduplication** (Type:Server:Port), region grouping |
-| **CustomNodes** | Custom/manual node definitions with arbitrary protocol templates |
+| **CustomNodes** | Custom node definitions: link import / **subscription-URL import (auto-parse)** / manual creation, **subscription refresh & replacement (incremental update that preserves user assignments)**, assign/unassign, expiry management, latency test |
 | **SelfHostNodes** | **Self-hosted node management**: SSH deploy, protocol selection, heartbeat/status, remote management (reset UUID, change password/port, reinstall, traffic quota), auto cert renewal |
 | **Subscriptions** | All user subscriptions, search, reset, device management, expiry extension |
 | **Orders** | Full order lifecycle, status, cancellation, **CSV/Excel export**, bulk operations |
@@ -229,7 +229,7 @@ The core problem chain that shaped the product:
 ### Admin Core Capabilities
 
 - ✅ User management: filter/edit/disable/**batch**/reset password/**login-as**/send email/check-in logs
-- ✅ Node management: regular / dedicated / custom / **self-hosted** / batch test / import
+- ✅ Node management: regular / dedicated / custom (link & **subscription-URL import**, refresh & replace with assignment preservation) / **self-hosted** / batch test / import
 - ✅ Self-hosted nodes: SSH auto-deploy sing-box / 15 protocols / heartbeat / remote management / traffic quota / auto cert renewal
 - ✅ Orders, packages, coupons, tickets, invites, user levels: full CRUD + batch operations + export
 - ✅ Payments: Alipay / WeChat Pay / Yipay / Codepay / Apple Pay / **Stripe / PayPal / USDT**
@@ -242,7 +242,7 @@ The core problem chain that shaped the product:
 |---|---|
 | 💳 Payment gateways | Alipay, WeChat Pay, Yipay (Alipay/WeChat/QQ Pay), Codepay, Apple Pay, Stripe, PayPal, USDT, balance, mixed payment |
 | 🔔 Notification channels | SMTP email (customer + admin), Telegram Bot, Bark iOS push |
-| 🖥️ Node types | Regular (collected/imported), dedicated, custom, self-hosted (SSH) |
+| 🖥️ Node types | Regular (collected/imported), dedicated, custom (link / subscription-URL import), self-hosted (SSH) |
 | 🧠 Scheduled tasks | Subscription resets, node health checks, backup, repo sync, email queue draining, statistics refresh (can be disabled via `DISABLE_SCHEDULE_TASKS`) |
 | 🌐 GeoIP | GeoLite2-City MMDB (auto-download), per-user/node region attribution, region-aware subscription delivery |
 
