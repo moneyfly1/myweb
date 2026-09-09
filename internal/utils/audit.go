@@ -323,6 +323,15 @@ func createBusinessLogInternal(c *gin.Context, actionType, description, level st
 		}
 	}
 
+	// 数据序列化必须在调用线程完成：异步模式下 goroutine 只读已序列化结果，
+	// 避免调用方在返回后复用/修改 data map 造成数据竞争（map 非并发安全）。
+	var dataJSON sql.NullString
+	if data != nil && len(data) > 0 {
+		if b, err := json.Marshal(data); err == nil {
+			dataJSON = sql.NullString{String: string(b), Valid: true}
+		}
+	}
+
 	writeLog := func() {
 		db := database.GetDB()
 		if db == nil {
@@ -330,13 +339,6 @@ func createBusinessLogInternal(c *gin.Context, actionType, description, level st
 				AppLogger.Warn("[业务日志] %s: %s", actionType, description)
 			}
 			return
-		}
-
-		var dataJSON sql.NullString
-		if data != nil && len(data) > 0 {
-			if b, err := json.Marshal(data); err == nil {
-				dataJSON = sql.NullString{String: string(b), Valid: true}
-			}
 		}
 
 		var responseStatus sql.NullInt64
@@ -614,6 +616,7 @@ func CreateSystemLog(actionType, description string, level string, data map[stri
 		if AppLogger != nil {
 			AppLogger.Error("[系统日志保存失败] %s: %s, 错误: %v", actionType, description, err)
 		}
+		return fmt.Errorf("保存系统日志失败: %v", err)
 	}
 
 	return nil
