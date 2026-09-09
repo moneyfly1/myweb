@@ -184,12 +184,16 @@ func CreateCommissionLog(inviterID, inviteeID uint, commissionType string, amoun
 }
 
 func CreateCommissionLogWithDB(db *gorm.DB, inviterID, inviteeID uint, commissionType string, amount float64, inviteRelationID, relatedOrderID *uint, description string) error {
+	// 佣金余额在发放点即时到账（见 auth.go/order.go 的 balance + reward），
+	// 故这里直接记"已结算"，避免日志长期显示"待结算"与实际资金状态矛盾。
+	now := GetBeijingTime()
 	log := models.CommissionLog{
 		InviterID:      inviterID,
 		InviteeID:      inviteeID,
 		CommissionType: commissionType,
 		Amount:         amount,
-		Status:         "pending",
+		Status:         "paid",
+		SettledAt:      sql.NullTime{Time: now, Valid: true},
 		Description:    database.NullString(description),
 	}
 

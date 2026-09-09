@@ -136,7 +136,7 @@ import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import MobileLogFields from '@/components/MobileLogFields.vue'
 
 const COMMISSION_TYPE_MAP = {
-  register_reward: '注册奖励', order_commission: '订单佣金'
+  register_reward: '注册奖励', order_reward: '订单佣金'
 }
 
 const getCommissionTypeText = (type) => COMMISSION_TYPE_MAP[type] || type || '-'
