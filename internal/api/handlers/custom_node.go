@@ -422,10 +422,12 @@ func ImportCustomNodeLinks(c *gin.Context) {
 }
 
 // ImportCustomNodeSubscription 从订阅链接拉取并自动解析节点，导入为专线节点。
-// 支持两种语义：
-//   - replace=true（更新订阅）：替换该订阅 URL 下原有节点（旧节点删除、按最新内容重建），
-//     适用于「订阅地址更换」或「订阅内容更新」——用新订阅替换旧订阅导入的节点；
-//   - replace=false（默认，追加导入）：仅追加新节点，已存在的 (protocol, domain, port) 跳过。
+// 支持三种语义（mode/replace 组合）：
+//   - 追加导入（缺省）：仅追加新节点，已存在的 (protocol, domain, port) 跳过；
+//   - mode="update" + replace=false：增量更新该 source_url 下节点——按名称/地址匹配
+//     到的更新配置（保留节点 ID 与用户分配），新节点追加，订阅中已消失的旧节点保留不删；
+//   - mode="update" + replace=true：匹配范围扩大到全部 subscription 来源节点
+//     （更换订阅地址场景），同样增量更新 + 分配保护，从不删除节点。
 func ImportCustomNodeSubscription(c *gin.Context) {
 	var req struct {
 		URL     string `json:"url" binding:"required"`
