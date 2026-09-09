@@ -1840,21 +1840,25 @@ func GetSubscriptionConfig(c *gin.Context) {
 	}
 
 	// 记录订阅访问日志（含设备信息）
-	go func(ctx context.Context, subID, userID uint, ua, ip, subType string) {
-		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		dm := device.NewDeviceManager()
-		devInfo := dm.ParseUserAgent(ua)
-		logData := map[string]interface{}{
-			"type":          subType,
-			"software_name": devInfo.SoftwareName,
-			"software_ver":  devInfo.SoftwareVersion,
-			"os_name":       devInfo.OSName,
-			"device_name":   devInfo.DeviceName,
-		}
-		_ = utils.CreateSubscriptionLog(subID, userID, "access", "user", nil, ip, nil, logData,
-			fmt.Sprintf("[%s] %s %s", subType, devInfo.SoftwareName, devInfo.DeviceName))
-	}(c.Request.Context(), subscription.ID, subscription.UserID, userAgent, clientIP, "clash")
+	// 与 GetUniversalSubscription / GetClientSubscribeXBoardCompat 对齐：
+	// 设备超限（shouldRecord=false）时不写 access 日志，避免超限设备反复拉取刷日志
+	if shouldRecord {
+		go func(ctx context.Context, subID, userID uint, ua, ip, subType string) {
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			dm := device.NewDeviceManager()
+			devInfo := dm.ParseUserAgent(ua)
+			logData := map[string]interface{}{
+				"type":          subType,
+				"software_name": devInfo.SoftwareName,
+				"software_ver":  devInfo.SoftwareVersion,
+				"os_name":       devInfo.OSName,
+				"device_name":   devInfo.DeviceName,
+			}
+			_ = utils.CreateSubscriptionLog(subID, userID, "access", "user", nil, ip, nil, logData,
+				fmt.Sprintf("[%s] %s %s", subType, devInfo.SoftwareName, devInfo.DeviceName))
+		}(c.Request.Context(), subscription.ID, subscription.UserID, userAgent, clientIP, "clash")
+	}
 
 	// 生成 Clash 配置
 	configService := config_update.NewConfigUpdateService()

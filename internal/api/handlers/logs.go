@@ -476,6 +476,7 @@ func formatLogForCSV(db *gorm.DB, log models.AuditLog) string {
 //     （排除管理员代操作）→ 用户主动重置/更新订阅；
 //  3. orders：用户下单（pending）与付款（paid）行为（排除管理员后台创建的订单）；
 //  4. recharge_records：用户充值到账（status=paid）。
+//
 // 各数据源按时间倒序合并，取最近 limit 条。
 func GetDashboardActivity(c *gin.Context) {
 	limit := 20
