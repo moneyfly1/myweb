@@ -988,11 +988,11 @@ func handleWebhookNotify(c *gin.Context, db *gorm.DB, paymentType string) {
 			return
 		}
 		headers := map[string]string{
-			"PAYPAL-AUTH-ALGO":          c.GetHeader("PAYPAL-AUTH-ALGO"),
-			"PAYPAL-CERT-URL":           c.GetHeader("PAYPAL-CERT-URL"),
-			"PAYPAL-TRANSMISSION-ID":    c.GetHeader("PAYPAL-TRANSMISSION-ID"),
-			"PAYPAL-TRANSMISSION-SIG":   c.GetHeader("PAYPAL-TRANSMISSION-SIG"),
-			"PAYPAL-TRANSMISSION-TIME":  c.GetHeader("PAYPAL-TRANSMISSION-TIME"),
+			"PAYPAL-AUTH-ALGO":         c.GetHeader("PAYPAL-AUTH-ALGO"),
+			"PAYPAL-CERT-URL":          c.GetHeader("PAYPAL-CERT-URL"),
+			"PAYPAL-TRANSMISSION-ID":   c.GetHeader("PAYPAL-TRANSMISSION-ID"),
+			"PAYPAL-TRANSMISSION-SIG":  c.GetHeader("PAYPAL-TRANSMISSION-SIG"),
+			"PAYPAL-TRANSMISSION-TIME": c.GetHeader("PAYPAL-TRANSMISSION-TIME"),
 		}
 		ok, err := service.VerifyWebhook(body, headers)
 		if err != nil || !ok {

@@ -714,8 +714,8 @@ func updateCustomNodeSubscription(db *gorm.DB, urlStr string, replaceAll bool) (
 
 	// 建立匹配索引：名称 → 节点；协议:域名:端口 → 节点
 	type matchedInfo struct {
-		node      *models.CustomNode
-		consumed  bool
+		node     *models.CustomNode
+		consumed bool
 	}
 	byName := make(map[string]*matchedInfo, len(oldNodes))
 	byAddr := make(map[string]*matchedInfo, len(oldNodes))

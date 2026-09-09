@@ -109,9 +109,9 @@ func (s *PayPalService) getAccessToken() (string, error) {
 }
 
 type paypalPurchaseUnit struct {
-	ReferenceID string          `json:"reference_id"`
-	Description string          `json:"description,omitempty"`
-	Amount      paypalAmount    `json:"amount"`
+	ReferenceID string       `json:"reference_id"`
+	Description string       `json:"description,omitempty"`
+	Amount      paypalAmount `json:"amount"`
 }
 
 type paypalAmount struct {
@@ -120,9 +120,9 @@ type paypalAmount struct {
 }
 
 type paypalCreateOrderRequest struct {
-	Intent        string                `json:"intent"`
-	PurchaseUnits []paypalPurchaseUnit  `json:"purchase_units"`
-	ApplicationContext paypalAppContext `json:"application_context"`
+	Intent             string               `json:"intent"`
+	PurchaseUnits      []paypalPurchaseUnit `json:"purchase_units"`
+	ApplicationContext paypalAppContext     `json:"application_context"`
 }
 
 type paypalAppContext struct {
@@ -202,12 +202,12 @@ func (s *PayPalService) CreatePayment(order *models.Order, amount float64, email
 
 // paypalWebhookPayload PayPal Webhook 事件
 type PayPalWebhookPayload struct {
-	ID       string `json:"id"`
+	ID        string `json:"id"`
 	EventType string `json:"event_type"`
-	Resource struct {
-		ID             string `json:"id"`
-		Status         string `json:"status"`
-		CustomID       string `json:"custom_id"`
+	Resource  struct {
+		ID                string `json:"id"`
+		Status            string `json:"status"`
+		CustomID          string `json:"custom_id"`
 		SupplementaryData *struct {
 			RelatedIDs struct {
 				OrderID string `json:"order_id"`

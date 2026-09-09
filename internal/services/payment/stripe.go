@@ -54,14 +54,14 @@ func NewStripeService(paymentConfig *models.PaymentConfig) (*StripeService, erro
 
 // stripeCheckoutRequest 创建 Checkout Session 的请求体
 type stripeCheckoutRequest struct {
-	Mode                string                    `json:"mode"`
-	SuccessURL          string                    `json:"success_url"`
-	CancelURL           string                    `json:"cancel_url"`
-	ClientReferenceID   string                    `json:"client_reference_id"`
-	CustomerEmail       string                    `json:"customer_email,omitempty"`
-	LineItems           []stripeCheckoutLineItem  `json:"line_items"`
-	PaymentMethodTypes  []string                  `json:"payment_method_types"`
-	Metadata            map[string]string         `json:"metadata,omitempty"`
+	Mode               string                   `json:"mode"`
+	SuccessURL         string                   `json:"success_url"`
+	CancelURL          string                   `json:"cancel_url"`
+	ClientReferenceID  string                   `json:"client_reference_id"`
+	CustomerEmail      string                   `json:"customer_email,omitempty"`
+	LineItems          []stripeCheckoutLineItem `json:"line_items"`
+	PaymentMethodTypes []string                 `json:"payment_method_types"`
+	Metadata           map[string]string        `json:"metadata,omitempty"`
 }
 
 type stripeCheckoutLineItem struct {
@@ -70,9 +70,9 @@ type stripeCheckoutLineItem struct {
 }
 
 type stripePriceData struct {
-	Currency    string         `json:"currency"`
-	ProductData stripeProduct  `json:"product_data"`
-	UnitAmount  int64          `json:"unit_amount"`
+	Currency    string        `json:"currency"`
+	ProductData stripeProduct `json:"product_data"`
+	UnitAmount  int64         `json:"unit_amount"`
 }
 
 type stripeProduct struct {
@@ -96,10 +96,10 @@ func (s *StripeService) CreatePayment(order *models.Order, amount float64, email
 	}
 
 	reqBody := stripeCheckoutRequest{
-		Mode:              "payment",
-		SuccessURL:        s.buildReturnURL(order, "success"),
-		CancelURL:         s.buildReturnURL(order, "cancel"),
-		ClientReferenceID: order.OrderNo,
+		Mode:               "payment",
+		SuccessURL:         s.buildReturnURL(order, "success"),
+		CancelURL:          s.buildReturnURL(order, "cancel"),
+		ClientReferenceID:  order.OrderNo,
 		PaymentMethodTypes: []string{"card"},
 		Metadata: map[string]string{
 			"order_no": order.OrderNo,
@@ -108,7 +108,7 @@ func (s *StripeService) CreatePayment(order *models.Order, amount float64, email
 		LineItems: []stripeCheckoutLineItem{
 			{
 				PriceData: stripePriceData{
-					Currency: "usd",
+					Currency:    "usd",
 					ProductData: stripeProduct{Name: productName},
 					UnitAmount:  unitAmount,
 				},
@@ -128,9 +128,9 @@ func (s *StripeService) CreatePayment(order *models.Order, amount float64, email
 	defer resp.Body.Close()
 
 	var result struct {
-		ID     string `json:"id"`
-		URL    string `json:"url"`
-		Error  *struct {
+		ID    string `json:"id"`
+		URL   string `json:"url"`
+		Error *struct {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
@@ -169,12 +169,12 @@ type StripeEvent struct {
 	Type string `json:"type"`
 	Data struct {
 		Object struct {
-			ID                 string `json:"id"`
-			ClientReferenceID  string `json:"client_reference_id"`
-			PaymentStatus      string `json:"payment_status"`
-			Status             string `json:"status"`
-			AmountTotal        int64  `json:"amount_total"`
-			Metadata           map[string]string `json:"metadata"`
+			ID                string            `json:"id"`
+			ClientReferenceID string            `json:"client_reference_id"`
+			PaymentStatus     string            `json:"payment_status"`
+			Status            string            `json:"status"`
+			AmountTotal       int64             `json:"amount_total"`
+			Metadata          map[string]string `json:"metadata"`
 		} `json:"object"`
 	} `json:"data"`
 }
