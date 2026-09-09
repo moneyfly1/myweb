@@ -18,6 +18,7 @@
 - [Installation Guide](#-installation-guide)
 - [Admin Account Management](#-admin-account-management)
 - [Configuration Guide](#-configuration-guide)
+- [Nginx Reverse-Proxy Template (final)](#-nginx-reverse-proxy-template-final--includes-attachment-forwarding)
 - [Database Backup](#-database-backup)
 - [Troubleshooting](#-troubleshooting)
 - [License](#-license)
@@ -805,6 +806,72 @@ Quick Redis via Docker: `docker run -d --name redis -p 6379:6379 redis:alpine`
 | `GEOIP_DB_PATH` | `./GeoLite2-City.mmdb` | GeoIP MMDB path (auto-downloaded if missing) |
 
 > 💳 **Payment gateway credentials** (Alipay app id/keys, notify/return URLs) are configured in the admin panel (**PaymentConfig** page) and stored in the database; legacy bootstrap env vars (`ALIPAY_APP_ID`, `ALIPAY_PRIVATE_KEY`, `ALIPAY_PUBLIC_KEY`, `ALIPAY_NOTIFY_URL`, `ALIPAY_RETURN_URL`) are also honored.
+
+---
+
+## 🌐 Nginx Reverse-Proxy Template (final — includes attachment forwarding)
+
+> ⚠️ Use the **complete template below** in production. If you omit
+> `location /uploads/`, requests for uploaded attachments fall through to the
+> SPA fallback and return `index.html` — the browser then fails to open images
+> as HTML, and if Cloudflare/CDN sits in front it may even cache that wrong
+> HTML *as the image content*.
+
+```nginx
+# Reverse proxy CBoard (Go backend on 127.0.0.1:8000; static assets served by nginx)
+server {
+    listen 80;
+    server_name yourdomain.com;
+    # For production add 443 + SSL (certbot / panel-issued)
+
+    # Upload limit must exceed the backend per-file cap (default 30 MB)
+    client_max_body_size 50m;
+
+    root /path/to/cboard/frontend/dist;   # frontend build output
+    index index.html;
+
+    # ① Backend API → Go
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # For SSE live logs / long-lived connections:
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+    }
+
+    # ② Uploaded attachments (ticket images/videos/documents, avatars, …) → Go's /uploads static service.
+    #    CRITICAL: don't let the generic `location /` try_files swallow this —
+    #    it would return index.html for image URLs!
+    #    no-cache: attachments may be replaced/deleted; avoids stale CDN/browser copies.
+    location /uploads/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        expires -1;
+    }
+
+    # ③ Hashed frontend assets (long cache) + SPA fallback
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+**If you also run Cloudflare/CDN in front of Nginx**: after fixing Nginx,
+historical attachment URLs that were cached with the wrong HTML response may
+still be served from the CDN edge. **Purge the CDN cache** once from the panel.
+The app already appends `?raw=1` to attachment URLs as an independent cache
+key, so new URLs are never affected by stale dirty caches.
 
 ---
 

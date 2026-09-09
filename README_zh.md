@@ -833,24 +833,62 @@ docker run -d --name redis -p 6379:6379 redis:alpine
 
 ### Nginx 反代参考
 
+> ⚠️ **最终模板（含附件上传转发）**。生产环境请使用下面的完整配置——
+> 若省略 `location /uploads/`，附件请求会落到 SPA fallback 返回 `index.html`，
+> 浏览器将图片当作 HTML 打不开（若前置了 Cloudflare 还会把错误 HTML 缓存为图片内容）。
+
 ```nginx
+# 反向代理 CBoard（Go 后端监听 127.0.0.1:8000，前端静态由 nginx 直接服务）
 server {
     listen 80;
     server_name yourdomain.com;
-    # 生产请配置 443 + SSL
+    # 生产请配置 443 + SSL（证书可用 certbot / 宝塔签发）
 
-    location / {
+    # 附件上传上限必须大于后端单文件上限（默认 30MB）
+    client_max_body_size 50m;
+
+    root /path/to/cboard/frontend/dist;   # 前端构建产物目录
+    index index.html;
+
+    # ① 后端 API 一律转发给 Go
+    location /api/ {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        # 如需要 SSE 实时日志：
+        # 如需要 SSE 实时日志 / 长连接：
         proxy_buffering off;
         proxy_read_timeout 3600s;
     }
+
+    # ② 上传的附件（工单图片/视频/文档、头像等）转发给 Go 的 /uploads 静态服务。
+    #    关键：不要用下面「location / 的 try_files」兜住它——那会让图片请求返回 index.html！
+    #    no-cache：附件可更新/删除，避免浏览器或 Cloudflare 缓存旧文件。
+    location /uploads/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        expires -1;
+    }
+
+    # ③ 前端静态资源（带 hash 的 assets 可长缓存；其余回 index.html 走 SPA）
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
 }
 ```
+
+**若你在 Nginx 前还挂了 Cloudflare 等 CDN**：修复 Nginx 后，历史期间被 CDN
+缓存的「错误 HTML 附件」仍会挡在旧 URL 前，请到 CDN 面板 **Purge Cache** 清理一次；
+应用代码已对附件 URL 追加 `?raw=1` 独立缓存键，新 URL 不受历史脏缓存影响。
 
 ---
 
