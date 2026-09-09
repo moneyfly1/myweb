@@ -781,7 +781,9 @@ export const ticketAPI = {
   getAllTickets: (params) => api.get('/tickets/admin/all', { params }),
   updateTicket: (id, data) => api.put(`/tickets/admin/${id}`, data),
   getTicketStatistics: () => api.get('/tickets/admin/statistics'),
-  getUnreadCount: () => api.get('/tickets/unread-count') // 获取未读回复数量
+  getUnreadCount: () => api.get('/tickets/unread-count'), // 获取未读回复数量
+  // 工单附件上传（multipart，60s 超时适配大视频）
+  uploadAttachment: (formData) => api.post('/tickets/upload', formData, { timeout: 60000, headers: { 'Content-Type': 'multipart/form-data' } })
 }
 export const couponAPI = {
   getAvailableCoupons: () => api.get('/coupons'),

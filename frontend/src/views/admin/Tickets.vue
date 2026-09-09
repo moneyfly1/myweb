@@ -232,6 +232,11 @@
             <span>工单内容</span>
           </template>
           <div class="ticket-content-text">{{ currentTicket.content }}</div>
+          <TicketAttachmentDisplay
+            v-if="ticketOwnAttachments.length"
+            :attachments="ticketOwnAttachments"
+            title=""
+          />
         </el-card>
         <el-card class="ticket-notes-card" shadow="never" :class="{ 'mobile-card': isMobile }" v-if="currentTicket.admin_notes">
           <template #header>
@@ -278,6 +283,11 @@
                 <span class="reply-time">{{ formatTime(reply.created_at) }}</span>
               </div>
               <div class="reply-content" :class="{ 'unread-content': reply.is_unread }">{{ reply.content }}</div>
+              <TicketAttachmentDisplay
+                v-if="getReplyAttachments(reply).length"
+                :attachments="getReplyAttachments(reply)"
+                title=""
+              />
             </div>
             <EmptyState
               v-if="!currentTicket.replies || currentTicket.replies.length === 0"
@@ -327,6 +337,9 @@
               :maxlength="2000"
               show-word-limit
             />
+            <div class="reply-attachment-upload">
+              <TicketAttachmentUpload v-model="replyFiles" :limit="9" tip="可选：图片 / 视频 / 文档 / 压缩包，单文件≤30MB" />
+            </div>
             <el-button 
               type="primary" 
               @click="addReply" 
@@ -397,6 +410,8 @@ import { ticketAPI } from '@/utils/api'
 import { formatDateTimeSafe } from '@/utils/date'
 import { useMobile } from '@/composables/useMobile'
 import { debounce } from '@/composables/useDebounce'
+import TicketAttachmentUpload from '@/components/tickets/TicketAttachmentUpload.vue'
+import TicketAttachmentDisplay from '@/components/tickets/TicketAttachmentDisplay.vue'
 import {
   getTicketStatusText as getStatusText,
   getTicketStatusType as getStatusTagType,
@@ -421,10 +436,32 @@ const showStatusDialog = ref(false)
 const showNotesDialog = ref(false)
 const currentTicket = ref(null)
 const replyContent = ref('')
+const replyFiles = ref([])
 const newStatus = ref('')
 const adminNotes = ref('')
 const statistics = ref(null)
 const isMobile = useMobile()
+// 工单本体附件（reply_id 为空）
+const ticketOwnAttachments = computed(() => {
+  const all = currentTicket.value?.attachments || []
+  return all.filter(a => a.reply_id == null || a.reply_id === 0 || a.reply_id === '')
+})
+// 取某条回复的附件
+const getReplyAttachments = (reply) => {
+  const all = currentTicket.value?.attachments || []
+  if (reply == null) return []
+  const rid = String(reply.id)
+  return all.filter(a => a.reply_id != null && String(a.reply_id) === rid)
+}
+// 上传组件返回值 → 提交结构
+const normalizeFiles = (files) => {
+  return (files || []).map(f => ({
+    file_name: f.file_name || f.name || '',
+    file_path: f.file_path || f.url || '',
+    file_size: f.file_size || 0,
+    file_type: f.file_type || 'file'
+  })).filter(f => f.file_path)
+}
 const filters = reactive({
   keyword: '',
   status: '',
@@ -507,8 +544,9 @@ const markTicketReadLocally = (ticketId) => {
   })
 }
 const addReply = async () => {
-  if (!replyContent.value.trim()) {
-    ElMessage.warning('请输入回复内容')
+  const hasAttach = replyFiles.value && replyFiles.value.length > 0
+  if (!replyContent.value.trim() && !hasAttach) {
+    ElMessage.warning('请输入回复内容或上传附件')
     return
   }
   if (!currentTicket.value || !currentTicket.value.id) {
@@ -518,10 +556,14 @@ const addReply = async () => {
   }
   replying.value = true
   try {
-    const response = await ticketAPI.addReply(currentTicket.value.id, { content: replyContent.value })
+    const response = await ticketAPI.addReply(currentTicket.value.id, {
+      content: replyContent.value,
+      attachments: normalizeFiles(replyFiles.value)
+    })
     if (response.data && response.data.success) {
       ElMessage.success('回复成功')
       replyContent.value = ''
+      replyFiles.value = []
       await viewTicket(currentTicket.value.id)
       await loadStatistics()
     } else {
@@ -580,6 +622,7 @@ const closeDetailDialog = () => {
   showDetailDialog.value = false
   currentTicket.value = null
   replyContent.value = ''
+  replyFiles.value = []
   newStatus.value = ''
   adminNotes.value = ''
 }
