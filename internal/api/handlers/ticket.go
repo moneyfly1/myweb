@@ -235,10 +235,10 @@ func CreateTicket(c *gin.Context) {
 	}
 
 	var req struct {
-		Title    string                 `json:"title" binding:"required"`
-		Content  string                 `json:"content" binding:"required"`
-		Type     string                 `json:"type"`
-		Priority string                 `json:"priority"`
+		Title    string                  `json:"title" binding:"required"`
+		Content  string                  `json:"content" binding:"required"`
+		Type     string                  `json:"type"`
+		Priority string                  `json:"priority"`
 		Files    []ticketAttachmentInput `json:"attachments"`
 	}
 
@@ -534,7 +534,7 @@ func ReplyTicket(c *gin.Context) {
 	}
 
 	var req struct {
-		Content string                 `json:"content"`
+		Content string                  `json:"content"`
 		Files   []ticketAttachmentInput `json:"attachments"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {

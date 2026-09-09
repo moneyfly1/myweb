@@ -4,10 +4,10 @@ import "testing"
 
 func TestDetectClientVersion(t *testing.T) {
 	cases := []struct {
-		ua         string
-		wantType   string
-		wantVer    float64
-		wantOK     bool
+		ua       string
+		wantType string
+		wantVer  float64
+		wantOK   bool
 	}{
 		{"ClashforWindows/0.19.23", "clash-legacy", 0.19, true},
 		{"ClashforWindows/0.20.39", "clash-legacy", 0.2, true},
@@ -21,7 +21,7 @@ func TestDetectClientVersion(t *testing.T) {
 		{"Surge/5.2.0", "surge", 5.2, true},
 		{"v2rayN/7.2.0", "v2ray", 7.2, true},
 		{"Mozilla/5.0 (iPhone) AppleWebKit/605.1.15", "", 0, false}, // 浏览器
-		{"curl/8.13.0", "", 0, false},                                // curl
+		{"curl/8.13.0", "", 0, false},                               // curl
 	}
 	for _, c := range cases {
 		gotType, gotVer, gotOK := detectClientVersion(c.ua)

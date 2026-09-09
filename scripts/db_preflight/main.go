@@ -188,10 +188,10 @@ func main() {
 	fmt.Println("\n[5] 支付配置密钥完整性（防掩码污染）")
 	if tableExists(db, dialect, "payment_configs") {
 		type pcRow struct {
-			ID       int
-			PayType  string
-			Priv     sql.NullString
-			Alipub   sql.NullString
+			ID      int
+			PayType string
+			Priv    sql.NullString
+			Alipub  sql.NullString
 		}
 		var rows []pcRow
 		if err := db.Table("payment_configs").Select("id, pay_type, merchant_private_key, alipay_public_key").Scan(&rows).Error; err == nil {
