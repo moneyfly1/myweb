@@ -384,8 +384,9 @@ func (s *Scheduler) cleanupExpiredDataNow() {
 		}
 	}
 	auditRetention := now.Add(-time.Duration(auditDays) * 24 * time.Hour)
-	// 审计日志清理保护登录/注册/签到等安全关键记录
-	if result := s.db.Where("created_at < ? AND action_type NOT IN ?", auditRetention, []string{"login", "register", "checkin"}).Delete(&models.AuditLog{}); result.RowsAffected > 0 {
+	// 审计日志清理保护安全关键记录：security_* 前缀 + login/register/checkin + 清理痕迹
+	if result := s.db.Where("created_at < ? AND action_type NOT LIKE ? AND action_type NOT IN ?",
+		auditRetention, "security_%", []string{"login", "register", "checkin", "clear_audit_logs", "data_cleanup"}).Delete(&models.AuditLog{}); result.RowsAffected > 0 {
 		log.Printf("过期审计日志清理完成，删除 %d 条（保留 %d 天）", result.RowsAffected, auditDays)
 	}
 

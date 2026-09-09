@@ -310,10 +310,9 @@ async function fetch() {
     const res = await adminAPI.getAuditLogs(params)
     const data = res?.data?.data ?? res?.data ?? {}
     const raw = data.logs || []
-    list.value = raw.filter(row => {
-      const t = row.action_type || ''
-      return !t.startsWith('scheduler_') && t !== 'system_error' && !t.startsWith('business_') && !t.startsWith('security_')
-    })
+    // 后端 GetAuditLogs 已排除 security_/business_/scheduler_/system_error，
+    // 这里不再二次过滤，避免 total 与列表条数不一致导致分页错乱。
+    list.value = raw || []
     total.value = data.total || 0
   } catch {
     list.value = []

@@ -347,6 +347,10 @@ func CancelRecharge(c *gin.Context) {
 		})
 	}
 
+	// 用户取消充值订单审计
+	utils.CreateAuditLogSimple(c, "cancel_recharge", "recharge", record.ID,
+		fmt.Sprintf("用户取消充值订单: %s, 金额: %.2f", record.OrderNo, record.Amount))
+
 	utils.SuccessResponse(c, http.StatusOK, "充值订单已取消", record)
 }
 

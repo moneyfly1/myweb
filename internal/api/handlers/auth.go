@@ -64,29 +64,43 @@ func Register(c *gin.Context) {
 
 	req.Email = utils.NormalizeEmail(req.Email)
 	db := database.GetDB()
+	regIP := utils.GetRealClientIP(c)
+	regUA := c.GetHeader("User-Agent")
+
+	// logRegisterFailed 记录注册失败（供日志管理"注册日志-失败"筛选）
+	logRegisterFailed := func(reason string) {
+		go func() {
+			_ = utils.CreateRegistrationLogFailed(req.Email, regIP, regUA, reason)
+		}()
+	}
 
 	// 验证用户名格式（2-20个字符，支持字母、数字、下划线和中文）
 	if !utils.ValidateUsername(req.Username) {
+		logRegisterFailed("用户名格式不正确")
 		utils.ErrorResponse(c, http.StatusBadRequest, "用户名格式不正确，长度为2-20个字符，只能包含字母、数字、下划线和中文", nil)
 		return
 	}
 
 	var count int64
 	if db.Model(&models.User{}).Where("LOWER(email) = ?", req.Email).Count(&count); count > 0 {
+		logRegisterFailed("邮箱已注册")
 		utils.ErrorResponse(c, http.StatusBadRequest, "该邮箱已注册，请直接登录。如忘记密码，请点击找回密码。", nil)
 		return
 	}
 	if db.Model(&models.User{}).Where("username = ?", req.Username).Count(&count); count > 0 {
+		logRegisterFailed("用户名已被使用")
 		utils.ErrorResponse(c, http.StatusBadRequest, "用户名已被使用，请选择其他用户名", nil)
 		return
 	}
 
 	if valid, msg := auth.ValidatePasswordStrength(req.Password, getMinPasswordLength(db)); !valid {
+		logRegisterFailed("密码强度不足")
 		utils.ErrorResponse(c, http.StatusBadRequest, msg, nil)
 		return
 	}
 
 	if err := verifyRegisterCode(db, req.Email, req.VerificationCode); err != nil {
+		logRegisterFailed("验证码错误: " + err.Error())
 		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
@@ -95,6 +109,7 @@ func Register(c *gin.Context) {
 	var inviteConfig models.SystemConfig
 	if err := db.Where("key = ? AND category = ?", "invite_code_required", "registration").First(&inviteConfig).Error; err == nil {
 		if inviteConfig.Value == "true" && req.InviteCode == "" {
+			logRegisterFailed("缺少邀请码")
 			utils.ErrorResponse(c, http.StatusBadRequest, "当前注册需要邀请码，请输入有效的邀请码", nil)
 			return
 		}
@@ -136,6 +151,7 @@ func Register(c *gin.Context) {
 
 	if err != nil {
 		errMsg := err.Error()
+		logRegisterFailed("注册事务失败: " + errMsg)
 		if strings.Contains(errMsg, "邮箱已注册") || strings.Contains(errMsg, "用户名已被使用") {
 			utils.ErrorResponse(c, http.StatusBadRequest, errMsg, nil)
 		} else {
@@ -545,6 +561,19 @@ func handleLoginFailure(c *gin.Context, ip, identifier, reason string, err error
 		severity = "HIGH"
 	}
 
+	// 持久化登录失败到 login_attempts 表（供"登录失败记录"查询与 30 天保留清理）
+	go func(ident, ipAddr, ua string) {
+		attempt := models.LoginAttempt{
+			Username:  ident,
+			IPAddress: database.NullString(ipAddr),
+			UserAgent: database.NullString(ua),
+			Success:   false,
+		}
+		if err := database.GetDB().Create(&attempt).Error; err != nil {
+			utils.LogErrorMsg("写入登录失败记录失败: %v", err)
+		}
+	}(identifier, ip, c.GetHeader("User-Agent"))
+
 	utils.CreateSecurityLog(c, "login_failed", severity,
 		fmt.Sprintf("登录失败: %s (IP: %s)", reason, ip),
 		map[string]interface{}{
@@ -746,14 +775,9 @@ func finalizeLogin(c *gin.Context, db *gorm.DB, user *models.User, ipAddress str
 	c.Set("user_id", user.ID)
 	utils.SetResponseStatus(c, http.StatusOK)
 
-	utils.CreateSecurityLog(c, "login_success", "INFO",
-		fmt.Sprintf("登录成功: 用户 %s (IP: %s)", user.Username, ipAddress),
-		map[string]interface{}{"user_id": user.ID, "username": user.Username, "ip": ipAddress})
-	if user.IsAdmin {
-		utils.CreateSecurityLog(c, "admin_login_success", "INFO",
-			fmt.Sprintf("管理员登录: %s (IP: %s)", user.Username, ipAddress),
-			map[string]interface{}{"user_id": user.ID, "username": user.Username, "ip": ipAddress})
-	}
+	// 登录成功只记一条审计（避免同一事件重复写多条 audit_logs）：
+	// 以 CreateAuditLogSimpleFast("login") 为准——仪表盘活动流与日志清理保护
+	// 均依赖该类型；管理员身份可通过用户名分辨，无需额外 security_* 记录。
 	utils.CreateAuditLogSimpleFast(c, "login", "auth", user.ID, fmt.Sprintf("用户登录: %s", user.Username))
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{

@@ -448,7 +448,8 @@ func formatLogForCSV(db *gorm.DB, log models.AuditLog) string {
 		message = log.ActionType
 	}
 
-	// CSV Escape
+	// CSV Escape（含公式注入防护：Excel 打开时 = + - @ 前缀会执行）
+	message = utils.SanitizeCSVField(message)
 	message = strings.ReplaceAll(message, "\"", "\"\"")
 	message = strings.ReplaceAll(message, "\n", " ")
 	message = strings.ReplaceAll(message, "\r", " ")
@@ -648,7 +649,12 @@ func GetAuditLogs(c *gin.Context) {
 	p := utils.ParsePagination(c)
 	db := database.GetDB()
 
-	query := db.Model(&models.AuditLog{})
+	// 审计日志页只展示"管理员/用户操作"审计，排除安全/业务/定时/系统错误等
+	// （此前在前端二次 filter 导致分页错乱：total 是全量、列表是过滤后子集）。
+	// 安全事件见"系统日志"；业务/定时任务/系统错误见各专门日志入口。
+	query := db.Model(&models.AuditLog{}).
+		Where("audit_logs.action_type NOT LIKE ? AND audit_logs.action_type NOT LIKE ? AND audit_logs.action_type NOT LIKE ? AND audit_logs.action_type <> ?",
+			"security_%", "business_%", "scheduler_%", "system_error")
 	query = applyAuditLogFilters(query, c)
 
 	var total int64
@@ -860,11 +866,18 @@ func ExportLogs(c *gin.Context) {
 	c.Data(http.StatusOK, "text/csv; charset=utf-8", []byte(csvContent.String()))
 }
 
+// auditLogProtectedPredicate 审计日志清理时"必须保留"的谓词：
+// 安全事件（security_* 前缀）+ 登录/注册/签到 + 清理行为本身（clear_audit_logs/data_cleanup），
+// 避免安全关键记录与"谁清空过日志"的证据被误删。
+func auditLogProtectedPredicate() string {
+	return "action_type NOT LIKE 'security_%' AND action_type NOT IN ('login','register','checkin','clear_audit_logs','data_cleanup')"
+}
+
 func ClearLogs(c *gin.Context) {
 	db := database.GetDB()
 
-	// 仅清理"系统/审计"类日志，避免误删业务关键日志
-	result := db.Where("action_type NOT IN ?", []string{"login", "register", "checkin"}).Delete(&models.AuditLog{})
+	// 仅清理"系统/审计"类日志；保留安全关键记录（login/register/checkin + security_* 前缀）
+	result := db.Where(auditLogProtectedPredicate()).Delete(&models.AuditLog{})
 	if result.Error != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "清空日志失败", result.Error)
 		return

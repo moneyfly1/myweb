@@ -599,6 +599,14 @@ func ReplyTicket(c *gin.Context) {
 	// 异步执行通知机制
 	asyncNotifyTicketReply(db, &ticket, user, content, isAdmin)
 
+	// 工单回复审计（区分用户/管理员）
+	actor := "用户"
+	if isAdmin {
+		actor = "管理员"
+	}
+	utils.CreateAuditLogSimple(c, "reply_ticket", "ticket", ticket.ID,
+		fmt.Sprintf("%s回复工单: %s (#%s)", actor, ticket.Title, ticket.TicketNo))
+
 	utils.SuccessResponse(c, http.StatusCreated, "", reply)
 }
 
