@@ -208,6 +208,22 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 			db.Model(&models.Subscription{}).Where("id = ?", subID).
 				UpdateColumn(fmt.Sprintf("%s_count", safeSubTypeForDB(subType)), gorm.Expr(fmt.Sprintf("%s_count + 1", safeSubTypeForDB(subType))))
 		}(subscription.ID)
+
+		// 记录订阅访问日志（与 GetSubscriptionConfig / GetUniversalSubscription 对齐，
+		// 覆盖 XBoard 兼容端点 / 自研 MoneyFly 客户端等走此入口的订阅拉取）
+		go func(subID, userID uint, ua, ip, st string) {
+			dm := device.NewDeviceManager()
+			devInfo := dm.ParseUserAgent(ua)
+			logData := map[string]interface{}{
+				"type":          st,
+				"software_name": devInfo.SoftwareName,
+				"software_ver":  devInfo.SoftwareVersion,
+				"os_name":       devInfo.OSName,
+				"device_name":   devInfo.DeviceName,
+			}
+			_ = utils.CreateSubscriptionLog(subID, userID, "access", "user", nil, ip, nil, logData,
+				fmt.Sprintf("[%s] %s %s", st, devInfo.SoftwareName, devInfo.DeviceName))
+		}(subscription.ID, subscription.UserID, userAgent, clientIP, subType)
 	}
 
 	// 生成配置
