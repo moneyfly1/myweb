@@ -1088,6 +1088,10 @@ func CancelOrderByNo(c *gin.Context) {
 		return
 	}
 
+	// 用户取消订单审计（与管理员批量取消对称）
+	utils.CreateAuditLogSimple(c, "cancel_order", "order", order.ID,
+		fmt.Sprintf("用户取消订单: %s, 金额: %.2f", order.OrderNo, order.Amount))
+
 	utils.SuccessResponse(c, http.StatusOK, "订单已取消", order)
 }
 

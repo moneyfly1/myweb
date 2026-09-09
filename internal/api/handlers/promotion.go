@@ -294,6 +294,7 @@ func ParticipatePromotion(c *gin.Context) {
 			}
 
 			days := int(promotion.DiscountValue)
+			oldExpire := subscription.ExpireTime
 			if subscription.ExpireTime.Before(now) {
 				subscription.ExpireTime = now.AddDate(0, 0, days)
 			} else {
@@ -303,6 +304,17 @@ func ParticipatePromotion(c *gin.Context) {
 			if err := tx.Save(&subscription).Error; err != nil {
 				return fmt.Errorf("赠送天数失败: %v", err)
 			}
+
+			// 活动赠送天数 → 写订阅变更日志（可追溯订阅到期时间变更）
+			before := map[string]interface{}{"expire_time": utils.FormatBeijingTime(oldExpire)}
+			after := map[string]interface{}{
+				"expire_time": utils.FormatBeijingTime(subscription.ExpireTime),
+				"added_days":  days,
+				"promotion":   promotion.Name,
+			}
+			_ = utils.CreateSubscriptionLog(subscription.ID, user.ID, "update", "user", nil,
+				utils.GetRealClientIP(c), before, after,
+				fmt.Sprintf("营销活动赠送订阅天数 %d 天（活动: %s）", days, promotion.Name))
 
 			participation.RewardType = "free_days"
 
