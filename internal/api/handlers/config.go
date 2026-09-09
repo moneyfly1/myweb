@@ -353,8 +353,8 @@ func GetAdminSettings(c *gin.Context) {
 			"auto_disable_timeout": "true",
 		},
 		"protocol_filter": {
-			"clash_protocols":     []string{"vmess", "vless", "trojan", "ss", "ssr", "hysteria", "hysteria2", "tuic", "anytls", "socks5", "http", "wireguard"},
-			"universal_protocols": []string{"vmess", "vless", "trojan", "ss", "ssr", "hysteria", "hysteria2", "tuic", "anytls", "socks", "socks5", "http", "wireguard"},
+			"clash_protocols":                  []string{"vmess", "vless", "trojan", "ss", "ssr", "hysteria", "hysteria2", "tuic", "anytls", "socks5", "http", "wireguard"},
+			"universal_protocols":              []string{"vmess", "vless", "trojan", "ss", "ssr", "hysteria", "hysteria2", "tuic", "anytls", "socks", "socks5", "http", "wireguard"},
 			"client_capability_filter_enabled": true, // 客户端版本过滤总开关（默认开启；DB 有值时合并覆盖）
 		},
 		"custom_node":        {},
