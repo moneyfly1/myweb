@@ -60,7 +60,7 @@ var subscriptionRequestProfiles = []subscriptionRequestProfile{
 }
 
 // 将15个单独的正则合并为一个，极大提高匹配性能
-var nodeLinkPattern = regexp.MustCompile(`(?i)(?:^|\s)((?:vmess|vless|trojan|ssr?|hysteria2?|tuic|naive(?:\+https)?|anytls|socks5?|https?|wg)://[^\s]+)`)
+var nodeLinkPattern = regexp.MustCompile(`(?i)(?:^|\s)((?:vmess|vless|trojan|ssr?|hysteria2?|hy2|tuic|naive(?:\+https)?|anytls|socks5?|https?|wg)://[^\s]+)`)
 
 var supportedClashTypes = map[string]bool{
 	"vmess": true, "vless": true, "trojan": true, "ss": true, "ssr": true,
@@ -857,7 +857,7 @@ func (s *ConfigUpdateService) extractNodeLinks(content string) []string {
 	var links, invalidLinks []string
 	matched := make([]bool, len(content))
 
-	prefixes := []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://", "hysteria://", "hysteria2://", "tuic://", "naive+https://", "naive://", "anytls://", "socks5://", "socks://", "http://", "https://", "wg://"}
+	prefixes := []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://", "hysteria://", "hysteria2://", "hy2://", "tuic://", "naive+https://", "naive://", "anytls://", "socks5://", "socks://", "http://", "https://", "wg://"}
 	start := 0
 	for {
 		idx := strings.Index(content[start:], "vmess://")
@@ -1021,7 +1021,7 @@ func (s *ConfigUpdateService) isValidNodeLink(link string) bool {
 		return false
 	case "trojan", "tuic", "naive+https", "http", "https":
 		return strings.Contains(body, "@")
-	case "hysteria", "hysteria2":
+	case "hysteria", "hysteria2", "hy2":
 		return strings.Contains(body, ":")
 	default:
 		return true

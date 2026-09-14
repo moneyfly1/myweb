@@ -37,6 +37,7 @@ var protocolParsers = map[string]nodeParser{
 	"ssr://":         parseSSR,
 	"hysteria://":    parseHysteria,
 	"hysteria2://":   parseHysteria2,
+	"hy2://":         parseHysteria2, // hy2:// 是 Hysteria2 的通用简写，订阅源广泛使用
 	"tuic://":        parseTUIC,
 	"naive+https://": parseNaive,
 	"naive://":       parseNaive,
@@ -847,7 +848,7 @@ func TryDecodeNodeList(content string) string {
 }
 
 func containsNodeLinks(s string) bool {
-	for _, p := range []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://", "hysteria2://", "tuic://", "socks://", "socks5://", "hysteria://", "naive+https://", "naive://", "anytls://", "wg://"} {
+	for _, p := range []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://", "hysteria2://", "hy2://", "tuic://", "socks://", "socks5://", "hysteria://", "naive+https://", "naive://", "anytls://", "wg://"} {
 		if strings.Contains(s, p) {
 			return true
 		}
