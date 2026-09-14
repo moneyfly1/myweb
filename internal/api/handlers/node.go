@@ -1282,6 +1282,6 @@ func importNodesFromClashConfig(configStr string) (int, error) {
 			return processAndImportLinks(db, links), nil
 		}
 	}
-	linkPattern := regexp.MustCompile(`(vmess|vless|trojan|ss|ssr|hysteria2?)://[^\s\n]+`)
+	linkPattern := regexp.MustCompile(`(vmess|vless|trojan|ss|ssr|hysteria2?|hy2)://[^\s\n]+`)
 	return processAndImportLinks(db, linkPattern.FindAllString(configStr, -1)), nil
 }
