@@ -431,99 +431,56 @@
             <div>
               <h3 class="card-title">
                 <el-icon class="title-icon"><Reading /></el-icon>
-                软件下载与教程
+                客户端下载与教程
               </h3>
             </div>
-            <router-link to="/help">
-              <el-button size="small">全部教程</el-button>
+            <router-link to="/tutorials">
+              <el-button size="small">客户端中心</el-button>
             </router-link>
           </div>
           <div class="card-body">
-            <div class="dashboard-client-list">
-              <div
-                v-for="platform in dashboardClientGroups"
-                :key="platform.name"
-                class="ticket-item dashboard-client-row"
-              >
-                <div>
-                  <div class="item-title">{{ platform.name }}：{{ platform.clientNames }}</div>
-                  <div class="item-meta">立即下载 · 安装教程</div>
+            <!-- 只保留"当前系统"的快捷下载，完整客户端清单与教程统一在客户端中心 -->
+            <div class="ticket-item dashboard-client-row">
+              <div>
+                <div class="item-title">
+                  当前系统（{{ currentPlatformLabel }}）推荐：{{ quickClientNames }}
                 </div>
-                <div class="button-row">
-                  <el-dropdown
-                    v-if="platform.apps.length > 1"
-                    trigger="click"
-                    @command="downloadDashboardClient"
-                  >
-                    <el-button type="primary" size="small">
-                      下载
-                      <el-icon><ArrowDown /></el-icon>
-                    </el-button>
-                    <template #dropdown>
-                      <el-dropdown-menu>
-                        <template v-for="app in platform.apps" :key="app.downloadKey">
-                          <!-- macOS 且配置了 Apple 芯片版：拆分为两个架构选项 -->
-                          <template v-if="isMacPlatform(platform) && app.downloadKeyArm">
-                            <el-dropdown-item
-                              :command="app.downloadKeyArm"
-                              :divided="true"
-                            >
-                              <span class="client-download-option">
-                                {{ app.name }}（Apple 芯片）
-                                <el-tag size="small" type="success" effect="plain">ARM</el-tag>
-                              </span>
-                            </el-dropdown-item>
-                            <el-dropdown-item :command="app.downloadKey">
-                              <span class="client-download-option">
-                                {{ app.name }}（Intel）
-                                <el-tag size="small" type="info" effect="plain">x64</el-tag>
-                              </span>
-                            </el-dropdown-item>
-                          </template>
-                          <el-dropdown-item v-else :command="app.downloadKey">
-                            {{ app.name }}<template v-if="appVersion(app)">（v{{ appVersion(app) }}）</template>
-                          </el-dropdown-item>
-                        </template>
-                      </el-dropdown-menu>
-                    </template>
-                  </el-dropdown>
-                  <el-button
-                    v-else
-                    type="primary"
-                    size="small"
-                    @click="downloadDashboardClient(platform.apps[0].downloadKey)"
-                  >
+                <div class="item-meta">
+                  一键下载客户端 · 安装与导入订阅教程在「客户端中心」
+                </div>
+              </div>
+              <div class="button-row">
+                <el-dropdown
+                  v-if="quickDownloadOptions.length > 1"
+                  trigger="click"
+                  @command="downloadQuickClient"
+                >
+                  <el-button type="primary" size="small">
                     下载
+                    <el-icon><ArrowDown /></el-icon>
                   </el-button>
-                  <el-dropdown
-                    v-if="platform.apps.length > 1"
-                    trigger="click"
-                    @command="openDashboardClientTutorial"
-                  >
-                    <el-button size="small">
-                      教程
-                      <el-icon><ArrowDown /></el-icon>
-                    </el-button>
-                    <template #dropdown>
-                      <el-dropdown-menu>
-                        <el-dropdown-item
-                          v-for="app in platform.apps"
-                          :key="app.clientId"
-                          :command="app.clientId"
-                        >
-                          {{ app.name }}
-                        </el-dropdown-item>
-                      </el-dropdown-menu>
-                    </template>
-                  </el-dropdown>
-                  <el-button
-                    v-else
-                    size="small"
-                    @click="openDashboardClientTutorial(platform.apps[0].clientId)"
-                  >
-                    教程
-                  </el-button>
-                </div>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item
+                        v-for="option in quickDownloadOptions"
+                        :key="option.client.id"
+                        :command="option.client.id"
+                      >
+                        {{ option.label }}
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+                <el-button
+                  v-else-if="quickDownloadOptions.length === 1"
+                  type="primary"
+                  size="small"
+                  @click="downloadQuickClient(quickDownloadOptions[0].client.id)"
+                >
+                  下载
+                </el-button>
+                <el-button size="small" @click="goClientCenter">全部客户端</el-button>
+                <el-button size="small" plain @click="goKnowledge">知识库</el-button>
               </div>
             </div>
           </div>
@@ -667,6 +624,13 @@ import { safeNavigate, safeOpen, safeOpenApp } from '@/utils/safeOpen'
 import { resolvePanDownloadUrl, pickConfiguredUrl } from '@/utils/githubDownload'
 import MoneyFlyDownloadPanel from '@/components/moneyfly/MoneyFlyDownloadPanel.vue'
 import { MONEYFLY_BRAND, isMoneyflyVisible, readMoneyflyConfig } from '@/utils/moneyflyClient'
+import { openClientDownload } from '@/utils/clientDownload'
+import {
+  CLIENT_PLATFORMS,
+  clientsForPlatform,
+  clientSupportsArchSplit,
+  getClientById,
+} from '@/data/clientRegistry'
 import { sanitizeBasicHtml, sanitizePlainText } from '@/utils/sanitizeHtml'
 import { useMobile } from '@/composables/useMobile'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
@@ -783,147 +747,6 @@ const softwareConfig = ref({
 })
 const showQRCode = ref(false)
 const showUpgradeDrawer = ref(false)
-const platforms = ref([
-  {
-    name: 'Windows',
-    icon: 'windows',
-    apps: [
-      {
-        name: 'Clash for Windows',
-        version: 'Latest',
-        downloadKey: 'clash_windows_url',
-        clientId: 'clash-windows'
-      },
-      {
-        name: 'V2rayN',
-        version: 'Latest',
-        downloadKey: 'v2rayn_url',
-        clientId: 'v2rayn',
-        githubKey: 'v2rayn'
-      },
-      {
-        name: 'Clash Part',
-        version: 'Latest',
-        downloadKey: 'clash_party_windows_url',
-        clientId: 'clash-party',
-        githubKey: 'clash-party'
-      },
-      {
-        name: 'Clash Verge',
-        version: 'Latest',
-        downloadKey: 'clash_verge_windows_url',
-        clientId: 'clash-verge',
-        githubKey: 'clash-verge'
-      },
-      {
-        name: 'Hiddify',
-        version: 'Latest',
-        downloadKey: 'hiddify_windows_url',
-        clientId: 'hiddify',
-        githubKey: 'hiddify'
-      },
-      {
-        name: 'FlClash',
-        version: 'Latest',
-        downloadKey: 'flash_windows_url',
-        clientId: 'flclash',
-        githubKey: 'flclash'
-      }
-    ]
-  },
-  {
-    name: 'Android',
-    icon: 'android',
-    apps: [
-      {
-        name: 'Clash Meta',
-        version: 'Latest',
-        downloadKey: 'clash_android_url',
-        clientId: 'clash-meta',
-        githubKey: 'clash-meta'
-      },
-      {
-        name: 'V2rayNG',
-        version: 'Latest',
-        downloadKey: 'v2rayng_url',
-        clientId: 'v2rayng',
-        githubKey: 'v2rayng'
-      },
-      {
-        name: 'Hiddify',
-        version: 'Latest',
-        downloadKey: 'hiddify_android_url',
-        clientId: 'hiddify',
-        githubKey: 'hiddify'
-      },
-      {
-        name: 'FlClash',
-        version: 'Latest',
-        downloadKey: 'flash_android_url',
-        clientId: 'flclash',
-        githubKey: 'flclash'
-      }
-    ]
-  },
-  {
-    name: 'macOS',
-    icon: 'macos',
-    apps: [
-      {
-        name: 'FlClash',
-        version: 'Latest',
-        downloadKey: 'flash_macos_url',
-        downloadKeyArm: 'flash_macos_arm_url',
-        clientId: 'flclash',
-        githubKey: 'flclash'
-      },
-      {
-        name: 'Clash Part',
-        version: 'Latest',
-        downloadKey: 'clash_party_macos_url',
-        downloadKeyArm: 'clash_party_macos_arm_url',
-        clientId: 'clash-party',
-        githubKey: 'clash-party'
-      },
-      {
-        name: 'Clash Verge',
-        version: 'Latest',
-        downloadKey: 'clash_verge_macos_url',
-        downloadKeyArm: 'clash_verge_macos_arm_url',
-        clientId: 'clash-verge',
-        githubKey: 'clash-verge'
-      },
-      {
-        name: 'V2rayN',
-        version: 'Latest',
-        downloadKey: 'v2rayn_macos_url',
-        downloadKeyArm: 'v2rayn_macos_arm_url',
-        clientId: 'v2rayn',
-        githubKey: 'v2rayn'
-      },
-      {
-        name: 'Hiddify',
-        version: 'Latest',
-        downloadKey: 'hiddify_macos_url',
-        downloadKeyArm: 'hiddify_macos_arm_url',
-        clientId: 'hiddify',
-        githubKey: 'hiddify'
-      }
-    ]
-  },
-  {
-    name: 'iOS',
-    icon: 'ios',
-    apps: [
-      {
-        name: 'Shadowrocket',
-        version: 'Latest',
-        downloadKey: 'shadowrocket_url',
-        clientId: 'shadowrocket'
-      }
-    ]
-  }
-])
 const qrCodeUrl = ref('')
 async function generateSubQRCode() {
   const data = userInfo.value.qrcodeUrl || userInfo.value.universalUrl
@@ -993,11 +816,6 @@ const dashboardUpgradeSubscription = computed(() => ({
   expire_time: subscriptionInfo.value.expiryDate || userInfo.value.expire_time,
   expiryDate: subscriptionInfo.value.expiryDate || userInfo.value.expire_time
 }))
-
-const dashboardClientGroups = computed(() => platforms.value.map(platform => ({
-  ...platform,
-  clientNames: (platform.apps || []).map(app => app.name).join(' / ')
-})).filter(platform => platform.apps?.length))
 
 const dashboardRemainingDays = computed(() => {
   const days = getRemainingDays(subscriptionInfo.value.expiryDate || userInfo.value.expire_time || userInfo.value.expiryDate)
@@ -1373,123 +1191,44 @@ const loadSoftwareConfig = async () => {
     }
   } catch (error) {
     }
-  try {
-    const vRes = await fetch('/api/v1/software/versions')
-    const vData = await vRes.json()
-    const map = {}
-    ;(vData?.data?.list || []).forEach(item => {
-      map[item.key] = item.version
-    })
-    softwareVersions.value = map
-  } catch (error) {
-    // 版本信息可选
-  }
 }
-const softwareVersions = ref({})
-const appVersion = (app) => {
-  if (!app) return ''
-  return softwareVersions.value[app.downloadKey] || softwareVersions.value[app.downloadKeyArm] || ''
+// ===== 客户端下载（唯一数据源：data/clientRegistry.js + utils/clientDownload.js）=====
+// 说明：完整的客户端清单与安装教程已统一收敛到「客户端中心」(/tutorials)，
+// 仪表盘这里只给"当前系统"的快捷下载，避免第四份客户端列表到处漂移。
+const currentPlatformKey = computed(() => {
+  const ua = (navigator.userAgent || '').toLowerCase()
+  if (ua.includes('android')) return 'android'
+  if (/iphone|ipad|ipod/.test(ua)) return 'ios'
+  if (ua.includes('mac os') || ua.includes('macintosh')) return 'macos'
+  return 'windows'
+})
+const currentPlatformLabel = computed(
+  () => CLIENT_PLATFORMS.find(p => p.key === currentPlatformKey.value)?.label || '当前系统'
+)
+// 当前平台的推荐客户端（自研优先，其次注册表顺序），最多给 3 个可选
+const quickClients = computed(() =>
+  clientsForPlatform(currentPlatformKey.value).slice(0, 3)
+)
+const quickClientNames = computed(() =>
+  quickClients.value.map(c => c.name).join(' / ') || '暂无'
+)
+const quickDownloadOptions = computed(() =>
+  quickClients.value.map(client => ({
+    client,
+    label: clientSupportsArchSplit(client, currentPlatformKey.value)
+      ? `${client.name}（Apple 芯片 / Intel 由客户端中心选择）`
+      : client.name,
+  }))
+)
+const downloadQuickClient = async (clientId) => {
+  const client = getClientById(clientId)
+  await openClientDownload(client, {
+    softwareConfig: softwareConfig.value,
+    os: currentPlatformKey.value,
+  })
 }
-const downloadApp = async (appName) => {
-  const clientKeyMap = {
-    'clash_windows_url': null, // Clash for Windows 使用配置的链接
-    'v2rayn_url': 'v2rayn',
-    'clash_party_windows_url': 'clash-party',
-    'clash_party_macos_url': 'clash-party',
-    'clash_party_macos_arm_url': 'clash-party',
-    'v2rayn_macos_url': 'v2rayn',
-    'v2rayn_macos_arm_url': 'v2rayn',
-    'clash_verge_windows_url': 'clash-verge',
-    'clash_verge_macos_url': 'clash-verge',
-    'clash_verge_macos_arm_url': 'clash-verge',
-    'hiddify_windows_url': 'hiddify',
-    'hiddify_android_url': 'hiddify',
-    'hiddify_macos_url': 'hiddify',
-    'hiddify_macos_arm_url': 'hiddify',
-    'flash_windows_url': 'flclash',
-    'flash_android_url': 'flclash',
-    'flash_macos_url': 'flclash',
-    'flash_macos_arm_url': 'flclash',
-    'clash_android_url': null, // Clash Meta 使用配置的链接
-    'v2rayng_url': 'v2rayng',
-    'shadowrocket_url': null // Shadowrocket 使用 App Store 链接
-  }
-  const clientKey = clientKeyMap[appName]
-  // 用户显式选择的下载键：Apple 芯片键（*_macos_arm_url）只匹配 arm 配置；Intel 键只匹配 intel 配置。
-  // 这样用户在 Apple 芯片 Mac 上也能手动选 Intel 版（或反之），不被系统架构自动覆盖。
-  const isArmKey = /arm/i.test(appName)
-  const keys = [appName]
-  const configUrl = pickConfiguredUrl(keys, softwareConfig.value || {})
-  if (configUrl) {
-    safeOpen(resolvePanDownloadUrl(configUrl))
-    return
-  }
-  if (appName === 'shadowrocket_url') {
-    safeOpen('https://apps.apple.com/app/shadowrocket/id932747118')
-    return
-  }
-  if (clientKey) {
-    try {
-      ElMessage.info('正在获取最新下载链接...')
-      const { getClientDownloadUrl, getClientReleasesUrl } = await import('@/utils/githubDownload')
-      const forcedArch = isArmKey ? 'apple' : null
-      const downloadUrl = await getClientDownloadUrl(clientKey, softwareConfig.value || {}, forcedArch)
-      safeOpen(downloadUrl)
-      ElMessage.success('已打开下载页面')
-    } catch (error) {
-      console.error('获取下载链接失败:', error)
-      try {
-        const { getClientReleasesUrl } = await import('@/utils/githubDownload')
-        const releasesUrl = getClientReleasesUrl(clientKey)
-        if (releasesUrl) {
-          safeOpen(releasesUrl)
-          ElMessage.warning('已打开发布页面，请手动选择下载')
-        } else {
-          ElMessage.error('无法获取下载链接，请联系管理员')
-        }
-      } catch (err) {
-        ElMessage.error('下载链接获取失败，请联系管理员')
-      }
-    }
-  } else {
-    ElMessage.error('下载链接未配置，请联系管理员')
-  }
-}
-const openTutorial = (app) => {
-  const clientId = typeof app === 'string'
-    ? app.replace(/^\/help#?/, '').replace(/^#/, '')
-    : app?.clientId
-  if (clientId) {
-    router.push({ path: '/help', query: { client: clientId } })
-    return
-  }
-  router.push('/help')
-}
-const downloadDashboardClient = (downloadKey) => {
-  if (!downloadKey) {
-    ElMessage.error('下载链接未配置，请联系管理员')
-    return
-  }
-  downloadApp(downloadKey)
-}
-
-// ===== MoneyFly 自研客户端（官方推荐，置顶展示）=====
-// 渲染交给 MoneyFlyDownloadPanel（与帮助中心/软件教程共用同一套平台定义），
-// 这里只负责"是否展示"与卡片标题上的品牌信息。
-const moneyflyBrand = MONEYFLY_BRAND
-const moneyflyConfig = computed(() => readMoneyflyConfig(softwareConfig.value || {}))
-const moneyflyVisible = computed(() => isMoneyflyVisible(moneyflyConfig.value))
-// isMacPlatform 判断平台是否为 macOS（用于拆分 Apple 芯片 / Intel 下载选项）
-const isMacPlatform = (platform) => {
-  return platform && String(platform.name || '').toLowerCase() === 'macos'
-}
-const openDashboardClientTutorial = (clientId) => {
-  if (!clientId) {
-    router.push('/help')
-    return
-  }
-  openTutorial(clientId)
-}
+const goClientCenter = () => router.push('/tutorials')
+const goKnowledge = () => router.push('/knowledge')
 const goToPackages = () => {
   router.push('/packages')
 }
