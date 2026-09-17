@@ -255,6 +255,11 @@ func UpdateSystemConfig(c *gin.Context) {
 		err := db.Transaction(func(tx *gorm.DB) error {
 			for k, v := range req {
 				val := fmt.Sprintf("%v", v)
+				// 脱敏回显保护：前端拿到 ****** 后原样提交时必须跳过，
+				// 否则真实密钥会被占位符覆盖（与 /admin/settings 的处理保持一致）
+				if isSensitiveConfigKey(k) && isMaskedSecretPlaceholder(val) {
+					continue
+				}
 				// Assuming 'key' is unique enough or schema allows this Upsert
 				conf := models.SystemConfig{Key: k, Value: val, Category: CatSystem}
 				ensureSystemConfigMetadata(&conf, v)
@@ -287,6 +292,12 @@ func UpdateSystemConfig(c *gin.Context) {
 
 	if strings.TrimSpace(key) == "" || key == "batch" {
 		utils.ErrorResponse(c, http.StatusBadRequest, "配置 key 不能为空", nil)
+		return
+	}
+
+	// 脱敏回显保护：值为 ****** 时保持原密钥不变
+	if isSensitiveConfigKey(key) && isMaskedSecretPlaceholder(req.Value) {
+		utils.SuccessResponse(c, http.StatusOK, "已保留原密钥（未修改）", nil)
 		return
 	}
 
@@ -522,6 +533,14 @@ func GetAdminSettings(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", settings)
 }
 
+// sensitiveConfigKeySuffixes 明确的密钥类后缀。
+// 用后缀而不是"包含 key/token 子串"，避免把 min_password_length（长度配置）、
+// admin_notify_password_reset（开关）、filter_keywords（关键词列表）这类非密钥项误脱敏。
+var sensitiveConfigKeySuffixes = []string{
+	"_password", "_token", "_secret", "_private_key", "_public_key",
+	"_api_key", "_secret_key", "_device_key",
+}
+
 // isSensitiveConfigKey 判断配置键是否属于密钥/凭据类，读取接口需脱敏、保存接口需跳过掩码。
 func isSensitiveConfigKey(key string) bool {
 	switch key {
@@ -531,11 +550,26 @@ func isSensitiveConfigKey(key string) bool {
 		"wechat_api_key", "paypal_secret", "stripe_secret_key",
 		"merchant_private_key", "secret_key", "jwt_secret_key",
 		"api_token", "access_token", "refresh_token", "webhook_secret",
-		"telegram_bot_token", "bark_device_key":
+		"telegram_bot_token", "bark_device_key",
+		// 线上实际存在、且此前未被覆盖的密钥键（裸键名，无下划线前缀）
+		"email_password", "password", "token",
+		"aliyun_refresh_token", "aliyundrive_token",
+		"backup_aliyundrive_token", "backup_token", "webdav_password":
 		return true
-	default:
-		return false
 	}
+
+	lower := strings.ToLower(strings.TrimSpace(key))
+	for _, suffix := range sensitiveConfigKeySuffixes {
+		if strings.HasSuffix(lower, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// isMaskedSecretPlaceholder 判断传值是否为脱敏占位符（前端回显后原样提交的场景）
+func isMaskedSecretPlaceholder(value string) bool {
+	return strings.TrimSpace(value) == maskedSecretValue
 }
 
 func UpdateGeneralSettings(c *gin.Context)      { updateSettingsCommon(c, CatGeneral) }
