@@ -393,7 +393,7 @@
             </div>
             <div class="detail-field">
               <span class="field-label">折后应付</span>
-              <span class="field-value">{{ moneyField(extraValue(selectedOrder, 'payable_amount'), selectedOrder.final_amount, selectedOrder.amount) }}</span>
+              <span class="field-value">{{ moneyField(extraValue(selectedOrder, 'payable_amount'), selectedOrder.amount) }}</span>
             </div>
             <div class="detail-field">
               <span class="field-label">第三方实付</span>

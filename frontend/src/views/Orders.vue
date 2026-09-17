@@ -355,8 +355,10 @@
             <span class="value">{{ selectedOrder?.order_no }}</span>
           </div>
           <div class="info-row">
-            <span class="label">金额</span>
-            <span class="value payment-amount">{{ formatMoney(selectedOrder?.amount || 0) }}</span>
+            <span class="label">应付金额</span>
+            <!-- 支付弹窗展示"还需在线支付"金额（final_amount）；
+                 余额已全额抵扣时为 0，此时回退到订单折后价 -->
+            <span class="value payment-amount">{{ formatMoney(payableOnlineAmount) }}</span>
           </div>
         </div>
         <div class="qr-code-wrapper-compact">
@@ -452,6 +454,16 @@ export default {
     const detailDialogVisible = ref(false)
     const paymentQRVisible = ref(false)
     const selectedOrder = ref(null)
+    // payableOnlineAmount 支付弹窗展示的应付金额：优先"还需在线支付"(final_amount)，
+    // 为 0 时回退订单折后价，避免余额全额抵扣的订单显示 ¥0
+    const payableOnlineAmount = computed(() => {
+      const order = selectedOrder.value
+      if (!order) return 0
+      const stillDue = Number(order.final_amount)
+      if (Number.isFinite(stillDue) && stillDue > 0) return stillDue
+      const amount = Number(order.amount)
+      return Number.isFinite(amount) ? amount : 0
+    })
     const paymentQRCode = ref('')
     const paymentUrl = ref('')  // 存储原始支付URL，用于跳转支付宝App
     const isCheckingPayment = ref(false)

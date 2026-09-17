@@ -95,28 +95,15 @@ func resolvePackageInfo(order models.Order) (uint, string, interface{}) {
 }
 
 func formatOrderData(order models.Order) gin.H {
-	amount := order.Amount
-	if order.FinalAmount.Valid {
-		amount = order.FinalAmount.Float64
-	}
+	// 订单金额统一口径：折后价（models.Order.PaidAmount）。
+	// 此前这里手写"final + 创建时余额"，与其它页面各算一套；
+	// 余额支付订单的 final_amount 为 0，口径不统一就会显示 ¥0。
+	amount := order.PaidAmount()
 
-	var balanceUsed float64
-	var balanceDeducted bool
+	// extra_data 原样返回给前端（含余额抵扣、升级参数等），展示金额不要依赖它
 	var parsedExtraData map[string]interface{}
 	if order.ExtraData.Valid && order.ExtraData.String != "" {
-		if err := json.Unmarshal([]byte(order.ExtraData.String), &parsedExtraData); err == nil {
-			if balanceUsedVal, ok := parsedExtraData["balance_used"].(float64); ok {
-				balanceUsed = balanceUsedVal
-			}
-			if deductedVal, ok := parsedExtraData["balance_deducted"].(bool); ok {
-				balanceDeducted = deductedVal
-			}
-		}
-	}
-	// 仅当创建订单时余额已从 FinalAmount 中抵扣（balance_deducted=true）才加回展示；
-	// 支付环节使用余额（如 PayOrder 余额支付后写入的 balance_used）不会重复加回，避免金额翻倍。
-	if balanceUsed > 0 && balanceDeducted {
-		amount = utils.RoundFloat(amount+balanceUsed, 2)
+		_ = json.Unmarshal([]byte(order.ExtraData.String), &parsedExtraData)
 	}
 
 	paymentMethod := ""
@@ -236,8 +223,11 @@ func sendOrderCreatedNotifications(db *gorm.DB, orderNo string) {
 	}
 
 	createTime := utils.FormatBeijingTime(latestOrder.CreatedAt)
-	payAmount := latestOrder.Amount
-	if latestOrder.FinalAmount.Valid {
+	// 通知里展示订单金额，用成交口径；余额支付订单的 final_amount 为 0，
+	// 直接取会让通知显示"应付 ¥0"（历史 bug）。
+	// 若余额未覆盖全部金额，仍以"还需在线支付"为准更符合用户阅读预期。
+	payAmount := latestOrder.PaidAmount()
+	if latestOrder.BalanceUsed() > 0 && latestOrder.FinalAmount.Valid && latestOrder.FinalAmount.Float64 > 0 {
 		payAmount = latestOrder.FinalAmount.Float64
 	}
 	paymentMethod := "待选择"
