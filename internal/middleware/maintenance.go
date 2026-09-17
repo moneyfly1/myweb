@@ -84,13 +84,6 @@ func getMaintenanceConfig() *maintenanceCacheData {
 	return data
 }
 
-// InvalidateMaintenanceCache 供外部在修改维护配置时清除缓存
-func InvalidateMaintenanceCache() {
-	maintenanceCacheMu.Lock()
-	maintenanceCache = nil
-	maintenanceCacheMu.Unlock()
-}
-
 func MaintenanceMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path

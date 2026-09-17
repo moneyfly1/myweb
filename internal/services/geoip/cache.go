@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -112,38 +111,6 @@ func LocationDisplayOf(country, city, region string) string {
 		return country + ", " + region
 	}
 	return country
-}
-
-// ClearLocationCache 清除指定 IP 的缓存
-func ClearLocationCache(ipAddress string) error {
-	if !cache.IsRedisEnabled() {
-		return fmt.Errorf("redis not enabled")
-	}
-	cacheKey := fmt.Sprintf("geoip:%s", ipAddress)
-	return cache.Del(cacheKey)
-}
-
-// WarmupCache 预热缓存（批量查询常见 IP）
-func WarmupCache(ipAddresses []string) {
-	if !cache.IsRedisEnabled() {
-		return
-	}
-
-	// 有界并发预热：限制同时进行的地理查询数量，避免 goroutine 风暴
-	const maxConcurrent = 10
-	sem := make(chan struct{}, maxConcurrent)
-	var wg sync.WaitGroup
-	for _, ip := range ipAddresses {
-		ip := ip
-		wg.Add(1)
-		sem <- struct{}{}
-		go func() {
-			defer wg.Done()
-			defer func() { <-sem }()
-			GetLocationWithCache(ip)
-		}()
-	}
-	wg.Wait()
 }
 
 // GetLocationWithFallbackCached 带缓存的详细地理位置查询（包含 Fallback）

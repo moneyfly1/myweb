@@ -38,7 +38,7 @@ export const ORDER_STATUS_MAP = {
 }
 
 // 工单状态映射
-export const TICKET_STATUS_MAP = {
+const TICKET_STATUS_MAP = {
   pending: { text: '待处理', type: 'warning' },
   processing: { text: '处理中', type: 'primary' },
   resolved: { text: '已解决', type: 'success' },
@@ -47,7 +47,7 @@ export const TICKET_STATUS_MAP = {
 }
 
 // 工单类型映射
-export const TICKET_TYPE_MAP = {
+const TICKET_TYPE_MAP = {
   technical: { text: '技术问题', type: 'primary' },
   billing: { text: '账单问题', type: 'warning' },
   account: { text: '账户问题', type: 'danger' },
@@ -55,7 +55,7 @@ export const TICKET_TYPE_MAP = {
 }
 
 // 工单优先级映射
-export const TICKET_PRIORITY_MAP = {
+const TICKET_PRIORITY_MAP = {
   low: { text: '低', type: 'info' },
   normal: { text: '普通', type: 'info' },
   high: { text: '高', type: 'warning' },
@@ -76,7 +76,7 @@ export const NODE_STATUS_MAP = {
 }
 
 // 自定义节点状态映射
-export const CUSTOM_NODE_STATUS_MAP = {
+const CUSTOM_NODE_STATUS_MAP = {
   active: { text: '活跃', type: 'success' },
   inactive: { text: '非活跃', type: 'info' },
   error: { text: '错误', type: 'danger' }
@@ -121,21 +121,15 @@ export const EMAIL_TYPE_MAP = {
   marketing: '营销推广'
 }
 
-// 套餐状态映射
-export const PACKAGE_STATUS_MAP = {
-  active: { text: '启用', type: 'success' },
-  inactive: { text: '禁用', type: 'danger' }
-}
-
 // 优惠券状态映射
-export const COUPON_STATUS_MAP = {
+const COUPON_STATUS_MAP = {
   active: { text: '有效', type: 'success' },
   inactive: { text: '无效', type: 'info' },
   expired: { text: '已过期', type: 'danger' }
 }
 
 // 佣金结算状态映射
-export const COMMISSION_STATUS_MAP = {
+const COMMISSION_STATUS_MAP = {
   pending: { text: '待结算', type: 'warning' },
   paid: { text: '已结算', type: 'success' },
   cancelled: { text: '已取消', type: 'info' }
@@ -157,7 +151,7 @@ export const ABNORMAL_TYPE_MAP = {
 }
 
 // 支付方式映射（文案）
-export const PAYMENT_METHOD_MAP = {
+const PAYMENT_METHOD_MAP = {
   alipay: '支付宝',
   wechat: '微信支付',
   wxpay: '微信支付',
@@ -180,7 +174,7 @@ export const PAYMENT_METHOD_MAP = {
 }
 
 // 支付方式映射（el-tag 类型）
-export const PAYMENT_METHOD_TYPE_MAP = {
+const PAYMENT_METHOD_TYPE_MAP = {
   alipay: 'primary',
   wechat: 'success',
   wxpay: 'success',
@@ -219,19 +213,6 @@ export function getStatusType(status, map) {
   const entry = map[status]
   if (typeof entry === 'string') return 'info'
   return entry?.type || 'info'
-}
-
-/**
- * 获取状态配置（包含文本和类型）
- * @param {string} status - 状态值
- * @param {Object} map - 状态映射表
- * @returns {Object} 状态配置 { text, type }
- */
-export function getStatusConfig(status, map) {
-  if (!status) return { text: '-', type: 'info' }
-  const entry = map[status]
-  if (typeof entry === 'string') return { text: entry, type: 'info' }
-  return entry || { text: status, type: 'info' }
 }
 
 /**

@@ -218,8 +218,12 @@ func TestBuildScriptBackupSnippet(t *testing.T) {
 		PanelBaseURL: "http://127.0.0.1:18080",
 		InstallID:    "testid",
 		Token:        "testtoken",
-		Protocols:    selfhost.DefaultXrayProtocols("某站点"),
-		MirrorURLs:   selfhost.DefaultMirrorURLs(),
+		Protocols: []selfhost.XrayProtocol{
+			{Key: "vless-ws", Port: 443, Domain: "某站点"},
+			{Key: "vless-reality", Port: 8443},
+			{Key: "ss", Port: 8388},
+		},
+		MirrorURLs: selfhost.DefaultMirrorURLs(),
 	}
 	xscript, err := selfhost.BuildXrayInstallScript(xcfg)
 	if err != nil {

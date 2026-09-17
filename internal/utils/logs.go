@@ -207,15 +207,3 @@ func CreateCommissionLogWithDB(db *gorm.DB, inviterID, inviteeID uint, commissio
 
 	return db.Create(&log).Error
 }
-
-// UpdateCommissionLogStatus 更新佣金日志状态
-func UpdateCommissionLogStatus(logID uint, status string) error {
-	db := database.GetDB()
-	if db == nil {
-		return fmt.Errorf("数据库未初始化")
-	}
-
-	return db.Model(&models.CommissionLog{}).Where("id = ?", logID).Updates(map[string]interface{}{
-		"status": status,
-	}).Error
-}

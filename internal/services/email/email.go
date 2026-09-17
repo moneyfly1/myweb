@@ -366,19 +366,6 @@ func (s *EmailService) SendVerificationEmail(to, code string) error {
 	return nil
 }
 
-func (s *EmailService) SendPasswordResetEmail(to, resetLink string) error {
-	subject, content := s.getTemplateContent("password_reset", map[string]string{
-		"reset_link": resetLink,
-		"email":      to,
-	}, func() (string, string) {
-		templateBuilder := NewEmailTemplateBuilder()
-		content := templateBuilder.GetPasswordResetTemplate("用户", resetLink)
-		return "密码重置", content
-	})
-
-	return s.QueueEmail(to, subject, content, "password_reset")
-}
-
 func (s *EmailService) QueueEmail(to, subject, content, emailType string) error {
 	db := database.GetDB()
 	if db == nil {

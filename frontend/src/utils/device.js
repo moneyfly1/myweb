@@ -12,7 +12,7 @@ import {
  * 统一的设备类型映射（text / color / icon）
  * 来源：Devices.vue 本地 DEVICE_TYPE_MAP（getDeviceIcon/getDeviceTypeName/getDeviceTypeColor）
  */
-export const DEVICE_TYPE_MAP = {
+const DEVICE_TYPE_MAP = {
   mobile: { text: '手机', color: 'primary', icon: Cellphone },
   desktop: { text: '电脑', color: 'success', icon: Monitor },
   tablet: { text: '平板', color: 'warning', icon: Iphone },
@@ -69,11 +69,3 @@ export function truncateText(text, maxLength = 50, empty = '未知') {
   return text.length > maxLength ? text.substring(0, maxLength) + '...' : text
 }
 
-export default {
-  DEVICE_TYPE_MAP,
-  getDeviceTypeName,
-  getDeviceTypeColor,
-  getDeviceTypeIcon,
-  getDeviceTypeFromUA,
-  truncateText
-}

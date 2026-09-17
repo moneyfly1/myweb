@@ -130,11 +130,3 @@ func Normalize(raw string, strict bool) string {
 	}
 	return ip.String()
 }
-
-// NormalizeOrDash 展示用：规范化后为空则返回 "-"
-func NormalizeOrDash(raw string) string {
-	if s := Normalize(raw, false); s != "" {
-		return s
-	}
-	return "-"
-}

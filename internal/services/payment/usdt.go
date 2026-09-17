@@ -76,11 +76,3 @@ func (s *USDTService) CreatePayment(order *models.Order, amount float64) (*Payme
 		Memo:          order.OrderNo,
 	}, nil
 }
-
-// GetConfirmations 返回配置的确认数
-func (s *USDTService) GetConfirmations() int {
-	if s.confirmations <= 0 {
-		return 1
-	}
-	return s.confirmations
-}

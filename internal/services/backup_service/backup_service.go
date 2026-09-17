@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -25,8 +24,6 @@ var sensitiveConfigKeys = []string{
 	"PAYPAL_SECRET", "STRIPE_SECRET", "PAYMENT_KEY", "PAYMENT_SECRET",
 	"APP_KEY", "API_SECRET", "TOKEN", "PASSWORD", "PRIVATE_KEY", "SECRET",
 }
-
-var sensitiveConfigValueRe = regexp.MustCompile(`(?i)((?:secret|password|token|key|private)[^=]*)=(.+)$`)
 
 type RemoteBackupConfig struct {
 	Target       string

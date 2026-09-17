@@ -292,9 +292,6 @@ func (s *ConfigUpdateService) errorf(format string, args ...any) {
 func (s *ConfigUpdateService) warnf(format string, args ...any) {
 	s.log("WARN", fmt.Sprintf(format, args...))
 }
-func (s *ConfigUpdateService) debugf(format string, args ...any) {
-	s.log("DEBUG", fmt.Sprintf(format, args...))
-}
 func (s *ConfigUpdateService) successf(format string, args ...any) {
 	s.log("SUCCESS", fmt.Sprintf(format, args...))
 }
@@ -1035,15 +1032,6 @@ func (s *ConfigUpdateService) resolveRegion(name, server string) string {
 	return "未知"
 }
 
-func (s *ConfigUpdateService) deleteAutoImportedNodes() int64 {
-	res := s.db.Where("is_manual = ?", false).Delete(&models.Node{})
-	if res.Error != nil {
-		s.errorf("删除旧节点失败: %v", res.Error)
-		return 0
-	}
-	return res.RowsAffected
-}
-
 func (s *ConfigUpdateService) generateNodeKey(nodeType string, name string, config *string) string {
 	if config == nil || *config == "" {
 		return fmt.Sprintf("%s:%s", nodeType, name)
@@ -1074,10 +1062,6 @@ func truncateProxyNodeName(name string) string {
 		return name
 	}
 	return string(runes[:maxLen])
-}
-
-func (s *ConfigUpdateService) importNodesToDatabaseWithOrder(nodes []nodeWithOrder) importStats {
-	return s.importNodesToDatabaseWithOrderTx(s.db, nodes)
 }
 
 func (s *ConfigUpdateService) importNodesToDatabaseWithOrderTx(db *gorm.DB, nodes []nodeWithOrder) importStats {

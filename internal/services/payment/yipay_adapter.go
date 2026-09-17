@@ -158,10 +158,6 @@ func (d *YipayPlatformDetector) detectByURL(apiURL, gatewayURL string) string {
 	return "standard"
 }
 
-func (d *YipayPlatformDetector) RegisterAdapter(name string, adapter YipayPlatformAdapter) {
-	d.adapters[name] = adapter
-}
-
 func detectYipayPlatform(config *models.PaymentConfig) (YipayPlatformAdapter, string) {
 	detector := NewYipayPlatformDetector()
 	return detector.DetectPlatform(config)

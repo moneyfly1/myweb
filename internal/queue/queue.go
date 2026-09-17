@@ -62,11 +62,6 @@ func Enqueue(ctx context.Context, taskType string, payload interface{}, opts ...
 	return err
 }
 
-// EnqueueIn 入队延迟任务（delay 后执行）
-func EnqueueIn(ctx context.Context, delay time.Duration, taskType string, payload interface{}) error {
-	return Enqueue(ctx, taskType, payload, asynq.ProcessIn(delay))
-}
-
 // StartWorker 启动 worker 处理任务（阻塞，通常用 goroutine 调用）。
 // handlers 为任务类型到处理器的映射。
 func StartWorker(handlers map[string]Handler) error {

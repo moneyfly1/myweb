@@ -7,12 +7,6 @@ import (
 	"unicode"
 )
 
-func ValidateEmail(email string) bool {
-	pattern := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
-	matched, _ := regexp.MatchString(pattern, email)
-	return matched
-}
-
 func SanitizeInput(input string) string {
 	if input == "" {
 		return ""

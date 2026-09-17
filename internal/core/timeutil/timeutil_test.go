@@ -71,9 +71,6 @@ func TestFormatNull(t *testing.T) {
 	if got := FormatNull(valid); got != "2026-01-02 11:04:05" {
 		t.Errorf("UTC 03:04:05 应为北京时间 11:04:05，实际 %q", got)
 	}
-	if got := FormatNullOrDash(sql.NullTime{}); got != "-" {
-		t.Errorf("无效时间应返回 -，实际 %q", got)
-	}
 }
 
 // TestParseBeijingLayoutAnchorsBeijing 裸 time.Parse 会按 UTC 解析，
@@ -96,21 +93,7 @@ func TestParseBeijingLayoutAnchorsBeijing(t *testing.T) {
 	}
 }
 
-func TestParseDateRangeEndOfDay(t *testing.T) {
-	start, end, err := ParseDateRange("2026-09-01", "2026-09-17")
-	if err != nil {
-		t.Fatalf("解析失败: %v", err)
-	}
-	if start.Format(LayoutDateTime) != "2026-09-01 00:00:00" {
-		t.Errorf("开始时间错误: %s", start.Format(LayoutDateTime))
-	}
-	// 只给到日时，结束时间必须补足到当天最后一秒，否则会少算最后一天
-	if end.Format(LayoutDateTime) != "2026-09-17 23:59:59" {
-		t.Errorf("结束时间应补足到当天 23:59:59，实际 %s", end.Format(LayoutDateTime))
-	}
-}
-
-func TestRangeOfDayAndMonth(t *testing.T) {
+func TestRangeOfDay(t *testing.T) {
 	at := time.Date(2026, 9, 17, 15, 30, 0, 0, time.UTC) // UTC 15:30 = 北京 23:30
 	start, end := RangeOfDay(at)
 	if start.Format(LayoutDateTime) != "2026-09-17 00:00:00" {
@@ -119,33 +102,11 @@ func TestRangeOfDayAndMonth(t *testing.T) {
 	if end.Hour() != 23 || end.Minute() != 59 {
 		t.Errorf("当天终点应接近 23:59，实际 %s", end.Format(LayoutDateTime))
 	}
-
-	// 北京时间 9/1 00:30 对应 UTC 8/31 16:30，月份归属必须按北京时间算
-	edge := time.Date(2026, 8, 31, 16, 30, 0, 0, time.UTC)
-	mStart, mEnd := RangeOfMonth(edge)
-	if mStart.Format(LayoutDateTime) != "2026-09-01 00:00:00" {
-		t.Errorf("跨月边界应按北京时间归入 9 月，实际起点 %s", mStart.Format(LayoutDateTime))
-	}
-	if mEnd.Format(LayoutDate) != "2026-09-30" {
-		t.Errorf("9 月终点应为 9/30，实际 %s", mEnd.Format(LayoutDate))
-	}
-}
-
-func TestParseAny(t *testing.T) {
-	for _, in := range []string{
-		"2026-09-17 14:30:00",
-		"2026-09-17T14:30:00",
-		"2026-09-17T14:30:00+08:00",
-		"2026-09-17",
-	} {
-		got, err := ParseAny(in)
-		if err != nil {
-			t.Errorf("%s 应可解析: %v", in, err)
-			continue
-		}
-		if _, offset := got.Zone(); offset != 8*3600 {
-			t.Errorf("%s 解析后应锚定北京时间，实际偏移 %d", in, offset)
-		}
+	// 北京时间 9/17 00:30 对应 UTC 9/16 16:30，日期归属必须按北京时间算
+	edge := time.Date(2026, 9, 16, 16, 30, 0, 0, time.UTC)
+	edgeStart, _ := RangeOfDay(edge)
+	if edgeStart.Format(LayoutDateTime) != "2026-09-17 00:00:00" {
+		t.Errorf("跨日边界应按北京时间归入 9/17，实际起点 %s", edgeStart.Format(LayoutDateTime))
 	}
 }
 

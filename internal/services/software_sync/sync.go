@@ -73,15 +73,11 @@ var (
 	lastUploaded int
 
 	// 实时进度
-	progressDone   int
-	progressTotal  int
-	progressItem   string
-	progressStage  string
-	progressFile   string
-	progressFolder string
-
-	// OnSyncComplete 同步结束后回调（由 handlers 注册用于清理直链缓存等）
-	OnSyncComplete func()
+	progressDone  int
+	progressTotal int
+	progressItem  string
+	progressStage string
+	progressFile  string
 )
 
 // SetProgress 更新实时进度（由 run 主流程调用）
@@ -102,12 +98,6 @@ func SetProgressTotal(total int) {
 	progressTotal = total
 }
 
-func SetProgressFolder(folder string) {
-	statusMu.Lock()
-	defer statusMu.Unlock()
-	progressFolder = folder
-}
-
 func ResetProgress() {
 	statusMu.Lock()
 	defer statusMu.Unlock()
@@ -116,27 +106,6 @@ func ResetProgress() {
 	progressItem = ""
 	progressStage = ""
 	progressFile = ""
-}
-
-// SetOnSyncComplete 注册同步完成回调（幂等，重复注册以最后一次为准）
-func SetOnSyncComplete(fn func()) {
-	statusMu.Lock()
-	defer statusMu.Unlock()
-	OnSyncComplete = fn
-}
-
-func fireOnSyncComplete() {
-	statusMu.Lock()
-	fn := OnSyncComplete
-	statusMu.Unlock()
-	if fn != nil {
-		defer func() {
-			if r := recover(); r != nil {
-				// 回调异常不影响同步结果
-			}
-		}()
-		fn()
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -289,7 +258,6 @@ func GetStatus() SyncStatus {
 		Item:        progressItem,
 		Stage:       progressStage,
 		CurrentFile: progressFile,
-		Folder:      progressFolder,
 	}
 	statusMu.Unlock()
 
@@ -361,18 +329,8 @@ func triggerAsync(only []string) bool {
 		lastReport = report
 		lastUploaded = uploaded
 		statusMu.Unlock()
-		fireOnSyncComplete()
 	}()
 	return true
-}
-
-// RunSync 前台执行同步（only 非空时仅同步指定配置键，用于测试/按需同步）
-func RunSync(only []string) ([]ReportItem, error) {
-	if IsRunning() {
-		return nil, fmt.Errorf("同步任务正在进行中")
-	}
-	report, _ := run(only)
-	return report, nil
 }
 
 // ---------------------------------------------------------------------------

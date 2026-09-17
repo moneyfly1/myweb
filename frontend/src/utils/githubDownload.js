@@ -182,15 +182,6 @@ export function detectSystem() {
   }
   return { os, arch }
 }
-export function addGitHubProxy(url) {
-  if (!url || !url.includes('github.com')) {
-    return url
-  }
-  if (url.includes('ghproxy.com') || url.includes('ghproxy.net')) {
-    return url
-  }
-  return applyProxyPrefix(url, DEFAULT_GITHUB_PROXY_PREFIXES[0])
-}
 
 function normalizeProxyPrefixes(prefixes = []) {
   const seen = new Set()
@@ -320,7 +311,7 @@ export function pickConfiguredUrl(configKeys, softwareConfig, platform = null, o
   return ''
 }
 
-export async function getGitHubDownloadUrl(repo, os, arch, configKey = null, softwareConfig = {}) {
+async function getGitHubDownloadUrl(repo, os, arch, configKey = null, softwareConfig = {}) {
   try {
     const prefixes = getProxyPrefixes(softwareConfig)
     let config = configKey ? CLIENT_CONFIGS[configKey] : null

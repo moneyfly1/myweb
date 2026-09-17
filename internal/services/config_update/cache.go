@@ -28,12 +28,6 @@ type systemNodesCacheEntry struct {
 	Nodes []*ProxyNode `json:"nodes"`
 }
 
-// customNodesCacheEntry 用户专线节点缓存条目（带代际标记）
-type customNodesCacheEntry struct {
-	Gen   int64        `json:"gen"`
-	Nodes []*ProxyNode `json:"nodes"`
-}
-
 // subscriptionConfigCacheEntry 订阅配置缓存条目（带代际标记）
 type subscriptionConfigCacheEntry struct {
 	Gen    int64  `json:"gen"`
@@ -76,43 +70,6 @@ func (cs *CacheService) SetSystemNodesCache(nodes []*ProxyNode) error {
 
 	cacheKey := "nodes:system:all"
 	return cache.Set(cacheKey, string(data), 1*time.Hour)
-}
-
-// GetCustomNodesCache 获取用户自定义节点缓存
-func (cs *CacheService) GetCustomNodesCache(userID uint) ([]*ProxyNode, bool) {
-	if !cache.IsRedisEnabled() {
-		return nil, false
-	}
-
-	cacheKey := fmt.Sprintf("nodes:custom:user:%d", userID)
-	cached, err := cache.Get(cacheKey)
-	if err != nil || cached == "" {
-		return nil, false
-	}
-
-	var entry customNodesCacheEntry
-	if err := json.Unmarshal([]byte(cached), &entry); err != nil || entry.Gen != cacheGen.Load() {
-		_ = cache.Del(cacheKey)
-		return nil, false
-	}
-
-	return entry.Nodes, true
-}
-
-// SetCustomNodesCache 设置用户自定义节点缓存
-func (cs *CacheService) SetCustomNodesCache(userID uint, nodes []*ProxyNode) error {
-	if !cache.IsRedisEnabled() {
-		return nil
-	}
-
-	// #nosec G117 - Password field is proxy node password, not user credential
-	data, err := json.Marshal(customNodesCacheEntry{Gen: cacheGen.Load(), Nodes: nodes}) // #nosec G117
-	if err != nil {
-		return err
-	}
-
-	cacheKey := fmt.Sprintf("nodes:custom:user:%d", userID)
-	return cache.Set(cacheKey, string(data), 10*time.Minute)
 }
 
 // ClearSystemNodesCache 清除系统节点缓存

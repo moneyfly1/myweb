@@ -1,7 +1,6 @@
 package node_health
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -364,62 +363,10 @@ func (s *NodeHealthService) CheckAllNodes() error {
 	return nil
 }
 
-func (s *NodeHealthService) StartPeriodicCheck(interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	go func() {
-		defer ticker.Stop()
-		for range ticker.C {
-			utils.LogInfo("节点健康检查: 开始执行")
-			if err := s.CheckAllNodes(); err != nil {
-				utils.LogError("节点健康检查失败", err, nil)
-			} else {
-				utils.LogInfo("节点健康检查: 执行完成")
-			}
-		}
-	}()
-}
-
-func (s *NodeHealthService) GetMaxLatency() int {
-	return s.maxLatency
-}
-
 func (s *NodeHealthService) SetMaxLatency(latency int) {
 	s.maxLatency = latency
 }
 
 func (s *NodeHealthService) SetTestTimeout(timeout time.Duration) {
 	s.testTimeout = timeout
-}
-
-func (s *NodeHealthService) TestNodeWithContext(ctx context.Context, node *models.Node) (*TestResult, error) {
-	resultChan := make(chan *TestResult, 1)
-	errChan := make(chan error, 1)
-
-	go func() {
-		result, err := s.TestNode(node)
-		if err != nil {
-			errChan <- err
-		} else {
-			resultChan <- result
-		}
-	}()
-
-	select {
-	case <-ctx.Done():
-		return &TestResult{
-			NodeID:   node.ID,
-			Status:   "offline",
-			Error:    "测试超时",
-			TestedAt: utils.GetBeijingTime(),
-		}, ctx.Err()
-	case result := <-resultChan:
-		return result, nil
-	case err := <-errChan:
-		return &TestResult{
-			NodeID:   node.ID,
-			Status:   "offline",
-			Error:    err.Error(),
-			TestedAt: utils.GetBeijingTime(),
-		}, err
-	}
 }

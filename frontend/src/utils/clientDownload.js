@@ -12,7 +12,7 @@ import { detectSystem } from '@/utils/githubDownload'
 import { linkCandidates } from '@/data/clientRegistry'
 
 // findConfiguredUrl 取该客户端在当前系统/架构下已配置的下载地址（原样返回配置值）
-export function findConfiguredUrl(client, { softwareConfig = {}, os, arch } = {}) {
+function findConfiguredUrl(client, { softwareConfig = {}, os, arch } = {}) {
   if (!client) return ''
   const system = os ? { os, arch } : detectSystem()
   const keys = linkCandidates(client, system.os, system.arch)

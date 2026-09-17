@@ -83,9 +83,6 @@ func TestNormalize(t *testing.T) {
 	if got := Normalize("garbage", false); got != "garbage" {
 		t.Errorf("非 strict 模式应原样返回，实际 %q", got)
 	}
-	if got := NormalizeOrDash(""); got != "-" {
-		t.Errorf("NormalizeOrDash 空值应为 -，实际 %q", got)
-	}
 }
 
 // TestPrivateWithPortIsNotMisjudged 带端口的字符串必须先剥端口再判定，

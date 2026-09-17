@@ -25,7 +25,7 @@ export const MONEYFLY_BRAND = {
 }
 
 // MONEYFLY_PLATFORMS 顺序即界面展示顺序：Windows → macOS(Apple) → macOS(Intel) → Android
-export const MONEYFLY_PLATFORMS = [
+const MONEYFLY_PLATFORMS = [
   {
     key: 'windows',
     configKey: 'moneyfly_windows_url',
@@ -66,8 +66,6 @@ export const MONEYFLY_PLATFORMS = [
   },
 ]
 
-export const MONEYFLY_CONFIG_KEYS = MONEYFLY_PLATFORMS.map(p => p.configKey)
-
 // readMoneyflyConfig 从 software-config 原始配置解析出 MoneyFly 客户端展示模型。
 // enabled 默认开启（字段缺失时视为开启），仅当显式配置为 false/0/off 才关闭。
 export function readMoneyflyConfig(softwareConfig = {}) {
@@ -101,7 +99,7 @@ export function isMoneyflyVisible(moneyfly) {
 }
 
 // detectMoneyflyPlatform 识别访问者当前设备对应的平台定义，无法识别时返回 null。
-export function detectMoneyflyPlatform() {
+function detectMoneyflyPlatform() {
   let detected
   try {
     detected = detectSystem()
@@ -126,11 +124,4 @@ export function resolveMoneyflyUrl(url) {
   const value = String(url ?? '').trim()
   if (!value) return ''
   return resolvePanDownloadUrl(value)
-}
-
-// moneyflyItemByKey 按平台 key（windows/macos_arm/macos_intel/android）取单项，
-// 便于单平台页面（如软件教程各平台标签页）渲染对应按钮。
-export function moneyflyItemByKey(moneyfly, platformKey) {
-  if (!moneyfly || !Array.isArray(moneyfly.items)) return null
-  return moneyfly.items.find(i => i.key === platformKey) || null
 }

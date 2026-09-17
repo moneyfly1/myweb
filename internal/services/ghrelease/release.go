@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -69,23 +68,6 @@ func (r Release) FindAsset(patterns []*regexp.Regexp) (*Asset, error) {
 		}
 	}
 	return nil, fmt.Errorf("未找到匹配的安装包（版本 %s）", r.Version())
-}
-
-// Download 下载附件到本地文件（自动尝试加速前缀；token 非空时带上鉴权头）
-func Download(asset *Asset, destPath string, proxyPrefixes []string, token string) error {
-	candidates := buildCandidates(asset.DownloadURL, proxyPrefixes)
-	var lastErr error
-	for _, candidate := range candidates {
-		if err := downloadFileValidated(candidate, destPath, asset.Size, token); err != nil {
-			lastErr = err
-			continue
-		}
-		return nil
-	}
-	if lastErr == nil {
-		lastErr = errors.New("所有下载地址均不可用")
-	}
-	return fmt.Errorf("下载 %s 失败: %w", asset.Name, lastErr)
 }
 
 // DefaultProxyPrefixes 与后端 download.go 一致的默认前缀
@@ -153,65 +135,4 @@ func fetchJSON(rawURL, token string) (*Release, error) {
 		return nil, err
 	}
 	return &rel, nil
-}
-
-func downloadFile(rawURL, destPath, token string) error {
-	return downloadFileValidated(rawURL, destPath, 0, token)
-}
-
-// downloadFileValidated 下载并校验内容：
-// - 拒绝代理返回的 HTML 页面（ghproxy 等代理故障时会把 HTML 当 200 返回）
-// - expectedSize > 0 时校验实际字节数必须一致（防止截断/错误页被当作安装包上传）
-func downloadFileValidated(rawURL, destPath string, expectedSize int64, token string) error {
-	client := &http.Client{Timeout: 0} // 大文件不限总超时
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("user-agent", userAgent)
-	if token != "" {
-		req.Header.Set("authorization", "Bearer "+token)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("下载 HTTP %d", resp.StatusCode)
-	}
-	// 内容类型为 HTML 的几乎必然是代理的错误/等待页，直接拒绝换下一个源
-	ct := strings.ToLower(resp.Header.Get("content-type"))
-	if strings.Contains(ct, "text/html") {
-		return fmt.Errorf("下载源返回 HTML 页面而非安装包（%s）", ct)
-	}
-	out, err := os.Create(destPath)
-	if err != nil {
-		return err
-	}
-	n, copyErr := io.Copy(out, resp.Body)
-	closeErr := out.Close()
-	if copyErr != nil {
-		return copyErr
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	if n == 0 {
-		return fmt.Errorf("下载内容为空")
-	}
-	// 再校验首字节不是 HTML（部分代理不设置 Content-Type）——只读文件头，避免大文件整读进内存
-	if fh, rerr := os.Open(destPath); rerr == nil {
-		head := make([]byte, 64)
-		rn, _ := io.ReadFull(fh, head)
-		fh.Close()
-		low := strings.ToLower(strings.TrimSpace(string(head[:rn])))
-		if strings.HasPrefix(low, "<!doctype") || strings.HasPrefix(low, "<html") {
-			return fmt.Errorf("下载内容为 HTML 页面而非安装包")
-		}
-	}
-	if expectedSize > 0 && n != expectedSize {
-		return fmt.Errorf("下载大小不匹配: got %d, want %d", n, expectedSize)
-	}
-	return nil
 }

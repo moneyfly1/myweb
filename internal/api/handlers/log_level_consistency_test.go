@@ -32,9 +32,8 @@ func setupAuditLogDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func nullStatus(v int64) sql.NullInt64   { return sql.NullInt64{Int64: v, Valid: true} }
-func nullDesc(v string) sql.NullString   { return sql.NullString{String: v, Valid: true} }
-func validStatus(v int64) *sql.NullInt64 { s := nullStatus(v); return &s }
+func nullStatus(v int64) sql.NullInt64 { return sql.NullInt64{Int64: v, Valid: true} }
+func nullDesc(v string) sql.NullString { return sql.NullString{String: v, Valid: true} }
 
 // 覆盖各条规则分支的合成日志
 func levelFixture() []models.AuditLog {

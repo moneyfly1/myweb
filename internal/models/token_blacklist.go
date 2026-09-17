@@ -46,7 +46,3 @@ func IsTokenBlacklisted(db *gorm.DB, tokenHash string) bool {
 	}
 	return true
 }
-
-func CleanExpiredTokens(db *gorm.DB) error {
-	return db.Where("expires_at < ?", time.Now()).Delete(&TokenBlacklist{}).Error
-}
