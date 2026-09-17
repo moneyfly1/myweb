@@ -17,12 +17,12 @@ func nullStr(v string) sql.NullString     { return sql.NullString{String: v, Val
 // TestOrderPaidAmount_BalancePaid 线上问题订单：余额全额支付 200 元
 func TestOrderPaidAmount_BalancePaid(t *testing.T) {
 	order := Order{
-		OrderNo:        "ORD202609160926117760",
-		Amount:         200,
-		DiscountAmount: nullFloat(0),
-		AmountDueOnline:    nullFloat(0), // 余额已抵扣 → 还需在线支付 0
-		ExtraData:      nullStr(`{"balance_used":200,"balance_deducted":true}`),
-		Status:         "paid",
+		OrderNo:         "ORD202609160926117760",
+		Amount:          200,
+		DiscountAmount:  nullFloat(0),
+		AmountDueOnline: nullFloat(0), // 余额已抵扣 → 还需在线支付 0
+		ExtraData:       nullStr(`{"balance_used":200,"balance_deducted":true}`),
+		Status:          "paid",
 	}
 	if got := order.PaidAmount(); got != 200 {
 		t.Errorf("余额支付订单订单金额应为 200，实际 %.2f", got)
@@ -54,10 +54,10 @@ func TestOrderPaidAmount_CouponDiscount(t *testing.T) {
 // TestOrderPaidAmount_PartialBalanceAtCreation 创建时部分余额抵扣
 func TestOrderPaidAmount_PartialBalanceAtCreation(t *testing.T) {
 	order := Order{
-		Amount:         200,
-		DiscountAmount: nullFloat(0),
-		AmountDueOnline:    nullFloat(199.9),
-		ExtraData:      nullStr(`{"balance_used":0.1,"balance_deducted":true}`),
+		Amount:          200,
+		DiscountAmount:  nullFloat(0),
+		AmountDueOnline: nullFloat(199.9),
+		ExtraData:       nullStr(`{"balance_used":0.1,"balance_deducted":true}`),
 	}
 	if got := order.PaidAmount(); got != 200 {
 		t.Errorf("订单金额应为 200，实际 %.2f", got)
@@ -68,10 +68,10 @@ func TestOrderPaidAmount_PartialBalanceAtCreation(t *testing.T) {
 // 不得把余额重复加回，否则订单金额会翻倍（历史实现曾有此风险）
 func TestOrderPaidAmount_BalanceAtPaymentTime(t *testing.T) {
 	order := Order{
-		Amount:         200,
-		DiscountAmount: nullFloat(0),
-		AmountDueOnline:    nullFloat(199.9), // 支付时 0.1 用余额、199.9 在线支付
-		ExtraData:      nullStr(`{"balance_used":0.1,"balance_deducted":false}`),
+		Amount:          200,
+		DiscountAmount:  nullFloat(0),
+		AmountDueOnline: nullFloat(199.9), // 支付时 0.1 用余额、199.9 在线支付
+		ExtraData:       nullStr(`{"balance_used":0.1,"balance_deducted":false}`),
 	}
 	if got := order.PaidAmount(); got != 200 {
 		t.Errorf("订单金额应为 200（折后价，与资金来源无关），实际 %.2f", got)
@@ -84,10 +84,10 @@ func TestOrderPaidAmount_BalanceAtPaymentTime(t *testing.T) {
 // TestOrderPaidAmount_DiscountWithBalance 折扣 + 余额
 func TestOrderPaidAmount_DiscountWithBalance(t *testing.T) {
 	order := Order{
-		Amount:         200,
-		DiscountAmount: nullFloat(50),
-		AmountDueOnline:    nullFloat(0),
-		ExtraData:      nullStr(`{"balance_used":150,"balance_deducted":true}`),
+		Amount:          200,
+		DiscountAmount:  nullFloat(50),
+		AmountDueOnline: nullFloat(0),
+		ExtraData:       nullStr(`{"balance_used":150,"balance_deducted":true}`),
 	}
 	if got := order.PaidAmount(); got != 150 {
 		t.Errorf("折后余额支付订单金额应为 150，实际 %.2f", got)
@@ -97,10 +97,10 @@ func TestOrderPaidAmount_DiscountWithBalance(t *testing.T) {
 // TestOrderPaidAmount_FullCoupon 100% 优惠券：客户实付 0
 func TestOrderPaidAmount_FullCoupon(t *testing.T) {
 	order := Order{
-		Amount:         200,
-		DiscountAmount: nullFloat(200),
-		AmountDueOnline:    nullFloat(0),
-		ExtraData:      nullStr(`{}`),
+		Amount:          200,
+		DiscountAmount:  nullFloat(200),
+		AmountDueOnline: nullFloat(0),
+		ExtraData:       nullStr(`{}`),
 	}
 	if got := order.PaidAmount(); got != 0 {
 		t.Errorf("全额优惠订单金额应为 0，实际 %.2f", got)

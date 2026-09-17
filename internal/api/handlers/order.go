@@ -1839,7 +1839,7 @@ func UpgradeDevices(c *gin.Context) {
 		UserID:            user.ID,
 		PackageID:         0,
 		Amount:            totalAmount,
-		AmountDueOnline:       database.NullFloat64(finalAmount),
+		AmountDueOnline:   database.NullFloat64(finalAmount),
 		DiscountAmount:    database.NullFloat64(levelDiscountAmount),
 		Status:            "pending",
 		ExtraData:         database.NullString(extraData),
@@ -2278,15 +2278,15 @@ func CreateCustomOrder(c *gin.Context) {
 	totalDiscount := basePrice - finalPrice
 
 	order := models.Order{
-		OrderNo:        orderNo,
-		UserID:         user.ID,
-		PackageID:      0,
-		Amount:         basePrice,
-		Status:         "pending",
-		ExpireTime:     database.NullTime(expireTime),
-		DiscountAmount: database.NullFloat64(totalDiscount),
-		AmountDueOnline:    database.NullFloat64(finalPrice),
-		ExtraData:      database.NullString(extraStr),
+		OrderNo:         orderNo,
+		UserID:          user.ID,
+		PackageID:       0,
+		Amount:          basePrice,
+		Status:          "pending",
+		ExpireTime:      database.NullTime(expireTime),
+		DiscountAmount:  database.NullFloat64(totalDiscount),
+		AmountDueOnline: database.NullFloat64(finalPrice),
+		ExtraData:       database.NullString(extraStr),
 	}
 	if finalPrice == 0 {
 		order.PaymentMethodName = database.NullString("优惠抵扣")
