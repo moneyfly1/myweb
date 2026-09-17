@@ -435,7 +435,7 @@ func GetUsers(c *gin.Context) {
 			"notes":                          notes,
 		})
 	}
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"users": list, "total": total, "page": page, "size": size})
+	utils.SuccessResponse(c, http.StatusOK, "", utils.PaginatedList(list, "users", total, page, size))
 }
 
 func GetUser(c *gin.Context) {
@@ -836,6 +836,7 @@ func GetUserDetails(c *gin.Context) {
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"user_info":        userInfo,
+		"list":             formattedSubs,
 		"subscriptions":    formattedSubs,
 		"orders":           formattedOrders,
 		"recharge_records": formattedRecharges,

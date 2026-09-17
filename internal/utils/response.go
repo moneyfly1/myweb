@@ -323,3 +323,53 @@ func sanitizeSensitiveValue(value string) string {
 	}
 	return value
 }
+
+// PaginatedList 构造统一的分页响应体。
+//
+// 为什么需要它：历史上各接口的列表字段名多达 15 种（list/items/logs/attempts/
+// subscriptions/records/orders/users/emails/tickets/coupons/relations/invite_codes/
+// recharges…），分页元数据也有 size/page_size、total_pages/pages 两套命名，
+// 前端被迫写 100 多处 `data.logs || data.list || data.items` 之类的兜底解包。
+//
+// 现在的约定：
+//   - 标准字段：list（前端统一按 list 解包，见 frontend unwrapList）
+//   - 兼容字段：legacyKey（旧字段名继续返回，老前端/老书签不受影响）
+//   - 分页元数据同时给出两套命名，避免调用方各写一遍
+//
+// 用法：
+//
+//	payload := utils.PaginatedList(items, "orders", total, page, size)
+//	payload["summary"] = extra
+//	utils.SuccessResponse(c, http.StatusOK, "", payload)
+func PaginatedList(list any, legacyKey string, total int64, page, size int) gin.H {
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 {
+		size = 20
+	}
+	totalPages := 0
+	if total > 0 {
+		totalPages = int((total + int64(size) - 1) / int64(size))
+	}
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	if list == nil {
+		list = []any{}
+	}
+
+	payload := gin.H{
+		"list":        list,
+		"total":       total,
+		"page":        page,
+		"size":        size, // 兼容旧命名
+		"page_size":   size, // 兼容旧命名
+		"total_pages": totalPages,
+		"pages":       totalPages, // 兼容旧命名
+	}
+	if legacyKey != "" && legacyKey != "list" {
+		payload[legacyKey] = list
+	}
+	return payload
+}

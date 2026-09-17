@@ -766,6 +766,7 @@
 import { ref, reactive, onMounted, onUnmounted, computed, watch, onActivated} from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from '@/utils/elementPlusServices'
+import { unwrapList } from '@/utils/format'
 import {
   Download, Delete, Setting, Apple, Monitor, ArrowDown, View, Refresh, HomeFilled,
   Search, Filter, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch, Connection,
@@ -909,7 +910,7 @@ export default {
         }
         const response = await adminAPI.getSubscriptions(params)
         if (response.data?.success !== false) {
-          const subscriptionList = response.data?.data?.subscriptions || []
+          const subscriptionList = unwrapList(response)
           subscriptions.value = subscriptionList.map(sub => {
             const mapped = {
               ...sub,

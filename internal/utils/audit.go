@@ -166,10 +166,9 @@ func CreateSecurityLog(c *gin.Context, eventType, severity, description string, 
 		return
 	}
 
+	// 统一走 GetRealClientIP（其内部已包含 RemoteAddr/ClientIP 兜底），
+	// 不再用 c.ClientIP() 做二次兜底：那是另一套解析，会让同一请求在不同日志里 IP 不同
 	ipAddress := GetRealClientIP(c)
-	if ipAddress == "" {
-		ipAddress = c.ClientIP()
-	}
 
 	userAgent := c.GetHeader("User-Agent")
 
@@ -302,9 +301,6 @@ func createBusinessLogInternal(c *gin.Context, actionType, description, level st
 	var userID sql.NullInt64
 	if c != nil {
 		ipAddress = GetRealClientIP(c)
-		if ipAddress == "" {
-			ipAddress = c.ClientIP()
-		}
 		userAgent = c.GetHeader("User-Agent")
 		method = c.Request.Method
 		path = c.Request.URL.Path
@@ -405,9 +401,6 @@ func CreateAuditLogSimpleFast(c *gin.Context, actionType, resourceType string, r
 	var userID sql.NullInt64
 	if c != nil {
 		ipAddress = GetRealClientIP(c)
-		if ipAddress == "" {
-			ipAddress = c.ClientIP()
-		}
 		userAgent = c.GetHeader("User-Agent")
 		if uid, exists := c.Get("user_id"); exists {
 			if u, ok := uid.(uint); ok {
@@ -439,10 +432,9 @@ func CheckBruteForcePattern(c *gin.Context, username string) (isSuspicious bool,
 		return false, ""
 	}
 
+	// 统一走 GetRealClientIP（其内部已包含 RemoteAddr/ClientIP 兜底），
+	// 不再用 c.ClientIP() 做二次兜底：那是另一套解析，会让同一请求在不同日志里 IP 不同
 	ipAddress := GetRealClientIP(c)
-	if ipAddress == "" {
-		ipAddress = c.ClientIP()
-	}
 
 	now := GetBeijingTime()
 
@@ -497,10 +489,9 @@ func CreateSystemErrorLog(c *gin.Context, statusCode int, message string, err er
 		return
 	}
 
+	// 统一走 GetRealClientIP（其内部已包含 RemoteAddr/ClientIP 兜底），
+	// 不再用 c.ClientIP() 做二次兜底：那是另一套解析，会让同一请求在不同日志里 IP 不同
 	ipAddress := GetRealClientIP(c)
-	if ipAddress == "" {
-		ipAddress = c.ClientIP()
-	}
 
 	userAgent := c.GetHeader("User-Agent")
 

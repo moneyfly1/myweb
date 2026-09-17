@@ -791,6 +791,7 @@
 
 <script>
 import { adminAPI } from '@/utils/api'
+import { unwrapList } from '@/utils/format'
 import { formatDateTimeSafe, formatLocation } from '@/utils/date'
 import { getDeviceTypeName as deviceTypeName, getDeviceTypeColor as deviceTypeColor } from '@/utils/device'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
@@ -1366,7 +1367,7 @@ export default {
         const response = await adminAPI.getUserCheckinLogs(userId, params)
         if (response?.data?.success) {
           const data = response.data.data || {}
-          this.checkinLogs = data.logs || []
+          this.checkinLogs = unwrapList(data)
           this.checkinPagination.total = data.total || 0
           this.checkinLoaded = true
         } else {

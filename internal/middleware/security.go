@@ -82,7 +82,7 @@ func LoggerMiddleware() gin.HandlerFunc {
 			"query", c.Request.URL.RawQuery,
 			"status", c.Writer.Status(),
 			"latency_ms", latencyMs,
-			"client_ip", c.ClientIP(),
+			"client_ip", utils.GetRealClientIP(c),
 			"user_agent", c.Request.UserAgent(),
 			"error", errMsg,
 		)

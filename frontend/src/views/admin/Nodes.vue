@@ -564,7 +564,7 @@ import {
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatDateTimeSafe } from '@/utils/date'
-import { formatFileSize } from '@/utils/format'
+import { formatFileSize, unwrapList } from '@/utils/format'
 import { copyToClipboard } from '@/utils/textSelection'
 import AppDrawer from '@/components/AppDrawer.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
@@ -911,7 +911,7 @@ export default {
       try {
         const res = await adminAPI.getSelfHostNodes()
         if (res.data?.success) {
-          selfHostList.value = res.data.data?.list || []
+          selfHostList.value = unwrapList(res)
         }
       } catch (e) {
         ElMessage.error('加载自建节点列表失败: ' + (e.response?.data?.message || e.message))

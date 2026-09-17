@@ -436,6 +436,7 @@ func GetAdminRechargeRecords(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"list":      formattedRecords,
 		"recharges": formattedRecords,
 		"total":     total,
 		"page":      page,

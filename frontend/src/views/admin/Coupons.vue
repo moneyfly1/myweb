@@ -358,6 +358,7 @@ defineOptions({ name: 'AdminCoupons' })
 
 import { ref, reactive, computed, onMounted, onActivated} from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
+import { unwrapList } from '@/utils/format'
 import { Plus, Search, Filter, Refresh } from '@element-plus/icons-vue'
 import { couponAPI, packageAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
@@ -431,7 +432,7 @@ const loadCoupons = async () => {
     if (filters.type && filters.type.trim()) params.type = filters.type.trim()
     const response = await couponAPI.getAllCoupons(params)
     if (response.data && response.data.success) {
-      coupons.value = response.data.data?.coupons || []
+      coupons.value = unwrapList(response)
       pagination.total = response.data.data?.total || 0
     } else {
       ElMessage.error(response.data?.message || '加载优惠券列表失败')

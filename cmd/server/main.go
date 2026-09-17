@@ -47,9 +47,18 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// 初始化可信代理列表（TRUSTED_PROXIES 环境变量），
-	// 必须在路由/限流使用 GetRealClientIP 之前调用
-	utils.InitTrustedProxies(os.Getenv("TRUSTED_PROXIES"))
+	// 初始化可信代理列表，必须在路由/限流使用 GetRealClientIP 之前调用。
+	// 取值顺序：配置（viper 读 .env，缺失时默认 127.0.0.1,::1）→ 环境变量兜底。
+	// 历史缺陷：此前只用 os.Getenv，而 start.sh 启动方式不 export .env，
+	// 导致 .env 里配的 TRUSTED_PROXIES 静默失效（转发头不被信任 → 记到反代 IP）。
+	trustedProxies := ""
+	if config.AppConfig != nil {
+		trustedProxies = config.AppConfig.TrustedProxies
+	}
+	if strings.TrimSpace(trustedProxies) == "" {
+		trustedProxies = os.Getenv("TRUSTED_PROXIES")
+	}
+	utils.InitTrustedProxies(trustedProxies)
 
 	if err := database.InitDatabase(); err != nil {
 		log.Fatalf("数据库初始化失败: %v", err)
