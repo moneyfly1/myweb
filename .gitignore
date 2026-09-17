@@ -121,3 +121,7 @@ audit-moneyfly/
 # 这两个文件由 vite 构建过程重写，不入库，避免每次构建都产生无意义 diff
 frontend/components.d.ts
 frontend/auto-imports.d.ts
+
+# Python 字节码（脚本目录下运行会生成，不入库）
+__pycache__/
+*.pyc
