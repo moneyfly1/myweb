@@ -248,6 +248,7 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
+import { useSettingsStore } from '@/store/settings'
 import { userAPI, subscriptionAPI, authAPI, api } from '@/utils/api'
 import { formatDateTimeSafe, getLocationText as getLocationTextUtil } from '@/utils/date'
 import { getUserStatusType, getUserStatusText, getSubscriptionStatusText as getSubscriptionStatusTextShared } from '@/utils/statusMaps'
@@ -265,6 +266,7 @@ export default {
   setup() {
     const router = useRouter()
     const authStore = useAuthStore()
+    const settingsStore = useSettingsStore()
     const isMobile = useMobile()
     const passwordLoading = ref(false)
     const emailLoading = ref(false)
@@ -321,13 +323,14 @@ export default {
         { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
       ]
     }
-    const passwordRules = {
+    // 密码最小长度取自 settings store，与后端 min_password_length 保持一致
+    const passwordRules = computed(() => ({
       oldPassword: [
         { required: true, message: '请输入当前密码', trigger: 'blur' }
       ],
       newPassword: [
         { required: true, message: '请输入新密码', trigger: 'blur' },
-        { min: 6, message: '密码长度不能少于6位', trigger: 'blur' },
+        { min: settingsStore.minPasswordLength, message: settingsStore.passwordMinLengthHint, trigger: 'blur' },
         {
           validator: (rule, value, callback) => {
             if (value && passwordForm.oldPassword && value === passwordForm.oldPassword) {
@@ -352,7 +355,7 @@ export default {
           trigger: 'blur'
         }
       ]
-    }
+    }))
     const fetchUserInfo = async () => {
       try {
         const response = await api.get('/users/me')

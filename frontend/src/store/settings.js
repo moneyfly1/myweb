@@ -1,36 +1,18 @@
 import { defineStore } from 'pinia'
 import { cachedAPI } from '@/utils/api'
 const EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
-const PASSWORD_PATTERNS = {
-  letter: /[a-zA-Z]/,
-  digit: /\d/,
-  special: /[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/
-}
 export const useSettingsStore = defineStore('settings', {
   state: () => ({
     siteName: 'CBoard',
-    siteDescription: '高性能面板系统',
-    siteKeywords: '面板,管理,系统',
-    siteLogo: '',
     siteFavicon: '',
-    allowRegistration: true,
-    requireEmailVerification: true,
-    allowQqEmailOnly: true,
     minPasswordLength: 8,
     defaultTheme: 'default',
     allowUserTheme: true,
     availableThemes: ['default', 'dark', 'blue', 'green'],
-    enablePayment: true,
-    defaultPaymentMethod: '',
-    paymentCurrency: 'CNY',
-    enableAnnouncement: true,
-    announcementPosition: 'top',
-    maxAnnouncements: 5,
     loading: false,
     error: null
   }),
   getters: {
-    siteTitle: (state) => state.siteName,
     currentTheme: (state) => {
       const userTheme = localStorage.getItem('user-theme')
       if (state.allowUserTheme && userTheme && state.availableThemes.includes(userTheme)) {
@@ -38,11 +20,8 @@ export const useSettingsStore = defineStore('settings', {
       }
       return state.defaultTheme
     },
-    canRegister: (state) => state.allowRegistration,
-    needsEmailVerification: (state) => state.requireEmailVerification,
-    emailRestriction: (state) => state.allowQqEmailOnly,
-    paymentEnabled: (state) => state.enablePayment,
-    announcementEnabled: (state) => state.enableAnnouncement
+    // 密码长度提示文案的唯一来源，各表单统一引用，避免硬编码 6/8
+    passwordMinLengthHint: (state) => `密码长度至少 ${state.minPasswordLength} 位`
   },
   actions: {
     async loadSettings() {
@@ -52,23 +31,7 @@ export const useSettingsStore = defineStore('settings', {
         const response = await cachedAPI.getPublicSettings()
         const settings = response.data?.data || response.data || {}
         this.siteName = settings.site_name || 'CBoard'
-        this.siteDescription = settings.site_description || '高性能面板系统'
-        this.siteKeywords = settings.site_keywords || '面板,管理,系统'
-        this.siteLogo = settings.site_logo || ''
         this.siteFavicon = settings.site_favicon || ''
-        const registrationValue = settings.registration_enabled !== undefined 
-                                ? settings.registration_enabled
-                                : (settings.allowRegistration !== undefined 
-                                   ? settings.allowRegistration 
-                                   : true)
-        this.allowRegistration = registrationValue === true || registrationValue === "true"
-        const emailVerificationValue = settings.email_verification_required !== undefined 
-                                     ? settings.email_verification_required
-                                     : (settings.require_email_verification !== undefined 
-                                        ? settings.require_email_verification 
-                                        : true)
-        this.requireEmailVerification = emailVerificationValue === true || emailVerificationValue === "true"
-        this.allowQqEmailOnly = settings.allow_qq_email_only !== false
         const minPasswordValue = settings.min_password_length !== undefined 
                                ? settings.min_password_length
                                : (settings.minPasswordLength !== undefined 
@@ -78,12 +41,6 @@ export const useSettingsStore = defineStore('settings', {
         this.defaultTheme = settings.default_theme || 'light'
         this.allowUserTheme = settings.allow_user_theme !== false
         this.availableThemes = settings.available_themes || ['light', 'dark', 'blue', 'green', 'purple', 'orange', 'red', 'cyan', 'luck', 'aurora', 'auto']
-        this.enablePayment = settings.enable_payment !== false
-        this.defaultPaymentMethod = settings.default_payment_method || ''
-        this.paymentCurrency = settings.payment_currency || 'CNY'
-        this.enableAnnouncement = settings.enable_announcement !== false
-        this.announcementPosition = settings.announcement_position || 'top'
-        this.maxAnnouncements = settings.max_announcements || 5
         document.title = this.siteName
         if (this.siteFavicon) {
           const link = document.querySelector("link[rel*='icon']") || document.createElement('link')
@@ -170,50 +127,10 @@ export const useSettingsStore = defineStore('settings', {
     initTheme() {
       this.applyTheme(this.currentTheme)
     },
-    validateEmail(email) {
-      if (!email) return false
-      return EMAIL_PATTERN.test(email)
-    },
-    validatePassword(password) {
-      if (!password || password.length < this.minPasswordLength) return false
-      return PASSWORD_PATTERNS.letter.test(password) && 
-             PASSWORD_PATTERNS.digit.test(password) && 
-             PASSWORD_PATTERNS.special.test(password)
-    },
-    getPasswordError(password) {
-      if (!password) return '请输入密码'
-      if (password.length < this.minPasswordLength) {
-        return `密码长度至少${this.minPasswordLength}位`
-      }
-      if (!PASSWORD_PATTERNS.letter.test(password)) return '密码必须包含字母'
-      if (!PASSWORD_PATTERNS.digit.test(password)) return '密码必须包含数字'
-      if (!PASSWORD_PATTERNS.special.test(password)) return '密码必须包含特殊字符'
-      return null
-    },
     getEmailError(email) {
       if (!email) return '请输入邮箱'
       if (!EMAIL_PATTERN.test(email)) return '邮箱格式不正确'
       return null
     },
-    resetSettings() {
-      this.siteName = 'CBoard'
-      this.siteDescription = '高性能面板系统'
-      this.siteKeywords = '面板,管理,系统'
-      this.siteLogo = ''
-      this.siteFavicon = ''
-      this.allowRegistration = true
-      this.requireEmailVerification = true
-      this.allowQqEmailOnly = false
-      this.minPasswordLength = 8
-      this.defaultTheme = 'default'
-      this.allowUserTheme = true
-      this.availableThemes = ['default', 'dark', 'blue', 'green']
-      this.enablePayment = true
-      this.defaultPaymentMethod = ''
-      this.paymentCurrency = 'CNY'
-      this.enableAnnouncement = true
-      this.announcementPosition = 'top'
-      this.maxAnnouncements = 5
-    }
   }
 }) 

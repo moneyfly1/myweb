@@ -65,6 +65,15 @@ class ApiCache {
   }
 
   /**
+   * 按前缀删除缓存（用于整类内容失效，如登录/登出时清掉 knowledge: 前缀下的全部条目）
+   */
+  deletePrefix(prefix) {
+    for (const key of Array.from(this.cache.keys())) {
+      if (String(key).startsWith(prefix)) this.delete(key)
+    }
+  }
+
+  /**
    * 清理过期缓存
    */
   cleanup() {

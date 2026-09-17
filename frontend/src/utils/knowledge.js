@@ -11,13 +11,29 @@
  */
 import { knowledgeAPI } from '@/utils/api'
 import { unwrapList } from '@/utils/format'
+import { apiCache } from '@/utils/apiCache'
 
 // 客户端教程所在分类名（后台可改，改这里即可）
 const CLIENT_TUTORIAL_CATEGORY = '客户端教程'
 
-let categoryCache = null
-let tutorialIndexCache = null
-let tutorialIndexPromise = null
+// 缓存统一走 apiCache（自带 TTL 与并发去重），不再自己维护 categoryCache /
+// tutorialIndexCache / contentCache 三份无失效机制的进程内缓存：
+// 之前只有 force 参数能绕过，而没有任何地方传 force，
+// 管理员改完文章后用户会一直看到旧正文直到整页刷新。
+// TTL 设 5 分钟：知识库改动不频繁，改完最多 5 分钟生效，无需整页刷新。
+const KNOWLEDGE_TTL = 5 * 60 * 1000
+const CACHE_KEYS = {
+  categories: 'knowledge:categories',
+  tutorialIndex: 'knowledge:tutorial-index',
+  tutorialContent: title => `knowledge:tutorial:${title}`,
+}
+// apiCache.wrap 把 null 视为未命中，因此"文章不存在"要缓存成标记对象
+const NOT_FOUND = { __knowledgeNotFound: true }
+
+// 登录/登出等会话切换时整体失效知识库缓存
+export function clearKnowledgeCache() {
+  apiCache.deletePrefix('knowledge:')
+}
 
 function unwrap(response) {
   const data = response?.data
@@ -26,12 +42,14 @@ function unwrap(response) {
   return data.data ?? data
 }
 
-// getCategories 知识库分类（带进程内缓存）
+// getCategories 知识库分类
 export async function getCategories({ force = false } = {}) {
-  if (categoryCache && !force) return categoryCache
-  const data = unwrap(await knowledgeAPI.getCategories())
-  categoryCache = unwrapList(data)
-  return categoryCache
+  if (force) apiCache.delete(CACHE_KEYS.categories)
+  return apiCache.wrap(
+    CACHE_KEYS.categories,
+    async () => unwrapList(unwrap(await knowledgeAPI.getCategories())),
+    KNOWLEDGE_TTL
+  )
 }
 
 // findCategoryIdByName 按分类名找 id
@@ -52,10 +70,9 @@ function normalizeTitle(title) {
 // buildTutorialIndex 建立「教程标题 → 文章」索引
 // 只在「客户端教程」分类下取文章，避免与其它分类同名文章冲突
 async function buildTutorialIndex({ force = false } = {}) {
-  if (tutorialIndexCache && !force) return tutorialIndexCache
-  if (tutorialIndexPromise && !force) return tutorialIndexPromise
+  if (force) apiCache.delete(CACHE_KEYS.tutorialIndex)
 
-  tutorialIndexPromise = (async () => {
+  return apiCache.wrap(CACHE_KEYS.tutorialIndex, async () => {
     const index = new Map()
     try {
       const categoryId = await findCategoryIdByName(CLIENT_TUTORIAL_CATEGORY)
@@ -71,12 +88,8 @@ async function buildTutorialIndex({ force = false } = {}) {
     } catch {
       // 知识库不可用时静默降级：调用方会显示"教程待补充"而不是报错
     }
-    tutorialIndexCache = index
-    tutorialIndexPromise = null
     return index
-  })()
-
-  return tutorialIndexPromise
+  }, KNOWLEDGE_TTL)
 }
 
 // findTutorialByTitle 按标题查找教程文章；找不到时退化为"包含客户端名"的模糊匹配
@@ -98,41 +111,38 @@ async function findTutorialByTitle(title) {
   return null
 }
 
-// loadTutorialContent 按客户端注册表条目加载教程正文（含缓存）
-const contentCache = new Map()
-
+// loadTutorialContent 按客户端注册表条目加载教程正文（缓存走 apiCache，带 TTL 与并发去重）
 export async function loadTutorialContent(client, { force = false } = {}) {
   if (!client) return null
   const title = client.tutorialTitle
   if (!title) return null
-  if (contentCache.has(title) && !force) return contentCache.get(title)
 
-  const article = await findTutorialByTitle(title)
-  if (!article) {
-    contentCache.set(title, null)
-    return null
-  }
+  const key = CACHE_KEYS.tutorialContent(title)
+  if (force) apiCache.delete(key)
 
-  // 列表接口已带 content（后端返回完整模型），有则直接用，省一次请求
-  if (article.content) {
-    const result = { id: article.id, title: article.title, summary: article.summary || '', content: article.content }
-    contentCache.set(title, result)
-    return result
-  }
+  const cached = await apiCache.wrap(key, async () => {
+    const article = await findTutorialByTitle(title)
+    if (!article) return NOT_FOUND
 
-  try {
-    const detail = unwrap(await knowledgeAPI.getArticle(article.id))
-    const result = {
-      id: article.id,
-      title: detail?.title || article.title,
-      summary: detail?.summary || article.summary || '',
-      content: detail?.content || '',
+    // 列表接口已带 content（后端返回完整模型），有则直接用，省一次请求
+    if (article.content) {
+      return { id: article.id, title: article.title, summary: article.summary || '', content: article.content }
     }
-    contentCache.set(title, result)
-    return result
-  } catch {
-    return null
-  }
+
+    try {
+      const detail = unwrap(await knowledgeAPI.getArticle(article.id))
+      return {
+        id: article.id,
+        title: detail?.title || article.title,
+        summary: detail?.summary || article.summary || '',
+        content: detail?.content || '',
+      }
+    } catch {
+      return NOT_FOUND
+    }
+  }, KNOWLEDGE_TTL)
+
+  return cached === NOT_FOUND ? null : cached
 }
 
 // loadArticles 取某分类下的文章（帮助中心"高频问题"用）
