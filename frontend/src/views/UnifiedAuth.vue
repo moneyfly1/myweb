@@ -93,7 +93,7 @@
                 </div>
               </el-form-item>
               <el-form-item prop="password">
-                <el-input v-model="registerForm.password" :type="isRegPasswordVisible ? 'text' : 'password'" placeholder="设置密码（8位以上）" size="large" :prefix-icon="Lock" clearable autocomplete="new-password" @focus="isRegPasswordFocused = true" @blur="isRegPasswordFocused = false">
+                <el-input v-model="registerForm.password" :type="isRegPasswordVisible ? 'text' : 'password'" :placeholder="`设置密码（至少 ${minPasswordLength} 位）`" size="large" :prefix-icon="Lock" clearable autocomplete="new-password" @focus="isRegPasswordFocused = true" @blur="isRegPasswordFocused = false">
                   <template #suffix>
                     <button
                       type="button"
@@ -143,7 +143,7 @@
                 </div>
               </el-form-item>
               <el-form-item prop="newPassword">
-                <el-input v-model="forgotForm.newPassword" :type="isForgotPasswordVisible ? 'text' : 'password'" placeholder="新密码（8位以上）" size="large" :prefix-icon="Lock" clearable autocomplete="new-password" @focus="isForgotPasswordFocused = true" @blur="isForgotPasswordFocused = false">
+                <el-input v-model="forgotForm.newPassword" :type="isForgotPasswordVisible ? 'text' : 'password'" :placeholder="`新密码（至少 ${minPasswordLength} 位）`" size="large" :prefix-icon="Lock" clearable autocomplete="new-password" @focus="isForgotPasswordFocused = true" @blur="isForgotPasswordFocused = false">
                   <template #suffix>
                     <button
                       type="button"
@@ -223,7 +223,8 @@ const isForgotPasswordVisible = ref(false)
 const registrationEnabled = ref(true)
 const inviteCodeRequired = ref(false)
 const emailVerificationRequired = ref(true)
-const minPasswordLength = ref(8)
+// 统一取自 settings store（公开设置 min_password_length），不再本地 ref(8) 各抄一份
+const minPasswordLength = computed(() => settingsStore.minPasswordLength)
 const inviteCodeInfo = ref(null)
 
 // 共享密码强度校验器 (避免 registerRules / forgotRules 重复定义)
@@ -307,8 +308,9 @@ const loginRules = {
     { required: true, message: '请输入用户名或邮箱', trigger: 'blur' }
   ],
   password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, message: '密码长度不能少于6位', trigger: 'blur' }
+    // 登录只校验必填：登录是校验“已存在的密码”，固定最小长度会在管理员调大
+    // min_password_length 或历史密码更短时把用户挡在门外；长度由服务端判定。
+    { required: true, message: '请输入密码', trigger: 'blur' }
   ]
 }
 
@@ -323,7 +325,8 @@ const registerRules = computed(() => ({
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: minPasswordLength.value, max: 50, message: `密码长度至少 ${minPasswordLength.value} 位，最多 50 位`, trigger: 'blur' },
+    { min: minPasswordLength.value, message: settingsStore.passwordMinLengthHint, trigger: 'blur' },
+    { max: 50, message: '密码长度最多 50 位', trigger: 'blur' },
     {
       validator: passwordValidator, trigger: 'blur'
     }
@@ -386,7 +389,8 @@ const forgotRules = computed(() => ({
   ],
   newPassword: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: minPasswordLength.value, max: 50, message: `密码长度至少 ${minPasswordLength.value} 位，最多 50 位`, trigger: 'blur' },
+    { min: minPasswordLength.value, message: settingsStore.passwordMinLengthHint, trigger: 'blur' },
+    { max: 50, message: '密码长度最多 50 位', trigger: 'blur' },
     {
       validator: passwordValidator, trigger: 'blur'
     }
@@ -703,12 +707,6 @@ const checkRegistrationSettings = async () => {
                                          ? settings.require_email_verification 
                                          : true))
     emailVerificationRequired.value = emailVerificationValue === true || emailVerificationValue === "true"
-    const minPasswordValue = settings.min_password_length !== undefined 
-                            ? settings.min_password_length
-                            : (settings.minPasswordLength !== undefined 
-                               ? settings.minPasswordLength 
-                               : 8)
-    minPasswordLength.value = typeof minPasswordValue === 'number' ? minPasswordValue : (parseInt(minPasswordValue) || 8)
     if (!registrationEnabled.value) {
       ElMessage.warning('注册功能已禁用，请联系管理员')
     }
@@ -716,7 +714,6 @@ const checkRegistrationSettings = async () => {
     registrationEnabled.value = true
     inviteCodeRequired.value = false
     emailVerificationRequired.value = true
-    minPasswordLength.value = 8
   }
 }
 

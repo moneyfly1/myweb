@@ -18,6 +18,10 @@ import (
 func GetPackages(c *gin.Context) {
 	cacheService := cache_service.NewCacheService()
 
+	// 查库前先取缓存版本号：写回时若版本已变（管理员改过套餐并清缓存），
+	// 就丢弃这次写入，避免把改价前的旧列表写回缓存并缓存 30 分钟
+	generation := cacheService.PackagesCacheGeneration()
+
 	// 尝试从缓存获取
 	if cached, ok := cacheService.GetPackagesCache(); ok {
 		utils.SuccessResponse(c, http.StatusOK, "", cached)
@@ -50,8 +54,11 @@ func GetPackages(c *gin.Context) {
 		})
 	}
 
-	// 异步写入缓存
-	go cacheService.SetPackagesCache(result)
+	// 同步写回缓存（带版本校验）。此前是 go 异步写：与"改套餐后清缓存"乱序时，
+	// 会把旧列表写回并缓存 30 分钟，前台一直显示旧价格。
+	if _, err := cacheService.SetPackagesCacheIfUnchanged(generation, result); err != nil {
+		utils.LogError("GetPackages: 写入套餐缓存失败", err, nil)
+	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", result)
 }

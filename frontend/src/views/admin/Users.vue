@@ -704,7 +704,7 @@
           <el-input
             v-model="resetPasswordForm.password"
             type="password"
-            placeholder="请输入新密码（至少8位）"
+            :placeholder="`请输入新密码（至少 ${minPasswordLength} 位）`"
             show-password
             autocomplete="new-password"
             @keyup.enter="submitResetUserPassword"
@@ -830,6 +830,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import UserDetailDialog from './components/UserDetailDialog.vue'
 import { usernameValidator } from '@/utils/usernameRules'
+import { useSettingsStore } from '@/store/settings'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 dayjs.extend(timezone)
@@ -855,6 +856,9 @@ export default {
     Connection, Monitor, Unlock, Check, Message, Bell, Loading, CircleCheck, View
   },
   setup() {
+    const settingsStore = useSettingsStore()
+    // 密码最小长度统一取自 settings store，与后端 min_password_length 保持一致
+    const minPasswordLength = computed(() => settingsStore.minPasswordLength)
     const loading = ref(false)
     const batchDeleting = ref(false)
     const batchOperating = ref(false)
@@ -912,7 +916,7 @@ export default {
       note: '',
       balance: 0
     })
-    const userRules = {
+    const userRules = computed(() => ({
       email: [
         { required: true, message: '请输入邮箱', trigger: 'blur' },
         { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
@@ -928,8 +932,8 @@ export default {
               callback(new Error('请输入密码'))
               return
             }
-            if (value && value.length < 6) {
-              callback(new Error('密码长度不能少于6位'))
+            if (value && value.length < minPasswordLength.value) {
+              callback(new Error(settingsStore.passwordMinLengthHint))
               return
             }
             callback()
@@ -947,10 +951,10 @@ export default {
       expire_time: [
         { required: true, message: '请选择到期时间', trigger: 'change' }
       ]
-    }
+    }))
     const validateResetPassword = (value) => {
       if (!value) return '密码不能为空'
-      if (value.length < 8) return '密码长度不能少于8位'
+      if (value.length < minPasswordLength.value) return settingsStore.passwordMinLengthHint
 
       let complexityCount = 0
       if (/[A-Z]/.test(value)) complexityCount += 1
@@ -1768,6 +1772,7 @@ export default {
     })
     return {
       isMobile,
+      minPasswordLength,
       loading,
       batchDeleting,
       batchOperating,

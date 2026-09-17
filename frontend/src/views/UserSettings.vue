@@ -230,7 +230,8 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { Bell, Lock, Setting, Star, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
-import { api, authAPI, userAPI, settingsAPI } from '@/utils/api'
+import { useSettingsStore } from '@/store/settings'
+import { api, authAPI, userAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
 import FormActionBar from '@/components/FormActionBar.vue'
 import AppDialog from '@/components/AppDialog.vue'
@@ -256,6 +257,7 @@ export default {
   setup() {
     const authStore = useAuthStore()
     const themeStore = useThemeStore()
+    const settingsStore = useSettingsStore()
     const activeSetting = ref('profile')
     const isMobile = useMobile()
     const profileFormRef = ref()
@@ -268,7 +270,8 @@ export default {
     const emailChanging = ref(false)
     const codeSending = ref(false)
     const emailChangeDialogVisible = ref(false)
-    const minPasswordLength = ref(8)
+    // 统一取自 settings store（公开设置 min_password_length），不再本地 ref(8) 各抄一份
+    const minPasswordLength = computed(() => settingsStore.minPasswordLength)
     const profileForm = reactive({
       username: '',
       email: '',
@@ -308,12 +311,12 @@ export default {
       '12345678', 'password1', 'qwerty123', 'admin123'
     ]
     const passwordRequirementText = computed(() => (
-      `密码长度至少 ${minPasswordLength.value} 位，需包含大写字母、小写字母、数字、特殊字符中的至少三种`
+      `${settingsStore.passwordMinLengthHint}，需包含大写字母、小写字母、数字、特殊字符中的至少三种`
     ))
     const validatePasswordStrength = (value) => {
       if (!value) return '请输入新密码'
       if (value.length < minPasswordLength.value) {
-        return `密码长度至少 ${minPasswordLength.value} 位`
+        return settingsStore.passwordMinLengthHint
       }
 
       const complexityCount = [
@@ -390,19 +393,6 @@ export default {
     const activeSettingMeta = computed(() => (
       settingNavItems.find(item => item.name === activeSetting.value) || settingNavItems[0]
     ))
-    const loadPasswordSettings = async () => {
-      try {
-        const response = await settingsAPI.getPublicSettings()
-        const settings = response.data?.data || response.data || {}
-        const value = settings.min_password_length !== undefined
-          ? settings.min_password_length
-          : settings.minPasswordLength
-        const parsed = typeof value === 'number' ? value : parseInt(value)
-        minPasswordLength.value = Number.isFinite(parsed) && parsed > 0 ? parsed : 8
-      } catch (error) {
-        minPasswordLength.value = 8
-      }
-    }
     const loadUserInfo = async () => {
       let loadedUser = null
       try {
@@ -732,7 +722,6 @@ export default {
       actions[activeSetting.value]?.()
     }
     onMounted(() => {
-      loadPasswordSettings()
       loadUserInfo()
       themeStore.initTheme()
       themeStore.loadUserTheme()

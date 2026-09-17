@@ -60,6 +60,33 @@ func (cs *CacheService) Del(key string) error {
 	return cache.Del(key)
 }
 
+// Generation 读取缓存键版本号（防陈旧回填用，详见 core/cache.SetIfGeneration）
+func (cs *CacheService) Generation(key string) int64 {
+	return cache.Generation(key)
+}
+
+// SetIfUnchanged 版本号未变才写入缓存；返回 false 表示期间缓存已被清除（数据已变更），本次写入被丢弃
+func (cs *CacheService) SetIfUnchanged(key string, generation int64, value interface{}, ttl time.Duration) (bool, error) {
+	if !cache.IsRedisEnabled() {
+		return false, nil
+	}
+
+	data, err := json.Marshal(value)
+	if err != nil {
+		return false, err
+	}
+	return cache.SetIfGeneration(key, generation, string(data), ttl)
+}
+
+// Invalidate 删除缓存并递增版本号：数据变更后调用，
+// 既清掉当前缓存，也让并发的"陈旧回填"写入失效
+func (cs *CacheService) Invalidate(key string) error {
+	if !cache.IsRedisEnabled() {
+		return nil
+	}
+	return cache.DelWithGeneration(key)
+}
+
 // ==========================================
 // 用户信息缓存
 // ==========================================
@@ -74,12 +101,14 @@ func (cs *CacheService) ClearUserCache(userID uint) error {
 // 套餐列表缓存
 // ==========================================
 
+// 套餐列表缓存
+const packagesCacheKey = "packages:list:active"
+
 // GetPackagesCache 获取套餐列表缓存
 func (cs *CacheService) GetPackagesCache() ([]map[string]interface{}, bool) {
 	var packages []map[string]interface{}
-	key := "packages:list:active"
 
-	ok, err := cs.Get(key, &packages)
+	ok, err := cs.Get(packagesCacheKey, &packages)
 	if err != nil || !ok {
 		return nil, false
 	}
@@ -87,16 +116,19 @@ func (cs *CacheService) GetPackagesCache() ([]map[string]interface{}, bool) {
 	return packages, true
 }
 
-// SetPackagesCache 设置套餐列表缓存
-func (cs *CacheService) SetPackagesCache(packages []map[string]interface{}) error {
-	key := "packages:list:active"
-	return cs.Set(key, packages, 30*time.Minute)
+// PackagesCacheGeneration 查库前取一次版本号，写回时用 SetPackagesCacheIfUnchanged 校验
+func (cs *CacheService) PackagesCacheGeneration() int64 {
+	return cs.Generation(packagesCacheKey)
 }
 
-// ClearPackagesCache 清除套餐列表缓存
+// SetPackagesCacheIfUnchanged 版本号未变才写回套餐缓存（避免把改价前的旧列表写回缓存）
+func (cs *CacheService) SetPackagesCacheIfUnchanged(generation int64, packages []map[string]interface{}) (bool, error) {
+	return cs.SetIfUnchanged(packagesCacheKey, generation, packages, 30*time.Minute)
+}
+
+// ClearPackagesCache 清除套餐列表缓存（同时递增版本号，使并发陈旧回填失效）
 func (cs *CacheService) ClearPackagesCache() error {
-	key := "packages:list:active"
-	return cs.Del(key)
+	return cs.Invalidate(packagesCacheKey)
 }
 
 // ==========================================
@@ -135,12 +167,13 @@ func (cs *CacheService) ClearSystemConfigCache(category string) error {
 // 支付方式缓存
 // ==========================================
 
+const paymentMethodsCacheKey = "payment:methods:active"
+
 // GetPaymentMethodsCache 获取支付方式列表缓存
 func (cs *CacheService) GetPaymentMethodsCache() ([]map[string]interface{}, bool) {
 	var methods []map[string]interface{}
-	key := "payment:methods:active"
 
-	ok, err := cs.Get(key, &methods)
+	ok, err := cs.Get(paymentMethodsCacheKey, &methods)
 	if err != nil || !ok {
 		return nil, false
 	}
@@ -148,16 +181,20 @@ func (cs *CacheService) GetPaymentMethodsCache() ([]map[string]interface{}, bool
 	return methods, true
 }
 
-// SetPaymentMethodsCache 设置支付方式列表缓存
-func (cs *CacheService) SetPaymentMethodsCache(methods []map[string]interface{}) error {
-	key := "payment:methods:active"
-	return cs.Set(key, methods, 1*time.Hour)
+// PaymentMethodsCacheGeneration 查库前取一次版本号，写回时校验
+func (cs *CacheService) PaymentMethodsCacheGeneration() int64 {
+	return cs.Generation(paymentMethodsCacheKey)
 }
 
-// ClearPaymentMethodsCache 清除支付方式列表缓存
+// SetPaymentMethodsCacheIfUnchanged 版本号未变才写回支付方式缓存
+// （避免管理员停用某支付方式后，并发的旧数据回填让已停用的方式继续可选）
+func (cs *CacheService) SetPaymentMethodsCacheIfUnchanged(generation int64, methods []map[string]interface{}) (bool, error) {
+	return cs.SetIfUnchanged(paymentMethodsCacheKey, generation, methods, 1*time.Hour)
+}
+
+// ClearPaymentMethodsCache 清除支付方式列表缓存（同时递增版本号）
 func (cs *CacheService) ClearPaymentMethodsCache() error {
-	key := "payment:methods:active"
-	return cs.Del(key)
+	return cs.Invalidate(paymentMethodsCacheKey)
 }
 
 // ==========================================

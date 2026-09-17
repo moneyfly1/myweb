@@ -27,6 +27,11 @@ func WarmupCache() {
 }
 
 func warmupPackages() {
+	cs := NewCacheService()
+	// 预热同样是"查库后写缓存"，会与管理员改套餐后的清缓存乱序，
+	// 因此先取版本号、写回时校验（与读路径一致）
+	generation := cs.PackagesCacheGeneration()
+
 	db := database.GetDB()
 	var packages []models.Package
 	if err := db.Where("is_active = ?", true).Order("sort_order ASC").Find(&packages).Error; err != nil {
@@ -50,9 +55,11 @@ func warmupPackages() {
 		})
 	}
 
-	cs := NewCacheService()
-	if err := cs.SetPackagesCache(result); err != nil {
+	if written, err := cs.SetPackagesCacheIfUnchanged(generation, result); err != nil {
 		log.Printf("failed to set packages cache: %v", err)
+	} else if !written {
+		utils.LogInfo("缓存预热: 套餐缓存已被更新，跳过本次写入 (%d 条)", len(result))
+		return
 	}
 	utils.LogInfo("缓存预热: 套餐列表已预热 (%d 条)", len(result))
 }
