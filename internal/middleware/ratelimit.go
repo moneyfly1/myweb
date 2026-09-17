@@ -169,9 +169,14 @@ func (rl *RateLimiter) GetConfig() (rate int, lockDuration time.Duration) {
 	return rl.rate, rl.lockDuration
 }
 
+// registerHourlyLimit 注册接口每 IP 每小时允许的注册次数。
+// 原值为 3：同一办公室/校园网 NAT 出口或用户自己打错几次就会撞上限，
+// 被锁 1 小时，真实用户误伤明显；10 次/小时仍足以拦住批量注册脚本。
+const registerHourlyLimit = 10
+
 var (
 	loginRateLimiter    = NewRateLimiter(5, 15*time.Minute, 15*time.Minute)
-	registerRateLimiter = NewRateLimiter(3, 1*time.Hour, 1*time.Hour)
+	registerRateLimiter = NewRateLimiter(registerHourlyLimit, 1*time.Hour, 1*time.Hour)
 	verifyCodeLimiter   = NewRateLimiter(5, 1*time.Hour, 1*time.Hour)
 	resetCodeLimiter    = NewRateLimiter(10, 15*time.Minute, 15*time.Minute)
 )
@@ -275,18 +280,26 @@ func RegisterRateLimitMiddleware() gin.HandlerFunc {
 		key := utils.GetRealClientIP(c)
 
 		allowed, resetAt, locked := registerRateLimiter.Allow(key)
+		rate, lockDuration := registerRateLimiter.GetConfig()
+		rateLimitStr := strconv.Itoa(rate)
+		lockStr := fmt.Sprintf("%d分钟", int(lockDuration.Minutes()))
 
 		if !allowed {
 			if locked {
 				utils.CreateSecurityLog(c, "register_ip_blocked", "HIGH",
-					fmt.Sprintf("注册IP被封禁: %s (请求过于频繁，已临时锁定)", key),
-					map[string]interface{}{"ip": key, "reason": "注册请求过于频繁", "reset_at": utils.FormatBeijingTime(resetAt)})
-				utils.ErrorResponse(c, http.StatusTooManyRequests, "注册请求过于频繁，账户已被临时锁定，请稍后再试", nil)
+					fmt.Sprintf("注册IP被封禁: %s (请求过于频繁，已临时锁定%s)", key, lockStr),
+					map[string]interface{}{"ip": key, "reason": "注册请求过于频繁", "lock_time": lockStr, "reset_at": utils.FormatBeijingTime(resetAt)})
+				// 锁定期间也要告知何时可重试，否则前端只能提示"稍后再试"而不知等多久
+				c.Header("Retry-After", strconv.Itoa(int(time.Until(resetAt).Seconds())))
+				c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))
+				utils.ErrorResponse(c, http.StatusTooManyRequests,
+					fmt.Sprintf("注册请求过于频繁，账户已被临时锁定%s，请稍后再试（解封时间 %s）",
+						lockStr, utils.FormatBeijingTime(resetAt)), nil)
 			} else {
 				utils.CreateSecurityLog(c, "register_rate_limit", "MEDIUM",
 					fmt.Sprintf("注册速率限制: IP %s 接近限制", key),
 					map[string]interface{}{"ip": key, "reset_at": utils.FormatBeijingTime(resetAt)})
-				c.Header("X-RateLimit-Limit", "3")
+				c.Header("X-RateLimit-Limit", rateLimitStr)
 				c.Header("X-RateLimit-Remaining", "0")
 				c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))
 				utils.ErrorResponse(c, http.StatusTooManyRequests, "注册请求过于频繁，请稍后再试", nil)
@@ -295,7 +308,7 @@ func RegisterRateLimitMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		c.Header("X-RateLimit-Limit", "3")
+		c.Header("X-RateLimit-Limit", rateLimitStr)
 		c.Header("X-RateLimit-Reset", resetAt.Format(time.RFC1123))
 
 		c.Next()
