@@ -622,10 +622,13 @@ func GetUserDetails(c *gin.Context) {
 			"order_no":   order.OrderNo,
 			"user_id":    order.UserID,
 			"package_id": order.PackageID,
-			"amount":     order.Amount,
-			"status":     order.Status,
-			"created_at": utils.FormatBeijingTime(order.CreatedAt),
-			"updated_at": utils.FormatBeijingTime(order.UpdatedAt),
+			// amount 用折后成交价：此前直接用原价，用户用了优惠券仍看到原价；
+			// 余额支付订单另有 final_amount=0 的坑，故统一走 PaidAmount()
+			"amount":      order.PaidAmount(),
+			"base_amount": order.Amount,
+			"status":      order.Status,
+			"created_at":  utils.FormatBeijingTime(order.CreatedAt),
+			"updated_at":  utils.FormatBeijingTime(order.UpdatedAt),
 		}
 
 		if order.PaymentMethodName.Valid {
@@ -841,7 +844,9 @@ func GetUserDetails(c *gin.Context) {
 			"total_subscriptions": len(subs),
 			"total_orders":        paymentSummary.Total,
 			"total_resets":        totalResets,
-			"total_spent":         paymentSummary.PaidAmount,
+			// 消费额口径：订单成交金额（含余额消费），不含充值
+			"total_spent":     paymentSummary.OrderAmount,
+			"total_recharged": paymentSummary.RechargeAmount,
 		},
 		"subscription_resets": formattedResets,
 		"ua_records":          uaRecords,

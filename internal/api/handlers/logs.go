@@ -581,11 +581,9 @@ func GetDashboardActivity(c *gin.Context) {
 		if o.User.ID > 0 {
 			item.Username = o.User.Username
 		}
-		if o.FinalAmount.Valid {
-			item.ActionDesc = fmt.Sprintf("订单金额 ¥%.2f", o.FinalAmount.Float64)
-		} else {
-			item.ActionDesc = fmt.Sprintf("订单金额 ¥%.2f", o.Amount)
-		}
+		// 订单金额用统一成交口径：余额支付订单的 final_amount 为 0，
+		// 直接用会在日志里显示"订单金额 ¥0.00"（历史 bug）
+		item.ActionDesc = fmt.Sprintf("订单金额 ¥%.2f", o.PaidAmount())
 		items = append(items, item)
 	}
 

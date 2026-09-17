@@ -1053,10 +1053,9 @@ func sendPaymentNotifications(db *gorm.DB, orderNo string) {
 	}
 
 	paymentTime := utils.FormatBeijingTime(utils.GetBeijingTime())
-	paidAmount := latestOrder.Amount
-	if latestOrder.FinalAmount.Valid {
-		paidAmount = latestOrder.FinalAmount.Float64
-	}
+	// 通知里的"支付金额"用订单成交额（折后价）：余额支付订单 final_amount 为 0，
+	// 直接取会让用户收到"支付成功 ¥0.00"的通知
+	paidAmount := latestOrder.PaidAmount()
 	paymentMethod := "在线支付"
 	if latestOrder.PaymentMethodName.Valid {
 		paymentMethod = latestOrder.PaymentMethodName.String

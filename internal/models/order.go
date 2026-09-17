@@ -2,6 +2,8 @@ package models
 
 import (
 	"database/sql"
+	"encoding/json"
+	"math"
 	"time"
 )
 
@@ -32,4 +34,86 @@ type Order struct {
 
 func (Order) TableName() string {
 	return "orders"
+}
+
+// ===== 订单金额口径（务必区分，历史 bug 就出在这里）=====
+//
+// 字段语义：
+//   Amount         —— 订单原价（套餐价 × 时长，未扣任何优惠）
+//   DiscountAmount —— 优惠合计（等级折扣 + 优惠券 + 营销活动 / 后台自定义优惠）
+//   FinalAmount    —— **还需在线支付的金额**，不是订单金额！
+//                     （创建订单时若用余额抵扣，余额已从这里扣掉，余额支付订单恒为 0）
+//   ExtraData.balance_used / balance_deducted —— 余额抵扣信息，且有两种语义：
+//                     balance_deducted=true  → 创建订单时已抵扣（FinalAmount 已减少）
+//                     未标记 / false          → 支付时抵扣（FinalAmount 未减少）
+//
+// 结论：
+//   - 支付/网关场景（下单应付额、回调金额校验、向支付渠道退款）→ 必须用 FinalAmount
+//   - 展示订单金额、统计用户消费、审计日志等"订单价值"场景 → 必须用 PaidAmount()
+//
+// 曾出现的问题：余额支付订单 FinalAmount=0，展示层直接读 FinalAmount，
+// 导致「最近订单金额 ¥0」「审计日志 订单金额 ¥0.00」「用户消费统计少计」。
+
+// BalanceUsed 返回订单记录在案的余额抵扣总额（无则 0）。
+// 注意：包含"创建时抵扣"与"支付时抵扣"两种来源，展示金额时不要直接相加，
+// 否则支付时抵扣的订单会与 FinalAmount 重复计数。
+func (o Order) BalanceUsed() float64 {
+	if !o.ExtraData.Valid || o.ExtraData.String == "" {
+		return 0
+	}
+	var extra map[string]interface{}
+	if err := json.Unmarshal([]byte(o.ExtraData.String), &extra); err != nil {
+		return 0
+	}
+	if v, ok := extra["balance_used"].(float64); ok && v > 0 {
+		return v
+	}
+	return 0
+}
+
+// BalanceDeductedAtCreation 余额是否在创建订单时就已抵扣（此时 FinalAmount 已减少）
+func (o Order) BalanceDeductedAtCreation() bool {
+	if !o.ExtraData.Valid || o.ExtraData.String == "" {
+		return false
+	}
+	var extra map[string]interface{}
+	if err := json.Unmarshal([]byte(o.ExtraData.String), &extra); err != nil {
+		return false
+	}
+	v, ok := extra["balance_deducted"].(bool)
+	return ok && v
+}
+
+// OrderValue 返回订单折后价（原价 - 优惠），即客户为该订单付出的总金额，
+// 与资金来源（余额 / 在线支付）无关。
+func (o Order) OrderValue() float64 {
+	value := o.Amount
+	if o.DiscountAmount.Valid && o.DiscountAmount.Float64 > 0 {
+		value = o.Amount - o.DiscountAmount.Float64
+	}
+	if value < 0 {
+		value = 0
+	}
+	return math.Round(value*100) / 100
+}
+
+// PaidAmount 返回订单成交金额（展示/统计用），等价于订单折后价。
+//
+// 为什么不用 FinalAmount + balance_used：
+//   - balance_used 有两种语义（见上），一律相加会让"支付时抵扣"的订单金额翻倍；
+//   - 折后价本身已包含所有优惠，直接用它既准确又无需解析 ExtraData。
+func (o Order) PaidAmount() float64 {
+	return o.OrderValue()
+}
+
+// AmountStillDueOnline 返回还需通过在线支付渠道支付的金额（余额抵扣后）。
+// 仅用于支付/对账场景，不要用于展示订单金额。
+func (o Order) AmountStillDueOnline() float64 {
+	if o.FinalAmount.Valid {
+		if o.FinalAmount.Float64 < 0 {
+			return 0
+		}
+		return math.Round(o.FinalAmount.Float64*100) / 100
+	}
+	return o.OrderValue()
 }

@@ -779,13 +779,22 @@ func VerifyToken(tokenString string) (*JWTClaims, error) {
 }
 
 type UserPaymentSummary struct {
-	Total      int64
-	Pending    int64
-	Paid       int64
-	Cancelled  int64
-	PaidAmount float64
+	Total          int64
+	Pending        int64
+	Paid           int64
+	Cancelled      int64
+	OrderAmount    float64 // 已支付订单成交额（原价-优惠），即用户消费额
+	RechargeAmount float64 // 已支付充值额
+	PaidAmount     float64 // 支付总额 = 订单成交额 + 充值额
 }
 
+// CalculateUserPaymentSummary 汇总用户的订单与充值。
+//
+// 金额口径说明（历史 bug 来源）：
+//
+//	订单一律用「成交金额 = amount - discount_amount」而不是 final_amount，
+//	因为余额支付订单的 final_amount 创建时已被余额抵扣为 0，
+//	直接累加会让用户的消费额凭空少算（表现为"总消费 ¥0"）。
 func CalculateUserPaymentSummary(db *gorm.DB, userID uint) UserPaymentSummary {
 	var summary UserPaymentSummary
 	db.Raw(`
@@ -794,7 +803,8 @@ func CalculateUserPaymentSummary(db *gorm.DB, userID uint) UserPaymentSummary {
 			COALESCE(SUM(pending), 0) AS pending,
 			COALESCE(SUM(paid), 0) AS paid,
 			COALESCE(SUM(cancelled), 0) AS cancelled,
-			COALESCE(SUM(paid_amount), 0) AS paid_amount
+			COALESCE(SUM(order_amount), 0) AS order_amount,
+			COALESCE(SUM(recharge_amount), 0) AS recharge_amount
 		FROM (
 			SELECT
 				COUNT(*) AS total,
@@ -802,8 +812,9 @@ func CalculateUserPaymentSummary(db *gorm.DB, userID uint) UserPaymentSummary {
 				COALESCE(SUM(CASE WHEN LOWER(status) = 'paid' THEN 1 ELSE 0 END), 0) AS paid,
 				COALESCE(SUM(CASE WHEN LOWER(status) = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled,
 				COALESCE(SUM(CASE WHEN LOWER(status) = 'paid' THEN
-					ABS(CASE WHEN final_amount IS NOT NULL THEN final_amount ELSE amount END)
-				ELSE 0 END), 0) AS paid_amount
+					ABS(COALESCE(amount, 0) - COALESCE(discount_amount, 0))
+				ELSE 0 END), 0) AS order_amount,
+				0 AS recharge_amount
 			FROM orders
 			WHERE user_id = ?
 			UNION ALL
@@ -812,13 +823,16 @@ func CalculateUserPaymentSummary(db *gorm.DB, userID uint) UserPaymentSummary {
 				COALESCE(SUM(CASE WHEN LOWER(status) = 'pending' THEN 1 ELSE 0 END), 0) AS pending,
 				COALESCE(SUM(CASE WHEN LOWER(status) = 'paid' THEN 1 ELSE 0 END), 0) AS paid,
 				COALESCE(SUM(CASE WHEN LOWER(status) = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled,
-				COALESCE(SUM(CASE WHEN LOWER(status) = 'paid' THEN amount ELSE 0 END), 0) AS paid_amount
+				0 AS order_amount,
+				COALESCE(SUM(CASE WHEN LOWER(status) = 'paid' THEN amount ELSE 0 END), 0) AS recharge_amount
 			FROM recharge_records
 			WHERE user_id = ?
 		) user_payment_summary
 	`, userID, userID).Scan(&summary)
 
-	summary.PaidAmount = RoundFloat(summary.PaidAmount, 2)
+	summary.OrderAmount = RoundFloat(summary.OrderAmount, 2)
+	summary.RechargeAmount = RoundFloat(summary.RechargeAmount, 2)
+	summary.PaidAmount = RoundFloat(summary.OrderAmount+summary.RechargeAmount, 2)
 	return summary
 }
 

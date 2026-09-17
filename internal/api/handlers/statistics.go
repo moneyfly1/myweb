@@ -175,10 +175,8 @@ func GetStatistics(c *gin.Context) {
 	db.Preload("User").Order("created_at DESC").Limit(10).Find(&recentOrders)
 	recentActivitiesList := make([]gin.H, 0)
 	for _, order := range recentOrders {
-		amount := order.Amount
-		if order.FinalAmount.Valid {
-			amount = order.FinalAmount.Float64
-		}
+		// 统一成交口径：余额支付订单 final_amount 为 0，直接取会显示 ¥0
+		amount := order.PaidAmount()
 		activityType := "primary"
 		if order.Status == "paid" {
 			activityType = "success"

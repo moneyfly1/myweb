@@ -172,8 +172,10 @@ func GetUserDashboard(c *gin.Context) {
 			"special_node_unlimited_devices": user.SpecialNodeUnlimitedDevices,
 		},
 		"stat": gin.H{
-			"order_count":  userPaymentSummary.Paid,
-			"total_spent":  userPaymentSummary.PaidAmount,
+			"order_count": userPaymentSummary.Paid,
+			// total_spent 语义是"消费额"，只算订单成交金额（不含充值），
+			// 且必须含余额消费（历史 bug：余额支付订单按 final_amount 计为 0）
+			"total_spent":  userPaymentSummary.OrderAmount,
 			"device_count": deviceCount,
 		},
 		"notice": gin.H{
@@ -243,10 +245,9 @@ func GetRecentOrders(c *gin.Context) {
 
 	orderList := make([]gin.H, 0)
 	for _, order := range orders {
-		amount := order.Amount
-		if order.FinalAmount.Valid {
-			amount = order.FinalAmount.Float64
-		}
+		// 统一成交金额口径：余额支付订单的 final_amount 为 0（创建时余额已抵扣），
+		// 直接取会在「最近订单」显示 ¥0（历史 bug）
+		amount := order.PaidAmount()
 		orderList = append(orderList, gin.H{
 			"id":         order.ID,
 			"order_no":   order.OrderNo,
