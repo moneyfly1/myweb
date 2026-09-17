@@ -797,7 +797,7 @@ func (s *Scheduler) shouldRunAutoBackup(intervalHours int) bool {
 		return true // 从未备份过，需要备份
 	}
 
-	lastBackupTime, err := time.Parse("2006-01-02T15:04:05", config.Value)
+	lastBackupTime, err := utils.ParseBeijingLayout("2006-01-02T15:04:05", config.Value)
 	if err != nil {
 		return true // 时间格式错误，需要备份
 	}
