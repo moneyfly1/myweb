@@ -199,9 +199,13 @@ func UpdateCurrentUser(c *gin.Context) {
 	}
 
 	if req.Username != "" {
-		var existingUser models.User
-		if err := db.Where("username = ? AND id != ?", req.Username, user.ID).First(&existingUser).Error; err == nil {
-			utils.ErrorResponse(c, http.StatusBadRequest, "用户名已被使用", nil)
+		msg, err := checkUsernameAvailable(db, req.Username, user.ID)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "校验用户名失败，请稍后重试", err)
+			return
+		}
+		if msg != "" {
+			utils.ErrorResponse(c, http.StatusBadRequest, msg, nil)
 			return
 		}
 		user.Username = req.Username
@@ -1079,8 +1083,10 @@ func buildMultiLocationDetail(db *gorm.DB, userID uint, count int64, startTime, 
 
 func buildLoginFailedDetail(db *gorm.DB, user *models.User, count int64, startTime, endTime time.Time, period string) gin.H {
 	var rows []models.LoginAttempt
-	db.Where("(lower(username) = lower(?) OR lower(username) = lower(?)) AND success = ? AND created_at >= ? AND created_at <= ?",
-		user.Email, user.Username, false, startTime, endTime).
+	// 用户名按精确匹配（登录本身区分大小写），邮箱按忽略大小写匹配（登录允许任意大小写邮箱）。
+	// 之前两侧都忽略大小写，会把 alex 与 Alex 两个账号的失败记录混在一起展示。
+	db.Where("(username = ? OR LOWER(username) = LOWER(?)) AND success = ? AND created_at >= ? AND created_at <= ?",
+		user.Username, user.Email, false, startTime, endTime).
 		Order("created_at DESC").
 		Limit(100).
 		Find(&rows)
@@ -1396,8 +1402,15 @@ func CreateUser(c *gin.Context) {
 	db := database.GetDB()
 
 	var existingUser models.User
-	if err := db.Where("LOWER(email) = ? OR username = ?", req.Email, req.Username).First(&existingUser).Error; err == nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "邮箱或用户名已存在", nil)
+	if err := db.Where("LOWER(email) = ?", req.Email).First(&existingUser).Error; err == nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "该邮箱已被其他账号使用", nil)
+		return
+	}
+	if msg, err := checkUsernameAvailable(db, req.Username, 0); err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "校验用户名失败，请稍后重试", err)
+		return
+	} else if msg != "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, msg, nil)
 		return
 	}
 
@@ -1609,9 +1622,13 @@ func UpdateUser(c *gin.Context) {
 	}
 
 	if req.Username != "" {
-		var existing models.User
-		if err := db.Where("username = ? AND id != ?", req.Username, id).First(&existing).Error; err == nil {
-			utils.ErrorResponse(c, http.StatusBadRequest, "用户名已被使用", nil)
+		msg, err := checkUsernameAvailable(db, req.Username, user.ID)
+		if err != nil {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "校验用户名失败，请稍后重试", err)
+			return
+		}
+		if msg != "" {
+			utils.ErrorResponse(c, http.StatusBadRequest, msg, nil)
 			return
 		}
 		user.Username = req.Username

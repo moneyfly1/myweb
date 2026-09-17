@@ -74,6 +74,7 @@
             <el-form v-if="registrationEnabled" ref="registerFormRef" :model="registerForm" :rules="registerRules" @submit.prevent="handleRegister" label-position="top">
               <el-form-item prop="username">
                 <el-input v-model="registerForm.username" placeholder="用户名" size="large" :prefix-icon="User" clearable autocomplete="username" />
+                <div class="field-hint">{{ USERNAME_HINT }}</div>
               </el-form-item>
               <el-form-item prop="email">
                 <el-input v-model="registerForm.email" type="email" placeholder="电子邮箱（推荐 QQ 邮箱）" size="large" :prefix-icon="Message" clearable autocomplete="email" />
@@ -194,6 +195,7 @@ import { authAPI, inviteAPI, settingsAPI } from '@/utils/api'
 import { useThemeStore } from '@/store/theme'
 import { secureStorage } from '@/utils/api'
 import { resetRefreshFailed } from '@/utils/api'
+import { usernameValidator, USERNAME_HINT } from '@/utils/usernameRules'
 
 const router = useRouter()
 const route = useRoute()
@@ -313,8 +315,7 @@ const loginRules = {
 const registerRules = computed(() => ({
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 2, max: 20, message: '用户名长度必须在 2 到 20 个字符之间', trigger: 'blur' },
-    { pattern: /^[a-zA-Z0-9_]+$/, message: '用户名只能包含字母、数字和下划线', trigger: 'blur' }
+    { validator: usernameValidator, trigger: 'blur' }
   ],
   email: [
     { required: true, message: '请输入邮箱地址', trigger: 'blur' },
@@ -1110,6 +1111,13 @@ $auth-text-muted: #cbd5e1;
   font-size: 12px;
   .tip-ok { color: #86efac; }
   .tip-err { color: #fca5a5; }
+}
+
+.field-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary, #909399);
 }
 
 .lux-copyright {

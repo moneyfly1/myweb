@@ -829,6 +829,7 @@ import FormActionBar from '@/components/FormActionBar.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import UserDetailDialog from './components/UserDetailDialog.vue'
+import { usernameValidator } from '@/utils/usernameRules'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 dayjs.extend(timezone)
@@ -918,7 +919,7 @@ export default {
       ],
       username: [
         { required: true, message: '请输入用户名', trigger: 'blur' },
-        { min: 2, max: 20, message: '用户名长度在2到20个字符', trigger: 'blur' }
+        { validator: usernameValidator, trigger: 'blur' }
       ],
       password: [
         {

@@ -77,7 +77,7 @@ func Register(c *gin.Context) {
 	// 验证用户名格式（2-20个字符，支持字母、数字、下划线和中文）
 	if !utils.ValidateUsername(req.Username) {
 		logRegisterFailed("用户名格式不正确")
-		utils.ErrorResponse(c, http.StatusBadRequest, "用户名格式不正确，长度为2-20个字符，只能包含字母、数字、下划线和中文", nil)
+		utils.ErrorResponse(c, http.StatusBadRequest, usernameFormatMessage, nil)
 		return
 	}
 
@@ -87,9 +87,15 @@ func Register(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "该邮箱已注册，请直接登录。如忘记密码，请点击找回密码。", nil)
 		return
 	}
-	if db.Model(&models.User{}).Where("username = ?", req.Username).Count(&count); count > 0 {
+	taken, takenErr := usernameTaken(db, req.Username, 0)
+	if takenErr != nil {
+		logRegisterFailed("用户名唯一性校验失败: " + takenErr.Error())
+		utils.ErrorResponse(c, http.StatusInternalServerError, "注册失败，请稍后重试", takenErr)
+		return
+	}
+	if taken {
 		logRegisterFailed("用户名已被使用")
-		utils.ErrorResponse(c, http.StatusBadRequest, "用户名已被使用，请选择其他用户名", nil)
+		utils.ErrorResponse(c, http.StatusBadRequest, usernameTakenMessage, nil)
 		return
 	}
 
@@ -134,7 +140,7 @@ func Register(c *gin.Context) {
 					return fmt.Errorf("该邮箱已注册，请直接登录。如忘记密码，请点击找回密码。")
 				}
 				if strings.Contains(err.Error(), "username") || strings.Contains(err.Error(), "Username") {
-					return fmt.Errorf("用户名已被使用，请选择其他用户名")
+					return fmt.Errorf("%s", usernameTakenMessage)
 				}
 				return fmt.Errorf("邮箱或用户名已被使用，请检查后重试")
 			}

@@ -40,6 +40,7 @@
           <el-form :model="profileForm" :rules="profileRules" ref="profileFormRef" label-width="100px">
             <el-form-item label="用户名" prop="username">
               <el-input v-model="profileForm.username" placeholder="请输入用户名"></el-input>
+              <div class="username-hint">{{ usernameHint }}</div>
             </el-form-item>
             <el-form-item label="邮箱" prop="email">
               <el-input v-model="profileForm.email" placeholder="请输入邮箱" disabled>
@@ -233,6 +234,7 @@ import { api, authAPI, userAPI, settingsAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
 import FormActionBar from '@/components/FormActionBar.vue'
 import AppDialog from '@/components/AppDialog.vue'
+import { usernameValidator, USERNAME_HINT } from '@/utils/usernameRules'
 const notificationTypeOptions = [
   { value: 'system', label: '系统通知' },
   { value: 'security', label: '安全/密码通知' },
@@ -294,7 +296,7 @@ export default {
     const profileRules = {
       username: [
         { required: true, message: '请输入用户名', trigger: 'blur' },
-        { min: 2, max: 20, message: '用户名长度在 2 到 20 个字符', trigger: 'blur' }
+        { validator: usernameValidator, trigger: 'blur' }
       ],
       nickname: [
         { max: 50, message: '昵称长度不能超过 50 个字符', trigger: 'blur' }
@@ -760,6 +762,7 @@ export default {
       profileRules,
       securityRules,
       emailChangeRules,
+      usernameHint: USERNAME_HINT,
       passwordRequirementText,
       handleSettingSelect,
       currentSettingSaving,
@@ -1506,5 +1509,12 @@ export default {
   .settings-panel-card .setting-section {
     padding: 16px 12px;
   }
+}
+
+.username-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary, #909399);
 }
 </style>

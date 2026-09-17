@@ -255,6 +255,7 @@ import { getDeviceTypeFromUA as getDeviceInfo } from '@/utils/device'
 import { Lock, User } from '@element-plus/icons-vue'
 import AppDialog from '@/components/AppDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import { usernameValidator } from '@/utils/usernameRules'
 import FormActionBar from '@/components/FormActionBar.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import { useMobile } from '@/composables/useMobile'
@@ -312,7 +313,8 @@ export default {
     }
     const profileRules = {
       username: [
-        { required: true, message: '请输入用户名', trigger: 'blur' }
+        { required: true, message: '请输入用户名', trigger: 'blur' },
+        { validator: usernameValidator, trigger: 'blur' }
       ],
       email: [
         { required: true, message: '请输入邮箱', trigger: 'blur' },
