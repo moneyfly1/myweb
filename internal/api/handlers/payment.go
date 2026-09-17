@@ -166,8 +166,8 @@ func CreatePayment(c *gin.Context) {
 		return
 	}
 	amount := order.Amount
-	if order.FinalAmount.Valid {
-		amount = order.FinalAmount.Float64
+	if order.AmountDueOnline.Valid {
+		amount = order.AmountDueOnline.Float64
 	}
 	if amount <= 0.01 {
 		if _, err := orderServicePkg.NewOrderService().FinalizePaidOrder(order.OrderNo, orderServicePkg.FinalizePaidOrderOptions{
@@ -877,8 +877,8 @@ func PaymentNotify(c *gin.Context) {
 
 	if callbackAmount, amountVerified := parseCallbackAmount(paymentType, params); amountVerified {
 		expectedAmount := order.Amount
-		if order.FinalAmount.Valid {
-			expectedAmount = order.FinalAmount.Float64
+		if order.AmountDueOnline.Valid {
+			expectedAmount = order.AmountDueOnline.Float64
 		}
 
 		if !amountMatches(expectedAmount, callbackAmount) {

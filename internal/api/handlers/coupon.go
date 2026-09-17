@@ -92,7 +92,7 @@ func VerifyCoupon(c *gin.Context) {
 		"coupon_discount_amount": quote.CouponDiscountAmount,
 		"discount_amount":        quote.CouponDiscountAmount,
 		"total_discount_amount":  quote.TotalDiscountAmount,
-		"final_amount":           quote.FinalAmount,
+		"final_amount":           quote.AmountDueOnline,
 		"free_days":              quote.FreeDays,
 		"valid":                  true,
 		"message":                "优惠券验证成功",
