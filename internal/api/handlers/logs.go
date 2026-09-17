@@ -370,15 +370,12 @@ func logLevelWhere(level string) string {
 		hasHighMarker = "(audit_logs.action_description LIKE '%[CRITICAL]%' " +
 			"OR audit_logs.action_description LIKE '%[HIGH]%')"
 		hasMediumMarker = "audit_logs.action_description LIKE '%[MEDIUM]%'"
-		// 已被显式分类的安全动作清单（与 getLogLevel 共用）
-		classifiedList = "audit_logs.action_type IN " + sqlInList(allSecurityClassifiedActions())
 		// 通用规则：非 business_/security_/system_error/login 的日志按状态码判定
 		genericScope = "(audit_logs.action_type NOT LIKE 'business_%' " +
 			"AND audit_logs.action_type NOT LIKE 'security_%' " +
 			"AND audit_logs.action_type <> 'system_error' " +
 			"AND audit_logs.action_type <> 'login')"
 	)
-	_ = classifiedList
 
 	switch level {
 	case "error":
