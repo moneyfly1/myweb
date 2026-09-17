@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
@@ -51,8 +52,12 @@ func CreateRegistrationLog(userID uint, username, email, ipAddress, userAgent st
 	return db.Create(&log).Error
 }
 
-// CreateRegistrationLogFailed 创建注册失败日志
-func CreateRegistrationLogFailed(email, ipAddress, userAgent, reason string) error {
+// CreateRegistrationLogFailed 创建注册失败日志。
+//
+// 失败日志里的 username/email 是"注册时提交的内容"，对应用户并不存在（没有建号）；
+// 此前只记邮箱、不记用户名，导致注册日志列表里失败行的"用户名"列全为空，
+// 管理员看不出被尝试占用的究竟是哪个用户名（也无法从别处找回）。
+func CreateRegistrationLogFailed(username, email, ipAddress, userAgent, reason string) error {
 	db := database.GetDB()
 	if db == nil {
 		return fmt.Errorf("数据库未初始化")
@@ -64,6 +69,7 @@ func CreateRegistrationLogFailed(email, ipAddress, userAgent, reason string) err
 	}
 
 	log := models.RegistrationLog{
+		Username:      strings.TrimSpace(username),
 		Email:         email,
 		IPAddress:     database.NullString(ipAddress),
 		UserAgent:     database.NullString(userAgent),

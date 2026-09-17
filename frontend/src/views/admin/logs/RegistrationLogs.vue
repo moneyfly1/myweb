@@ -63,8 +63,17 @@
         <div class="table-wrapper">
           <el-table v-loading="loading" :data="list" stripe border class="resizable-table">
             <el-table-column prop="created_at" label="时间" width="180" />
-            <el-table-column prop="username" label="用户" width="120" />
-            <el-table-column prop="email" label="邮箱" width="180" />
+            <el-table-column prop="username" width="140">
+              <template #header>
+                <el-tooltip placement="top" content="成功记录为账号用户名；失败记录为本次注册提交的用户名（未建号）">
+                  <span>用户名 <el-icon class="th-hint-icon"><QuestionFilled /></el-icon></span>
+                </el-tooltip>
+              </template>
+              <template #default="{ row }">{{ row.username || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="email" label="邮箱" width="200">
+              <template #default="{ row }">{{ row.email || '-' }}</template>
+            </el-table-column>
             <el-table-column prop="ip_address" label="IP" width="130" />
             <el-table-column prop="location" label="地区" width="120">
               <template #default="{ row }">{{ displayLocation(row.location) }}</template>
@@ -89,6 +98,14 @@
       </template>
       <template #default="{ item }">
         <MobileLogFields>
+          <div class="mobile-log-field">
+            <span class="mobile-log-label">用户名</span>
+            <span class="mobile-log-value">{{ item.username || '-' }}</span>
+          </div>
+          <div class="mobile-log-field">
+            <span class="mobile-log-label">邮箱</span>
+            <span class="mobile-log-value">{{ item.email || '-' }}</span>
+          </div>
           <div class="mobile-log-field">
             <span class="mobile-log-label">状态</span>
             <span class="mobile-log-value">{{ item.status || '-' }}</span>
@@ -117,6 +134,7 @@
 </template>
 <script setup>
 import { ref } from 'vue'
+import { QuestionFilled } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { useLogListPage } from '@/composables/useLogListPage'
 import { formatLocation } from '@/utils/date'
@@ -174,4 +192,5 @@ function startResize(e, col) {
 .th-resizable span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .resize-handle { cursor: col-resize; padding: 0 4px; color: #909399; user-select: none; }
 .resize-handle:hover { color: #409eff; }
+.th-hint-icon { margin-left: 2px; font-size: 12px; color: #909399; vertical-align: -2px; }
 </style>

@@ -6,6 +6,11 @@ import (
 )
 
 // RegistrationLog 注册日志
+//
+// Username/Email 的含义随 Status 变化：
+//   - success：注册成功后的账号用户名与邮箱；
+//   - failed：本次注册「提交」的用户名与邮箱，对应用户并不存在（没有建号，UserID 为 0）。
+//     历史失败记录只写了邮箱、用户名为空，无处可回填。
 type RegistrationLog struct {
 	ID             uint           `gorm:"primaryKey" json:"id"`
 	UserID         uint           `gorm:"index;not null" json:"user_id"`
