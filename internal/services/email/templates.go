@@ -204,47 +204,6 @@ func (b *EmailTemplateBuilder) GetVerificationCodeTemplate(username, verificatio
 	return b.GetBaseTemplate(title, content, "完成注册，开启您的专属网络体验")
 }
 
-func (b *EmailTemplateBuilder) GetPasswordResetTemplate(username, resetLink string) string {
-	username = escapeHTML(username)
-	title := "密码重置"
-	content := fmt.Sprintf(`<h2>您的密码重置请求</h2>
-            <p>亲爱的 %s，</p>
-            <p>我们收到了您的密码重置请求。如果这不是您本人的操作，请忽略此邮件。</p>
-            <div class="info-box">
-                <h3>📋 重置信息</h3>
-                <table class="info-table">
-                    <tr><th>用户账号</th><td><strong>%s</strong></td></tr>
-                    <tr><th>重置链接有效期</th><td style="color: #ffc107; font-weight: bold;">1小时</td></tr>
-                    <tr><th>链接使用次数</th><td>仅可使用一次</td></tr>
-                </table>
-            </div>
-            %s
-            <div class="warning-box">
-                <h3>⚠️ 安全提醒</h3>
-                <ul>
-                    <li>此重置链接仅在1小时内有效</li>
-                    <li>链接仅可使用一次，使用后自动失效</li>
-                    <li>如果链接失效，请重新申请密码重置</li>
-                    <li>如果按钮无法点击，请复制以下链接到浏览器中打开：</li>
-                </ul>
-                <div style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px; word-break: break-all;">
-                    <code style="color: #667eea; font-size: 12px;">%s</code>
-                </div>
-            </div>
-            <div class="info-box">
-                <p><strong>💡 密码安全建议：</strong></p>
-                <ul>
-                    <li>建议设置强密码，包含字母、数字和特殊字符</li>
-                    <li>密码长度建议在8-50个字符之间</li>
-                    <li>不要使用过于简单的密码，如"123456"、"password"等</li>
-                    <li>定期更换密码以确保账户安全</li>
-                </ul>
-            </div>
-            <p style="text-align: center; color: #666; font-size: 14px;">如果您没有请求重置密码，请忽略此邮件</p>`, username, username, buildActionBtn(resetLink, "重置密码"), resetLink)
-
-	return b.GetBaseTemplate(title, content, "保护您的账户安全")
-}
-
 func (b *EmailTemplateBuilder) GetPasswordResetVerificationCodeTemplate(username, verificationCode string) string {
 	username = escapeHTML(username)
 	title := "密码重置验证码"
@@ -267,13 +226,6 @@ func (b *EmailTemplateBuilder) GetPasswordResetVerificationCodeTemplate(username
             </div>`, username, buildCodeBlock(verificationCode))
 
 	return b.GetBaseTemplate(title, content, "安全重置您的账户密码")
-}
-
-func (b *EmailTemplateBuilder) GetSubscriptionTemplate(username, universalURL, clashURL, expireTime string, remainingDays, deviceLimit, currentDevices int) string {
-	return b.GetMultiSubscriptionTemplate(username, map[string]string{
-		"universal": universalURL,
-		"clash":     clashURL,
-	}, expireTime, remainingDays, deviceLimit, currentDevices)
 }
 
 // GetMultiSubscriptionTemplate 订阅配置邮件（展示全部客户端订阅格式）。
@@ -599,13 +551,6 @@ func (b *EmailTemplateBuilder) GetPasswordChangedTemplate(username, changeTime, 
 	return b.GetBaseTemplate(title, content, "保护您的账户安全")
 }
 
-func (b *EmailTemplateBuilder) GetSubscriptionResetTemplate(username, universalURL, clashURL, expireTime, resetTime, resetReason string) string {
-	return b.GetMultiSubscriptionResetTemplate(username, map[string]string{
-		"universal": universalURL,
-		"clash":     clashURL,
-	}, expireTime, resetTime, resetReason)
-}
-
 // GetMultiSubscriptionResetTemplate 订阅重置邮件（展示全部客户端订阅格式）。
 func (b *EmailTemplateBuilder) GetMultiSubscriptionResetTemplate(username string, urls map[string]string, expireTime, resetTime, resetReason string) string {
 	username = escapeHTML(username)
@@ -825,17 +770,6 @@ func (b *EmailTemplateBuilder) GetMarketingEmailTemplate(title, content string) 
             <p style="text-align: center; color: #666; font-size: 14px;">此邮件来自 网络服务</p>`, title, strings.ReplaceAll(content, "\n", "<br>"), buildActionBtn(baseURL+"/dashboard", "查看详情"))
 
 	return b.GetBaseTemplate(title, emailContent, "感谢您的关注")
-}
-
-func (b *EmailTemplateBuilder) GetBroadcastNotificationTemplate(title, content string) string {
-	title = escapeHTML(title)
-	content = escapeHTML(content)
-	emailContent := fmt.Sprintf(`<div class="content">
-                <h2>%s</h2>
-                <div style="line-height: 1.8; color: #555;">%s</div>
-            </div>`, title, strings.ReplaceAll(content, "\n", "<br>"))
-
-	return b.GetBaseTemplate(title, emailContent, "此邮件由系统自动发送，请勿回复。")
 }
 
 func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, title, body string, data map[string]interface{}) string {

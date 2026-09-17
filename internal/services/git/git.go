@@ -64,16 +64,6 @@ func NewClient(platform PlatformType, token, owner, repo string) *GitClient {
 	return client
 }
 
-// NewGiteeClient 创建Gitee客户端（兼容旧代码）
-func NewGiteeClient(token, owner, repo string) *GitClient {
-	return NewClient(PlatformGitee, token, owner, repo)
-}
-
-// NewGitHubClient 创建GitHub客户端（兼容旧代码）
-func NewGitHubClient(token, owner, repo string) *GitClient {
-	return NewClient(PlatformGitHub, token, owner, repo)
-}
-
 // ProgressCallback 进度回调函数类型
 type ProgressCallback func(progress int, message string)
 
@@ -97,11 +87,6 @@ func (c *GitClient) getAuthHeader() string {
 func (c *GitClient) getAPIURL(path string) string {
 	basePath := fmt.Sprintf(c.APIPath, c.Owner, c.Repo)
 	return fmt.Sprintf("%s%s%s", c.BaseURL, basePath, path)
-}
-
-// UploadFile 上传文件（不带进度）
-func (c *GitClient) UploadFile(filePath, remotePath string) error {
-	return c.UploadFileWithProgress(filePath, remotePath, nil)
 }
 
 // UploadFileWithProgress 上传文件（带进度回调）
@@ -618,24 +603,4 @@ func (c *GitClient) DownloadFile(remotePath, localPath string) error {
 		return fmt.Errorf("写入文件失败: %w", err)
 	}
 	return nil
-}
-
-// CleanOldStatuses 清理超过1小时的状态记录
-func (m *UploadStatusManager) CleanOldStatuses() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	now := utils.GetBeijingTime()
-	for taskID, status := range m.statuses {
-		if status.FinishTime.IsZero() {
-			// 未完成的任务，如果超过2小时也清理
-			if now.Sub(status.StartTime) > 2*time.Hour {
-				delete(m.statuses, taskID)
-			}
-		} else {
-			// 已完成的任务，超过1小时清理
-			if now.Sub(status.FinishTime) > time.Hour {
-				delete(m.statuses, taskID)
-			}
-		}
-	}
 }

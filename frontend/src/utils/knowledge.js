@@ -13,7 +13,7 @@ import { knowledgeAPI } from '@/utils/api'
 import { unwrapList } from '@/utils/format'
 
 // 客户端教程所在分类名（后台可改，改这里即可）
-export const CLIENT_TUTORIAL_CATEGORY = '客户端教程'
+const CLIENT_TUTORIAL_CATEGORY = '客户端教程'
 
 let categoryCache = null
 let tutorialIndexCache = null
@@ -35,7 +35,7 @@ export async function getCategories({ force = false } = {}) {
 }
 
 // findCategoryIdByName 按分类名找 id
-export async function findCategoryIdByName(name) {
+async function findCategoryIdByName(name) {
   const categories = await getCategories()
   const hit = categories.find(c => String(c.name || '').trim() === String(name).trim())
   return hit ? hit.id : null
@@ -51,7 +51,7 @@ function normalizeTitle(title) {
 
 // buildTutorialIndex 建立「教程标题 → 文章」索引
 // 只在「客户端教程」分类下取文章，避免与其它分类同名文章冲突
-export async function buildTutorialIndex({ force = false } = {}) {
+async function buildTutorialIndex({ force = false } = {}) {
   if (tutorialIndexCache && !force) return tutorialIndexCache
   if (tutorialIndexPromise && !force) return tutorialIndexPromise
 
@@ -80,7 +80,7 @@ export async function buildTutorialIndex({ force = false } = {}) {
 }
 
 // findTutorialByTitle 按标题查找教程文章；找不到时退化为"包含客户端名"的模糊匹配
-export async function findTutorialByTitle(title) {
+async function findTutorialByTitle(title) {
   const index = await buildTutorialIndex()
   if (!index.size || !title) return null
 
@@ -143,11 +143,4 @@ export async function loadArticles({ categoryName = '', keyword = '', pageSize =
   )
   const items = unwrapList(data)
   return { items, total: data?.total ?? items.length }
-}
-
-export function clearKnowledgeCache() {
-  categoryCache = null
-  tutorialIndexCache = null
-  tutorialIndexPromise = null
-  contentCache.clear()
 }

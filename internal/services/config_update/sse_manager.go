@@ -102,10 +102,3 @@ func (m *SSEManager) ClearHistory() {
 	defer m.historyMutex.Unlock()
 	m.historyLogs = make([]map[string]interface{}, 0, MaxHistoryLogs)
 }
-
-// ClientCount 返回当前连接的客户端数量
-func (m *SSEManager) ClientCount() int {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-	return len(m.clients)
-}

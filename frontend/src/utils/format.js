@@ -6,30 +6,6 @@ export function formatMoney(value, options = {}) {
   return `${prefix}${number.toFixed(2)}`
 }
 
-export function formatNumber(value, options = {}) {
-  const { empty = '0', digits } = options
-  if (value === null || value === undefined || value === '') return empty
-  const number = Number(value)
-  if (Number.isNaN(number)) return empty
-  return typeof digits === 'number' ? number.toFixed(digits) : String(number)
-}
-
-export function formatPercent(value, options = {}) {
-  const { empty = '-', digits = 0, ratio = false } = options
-  if (value === null || value === undefined || value === '') return empty
-  const number = Number(value)
-  if (Number.isNaN(number)) return empty
-  const normalized = ratio ? number * 100 : number
-  return `${normalized.toFixed(digits)}%`
-}
-
-export function formatDays(value, empty = '-') {
-  if (value === null || value === undefined || value === '') return empty
-  const number = Number(value)
-  if (Number.isNaN(number)) return empty
-  return `${Math.floor(number)}天`
-}
-
 export function formatFileSize(bytes, empty = '-') {
   const number = Number(bytes)
   if (!Number.isFinite(number) || number < 0) return empty
@@ -37,11 +13,6 @@ export function formatFileSize(bytes, empty = '-') {
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
   const index = Math.min(Math.floor(Math.log(number) / Math.log(1024)), units.length - 1)
   return `${(number / Math.pow(1024, index)).toFixed(index === 0 ? 0 : 2)} ${units[index]}`
-}
-
-export function formatFallback(value, empty = '-') {
-  if (value === null || value === undefined || value === '') return empty
-  return value
 }
 
 /**
@@ -62,7 +33,7 @@ export function formatFallback(value, empty = '-') {
  * @param {...string} legacyKeys 额外的历史字段名（一般不需要传）
  * @returns {Array}
  */
-export const LIST_KEYS = [
+const LIST_KEYS = [
   'list', 'items', 'logs', 'attempts', 'records', 'rows',
   'subscriptions', 'orders', 'users', 'emails', 'tickets',
   'coupons', 'relations', 'invite_codes', 'recharges', 'categories'
@@ -92,16 +63,4 @@ export function unwrapList(response, ...legacyKeys) {
     }
   }
   return []
-}
-
-/**
- * unwrapTotal 取分页总数（后端已同时提供 total）
- */
-export function unwrapTotal(response) {
-  let node = response
-  for (let depth = 0; depth < 3 && node && typeof node === 'object'; depth += 1) {
-    if (typeof node.total === 'number') return node.total
-    node = node.data
-  }
-  return 0
 }

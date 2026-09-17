@@ -691,12 +691,6 @@ func GetUserDetails(c *gin.Context) {
 		ipAddress := utils.FormatIP(ipStr)
 		// 列表查询不查询 GeoIP，提升性能
 		location := ""
-		// if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
-		// 	locationStr := geoip.GetLocationString(ipAddress)
-		// 	if locationStr.Valid {
-		// 		location = locationStr.String
-		// 	}
-		// }
 
 		formattedRecharges = append(formattedRecharges, gin.H{
 			"id":                     record.ID,
@@ -811,11 +805,6 @@ func GetUserDetails(c *gin.Context) {
 			location = lh.Location.String
 		}
 		// 列表查询不查询 GeoIP，提升性能
-		// else if ipAddr != "" && geoip.IsEnabled() {
-		// 	if loc := geoip.GetLocationString(ipAddr); loc.Valid {
-		// 		location = loc.String
-		// 	}
-		// }
 		entry := gin.H{
 			"id":           lh.ID,
 			"login_time":   utils.FormatBeijingTime(lh.LoginTime),

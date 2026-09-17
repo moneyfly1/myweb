@@ -23,7 +23,7 @@ export const CLIENT_PLATFORMS = [
 // links 的键格式：
 //   '<os>'            该平台通用下载键（按顺序取第一个已配置的）
 //   '<os>:<arch>'     指定架构（macos 的 apple=Apple 芯片 / intel=Intel 芯片）
-export const CLIENT_LIST = [
+const CLIENT_LIST = [
   {
     id: 'moneyfly',
     name: 'MoneyFly',
@@ -204,7 +204,7 @@ export function linkCandidates(client, os, arch) {
 }
 
 // macArchKeys 返回 macOS 双架构键（用于把"下载"拆成 Apple 芯片 / Intel 两个选项）
-export function macArchKeys(client) {
+function macArchKeys(client) {
   if (!client || !client.links) return { apple: [], intel: [] }
   return {
     apple: client.links['macos:apple'] || [],
@@ -217,9 +217,4 @@ export function clientSupportsArchSplit(client, platformKey) {
   if (platformKey !== 'macos') return false
   const { apple, intel } = macArchKeys(client)
   return apple.length > 0 && intel.length > 0
-}
-
-// tutorialTitleOf 客户端教程在知识库中的文章标题（教程正文存知识库）
-export function tutorialTitleOf(client) {
-  return client ? client.tutorialTitle || '' : ''
 }

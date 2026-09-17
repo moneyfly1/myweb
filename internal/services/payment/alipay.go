@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"strings"
 
@@ -168,27 +167,6 @@ func (s *AlipayService) createPrecreatePay(order *models.Order, amount float64) 
 	return rsp.QRCode, nil
 }
 
-func (s *AlipayService) ParseNotification(req *http.Request) (*AlipayNotification, error) {
-	notification, err := s.client.GetTradeNotification(req)
-	if err != nil {
-		return nil, fmt.Errorf("解析或验证支付宝通知失败: %v", err)
-	}
-
-	return &AlipayNotification{
-		NotifyID:      notification.NotifyId,
-		TradeNo:       notification.TradeNo,
-		OutTradeNo:    notification.OutTradeNo,
-		TradeStatus:   string(notification.TradeStatus),
-		TotalAmount:   notification.TotalAmount,
-		ReceiptAmount: notification.ReceiptAmount,
-		BuyerID:       notification.BuyerId,
-		BuyerLogonID:  notification.BuyerLogonId,
-		SellerID:      notification.SellerId,
-		SellerEmail:   notification.SellerEmail,
-		GmtPayment:    notification.GmtPayment,
-	}, nil
-}
-
 func (s *AlipayService) VerifyNotify(params map[string]string) bool {
 	values := url.Values{}
 	for k, v := range params {
@@ -200,32 +178,6 @@ func (s *AlipayService) VerifyNotify(params map[string]string) bool {
 	}
 
 	return true
-}
-
-func (s *AlipayService) DecodeNotification(params map[string]string) (*AlipayNotification, error) {
-	values := url.Values{}
-	for k, v := range params {
-		values.Set(k, v)
-	}
-
-	notification, err := s.client.DecodeNotification(values)
-	if err != nil {
-		return nil, err
-	}
-
-	return &AlipayNotification{
-		NotifyID:      notification.NotifyId,
-		TradeNo:       notification.TradeNo,
-		OutTradeNo:    notification.OutTradeNo,
-		TradeStatus:   string(notification.TradeStatus),
-		TotalAmount:   notification.TotalAmount,
-		ReceiptAmount: notification.ReceiptAmount,
-		BuyerID:       notification.BuyerId,
-		BuyerLogonID:  notification.BuyerLogonId,
-		SellerID:      notification.SellerId,
-		SellerEmail:   notification.SellerEmail,
-		GmtPayment:    notification.GmtPayment,
-	}, nil
 }
 
 func (s *AlipayService) QueryOrder(orderNo string) (*AlipayQueryResult, error) {
@@ -267,18 +219,4 @@ type AlipayQueryResult struct {
 
 func (r *AlipayQueryResult) IsPaid() bool {
 	return r.TradeStatus == "TRADE_SUCCESS" || r.TradeStatus == "TRADE_FINISHED"
-}
-
-type AlipayNotification struct {
-	NotifyID      string
-	TradeNo       string
-	OutTradeNo    string
-	TradeStatus   string
-	TotalAmount   string
-	ReceiptAmount string
-	BuyerID       string
-	BuyerLogonID  string
-	SellerID      string
-	SellerEmail   string
-	GmtPayment    string
 }

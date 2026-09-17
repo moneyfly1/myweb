@@ -72,9 +72,7 @@ func GenerateSubscriptionURL() string {
 
 // 订单号生成器接口
 type orderNoGenerator interface {
-	getMaxSequence() int
 	checkExists(orderNo string) bool
-	getTableName() string
 	getPrefix() string
 }
 
@@ -90,41 +88,12 @@ func newOrderGenerator(tableName, prefix string) *orderGenerator {
 	return &orderGenerator{tableName: tableName, prefix: prefix}
 }
 
-func (og *orderGenerator) getTableName() string { return og.tableName }
-func (og *orderGenerator) getPrefix() string    { return og.prefix }
-func (og *orderGenerator) getMaxSequence() int {
-	if og.db == nil {
-		return 0
-	}
-	return findMaxOrderSequence(og.db, og.tableName, og.prefix)
-}
+func (og *orderGenerator) getPrefix() string { return og.prefix }
 func (og *orderGenerator) checkExists(orderNo string) bool {
 	if og.db == nil {
 		return false
 	}
 	return checkOrderNoExists(og.db, og.tableName, orderNo)
-}
-
-// findMaxOrderSequence 查询指定订单表当日最大序列号（表名/前缀由参数传入，仅白名单值）
-func findMaxOrderSequence(db *gorm.DB, tableName, prefix string) int {
-	var maxSeq int
-	dateStr := GetBeijingTime().Format("20060102")
-	fullPrefix := fmt.Sprintf("%s%s", prefix, dateStr)
-
-	var orderNos []string
-	if err := db.Table(tableName).Where("order_no LIKE ?", fullPrefix+"%").Order("order_no DESC").Limit(100).Pluck("order_no", &orderNos).Error; err != nil {
-		return 0
-	}
-
-	for _, orderNo := range orderNos {
-		if len(orderNo) >= len(fullPrefix)+3 {
-			var seq int
-			if _, err := fmt.Sscanf(orderNo[len(fullPrefix):], "%d", &seq); err == nil && seq > maxSeq {
-				maxSeq = seq
-			}
-		}
-	}
-	return maxSeq
 }
 
 // checkOrderNoExists 检查订单号在指定订单表中是否已存在
@@ -134,14 +103,6 @@ func checkOrderNoExists(db *gorm.DB, tableName, orderNo string) bool {
 		return false
 	}
 	return count > 0
-}
-
-func incrementSequence(seq int) int {
-	seq++
-	if seq > 999 {
-		return 1
-	}
-	return seq
 }
 
 func generateOrderNo(gen orderNoGenerator) (string, error) {
@@ -610,10 +571,6 @@ func (l *Logger) Warn(format string, v ...interface{}) {
 	}
 }
 
-func LogUserActivity(userID uint, activityType, description string) {
-	slog.Info("用户活动", "user_id", userID, "type", activityType, "description", description)
-}
-
 func LogAudit(userID uint, actionType, resourceType string, resourceID uint, description string) {
 	slog.Info("审计日志", "user_id", userID, "action", actionType, "resource_type", resourceType, "resource_id", resourceID, "description", description)
 }
@@ -629,20 +586,6 @@ func LogWarn(format string, v ...interface{}) {
 
 func LogErrorMsg(format string, v ...interface{}) {
 	slog.Error(fmt.Sprintf(format, v...))
-}
-
-// LogInfoContext / LogWarnContext / LogErrorContext：结构化日志（key-value 字段），
-// 携带 context（可从中提取 request_id 等追踪字段）。
-func LogInfoContext(ctx context.Context, msg string, args ...any) {
-	slog.InfoContext(ctx, msg, args...)
-}
-
-func LogWarnContext(ctx context.Context, msg string, args ...any) {
-	slog.WarnContext(ctx, msg, args...)
-}
-
-func LogErrorContext(ctx context.Context, msg string, args ...any) {
-	slog.ErrorContext(ctx, msg, args...)
 }
 
 // ==========================================
@@ -845,20 +788,6 @@ func CalculateUserPaymentSummary(db *gorm.DB, userID uint) UserPaymentSummary {
 	summary.RechargeAmount = RoundFloat(summary.RechargeAmount, 2)
 	summary.PaidAmount = RoundFloat(summary.OrderAmount+summary.RechargeAmount, 2)
 	return summary
-}
-
-// GenerateRandomString 生成指定长度的随机字符串
-func GenerateRandomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, length)
-	for i := range b {
-		n, err := crand.Int(crand.Reader, big.NewInt(int64(len(charset))))
-		if err != nil {
-			panic(fmt.Sprintf("随机数生成失败: %v", err))
-		}
-		b[i] = charset[n.Int64()]
-	}
-	return string(b)
 }
 
 // ParseFloat 解析字符串为float64，失败返回默认值

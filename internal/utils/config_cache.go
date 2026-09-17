@@ -50,13 +50,6 @@ func GetCachedSetting(db *gorm.DB, key, category string) (string, error) {
 	return config.Value, nil
 }
 
-// InvalidateSettingCache 使指定配置项的缓存失效（配置更新后调用）。
-func InvalidateSettingCache(key, category string) {
-	settingCacheMu.Lock()
-	delete(settingCache, settingCacheKey(category, key))
-	settingCacheMu.Unlock()
-}
-
 // InvalidateAllSettingCache 全量失效（批量设置更新时调用）。
 func InvalidateAllSettingCache() {
 	settingCacheMu.Lock()

@@ -8,7 +8,7 @@
 // 使用约定（务必遵守，否则会再次产生跨时区混写）：
 //   - 需要「当前时间」写入数据库或参与比较 → 一律用 timeutil.Now()，不要用 time.Now()
 //   - 需要把时间转成北京时间展示/落库 → 一律用 timeutil.Format / timeutil.ToBeijing
-//   - 需要解析前端传来的时间字符串 → 一律用 timeutil.ParseBeijing / ParseBeijingLayout，
+//   - 需要解析前端传来的时间字符串 → 一律用 timeutil.ParseBeijingLayout，
 //     不要用裸 time.Parse（它会按 UTC 解析，与库里的 +08:00 相差 8 小时）
 //   - 「今天/本月」区间 → 用 timeutil.DayRange / MonthRange，不要手写 0 点计算
 package timeutil
@@ -83,14 +83,6 @@ func FormatNull(nt sql.NullTime) string {
 	return Format(nt.Time)
 }
 
-// FormatNullOrDash 格式化可空时间，无效值返回 "-"
-func FormatNullOrDash(nt sql.NullTime) string {
-	if !nt.Valid {
-		return "-"
-	}
-	return Format(nt.Time)
-}
-
 // RFC3339 输出带时区的 RFC3339（北京时间）
 func RFC3339(t time.Time) string {
 	return t.In(BeijingTZ).Format(time.RFC3339)
@@ -101,80 +93,9 @@ func ParseBeijingLayout(layout, value string) (time.Time, error) {
 	return time.ParseInLocation(layout, value, BeijingTZ)
 }
 
-// ParseBeijing 按 "2006-01-02 15:04:05" 解析（北京时区）
-func ParseBeijing(value string) (time.Time, error) {
-	return time.ParseInLocation(LayoutDateTime, value, BeijingTZ)
-}
-
-// ParseAny 依次尝试常见格式解析（兼容前端可能传来的多种写法），统一锚定北京时间。
-// 覆盖：带纳秒/带时区偏移、纯日期、RFC3339、日期时间空格分隔。
-func ParseAny(value string) (time.Time, error) {
-	var lastErr error
-	for _, layout := range []string{
-		time.RFC3339Nano,
-		time.RFC3339,
-		"2006-01-02T15:04:05",
-		LayoutDateTime,
-		LayoutDate,
-		"2006-01-02 15:04",
-	} {
-		if t, err := time.ParseInLocation(layout, value, BeijingTZ); err == nil {
-			return t, nil
-		} else {
-			lastErr = err
-		}
-	}
-	return time.Time{}, lastErr
-}
-
-// ParseDateRange 解析 [开始, 结束] 两个日期字符串（可为 "2006-01-02" 或日期时间），
-// 结束时间若只给到日则补足到当天 23:59:59，避免"少算最后一天"。
-func ParseDateRange(start, end string) (time.Time, time.Time, error) {
-	var startAt, endAt time.Time
-	var err error
-
-	if start != "" {
-		if startAt, err = ParseAny(start); err != nil {
-			return time.Time{}, time.Time{}, err
-		}
-	}
-	if end != "" {
-		if endAt, err = ParseAny(end); err != nil {
-			return time.Time{}, time.Time{}, err
-		}
-		// 只精确到日时，扩展到当天最后一秒
-		if len(end) <= len(LayoutDate) {
-			endAt = endAt.Add(24*time.Hour - time.Second)
-		}
-	}
-	return startAt, endAt, nil
-}
-
 // RangeOfDay 返回 t 所在自然日的 [00:00:00, 23:59:59]（北京时间）
 func RangeOfDay(t time.Time) (time.Time, time.Time) {
 	local := t.In(BeijingTZ)
 	start := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, BeijingTZ)
 	return start, start.Add(24*time.Hour - time.Nanosecond)
-}
-
-// RangeOfMonth 返回 t 所在自然月的 [1日00:00:00, 月末23:59:59]（北京时间）
-func RangeOfMonth(t time.Time) (time.Time, time.Time) {
-	local := t.In(BeijingTZ)
-	start := time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, BeijingTZ)
-	return start, start.AddDate(0, 1, 0).Add(-time.Nanosecond)
-}
-
-// RangeOfDays 返回最近 n 天（含今天）的起始时刻与当前时刻
-func RangeOfDays(n int) (time.Time, time.Time) {
-	now := Now()
-	start, _ := RangeOfDay(now)
-	if n > 1 {
-		start = start.AddDate(0, 0, -(n - 1))
-	}
-	return start, now
-}
-
-// Since 返回距 t 过去的时间长度（用于耗时统计，与 time.Since 等价但基于北京时间同样正确）
-func Since(t time.Time) time.Duration {
-	return time.Since(t)
 }

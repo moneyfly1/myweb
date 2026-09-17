@@ -850,16 +850,6 @@ func paymentConfigForOrderStatusQuery(db *gorm.DB, orderNo string, fallbackPayTy
 	return &paymentConfig, nil
 }
 
-type CreateOrderRequest struct {
-	PackageID      uint    `json:"package_id" binding:"required"`
-	CouponCode     string  `json:"coupon_code"`
-	PaymentMethod  string  `json:"payment_method"`
-	Amount         float64 `json:"amount"`
-	UseBalance     bool    `json:"use_balance"`
-	Currency       string  `json:"currency"`
-	DurationMonths int     `json:"duration_months"`
-}
-
 func CreateOrder(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
