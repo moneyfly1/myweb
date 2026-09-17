@@ -27,7 +27,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 const (
@@ -251,7 +250,12 @@ func UpdateSystemConfig(c *gin.Context) {
 			return
 		}
 
-		// Use transaction for batch upsert correctness
+		// 批量 upsert：与 updateSettingsCommon 使用同一套 FirstOrInit + Save 写法。
+		//
+		// 历史缺陷：这里原用 clause.OnConflict{Columns: key} 做 upsert，但 system_configs
+		// 的唯一约束是 (key, category)，并不存在 key 单列唯一约束，因此该语句在任何数据库上
+		// 都会报 "ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint"，
+		// 接口恒返回 500（前端目前未调用，但接口本身不可用）。
 		err := db.Transaction(func(tx *gorm.DB) error {
 			for k, v := range req {
 				val := fmt.Sprintf("%v", v)
@@ -260,13 +264,16 @@ func UpdateSystemConfig(c *gin.Context) {
 				if isSensitiveConfigKey(k) && isMaskedSecretPlaceholder(val) {
 					continue
 				}
-				// Assuming 'key' is unique enough or schema allows this Upsert
-				conf := models.SystemConfig{Key: k, Value: val, Category: CatSystem}
+
+				var conf models.SystemConfig
+				if err := tx.Where("key = ? AND category = ?", k, CatSystem).FirstOrInit(&conf).Error; err != nil {
+					return err
+				}
+				conf.Key = k
+				conf.Category = CatSystem
+				conf.Value = val
 				ensureSystemConfigMetadata(&conf, v)
-				if err := tx.Clauses(clause.OnConflict{
-					Columns:   []clause.Column{{Name: "key"}},
-					DoUpdates: clause.Assignments(map[string]interface{}{"value": val}),
-				}).Create(&conf).Error; err != nil {
+				if err := tx.Save(&conf).Error; err != nil {
 					return err
 				}
 			}
