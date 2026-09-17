@@ -17,36 +17,61 @@ import (
 // 注册日志记录
 // ==========================================
 
-// CreateRegistrationLog 创建注册日志
-func CreateRegistrationLog(userID uint, username, email, ipAddress, userAgent string, inviteCode string, inviterID *uint) error {
+// RegistrationLogInput 注册成功日志的写入参数。
+// 用结构体而不是一长串位置参数：此前失败日志正是"少传一个字段"导致用户名常年为空，
+// 字段命名后调用方漏传会一眼看出来。
+type RegistrationLogInput struct {
+	UserID     uint
+	Username   string
+	Email      string
+	IPAddress  string
+	UserAgent  string
+	Source     string // direct（自助注册）/ invite_code（邀请码注册）/ admin（管理员创建）
+	InviteCode string
+	InviterID  *uint
+}
+
+// 注册来源常量（写入 registration_logs.register_source）
+const (
+	RegisterSourceDirect     = "direct"
+	RegisterSourceInviteCode = "invite_code"
+	RegisterSourceAdmin      = "admin"
+)
+
+// CreateRegistrationLog 创建注册成功日志
+func CreateRegistrationLog(in RegistrationLogInput) error {
 	db := database.GetDB()
 	if db == nil {
 		return fmt.Errorf("数据库未初始化")
 	}
 
 	var location sql.NullString
-	if ipAddress != "" && geoip.IsEnabled() {
-		location = geoip.GetLocationWithCache(ipAddress)
+	if in.IPAddress != "" && geoip.IsEnabled() {
+		location = geoip.GetLocationWithCache(in.IPAddress)
+	}
+
+	source := in.Source
+	if source == "" {
+		source = RegisterSourceDirect
 	}
 
 	log := models.RegistrationLog{
-		UserID:         userID,
-		Username:       username,
-		Email:          email,
-		IPAddress:      database.NullString(ipAddress),
-		UserAgent:      database.NullString(userAgent),
+		UserID:         in.UserID,
+		Username:       in.Username,
+		Email:          in.Email,
+		IPAddress:      database.NullString(in.IPAddress),
+		UserAgent:      database.NullString(in.UserAgent),
 		Location:       location,
 		Status:         "success",
-		RegisterSource: database.NullString("direct"),
+		RegisterSource: database.NullString(source),
 	}
 
-	if inviteCode != "" {
-		log.InviteCode = database.NullString(inviteCode)
-		log.RegisterSource = database.NullString("invite_code")
+	if in.InviteCode != "" {
+		log.InviteCode = database.NullString(in.InviteCode)
 	}
 
-	if inviterID != nil {
-		log.InviterID = database.NullInt64(MustSafeUintToInt64(*inviterID))
+	if in.InviterID != nil {
+		log.InviterID = database.NullInt64(MustSafeUintToInt64(*in.InviterID))
 	}
 
 	return db.Create(&log).Error
