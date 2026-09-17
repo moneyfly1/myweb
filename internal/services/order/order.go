@@ -754,32 +754,16 @@ func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscripti
 	return nil, fmt.Errorf("订单号不能为空")
 }
 
-func (s *OrderService) calculateOrderPaidAmount(order *models.Order, balanceUsed float64) float64 {
+// calculateOrderPaidAmount 计算订单成交金额（用于累计消费、邀请奖励、退款回滚）。
+//
+// 口径统一委托 models.Order.PaidAmount()（= 订单折后价），避免各处各算一套；
+// 参数 balanceUsed 保留是为了兼容既有调用签名，实际不再需要手工"加回余额"——
+// 折后价本身已包含余额支付的部分，且不会重复计数（余额有两种抵扣语义）。
+func (s *OrderService) calculateOrderPaidAmount(order *models.Order, _ float64) float64 {
 	if order == nil {
 		return 0
 	}
-	paidAmount := order.Amount
-	if order.FinalAmount.Valid {
-		paidAmount = order.FinalAmount.Float64
-	}
-	if balanceUsed > 0 {
-		paidAmount = utils.RoundFloat(paidAmount+balanceUsed, 2)
-	}
-
-	maxPaidAmount := order.Amount
-	if order.DiscountAmount.Valid && order.DiscountAmount.Float64 > 0 {
-		maxPaidAmount = utils.RoundFloat(order.Amount-order.DiscountAmount.Float64, 2)
-		if maxPaidAmount < 0 {
-			maxPaidAmount = 0
-		}
-	}
-	if maxPaidAmount >= 0 && paidAmount > maxPaidAmount {
-		paidAmount = maxPaidAmount
-	}
-	if paidAmount < 0 {
-		paidAmount = 0
-	}
-	return utils.RoundFloat(paidAmount, 2)
+	return order.PaidAmount()
 }
 
 func (s *OrderService) processPaidOrderTx(tx *gorm.DB, order *models.Order, opts FinalizePaidOrderOptions) (*models.Subscription, error) {
