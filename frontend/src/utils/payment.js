@@ -60,9 +60,3 @@ export function qrDisplaySrc(code) {
   return code.startsWith('data:') ? code : `${code}?t=${Date.now()}`
 }
 
-export default {
-  buildAlipayAppUrl,
-  isPaymentPageUrl,
-  createPaymentQRCode,
-  qrDisplaySrc
-}

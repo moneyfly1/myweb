@@ -134,6 +134,3 @@ export function cleanupTextSelection() {
   }
   initialized = false
 }
-export function useTextSelection() {
-  return { copyToClipboard }
-}

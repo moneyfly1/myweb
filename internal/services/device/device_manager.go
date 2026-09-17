@@ -1028,10 +1028,6 @@ func (dm *DeviceManager) updateExistingDeviceAccess(device *models.Device, devic
 	return dm.deactivateClashMetaAndroidAliasDuplicates(device, ipAddress)
 }
 
-func (dm *DeviceManager) RecordDeviceAccess(subscriptionID uint, userID uint, userAgent, ipAddress, subscriptionType string) (*models.Device, error) {
-	return dm.RecordDeviceAccessWithHeaders(subscriptionID, userID, userAgent, ipAddress, subscriptionType, nil)
-}
-
 // RecordDeviceAccessWithHeaders 记录设备访问（带 X-MF-* 头，MoneyFly 客户端专用）
 func (dm *DeviceManager) RecordDeviceAccessWithHeaders(subscriptionID uint, userID uint, userAgent, ipAddress, subscriptionType string, headers map[string]string) (*models.Device, error) {
 	deviceInfo := dm.ParseUserAgentWithHeaders(userAgent, headers)

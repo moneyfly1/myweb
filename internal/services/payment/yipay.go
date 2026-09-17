@@ -13,7 +13,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 
@@ -469,10 +468,6 @@ func (s *YipayService) postForm(apiURL string, params map[string]string) ([]byte
 	return body, nil
 }
 
-func (s *YipayService) Sign(params map[string]string) string {
-	return s.calculateMD5Sign(params)
-}
-
 func (s *YipayService) VerifyNotify(params map[string]string) bool {
 	sign, ok := params["sign"]
 	if !ok || sign == "" {
@@ -514,11 +509,6 @@ func (s *YipayService) VerifyNotify(params map[string]string) bool {
 		}
 		return match
 	}
-}
-
-func (s *YipayService) calculateMD5Sign(params map[string]string) string {
-	signStr := buildSignString(params, "sign", "sign_type", "rsa_sign")
-	return s.calcMD5FromStr(signStr)
 }
 
 // calcMD5FromStr 计算MD5签名（拼串末尾直接追加商户密钥）
@@ -611,148 +601,6 @@ func (s *YipayService) signRSASign(content string) (string, error) {
 	}
 
 	return base64.StdEncoding.EncodeToString(signBytes), nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func (s *YipayService) extractQRCodeFromPaymentPage(pageURL string, paymentType string) (string, error) {
-	utils.LogInfo("开始从页面提取二维码: %s", pageURL)
-
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 15 {
-				return fmt.Errorf("重定向过多")
-			}
-			return nil
-		},
-	}
-
-	req, _ := http.NewRequest("GET", pageURL, nil)
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("请求页面失败: %v", err)
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, _ := io.ReadAll(resp.Body)
-	htmlContent := string(bodyBytes)
-
-	if strings.Contains(htmlContent, "submit.php") {
-		return s.handleFormRedirect(htmlContent, paymentType)
-	}
-
-	if redirect, ok := matchJSRedirect(htmlContent); ok {
-		target := s.resolveRelativeURL(redirect, pageURL)
-		return s.extractQRCodeFromPaymentPage(target, paymentType)
-	}
-
-	return s.extractQRCodeFromHTML(htmlContent, pageURL, paymentType)
-}
-
-func (s *YipayService) handleFormRedirect(htmlContent, paymentType string) (string, error) {
-	formRe := regexp.MustCompile(`<form[^>]*action=["']([^"']+)["'][^>]*>([\s\S]*?)</form>`)
-	matches := formRe.FindStringSubmatch(htmlContent)
-	if len(matches) < 3 {
-		return "", fmt.Errorf("未找到重定向表单")
-	}
-	actionURL := matches[1]
-	formBody := matches[2]
-
-	data := url.Values{}
-	inputRe := regexp.MustCompile(`<input[^>]*name=["']([^"']+)["'][^>]*value=["']([^"']*)["']`)
-	for _, m := range inputRe.FindAllStringSubmatch(formBody, -1) {
-		data.Set(m[1], m[2])
-	}
-
-	// 验证URL以防止SSRF攻击
-	if err := utils.ValidateHTTPURL(actionURL); err != nil {
-		return "", fmt.Errorf("URL验证失败: %w", err)
-	}
-
-	// #nosec G107 - URL is validated above with ValidateHTTPURL
-	resp, err := http.PostForm(actionURL, data) // #nosec G107
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	postHTML := string(body)
-
-	if redirect, ok := matchJSRedirect(postHTML); ok {
-		target := s.resolveRelativeURL(redirect, actionURL)
-		return s.extractQRCodeFromPaymentPage(target, paymentType)
-	}
-	return s.extractQRCodeFromHTML(postHTML, actionURL, paymentType)
-}
-
-func matchJSRedirect(html string) (string, bool) {
-	re := regexp.MustCompile(`window\.location\.(replace|href)\s*=\s*["']([^"']+)["']`)
-	matches := re.FindStringSubmatch(html)
-	if len(matches) > 2 {
-		return matches[2], true
-	}
-	return "", false
-}
-
-func (s *YipayService) resolveRelativeURL(rel, base string) string {
-	if strings.HasPrefix(rel, "http") {
-		return rel
-	}
-	u, _ := url.Parse(base)
-	if u != nil {
-		if strings.HasPrefix(rel, "/") {
-			return u.Scheme + "://" + u.Host + rel
-		}
-		return u.Scheme + "://" + u.Host + "/" + rel
-	}
-	return rel
-}
-
-func (s *YipayService) extractQRCodeFromHTML(html, baseURL, paymentType string) (string, error) {
-	jsPattern := regexp.MustCompile(`(code_url|url)\s*[:=]\s*["']([^"']+)["']`)
-	if m := jsPattern.FindStringSubmatch(html); len(m) > 2 {
-		val := m[2]
-		if strings.HasPrefix(val, "weixin") || strings.HasPrefix(val, "alipays") || strings.HasPrefix(val, "http") {
-			return val, nil
-		}
-	}
-
-	patterns := s.getQRCodePatterns(paymentType)
-	for _, p := range patterns {
-		re := regexp.MustCompile(p)
-		if m := re.FindStringSubmatch(html); len(m) > 1 {
-			return s.resolveRelativeURL(m[1], baseURL), nil
-		}
-	}
-
-	if m := regexp.MustCompile(`data:image/[^;]+;base64,([A-Za-z0-9+/=]{100,})`).FindStringSubmatch(html); len(m) > 0 {
-		return m[0], nil
-	}
-
-	return "", fmt.Errorf("未找到二维码")
-}
-
-func (s *YipayService) getQRCodePatterns(paymentType string) []string {
-	common := []string{
-		`<img[^>]*src=["']([^"']*qrcode[^"']*)["']`,
-		`<img[^>]*class=["'][^"']*qrcode[^"']*["'][^>]*src=["']([^"']+)["']`,
-		`<div[^>]*class=["'][^"']*qrcode[^"']*["'][^>]*>.*?<img[^>]*src=["']([^"']+)["']`,
-	}
-	if paymentType == "wxpay" {
-		return append(common, `weixin://wxpay[^"'\s]+`, `wxp://[^"'\s]+`)
-	}
-	if paymentType == "alipay" {
-		return append(common, `alipays://[^"'\s]+`)
-	}
-	return common
 }
 
 func GetYipaySupportedTypes(paymentConfig *models.PaymentConfig) []string {

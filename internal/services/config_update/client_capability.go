@@ -29,11 +29,6 @@ type clientCapabilities struct {
 	unsupportedBefore map[string]float64
 }
 
-// 通用"新协议"集合（老客户端普遍不支持）
-var newProtocols = []string{
-	"vless", "reality", "hysteria2", "hysteria", "tuic", "anytls", "wireguard", "wg",
-}
-
 // detectClientVersion 从 User-Agent 解析客户端类型与版本号。
 // 返回 (clientType, version, ok)；ok=false 表示无法识别（调用方保持现状）。
 func detectClientVersion(ua string) (string, float64, bool) {

@@ -501,10 +501,6 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	return &order, paymentURL, nil
 }
 
-func (s *OrderService) generatePaymentURL(order *models.Order, payType string, amount float64) (string, error) {
-	return s.generatePaymentURLWithUA(order, payType, amount, "")
-}
-
 func (s *OrderService) generatePaymentURLWithUA(order *models.Order, payType string, amount float64, userAgent string) (string, error) {
 	paymentConfig, err := utils.FindEnabledPaymentConfig(s.db, payType)
 	if err != nil {
@@ -744,16 +740,6 @@ func (s *OrderService) updatePaymentTransactionTx(tx *gorm.DB, order *models.Ord
 	}
 }
 
-func (s *OrderService) ProcessPaidOrder(order *models.Order) (*models.Subscription, error) {
-	if order == nil {
-		return nil, fmt.Errorf("订单不能为空")
-	}
-	if order.OrderNo != "" {
-		return s.FinalizePaidOrder(order.OrderNo, FinalizePaidOrderOptions{})
-	}
-	return nil, fmt.Errorf("订单号不能为空")
-}
-
 // calculateOrderPaidAmount 计算订单成交金额（用于累计消费、邀请奖励、退款回滚）。
 //
 // 口径统一委托 models.Order.PaidAmount()（= 订单折后价），避免各处各算一套；
@@ -969,10 +955,6 @@ func (s *OrderService) getUserSubscriptionTx(tx *gorm.DB, userID uint) (*models.
 	return &subscription, nil
 }
 
-func (s *OrderService) processPackageOrder(order *models.Order, user *models.User) (*models.Subscription, error) {
-	return s.processPackageOrderTx(s.db, order, user)
-}
-
 func (s *OrderService) processPackageOrderTx(tx *gorm.DB, order *models.Order, user *models.User) (*models.Subscription, error) {
 	// 检查是否是自定义套餐
 	isCustomPackage := false
@@ -1175,10 +1157,6 @@ func (s *OrderService) processPackageOrderTx(tx *gorm.DB, order *models.Order, u
 	return &subscription, nil
 }
 
-func (s *OrderService) processDeviceUpgradeOrder(order *models.Order, user *models.User) (*models.Subscription, error) {
-	return s.processDeviceUpgradeOrderTx(s.db, order, user)
-}
-
 func (s *OrderService) processDeviceUpgradeOrderTx(tx *gorm.DB, order *models.Order, user *models.User) (*models.Subscription, error) {
 	var additionalDevices int
 	var additionalDays int
@@ -1245,10 +1223,6 @@ func (s *OrderService) processDeviceUpgradeOrderTx(tx *gorm.DB, order *models.Or
 	return &subscription, nil
 }
 
-func (s *OrderService) updateUserLevel(user *models.User) {
-	s.updateUserLevelTx(s.db, user)
-}
-
 func (s *OrderService) updateUserLevelTx(tx *gorm.DB, user *models.User) {
 	var userLevels []models.UserLevel
 	if err := tx.Where("is_active = ?", true).Order("level_order ASC").Find(&userLevels).Error; err == nil {
@@ -1289,10 +1263,6 @@ func (s *OrderService) updateUserLevelTx(tx *gorm.DB, user *models.User) {
 			}
 		}
 	}
-}
-
-func (s *OrderService) processInviteRewards(order *models.Order, paidAmount float64) {
-	s.processInviteRewardsTx(s.db, order, paidAmount)
 }
 
 func (s *OrderService) processInviteRewardsTx(tx *gorm.DB, order *models.Order, paidAmount float64) {

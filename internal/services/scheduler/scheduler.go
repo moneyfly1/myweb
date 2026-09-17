@@ -67,21 +67,6 @@ func (s *Scheduler) Start() {
 	go s.syncSoftwareLibrary()
 }
 
-func (s *Scheduler) Stop() {
-	if !s.running {
-		return
-	}
-
-	s.running = false
-	close(s.stopChan)
-	log.Println("定时任务调度器已停止")
-	if err := utils.CreateSchedulerLog("scheduler", "stopped", "定时任务调度器已停止", map[string]interface{}{
-		"status": "stopped",
-	}); err != nil {
-		log.Printf("failed to create scheduler log: %v", err)
-	}
-}
-
 func (s *Scheduler) processEmailQueue() {
 	emailService := email.NewEmailService() // 每次重新创建，确保使用最新配置
 	if err := emailService.ProcessEmailQueue(); err != nil {

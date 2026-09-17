@@ -91,14 +91,6 @@ func Del(keys ...string) error {
 	return redisClient.Del(ctx, keys...).Err()
 }
 
-// Exists 检查键是否存在
-func Exists(keys ...string) (int64, error) {
-	if !IsRedisEnabled() {
-		return 0, fmt.Errorf("redis not enabled")
-	}
-	return redisClient.Exists(ctx, keys...).Result()
-}
-
 // FlushAll 清空所有缓存（谨慎使用）
 func FlushAll() error {
 	if !IsRedisEnabled() {

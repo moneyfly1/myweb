@@ -407,20 +407,6 @@ func GetLocationString(ipAddress string) sql.NullString {
 	return sql.NullString{String: string(locationJSON), Valid: true}
 }
 
-func GetLocationSimple(ipAddress string) string {
-	location, err := GetLocation(ipAddress)
-	if err != nil || location == nil || location.Country == "" {
-		return ""
-	}
-
-	if location.City != "" {
-		return fmt.Sprintf("%s, %s", location.Country, location.City)
-	} else if location.Region != "" {
-		return fmt.Sprintf("%s, %s", location.Country, location.Region)
-	}
-	return location.Country
-}
-
 func IsEnabled() bool {
 	geoipDBLock.RLock()
 	defer geoipDBLock.RUnlock()

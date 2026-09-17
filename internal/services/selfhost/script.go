@@ -557,12 +557,3 @@ func DefaultMirrorURLs() []string {
 		"https://mirror.ghproxy.com/https://github.com/SagerNet/sing-box/releases/download/",
 	}
 }
-
-// buildMirrorURLs 返回 sing-box 下载镜像列表。
-func buildMirrorURLs(version, arch string) []string {
-	return []string{
-		fmt.Sprintf("https://github.com/SagerNet/sing-box/releases/download/v%s/sing-box-%s-linux-%s.tar.gz", version, version, arch),
-		fmt.Sprintf("https://gh-proxy.com/https://github.com/SagerNet/sing-box/releases/download/v%s/sing-box-%s-linux-%s.tar.gz", version, version, arch),
-		fmt.Sprintf("https://mirror.ghproxy.com/https://github.com/SagerNet/sing-box/releases/download/v%s/sing-box-%s-linux-%s.tar.gz", version, version, arch),
-	}
-}

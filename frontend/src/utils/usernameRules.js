@@ -9,15 +9,15 @@
  */
 
 /** 合法用户名：2-20 位，中文、字母、数字、下划线 */
-export const USERNAME_PATTERN = /^[a-zA-Z0-9_\u4e00-\u9fa5]{2,20}$/
+const USERNAME_PATTERN = /^[a-zA-Z0-9_\u4e00-\u9fa5]{2,20}$/
 
-export const USERNAME_MIN = 2
-export const USERNAME_MAX = 20
+const USERNAME_MIN = 2
+const USERNAME_MAX = 20
 
 export const USERNAME_HINT = '2-20 位，支持中文、字母、数字、下划线；用户名不区分大小写，不能与其他用户重复'
 
 /** 校验单个用户名，返回错误文案；通过则返回空字符串 */
-export function validateUsername(value) {
+function validateUsername(value) {
   const name = (value ?? '').trim()
   if (!name) return '请输入用户名'
   if (name.length < USERNAME_MIN || name.length > USERNAME_MAX) {
@@ -38,6 +38,3 @@ export function usernameValidator(_rule, value, callback) {
   }
   callback()
 }
-
-/** Element Plus 表单规则（可直接放入 rules.username） */
-export const usernameFormRules = [{ validator: usernameValidator, trigger: 'blur' }]

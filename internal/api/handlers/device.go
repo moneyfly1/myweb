@@ -54,12 +54,6 @@ func GetDevices(c *gin.Context) {
 
 		// 列表查询不查询 GeoIP，提升性能
 		location := ""
-		// if ipAddress != "" && ipAddress != "-" && geoip.IsEnabled() {
-		// 	locationStr := geoip.GetLocationString(ipAddress)
-		// 	if locationStr.Valid {
-		// 		location = locationStr.String
-		// 	}
-		// }
 
 		deviceList = append(deviceList, gin.H{
 			"id":                 d.ID,

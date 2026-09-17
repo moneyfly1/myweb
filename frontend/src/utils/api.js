@@ -523,12 +523,6 @@ export const orderAPI = {
   getPackages: () => api.get('/packages/')
 }
 
-// GeoIP API
-export const geoipAPI = {
-  lookup: (ip) => api.get(`/geoip/lookup?ip=${ip}`),
-  batchLookup: (ips) => api.post('/geoip/batch-lookup', { ips })
-}
-
 export const nodeAPI = {
   getNodes: () => api.get('/nodes/'),
   getNode: (id) => api.get(`/nodes/${id}`),
@@ -700,12 +694,6 @@ export const promotionAPI = {
   update: (id, data) => api.put(`/admin/promotions/${id}`, data),
   remove: (id) => api.delete(`/admin/promotions/${id}`)
 }
-export const analyticsAPI = {
-  getUserAnalytics: () => api.get('/admin/analytics/users'),
-  getRetention: () => api.get('/admin/analytics/retention'),
-  getChurnWarning: () => api.get('/admin/analytics/churn'),
-  getDeviceAnalytics: () => api.get('/admin/analytics/devices')
-}
 export const configAPI = {
   getEmailConfig: () => api.get('/admin/email-config'),
   saveEmailConfig: (data) => api.post('/admin/email-config', data),
@@ -756,10 +744,6 @@ export const cloudAPI = {
   sync: () => api.post('/admin/cloud/sync'),
   syncStatus: () => api.get('/admin/cloud/sync/status'),
   versions: () => api.get('/admin/cloud/versions')
-}
-// 用户端：已同步软件版本信息
-export const softwareVersionsAPI = {
-  get: () => api.get('/software/versions')
 }
 export const configUpdateAPI = {
   getStatus: () => api.get('/admin/config-update/status'),

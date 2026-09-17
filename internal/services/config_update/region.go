@@ -120,26 +120,3 @@ func (rm *RegionMatcher) MatchRegion(name, server string) string {
 
 	return "未知"
 }
-
-func (rm *RegionMatcher) UpdateMaps(regionMap, serverMap map[string]string) {
-	rm.mu.Lock()
-	defer rm.mu.Unlock()
-
-	rm.regionKeywords = make([]keywordEntry, 0, len(regionMap))
-	for keyword, region := range regionMap {
-		rm.regionKeywords = append(rm.regionKeywords, keywordEntry{
-			keyword: strings.ToUpper(keyword),
-			region:  region,
-			length:  len(keyword),
-		})
-	}
-
-	sort.Slice(rm.regionKeywords, func(i, j int) bool {
-		return rm.regionKeywords[i].length > rm.regionKeywords[j].length
-	})
-
-	rm.serverMap = make(map[string]string, len(serverMap))
-	for kw, region := range serverMap {
-		rm.serverMap[strings.ToLower(kw)] = region
-	}
-}

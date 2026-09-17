@@ -1068,18 +1068,6 @@ func randomDistinctPorts(n int, occupied map[int]bool) []int {
 	return ports
 }
 
-// getSelfHostNodeByID 按 ID 查询自建节点（供管理操作复用）。
-func getSelfHostNodeByID(db *gorm.DB, id string) (*models.CustomNode, error) {
-	var node models.CustomNode
-	if err := db.First(&node, id).Error; err != nil {
-		return nil, err
-	}
-	if !node.SelfHosted {
-		return nil, fmt.Errorf("该节点不是自建节点")
-	}
-	return &node, nil
-}
-
 // ============================================================
 // 自建节点批量管理
 // ============================================================

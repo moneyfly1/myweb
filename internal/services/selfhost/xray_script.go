@@ -60,17 +60,6 @@ type XrayScriptConfig struct {
 	GeneratedAt  time.Time
 }
 
-// DefaultXrayProtocols 返回默认多协议组合（端口分配，对照 v2ray-agent 八合一）。
-func DefaultXrayProtocols(domain string) []XrayProtocol {
-	return []XrayProtocol{
-		{Key: "vless-ws", Port: 443, Domain: domain},
-		{Key: "vless-reality", Port: 8443},
-		{Key: "vless-grpc-tls", Port: 2053, Domain: domain},
-		{Key: "trojan-tcp-tls", Port: 2083, Domain: domain},
-		{Key: "ss", Port: 8388},
-	}
-}
-
 // BuildXrayInstallScript 生成 Xray 多协议一键安装脚本。
 // 流程：检测系统 → 下载 Xray → acme 申请证书（有域名时）→ 生成多协议配置 →
 // 启动服务 → 探测公网IP → 构造所有协议链接 → 批量回传 → 心跳。
