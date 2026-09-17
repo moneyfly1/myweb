@@ -40,6 +40,19 @@ func Now() time.Time {
 	return time.Now().In(BeijingTZ)
 }
 
+// NowForDB 返回"落库用"的当前北京时间：截断到秒。
+//
+// 为什么要截断：SQLite 时间列是文本，Go 驱动按 `.999999999` 格式化并去掉末尾零，
+// 于是同一列里会混有 0/3/6/9 位小数（如 15:04:05、15:04:05.123、15:04:05.123456789），
+// 造成：① 字符串长度不齐、外部工具按固定位置解析会错；② 与 MySQL DATETIME(0) 语义不一致。
+// 统一截断到秒后，全库时间形如 "2006-01-02 15:04:05+08:00"（固定 25 字符），
+// 与展示格式 utils.FormatBeijingTime 一致，也便于跨数据库保持一致。
+//
+// 注意：耗时/延迟统计请用 time.Now()（带单调时钟），不要用本函数。
+func NowForDB() time.Time {
+	return Now().Truncate(time.Second)
+}
+
 // ToBeijing 把任意时间转换到北京时区
 func ToBeijing(t time.Time) time.Time {
 	return t.In(BeijingTZ)
