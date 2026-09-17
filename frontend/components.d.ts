@@ -12,10 +12,8 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AdminLayout: typeof import('./src/components/layout/AdminLayout.vue')['default']
-    AndroidTutorials: typeof import('./src/components/tutorials/AndroidTutorials.vue')['default']
     AppDialog: typeof import('./src/components/AppDialog.vue')['default']
     AppDrawer: typeof import('./src/components/AppDrawer.vue')['default']
-    ClientTutorials: typeof import('./src/components/tutorials/ClientTutorials.vue')['default']
     CopyableField: typeof import('./src/components/CopyableField.vue')['default']
     DataPage: typeof import('./src/components/DataPage.vue')['default']
     ElAlert: typeof import('element-plus/es/components/alert/index.mjs')['ElAlert']
@@ -78,13 +76,10 @@ declare module 'vue' {
     FormActionBar: typeof import('./src/components/FormActionBar.vue')['default']
     IconButton: typeof import('./src/components/IconButton.vue')['default']
     InlineEditableText: typeof import('./src/components/InlineEditableText.vue')['default']
-    IOSTutorials: typeof import('./src/components/tutorials/iOSTutorials.vue')['default']
     LoadingState: typeof import('./src/components/LoadingState.vue')['default']
-    MacOSTutorials: typeof import('./src/components/tutorials/MacOSTutorials.vue')['default']
     MobileCardList: typeof import('./src/components/MobileCardList.vue')['default']
     MobileLogFields: typeof import('./src/components/MobileLogFields.vue')['default']
     MoneyFlyDownloadPanel: typeof import('./src/components/moneyfly/MoneyFlyDownloadPanel.vue')['default']
-    MoneyFlyInstallSteps: typeof import('./src/components/moneyfly/MoneyFlyInstallSteps.vue')['default']
     PaginationBar: typeof import('./src/components/PaginationBar.vue')['default']
     ResponsiveDataView: typeof import('./src/components/ResponsiveDataView.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
@@ -95,9 +90,9 @@ declare module 'vue' {
     TicketAttachmentDisplay: typeof import('./src/components/tickets/TicketAttachmentDisplay.vue')['default']
     TicketAttachmentUpload: typeof import('./src/components/tickets/TicketAttachmentUpload.vue')['default']
     TipBlock: typeof import('./src/components/TipBlock.vue')['default']
+    TutorialContent: typeof import('./src/components/tutorials/TutorialContent.vue')['default']
     UpgradeDevicesDrawer: typeof import('./src/components/UpgradeDevicesDrawer.vue')['default']
     UserLayout: typeof import('./src/components/layout/UserLayout.vue')['default']
-    WindowsTutorials: typeof import('./src/components/tutorials/WindowsTutorials.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es/components/loading/index.mjs')['ElLoadingDirective']

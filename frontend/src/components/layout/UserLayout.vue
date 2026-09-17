@@ -253,9 +253,9 @@ const menuSections = computed(() => {
           badge: unreadTicketReplies.value > 0 ? unreadTicketReplies.value : null
         },
         { path: '/invites', title: '我的邀请', icon: 'invites' },
+        { path: '/tutorials', title: '客户端中心', icon: 'tutorials' },
         { path: '/knowledge', title: '知识库', icon: 'knowledge' },
         { path: '/help', title: '帮助中心', icon: 'help' },
-        { path: '/tutorials', title: '软件教程', icon: 'tutorials' },
         { path: '/login-history', title: '登录历史', icon: 'loginHistory' },
         { path: '/settings', title: '用户设置', icon: 'settings' }
       ] 
