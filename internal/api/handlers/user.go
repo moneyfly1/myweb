@@ -665,8 +665,8 @@ func GetUserDetails(c *gin.Context) {
 			formattedOrder["discount_amount"] = 0
 		}
 
-		if order.FinalAmount.Valid {
-			formattedOrder["final_amount"] = order.FinalAmount.Float64
+		if order.AmountDueOnline.Valid {
+			formattedOrder["final_amount"] = order.AmountDueOnline.Float64
 		} else {
 			formattedOrder["final_amount"] = order.Amount
 		}

@@ -29,7 +29,7 @@ type CouponQuote struct {
 	LevelDiscountAmount  float64
 	CouponDiscountAmount float64
 	TotalDiscountAmount  float64
-	FinalAmount          float64
+	AmountDueOnline          float64
 	FreeDays             int
 }
 
@@ -117,7 +117,7 @@ func quoteCouponWithPreparedAmount(db *gorm.DB, code string, userID uint, packag
 		LevelDiscountAmount:  levelDiscountAmount,
 		CouponDiscountAmount: couponDiscountAmount,
 		TotalDiscountAmount:  utils.RoundFloat(levelDiscountAmount+couponDiscountAmount, 2),
-		FinalAmount:          finalAmount,
+		AmountDueOnline:          finalAmount,
 		FreeDays:             freeDays,
 	}, nil
 }

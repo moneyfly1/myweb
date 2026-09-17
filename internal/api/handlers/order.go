@@ -131,7 +131,7 @@ func formatOrderData(order models.Order) gin.H {
 		"amount":                 amount,
 		"base_amount":            order.Amount,
 		"order_amount":           order.Amount,
-		"final_amount":           utils.GetNullFloat64Value(order.FinalAmount),
+		"final_amount":           utils.GetNullFloat64Value(order.AmountDueOnline),
 		"discount_amount":        utils.GetNullFloat64Value(order.DiscountAmount),
 		"payment_method":         paymentMethod,
 		"payment_method_id":      utils.GetNullInt64Value(order.PaymentMethodID),
@@ -227,8 +227,8 @@ func sendOrderCreatedNotifications(db *gorm.DB, orderNo string) {
 	// 直接取会让通知显示"应付 ¥0"（历史 bug）。
 	// 若余额未覆盖全部金额，仍以"还需在线支付"为准更符合用户阅读预期。
 	payAmount := latestOrder.PaidAmount()
-	if latestOrder.BalanceUsed() > 0 && latestOrder.FinalAmount.Valid && latestOrder.FinalAmount.Float64 > 0 {
-		payAmount = latestOrder.FinalAmount.Float64
+	if latestOrder.BalanceUsed() > 0 && latestOrder.AmountDueOnline.Valid && latestOrder.AmountDueOnline.Float64 > 0 {
+		payAmount = latestOrder.AmountDueOnline.Float64
 	}
 	paymentMethod := "待选择"
 	if latestOrder.PaymentMethodName.Valid && strings.TrimSpace(latestOrder.PaymentMethodName.String) != "" {
@@ -776,8 +776,8 @@ func finalizeStatusQueriedPayment(db *gorm.DB, orderNo string, isRecharge bool, 
 	}
 	if callbackAmount, ok := parseCallbackAmount(paymentType, params); ok {
 		expectedAmount := order.Amount
-		if order.FinalAmount.Valid {
-			expectedAmount = order.FinalAmount.Float64
+		if order.AmountDueOnline.Valid {
+			expectedAmount = order.AmountDueOnline.Float64
 		}
 		if !amountMatches(expectedAmount, callbackAmount) {
 			return fmt.Errorf("订单金额不匹配: 预期支付%.2f元, 支付渠道返回%.2f元", expectedAmount, callbackAmount)
@@ -898,7 +898,7 @@ func CreateOrder(c *gin.Context) {
 		"user_id":             order.UserID,
 		"package_id":          order.PackageID,
 		"amount":              order.Amount,
-		"final_amount":        utils.GetNullFloat64Value(order.FinalAmount),
+		"final_amount":        utils.GetNullFloat64Value(order.AmountDueOnline),
 		"discount_amount":     utils.GetNullFloat64Value(order.DiscountAmount),
 		"status":              order.Status,
 		"payment_method":      utils.GetNullStringValue(order.PaymentMethodName),
@@ -1350,8 +1350,8 @@ func RefundAdminOrder(c *gin.Context) {
 
 	// 计算退款金额
 	refundAmount := order.Amount
-	if order.FinalAmount.Valid {
-		refundAmount = order.FinalAmount.Float64
+	if order.AmountDueOnline.Valid {
+		refundAmount = order.AmountDueOnline.Float64
 	}
 
 	// 获取易支付交易号
@@ -1683,7 +1683,7 @@ func GetOrderStatusByNo(c *gin.Context) {
 		"order_no":     order.OrderNo,
 		"status":       order.Status,
 		"amount":       order.Amount,
-		"final_amount": utils.GetNullFloat64Value(order.FinalAmount),
+		"final_amount": utils.GetNullFloat64Value(order.AmountDueOnline),
 		"type":         orderType,
 	})
 }
@@ -1839,7 +1839,7 @@ func UpgradeDevices(c *gin.Context) {
 		UserID:            user.ID,
 		PackageID:         0,
 		Amount:            totalAmount,
-		FinalAmount:       database.NullFloat64(finalAmount),
+		AmountDueOnline:       database.NullFloat64(finalAmount),
 		DiscountAmount:    database.NullFloat64(levelDiscountAmount),
 		Status:            "pending",
 		ExtraData:         database.NullString(extraData),
@@ -2060,8 +2060,8 @@ func PayOrder(c *gin.Context) {
 	}
 
 	amount := order.Amount
-	if order.FinalAmount.Valid {
-		amount = order.FinalAmount.Float64
+	if order.AmountDueOnline.Valid {
+		amount = order.AmountDueOnline.Float64
 	}
 
 	// 余额支付
@@ -2249,7 +2249,7 @@ func CreateCustomOrder(c *gin.Context) {
 		couponDiscount = quote.CouponDiscountAmount
 		couponFreeDays = quote.FreeDays
 		coupon = quote.Coupon
-		finalPrice = quote.FinalAmount
+		finalPrice = quote.AmountDueOnline
 	}
 	if finalPrice <= 0.01 {
 		finalPrice = 0
@@ -2285,7 +2285,7 @@ func CreateCustomOrder(c *gin.Context) {
 		Status:         "pending",
 		ExpireTime:     database.NullTime(expireTime),
 		DiscountAmount: database.NullFloat64(totalDiscount),
-		FinalAmount:    database.NullFloat64(finalPrice),
+		AmountDueOnline:    database.NullFloat64(finalPrice),
 		ExtraData:      database.NullString(extraStr),
 	}
 	if finalPrice == 0 {

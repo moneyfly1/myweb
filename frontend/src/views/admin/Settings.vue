@@ -61,6 +61,9 @@
                   <el-input v-model="generalSettings.support_qq" placeholder="请输入售后QQ号码" />
                   <div class="form-tip">帮助中心显示，留空不显示。</div>
                 </el-form-item>
+                <el-form-item label="服务时间" prop="support_hours">
+                  <el-input v-model="generalSettings.support_hours" placeholder="例如: 周一至周日 9:00-22:00（留空则不显示该行）" />
+                </el-form-item>
                 <el-form-item label="售后邮箱" prop="support_email">
                   <el-input v-model="generalSettings.support_email" placeholder="例如: support@example.com" />
                   <div class="form-tip">帮助中心显示，留空不显示。</div>
@@ -1220,7 +1223,7 @@ export default {
 
     const generalSettings = reactive({
       site_name: '', site_description: '', domain_name: '', site_logo: '',
-      default_theme: 'default', support_qq: '', support_email: '', unified_auth_enabled: false
+      default_theme: 'default', support_qq: '', support_email: '', support_hours: '', unified_auth_enabled: false
     })
     const registrationSettings = reactive({
       registration_enabled: true, email_verification_required: true,
