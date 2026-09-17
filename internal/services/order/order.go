@@ -374,15 +374,15 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 	extraDataJSON, _ := json.Marshal(extraDataMap)
 
 	order := models.Order{
-		OrderNo:        orderNo,
-		UserID:         user.ID,
-		PackageID:      pkg.ID,
-		Amount:         baseAmount,
-		Status:         "pending",
-		DiscountAmount: database.NullFloat64(totalDiscountAmount),
-		AmountDueOnline:    database.NullFloat64(finalAmount),
-		ExtraData:      database.NullString(string(extraDataJSON)),
-		CreatedAt:      now,
+		OrderNo:         orderNo,
+		UserID:          user.ID,
+		PackageID:       pkg.ID,
+		Amount:          baseAmount,
+		Status:          "pending",
+		DiscountAmount:  database.NullFloat64(totalDiscountAmount),
+		AmountDueOnline: database.NullFloat64(finalAmount),
+		ExtraData:       database.NullString(string(extraDataJSON)),
+		CreatedAt:       now,
 	}
 
 	if coupon != nil {
@@ -1580,7 +1580,7 @@ func (s *OrderService) rollbackPackageOrderTx(tx *gorm.DB, order *models.Order, 
 				if exactOldExpireTimeStr, ok := extraData["old_expire_time_rfc3339"].(string); ok && exactOldExpireTimeStr != "" {
 					oldExpireTimeStr = exactOldExpireTimeStr
 				}
-				oldExpireTime, err := time.Parse(time.RFC3339Nano, oldExpireTimeStr)
+				oldExpireTime, err := utils.ParseBeijingLayout(time.RFC3339Nano, oldExpireTimeStr)
 				if err != nil {
 					oldExpireTime, err = time.ParseInLocation(orderTimeLayout, oldExpireTimeStr, utils.BeijingTZ)
 				}

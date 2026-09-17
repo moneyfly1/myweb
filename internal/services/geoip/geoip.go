@@ -1,6 +1,7 @@
 package geoip
 
 import (
+	"cboard-go/internal/core/netutil"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -184,21 +185,11 @@ func GetLocation(ipAddress string) (*LocationInfo, error) {
 		return nil, fmt.Errorf("无效的IP地址格式: %s", ipAddress)
 	}
 
-	// 检查是否为内网地址（IPv4 和 IPv6）
-	if parsedIP.To4() != nil {
-		// IPv4 地址
-		if parsedIP.IsLoopback() || parsedIP.IsPrivate() || parsedIP.IsLinkLocalUnicast() {
-			return nil, fmt.Errorf("内网地址，跳过解析")
-		}
-	} else {
-		// IPv6 地址
-		if parsedIP.IsLoopback() || parsedIP.IsLinkLocalUnicast() || parsedIP.IsLinkLocalMulticast() {
-			return nil, fmt.Errorf("内网地址，跳过解析")
-		}
-		// 检查 IPv6 私有地址范围
-		if parsedIP[0] == 0xfc || parsedIP[0] == 0xfd {
-			return nil, fmt.Errorf("IPv6 私有地址，跳过解析")
-		}
+	// 内网/保留地址判定统一走 netutil（此前这里是一份手写实现，
+	// 与 utils.IsPrivateIP、cache.go、statistics.go 的判定互不等价，
+	// 导致同一 IP 在不同模块结论不一致）
+	if netutil.IsPrivateOrReserved(parsedIP) {
+		return nil, fmt.Errorf("内网地址，跳过解析")
 	}
 
 	geoipDBLock.RLock()
@@ -385,21 +376,16 @@ func translateRegionName(regionEN string) string {
 }
 
 func GetLocationString(ipAddress string) sql.NullString {
-	if ipAddress == "127.0.0.1" || ipAddress == "::1" || ipAddress == "localhost" {
+	// 统一规范化（去端口、::ffff: 前缀、localhost 归一）后再判定
+	normalized := netutil.Normalize(ipAddress, false)
+	if normalized == "" {
+		return sql.NullString{}
+	}
+	if normalized == "127.0.0.1" {
 		return sql.NullString{String: "本地", Valid: true}
 	}
-
-	ip := net.ParseIP(ipAddress)
-	if ip != nil {
-		if ip.To4() != nil {
-			if ip.IsLoopback() || ip.IsPrivate() {
-				return sql.NullString{String: "内网", Valid: true}
-			}
-		} else {
-			if ip.IsLoopback() {
-				return sql.NullString{String: "本地", Valid: true}
-			}
-		}
+	if netutil.IsPrivateOrReservedString(normalized) {
+		return sql.NullString{String: "内网", Valid: true}
 	}
 
 	location, err := GetLocation(ipAddress)

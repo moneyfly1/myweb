@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"cboard-go/internal/core/config"
+	"cboard-go/internal/core/timeutil"
 	"cboard-go/internal/models"
 
 	"gorm.io/driver/mysql"
@@ -35,7 +36,7 @@ func InitDatabase() error {
 	var err error
 	if strings.Contains(cfg.DatabaseURL, "sqlite") {
 		dbPath := resolveSQLitePath(cfg.DatabaseURL)
-		dialector = sqlite.Open(dbPath)
+		dialector = sqlite.Open(sqliteDSN(dbPath))
 		log.Printf("SQLite 数据库路径: %s（%s）", dbPath, dbFileState(dbPath))
 	} else if strings.Contains(cfg.DatabaseURL, "mysql") ||
 		os.Getenv("USE_MYSQL") == "true" {
@@ -61,7 +62,7 @@ func InitDatabase() error {
 		if !filepath.IsAbs(dbPath) {
 			dbPath = filepath.Join(".", dbPath)
 		}
-		dialector = sqlite.Open(dbPath)
+		dialector = sqlite.Open(sqliteDSN(dbPath))
 	}
 	customLogger := logger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags),
@@ -85,8 +86,16 @@ func InitDatabase() error {
 		)
 	}
 
+	// NowFunc 决定所有 autoCreateTime/autoUpdateTime 字段以及
+	// CreatedAt/UpdatedAt 约定字段的时间来源。
+	// 历史教训：这里曾把 NowFunc 删掉（以为"VPS 已设北京时间就不需要"），
+	// 导致 GORM 回落到 time.Now().Local() —— 随宿主机时区漂移，
+	// 在 UTC / -05:00 的机器上写出一批 +00:00 / -05:00 的记录，
+	// 与库中多数 +08:00 记录混存（SQLite 按文本比较，直接导致范围查询与排序出错）。
+	// 因此必须显式锚定北京时间。
 	gormConfig := &gorm.Config{
-		Logger: customLogger,
+		Logger:  customLogger,
+		NowFunc: timeutil.Now,
 	}
 	DB, err = gorm.Open(dialector, gormConfig)
 	if err != nil {
@@ -994,4 +1003,21 @@ func copyFile(src, dst string) error {
 	defer out.Close()
 	_, err = io.Copy(out, in)
 	return err
+}
+
+// sqliteDSN 给 SQLite 连接串补上时区参数。
+//
+// 不加 _loc 时：驱动会把「不带时区偏移」的时间串按 UTC 解析读回，
+// 之后再被 db.Save() 全字段重写时就固化成 +00:00，与库中 +08:00 的记录混存
+// （SQLite 的 datetime 是文本，跨偏移比较等同于按墙钟字符串比较 → 查询结果错误）。
+// 加上 _loc=Asia/Shanghai 后，无偏移值按北京时间解释、写回统一带 +08:00。
+func sqliteDSN(dbPath string) string {
+	if strings.Contains(dbPath, "_loc=") {
+		return dbPath
+	}
+	sep := "?"
+	if strings.Contains(dbPath, "?") {
+		sep = "&"
+	}
+	return dbPath + sep + "_loc=Asia%2FShanghai"
 }

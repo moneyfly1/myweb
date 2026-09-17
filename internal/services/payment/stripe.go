@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -84,8 +85,11 @@ func (s *StripeService) CreatePayment(order *models.Order, amount float64, email
 	if amount <= 0 {
 		return "", fmt.Errorf("订单金额无效")
 	}
-	// Stripe 金额单位为分（最小货币单位）
-	unitAmount := int64(amount * 100)
+	// Stripe 金额单位为分（最小货币单位）。
+	// 注意必须四舍五入：浮点乘法会产生 1998.9999999999998 这类值，
+	// 直接 int64() 截断会少收 1 分（¥19.99→1998、¥0.29→28、¥1.15→114、¥8.70→869）。
+	// 微信支付侧用的是 fmt.Sprintf("%.0f") 会舍入，两边口径必须一致。
+	unitAmount := int64(math.Round(amount * 100))
 	if unitAmount <= 0 {
 		return "", fmt.Errorf("订单金额过小，Stripe 不支持")
 	}

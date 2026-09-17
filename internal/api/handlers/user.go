@@ -1438,9 +1438,9 @@ func CreateUser(c *gin.Context) {
 
 	var expireTime time.Time
 	if req.ExpireTime != "" {
-		parsedTime, err := time.Parse("2006-01-02T15:04:05", req.ExpireTime)
+		parsedTime, err := utils.ParseBeijingLayout("2006-01-02T15:04:05", req.ExpireTime)
 		if err != nil {
-			parsedTime, err = time.Parse("2006-01-02 15:04:05", req.ExpireTime)
+			parsedTime, err = utils.ParseBeijingLayout("2006-01-02 15:04:05", req.ExpireTime)
 			if err != nil {
 				months := defaultDurationMonths
 				if months <= 0 {
@@ -1696,11 +1696,11 @@ func UpdateUser(c *gin.Context) {
 				subscription.DeviceLimit = *req.DeviceLimit
 			}
 			if req.ExpireTime != nil && *req.ExpireTime != "" {
-				if t, err := time.Parse("2006-01-02T15:04:05", *req.ExpireTime); err == nil {
+				if t, err := utils.ParseBeijingLayout("2006-01-02T15:04:05", *req.ExpireTime); err == nil {
 					subscription.ExpireTime = t
-				} else if t, err := time.Parse("2006-01-02 15:04:05", *req.ExpireTime); err == nil {
+				} else if t, err := utils.ParseBeijingLayout("2006-01-02 15:04:05", *req.ExpireTime); err == nil {
 					subscription.ExpireTime = t
-				} else if t, err := time.Parse(time.RFC3339, *req.ExpireTime); err == nil {
+				} else if t, err := utils.ParseBeijingLayout(time.RFC3339, *req.ExpireTime); err == nil {
 					subscription.ExpireTime = t
 				}
 			}

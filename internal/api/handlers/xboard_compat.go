@@ -165,7 +165,7 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 			c.String(200, content)
 			return
 		}
-		c.String(200, generateErrorConfigBase64("订阅已过期", fmt.Sprintf("到期时间: %s，请续费", subscription.ExpireTime.Format(DateFormat)), baseURL))
+		c.String(200, generateErrorConfigBase64("订阅已过期", fmt.Sprintf("到期时间: %s，请续费", utils.FormatBeijingLayout(subscription.ExpireTime, DateFormat)), baseURL))
 		return
 	}
 	if isInactive {

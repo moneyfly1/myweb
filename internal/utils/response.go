@@ -157,6 +157,19 @@ func ParsePagination(c *gin.Context) PaginationParams {
 		}
 	}
 
+	// 先解析 limit（它是 size 的别名），再据此换算 skip → page。
+	// 历史缺陷：原先先算 page 再覆盖 size，且换算是 (skip/size)+1 用的还是**旧 size**，
+	// 于是 pageSize=20/50/100 时 offset 被算成 40/250/1000（应为 20/50/100），
+	// 管理端切换每页条数后订单行会整段漏显。
+	if limitStr := c.Query("limit"); limitStr != "" {
+		var limit int
+		if _, err := fmt.Sscanf(limitStr, "%d", &limit); err != nil {
+			limit = 10
+		}
+		if limit > 0 {
+			size = limit
+		}
+	}
 	if skipStr := c.Query("skip"); skipStr != "" {
 		var skip int
 		if _, err := fmt.Sscanf(skipStr, "%d", &skip); err != nil {
@@ -168,17 +181,7 @@ func ParsePagination(c *gin.Context) PaginationParams {
 		if skip > 100000 {
 			skip = 100000
 		}
-		if page == 1 && size == 10 {
-			page = (skip / size) + 1
-		}
-	}
-	if limitStr := c.Query("limit"); limitStr != "" {
-		var limit int
-		if _, err := fmt.Sscanf(limitStr, "%d", &limit); err != nil {
-			limit = 10
-		}
-		// limit 是 size 的别名，无论当前 size 是多少都生效
-		size = limit
+		page = (skip / size) + 1
 	}
 
 	if page < 1 {

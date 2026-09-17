@@ -45,29 +45,44 @@ func (LoginHistory) TableName() string {
 	return "login_history"
 }
 
+// GetLocationInfo 解析 location 字段，返回国家与城市。
+//
+// 历史缺陷：此前先判断 strings.Contains(locationStr, ",")，而 JSON 形式
+// {"country":"中国","city":"杭州"} 本身含逗号，于是被当作 "国家,城市" 拆分，
+// 返回 country = `{"country":"中国"` 这样的垃圾值 —— 前端登录历史的国家筛选框
+// 与个人中心因此显示乱码。现在改为「先按 JSON 解析，失败再按 国家,城市 拆分」，
+// 并识别 "本地"/"内网" 这类占位值。
 func (h *LoginHistory) GetLocationInfo() (country, city string) {
 	if !h.Location.Valid || h.Location.String == "" {
 		return "", ""
 	}
-	locationStr := h.Location.String
-	if strings.Contains(locationStr, ",") {
-		parts := strings.Split(locationStr, ",")
-		if len(parts) >= 1 {
-			country = strings.TrimSpace(parts[0])
-		}
-		if len(parts) >= 2 {
-			city = strings.TrimSpace(parts[1])
-		}
-	} else {
+	locationStr := strings.TrimSpace(h.Location.String)
+
+	// 1) 占位值（内网/本地无归属地信息，不作为国家返回）
+	if locationStr == "本地" || locationStr == "内网" {
+		return "", ""
+	}
+
+	// 2) JSON 形式（落库的标准形态）
+	if strings.HasPrefix(locationStr, "{") {
 		var locationData map[string]interface{}
 		if err := json.Unmarshal([]byte(locationStr), &locationData); err == nil {
 			if c, ok := locationData["country"].(string); ok {
-				country = c
+				country = strings.TrimSpace(c)
 			}
 			if c, ok := locationData["city"].(string); ok {
-				city = c
+				city = strings.TrimSpace(c)
 			}
+			return country, city
 		}
 	}
-	return
+
+	// 3) 纯文本形式 "国家, 城市"
+	if strings.Contains(locationStr, ",") {
+		parts := strings.SplitN(locationStr, ",", 2)
+		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	}
+
+	// 4) 只有一个值，视为国家
+	return locationStr, ""
 }

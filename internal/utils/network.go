@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	"cboard-go/internal/core/netutil"
 	"cboard-go/internal/models"
 
 	"github.com/gin-gonic/gin"
@@ -166,58 +167,11 @@ func isTrustedProxy(ip net.IP) bool {
 }
 
 // IsPrivateIP 检查IP是否为私有IP（内网IP或本地IP）
+// IsPrivateIP 判断是否为私有/保留地址。
+// 实现统一委托 internal/core/netutil（叶子包），避免 geoip / statistics 等处
+// 各写一份互不等价的判断（历史上有 8 份，导致同一 IP 在不同模块结论不同）。
 func IsPrivateIP(ip net.IP) bool {
-	if ip == nil {
-		return false
-	}
-
-	// 检查是否为本地回环地址
-	if ip.IsLoopback() {
-		return true
-	}
-
-	// 检查IPv4私有地址范围
-	if ip.To4() != nil {
-		// 127.0.0.0/8 - 本地回环
-		if ip[0] == 127 {
-			return true
-		}
-		// 10.0.0.0/8 - 私有网络
-		if ip[0] == 10 {
-			return true
-		}
-		// 172.16.0.0/12 - 私有网络
-		if ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31 {
-			return true
-		}
-		// 192.168.0.0/16 - 私有网络
-		if ip[0] == 192 && ip[1] == 168 {
-			return true
-		}
-		// 169.254.0.0/16 - 链路本地地址
-		if ip[0] == 169 && ip[1] == 254 {
-			return true
-		}
-		return false
-	}
-
-	// 检查IPv6私有地址
-	if ip.To16() != nil {
-		// ::1 - 本地回环
-		if ip.Equal(net.IPv6loopback) {
-			return true
-		}
-		// fe80::/10 - 链路本地地址
-		if ip[0] == 0xfe && (ip[1]&0xc0) == 0x80 {
-			return true
-		}
-		// fc00::/7 - 唯一本地地址
-		if (ip[0] & 0xfe) == 0xfc {
-			return true
-		}
-	}
-
-	return false
+	return netutil.IsPrivateOrReserved(ip)
 }
 
 // GetRealClientIP 获取真实客户端 IP。

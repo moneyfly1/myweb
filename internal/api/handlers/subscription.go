@@ -158,9 +158,9 @@ func formatDeviceList(devices []models.Device) []gin.H {
 	now := utils.GetBeijingTime()
 
 	for _, d := range devices {
-		lastSeen := d.LastAccess.Format(TimeLayout)
+		lastSeen := utils.FormatBeijingLayout(d.LastAccess, TimeLayout)
 		if d.LastSeen != nil {
-			lastSeen = d.LastSeen.Format(TimeLayout)
+			lastSeen = utils.FormatBeijingLayout(*d.LastSeen, TimeLayout)
 		}
 		ipAddress := utils.FormatIP(utils.GetStringValue(d.IPAddress))
 		// 使用数据库中已存储的位置信息，避免实时查询 GeoIP
@@ -188,9 +188,9 @@ func formatDeviceList(devices []models.Device) []gin.H {
 			"location":           location,
 			"os_name":            utils.GetStringValue(d.OSName),
 			"os_version":         utils.GetStringValue(d.OSVersion),
-			"last_access":        d.LastAccess.Format(TimeLayout),
+			"last_access":        utils.FormatBeijingLayout(d.LastAccess, TimeLayout),
 			"last_seen":          lastSeen,
-			"created_at":         d.CreatedAt.Format(TimeLayout),
+			"created_at":         utils.FormatBeijingLayout(d.CreatedAt, TimeLayout),
 			"is_active":          d.IsActive,
 			"is_allowed":         d.IsAllowed,
 			"online":             online,
@@ -435,7 +435,7 @@ func CreateSubscription(c *gin.Context) {
 	afterData := map[string]interface{}{
 		"subscription_id": sub.ID,
 		"device_limit":    sub.DeviceLimit,
-		"expire_time":     sub.ExpireTime.Format(TimeLayout),
+		"expire_time":     utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout),
 		"status":          sub.Status,
 	}
 	asyncSubscriptionLog(c.Request.Context(), sub.ID, user.ID, "create", "user", &user.ID, utils.GetRealClientIP(c), nil, afterData, "用户创建订阅")
@@ -671,10 +671,10 @@ func buildSubscriptionListData(db *gorm.DB, subscriptions []models.Subscription,
 			"online_devices":    online,
 			"apple_count":       universalCount,
 			"clash_count":       clashCount,
-			"expire_time":       sub.ExpireTime.Format(TimeLayout),
+			"expire_time":       utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout),
 			"days_until_expire": daysUntil,
 			"is_expired":        isExpired,
-			"created_at":        sub.CreatedAt.Format(TimeLayout),
+			"created_at":        utils.FormatBeijingLayout(sub.CreatedAt, TimeLayout),
 		})
 	}
 
@@ -808,7 +808,7 @@ func UpdateSubscription(c *gin.Context) {
 		"device_limit":    sub.DeviceLimit,
 		"is_active":       sub.IsActive,
 		"status":          sub.Status,
-		"expire_time":     sub.ExpireTime.Format(TimeLayout),
+		"expire_time":     utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout),
 		"target_user_id":  sub.UserID,
 		"target_username": targetUsername,
 		"target_email":    targetEmail,
@@ -824,9 +824,9 @@ func UpdateSubscription(c *gin.Context) {
 		sub.Status = req.Status
 	}
 	if req.ExpireTime != nil && *req.ExpireTime != "" {
-		if t, err := time.Parse(DateFormat, *req.ExpireTime); err == nil {
+		if t, err := utils.ParseBeijingLayout(DateFormat, *req.ExpireTime); err == nil {
 			sub.ExpireTime = t
-		} else if t, err := time.Parse(TimeLayout, *req.ExpireTime); err == nil {
+		} else if t, err := utils.ParseBeijingLayout(TimeLayout, *req.ExpireTime); err == nil {
 			sub.ExpireTime = t
 		}
 	}
@@ -865,7 +865,7 @@ func UpdateSubscription(c *gin.Context) {
 		"device_limit":    sub.DeviceLimit,
 		"is_active":       sub.IsActive,
 		"status":          sub.Status,
-		"expire_time":     sub.ExpireTime.Format(TimeLayout),
+		"expire_time":     utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout),
 		"target_user_id":  sub.UserID,
 		"target_username": targetUsername,
 		"target_email":    targetEmail,
@@ -878,7 +878,7 @@ func UpdateSubscription(c *gin.Context) {
 			changes = append(changes, fmt.Sprintf("设备数 %d→%d", beforeData["device_limit"], sub.DeviceLimit))
 		}
 		if req.ExpireTime != nil && *req.ExpireTime != "" {
-			changes = append(changes, fmt.Sprintf("到期时间 %s→%s", beforeData["expire_time"], sub.ExpireTime.Format(TimeLayout)))
+			changes = append(changes, fmt.Sprintf("到期时间 %s→%s", beforeData["expire_time"], utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout)))
 		}
 		if req.IsActive != nil {
 			changes = append(changes, fmt.Sprintf("状态 %v→%v", beforeData["is_active"], sub.IsActive))
@@ -955,7 +955,7 @@ func ExtendSubscription(c *gin.Context) {
 
 	oldExp := "未设置"
 	if !sub.ExpireTime.IsZero() {
-		oldExp = sub.ExpireTime.Format(TimeLayout)
+		oldExp = utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout)
 	} else {
 		sub.ExpireTime = utils.GetBeijingTime()
 	}
@@ -963,7 +963,7 @@ func ExtendSubscription(c *gin.Context) {
 	db.Save(sub)
 	utils.CreateAuditLog(c, "extend_subscription", "subscription", sub.ID,
 		fmt.Sprintf("管理员延长用户 %s(ID:%d, 邮箱:%s) 订阅 %d 天，到期时间 %s → %s",
-			sub.User.Username, sub.User.ID, sub.User.Email, req.Days, oldExp, sub.ExpireTime.Format(TimeLayout)),
+			sub.User.Username, sub.User.ID, sub.User.Email, req.Days, oldExp, utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout)),
 		map[string]interface{}{
 			"target_user_id":  sub.UserID,
 			"target_username": sub.User.Username,
@@ -971,10 +971,10 @@ func ExtendSubscription(c *gin.Context) {
 			"device_limit":    sub.DeviceLimit,
 			"extend_days":     req.Days,
 			"old_expire_time": oldExp,
-			"new_expire_time": sub.ExpireTime.Format(TimeLayout),
+			"new_expire_time": utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout),
 		},
 		map[string]interface{}{
-			"expire_time":  sub.ExpireTime.Format(TimeLayout),
+			"expire_time":  utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout),
 			"device_limit": sub.DeviceLimit,
 		})
 	// 异步发送通知（带超时）
@@ -998,7 +998,7 @@ func ExtendSubscription(c *gin.Context) {
 				log.Printf("failed to queue email: %v", err)
 			}
 		}
-	}(c.Request.Context(), sub.User.Email, sub.User.Username, sub.PackageID, oldExp, sub.ExpireTime.Format(TimeLayout), utils.GetBeijingTime().Format(TimeLayout))
+	}(c.Request.Context(), sub.User.Email, sub.User.Username, sub.PackageID, oldExp, utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout), utils.FormatBeijingTime(utils.GetBeijingTime()))
 	utils.SuccessResponse(c, http.StatusOK, "订阅已延长", sub)
 }
 
@@ -1129,7 +1129,7 @@ func SendSubscriptionEmailSelf(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusNotFound, "您还没有订阅", err)
 		return
 	}
-	go notification.NewNotificationService().SendAdminNotification("subscription_sent", map[string]interface{}{"username": user.Username, "email": user.Email, "send_time": utils.GetBeijingTime().Format(TimeLayout)})
+	go notification.NewNotificationService().SendAdminNotification("subscription_sent", map[string]interface{}{"username": user.Username, "email": user.Email, "send_time": utils.FormatBeijingTime(utils.GetBeijingTime())})
 	if err := queueSubEmail(c, sub, *user); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "发送邮件失败", err)
 		return
@@ -1238,7 +1238,7 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 	// 记录订阅日志
 	beforeData := map[string]interface{}{
 		"subscription_id": subID,
-		"expire_time":     sub.ExpireTime.Format(TimeLayout),
+		"expire_time":     utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout),
 	}
 	asyncSubscriptionLog(c.Request.Context(), subID, user.ID, "delete", "user", &user.ID, ipAddress, beforeData, nil, "订阅转换为余额")
 
@@ -1271,7 +1271,7 @@ func ExportSubscriptions(c *gin.Context) {
 			utils.SanitizeCSVField(s.User.Username),
 			utils.SanitizeCSVField(s.User.Email),
 			utils.SanitizeCSVField(s.SubscriptionURL), s.Status, active,
-			s.DeviceLimit, s.CurrentDevices, s.ExpireTime.Format(TimeLayout), s.CreatedAt.Format(TimeLayout)))
+			s.DeviceLimit, s.CurrentDevices, utils.FormatBeijingLayout(s.ExpireTime, TimeLayout), utils.FormatBeijingLayout(s.CreatedAt, TimeLayout)))
 	}
 	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=subscriptions_%s.csv", utils.GetBeijingTime().Format("20060102")))
@@ -1283,9 +1283,9 @@ func sendResetEmail(c *gin.Context, sub models.Subscription, user models.User, r
 	allURLs := getMultiClientSubscriptionURLs(c, sub.SubscriptionURL)
 	exp := "未设置"
 	if !sub.ExpireTime.IsZero() {
-		exp = sub.ExpireTime.Format(TimeLayout)
+		exp = utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout)
 	}
-	resetTime := utils.GetBeijingTime().Format(TimeLayout)
+	resetTime := utils.FormatBeijingTime(utils.GetBeijingTime())
 	content := email.NewEmailTemplateBuilder().GetMultiSubscriptionResetTemplate(user.Username, map[string]string{
 		"universal":    univ,
 		"clash":        clash,
@@ -1312,7 +1312,7 @@ func queueSubEmail(c *gin.Context, sub models.Subscription, user models.User) er
 	allURLs := getMultiClientSubscriptionURLs(c, sub.SubscriptionURL)
 	exp, days := "未设置", 0
 	if !sub.ExpireTime.IsZero() {
-		exp = sub.ExpireTime.Format(TimeLayout)
+		exp = utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout)
 		days, _ = utils.RemainingDays(sub.ExpireTime, utils.GetBeijingTime())
 	}
 	content := email.NewEmailTemplateBuilder().GetMultiSubscriptionTemplate(user.Username, map[string]string{
@@ -1385,7 +1385,7 @@ func BatchDeleteSubscriptions(c *gin.Context) {
 		beforeData := map[string]interface{}{
 			"subscription_id": sub.ID,
 			"user_id":         sub.UserID,
-			"expire_time":     sub.ExpireTime.Format(TimeLayout),
+			"expire_time":     utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout),
 		}
 		asyncSubscriptionLog(c.Request.Context(), sub.ID, sub.UserID, "delete", actionBy, actionByUserID, ipAddress, beforeData, nil, "批量删除订阅")
 		go func(subURL string) {
@@ -1650,7 +1650,7 @@ func GetExpiringSubscriptions(c *gin.Context) {
 			userInfo["username"] = sub.User.Username
 			userInfo["email"] = sub.User.Email
 			if sub.User.LastLogin.Valid {
-				userInfo["last_login"] = sub.User.LastLogin.Time.Format(TimeLayout)
+				userInfo["last_login"] = utils.FormatBeijingLayout(sub.User.LastLogin.Time, TimeLayout)
 			}
 		}
 
@@ -1660,7 +1660,7 @@ func GetExpiringSubscriptions(c *gin.Context) {
 			"username":          userInfo["username"],
 			"email":             userInfo["email"],
 			"last_login":        userInfo["last_login"],
-			"expire_time":       sub.ExpireTime.Format(TimeLayout),
+			"expire_time":       utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout),
 			"days_until_expire": daysUntilExpire,
 		})
 	}
@@ -1679,7 +1679,7 @@ func validateSubscription(subscription *models.Subscription, user *models.User, 
 	isSpecialValid := user.SpecialNodeExpiresAt.Valid && user.SpecialNodeExpiresAt.Time.After(now)
 
 	if isExpired && !isSpecialValid {
-		return fmt.Sprintf("订阅已过期(到期时间:%s)，请续费", subscription.ExpireTime.Format(DateFormat)), 0, subscription.DeviceLimit, false
+		return fmt.Sprintf("订阅已过期(到期时间:%s)，请续费", utils.FormatBeijingLayout(subscription.ExpireTime, DateFormat)), 0, subscription.DeviceLimit, false
 	}
 	if isInactive {
 		return "订阅已失效或被禁用，请联系客服", 0, subscription.DeviceLimit, false
@@ -1769,7 +1769,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 	}
 
 	if isExpired && !isSpecialValid {
-		c.String(200, generateErrorConfigBase64("订阅已过期", fmt.Sprintf("到期时间: %s，请续费", subscription.ExpireTime.Format(DateFormat)), baseURL))
+		c.String(200, generateErrorConfigBase64("订阅已过期", fmt.Sprintf("到期时间: %s，请续费", utils.FormatBeijingLayout(subscription.ExpireTime, DateFormat)), baseURL))
 		return
 	}
 	if isInactive {

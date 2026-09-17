@@ -312,11 +312,11 @@ func GetAbnormalUsers(c *gin.Context) {
 	var startTime, endTime time.Time
 	if len(dateRange) == 2 {
 		var err error
-		startTime, err = time.Parse("2006-01-02", dateRange[0])
+		startTime, err = utils.ParseBeijingLayout("2006-01-02", dateRange[0])
 		if err != nil {
 			startTime = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 		}
-		endTime, err = time.Parse("2006-01-02", dateRange[1])
+		endTime, err = utils.ParseBeijingLayout("2006-01-02", dateRange[1])
 		if err != nil {
 			endTime = now
 		}

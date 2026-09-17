@@ -192,42 +192,41 @@ func getCommonUserName(user *models.User) string {
 	return ""
 }
 
+// locationInfoToMap 把结构化的归属地转成前端字段（唯一实现，避免各处重复拼装）
+func locationInfoToMap(loc *geoip.LocationInfo) map[string]interface{} {
+	if loc == nil {
+		return nil
+	}
+	return map[string]interface{}{
+		"country":      loc.Country,
+		"country_code": loc.CountryCode,
+		"city":         loc.City,
+		"region":       loc.Region,
+	}
+}
+
+// getLocationDisplay 返回（展示文本, 结构化归属地）。
+//
+// 展示文本与结构化字段的拼接规则统一：JSON 解析走 geoip.LocationDisplay / utils.FormatLocation，
+// 兜底实时解析走同一套（此前这里手写了 3 处 "%s, %s" 拼接，其中统计模块用的是 " - "，
+// 导致同一地区在页面与统计里写法不同）。
 func getLocationDisplay(location sql.NullString, ip sql.NullString) (string, map[string]interface{}) {
-	// 尝试从 Location 字段解析
+	// 1) 优先用落库的 location（标准形态是 JSON）
 	if location.Valid && location.String != "" {
 		var loc geoip.LocationInfo
 		if err := json.Unmarshal([]byte(location.String), &loc); err == nil {
-			display := loc.Country
-			if loc.City != "" {
-				display = fmt.Sprintf("%s, %s", loc.Country, loc.City)
-			}
-			return display, map[string]interface{}{
-				"country":      loc.Country,
-				"country_code": loc.CountryCode,
-				"city":         loc.City,
-				"region":       loc.Region,
-			}
+			return geoip.LocationDisplay(location.String), locationInfoToMap(&loc)
 		}
-		return location.String, nil
+		// 非 JSON（"本地"/"内网"/"国家, 城市"）也能给出可读文本
+		return geoip.LocationDisplay(location.String), nil
 	}
 
-	// 尝试从 IP 实时解析 (Fallback)
+	// 2) 兜底的实时解析（带缓存）
 	if ip.Valid && ip.String != "" && geoip.IsEnabled() {
 		if loc, err := geoip.GetLocationWithFallbackCached(ip.String); err == nil && loc != nil {
-			display := loc.Country
-			if loc.City != "" {
-				display = fmt.Sprintf("%s, %s", loc.Country, loc.City)
-			} else if loc.Region != "" {
-				display = fmt.Sprintf("%s, %s", loc.Country, loc.Region)
-			}
-			return display, map[string]interface{}{
-				"country":      loc.Country,
-				"country_code": loc.CountryCode,
-				"city":         loc.City,
-				"region":       loc.Region,
-			}
+			return geoip.LocationDisplayOf(loc.Country, loc.City, loc.Region), locationInfoToMap(loc)
 		}
-		// 简单解析
+		// 缓存里的 JSON 形态
 		if simple := geoip.GetLocationSimpleWithCache(ip.String); simple != "" {
 			return simple, nil
 		}

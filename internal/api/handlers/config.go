@@ -170,7 +170,39 @@ func GetSystemConfigs(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取配置失败", err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "", configs)
+
+	// 脱敏：与 GET /admin/settings 保持一致。
+	// 历史缺陷：这里直接返回 models.SystemConfig 全量原始 Value，
+	// 于是 smtp_password / alipay_private_key / repo_sync_token 等
+	// 在同一后台的另一个接口（/admin/configs）里是明文，而 /admin/settings 已打码。
+	type systemConfigView struct {
+		ID        uint      `json:"id"`
+		Key       string    `json:"key"`
+		Value     string    `json:"value"`
+		Category  string    `json:"category"`
+		IsPublic  bool      `json:"is_public"`
+		SortOrder int       `json:"sort_order"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+	}
+	views := make([]systemConfigView, 0, len(configs))
+	for _, conf := range configs {
+		value := conf.Value
+		if isSensitiveConfigKey(conf.Key) && strings.TrimSpace(value) != "" {
+			value = maskedSecretValue
+		}
+		views = append(views, systemConfigView{
+			ID:        conf.ID,
+			Key:       conf.Key,
+			Value:     value,
+			Category:  conf.Category,
+			IsPublic:  conf.IsPublic,
+			SortOrder: conf.SortOrder,
+			CreatedAt: conf.CreatedAt,
+			UpdatedAt: conf.UpdatedAt,
+		})
+	}
+	utils.SuccessResponse(c, http.StatusOK, "", views)
 }
 
 func CreateSystemConfig(c *gin.Context) {

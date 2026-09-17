@@ -311,6 +311,7 @@ WorkingDirectory=$PROJECT_DIR
 ExecStart=$PROJECT_DIR/server
 Restart=always
 Environment="PATH=$PATH"
+Environment="TZ=Asia/Shanghai"
 Environment="GOPROXY=$(go env GOPROXY)"
 [Install]
 WantedBy=multi-user.target

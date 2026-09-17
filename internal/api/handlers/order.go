@@ -893,11 +893,15 @@ func CreateOrder(c *gin.Context) {
 	}
 
 	data := gin.H{
-		"order_no":            order.OrderNo,
-		"id":                  order.ID,
-		"user_id":             order.UserID,
-		"package_id":          order.PackageID,
-		"amount":              order.Amount,
+		"order_no":   order.OrderNo,
+		"id":         order.ID,
+		"user_id":    order.UserID,
+		"package_id": order.PackageID,
+		// amount 统一为订单成交金额（折后价），与订单列表/详情一致；
+		// 此前这里返回原价，导致同一订单在"下单响应"与"订单列表"金额不同
+		"amount":              order.PaidAmount(),
+		"base_amount":         order.Amount,
+		"amount_due_online":   utils.GetNullFloat64Value(order.AmountDueOnline),
 		"final_amount":        utils.GetNullFloat64Value(order.AmountDueOnline),
 		"discount_amount":     utils.GetNullFloat64Value(order.DiscountAmount),
 		"status":              order.Status,
@@ -1680,11 +1684,15 @@ func GetOrderStatusByNo(c *gin.Context) {
 		}
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"order_no":     order.OrderNo,
-		"status":       order.Status,
-		"amount":       order.Amount,
-		"final_amount": utils.GetNullFloat64Value(order.AmountDueOnline),
-		"type":         orderType,
+		"order_no": order.OrderNo,
+		"status":   order.Status,
+		// 前端支付成功页用它展示"支付金额"，必须是成交金额（折后价）；
+		// 此前返回原价，与订单列表显示不一致
+		"amount":            order.PaidAmount(),
+		"base_amount":       order.Amount,
+		"amount_due_online": utils.GetNullFloat64Value(order.AmountDueOnline),
+		"final_amount":      utils.GetNullFloat64Value(order.AmountDueOnline),
+		"type":              orderType,
 	})
 }
 
@@ -1830,8 +1838,8 @@ func UpgradeDevices(c *gin.Context) {
 		balanceDeductedStr = "true"
 	}
 	newDeviceLimit := subscription.DeviceLimit + req.AdditionalDevices
-	oldExpireTime := subscription.ExpireTime.Format(TimeLayout)
-	newExpireTime := subscription.ExpireTime.AddDate(0, 0, req.AdditionalDays).Format(TimeLayout)
+	oldExpireTime := utils.FormatBeijingLayout(subscription.ExpireTime, TimeLayout)
+	newExpireTime := utils.FormatBeijingLayout(subscription.ExpireTime.AddDate(0, 0, req.AdditionalDays), TimeLayout)
 	extraData := fmt.Sprintf(`{"type":"device_upgrade","additional_devices":%d,"additional_days":%d,"old_device_limit":%d,"new_device_limit":%d,"old_expire_time":"%s","new_expire_time":"%s","balance_used":%.2f,"balance_deducted":%s,"level_discount":%.2f,"level_discount_rate":%.4f,"payable_amount":%.2f}`, req.AdditionalDevices, req.AdditionalDays, subscription.DeviceLimit, newDeviceLimit, oldExpireTime, newExpireTime, balanceUsed, balanceDeductedStr, levelDiscountAmount, levelDiscount, payableAmount)
 
 	order := models.Order{
@@ -2087,7 +2095,9 @@ func PayOrder(c *gin.Context) {
 		utils.SuccessResponse(c, http.StatusOK, "支付成功", gin.H{
 			"status":   "paid",
 			"order_no": order.OrderNo,
-			"amount":   amount,
+			// amount 为订单成交金额；amount_due_online 才是"本次在线需支付"（余额支付后为 0）
+			"amount":            order.PaidAmount(),
+			"amount_due_online": amount,
 		})
 		return
 	}

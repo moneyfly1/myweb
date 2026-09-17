@@ -305,13 +305,41 @@ export function getLocationText(location, ip, options = {}) {
     return formatLocation(location)
   }
   if (ip && ip !== '未知') {
-    if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') {
-      return '本地'
-    }
-    if (ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')) {
-      return '内网'
+    if (isLocalOrPrivateIP(ip)) {
+      return ip === '127.0.0.1' || ip === '::1' || ip === 'localhost' || ip.startsWith('127.')
+        ? '本地'
+        : '内网'
     }
     if (pendingText) return pendingText
   }
   return ''
+}
+
+/**
+ * isLocalOrPrivateIP 判断是否为本机/内网/保留地址（与后端 netutil.IsPrivateOrReserved 对齐）。
+ *
+ * 历史缺陷：此前用 `ip.startsWith('172.')` 判定内网，而 172.0.x–172.15.x 与 172.32.x+
+ * 都是公网地址，会被误标为"内网"；正确范围是 172.16.0.0/12。
+ * 同时补齐了 169.254/16（链路本地）、100.64/10（CGNAT）等保留段。
+ */
+export function isLocalOrPrivateIP(ip) {
+  const value = String(ip || '').trim().toLowerCase()
+  if (!value) return false
+  if (value === 'localhost' || value === '::1' || value === '0:0:0:0:0:0:0:1') return true
+  // IPv6 内网：fe80::/10（链路本地）、fc00::/7（唯一本地）
+  if (/^fe[89ab][0-9a-f]:/.test(value)) return true
+  if (/^f[cd][0-9a-f]{2}:/.test(value)) return true
+  const v4 = value.replace(/^::ffff:/, '')
+  const parts = v4.split('.')
+  if (parts.length !== 4 || parts.some(p => !/^\d{1,3}$/.test(p))) return false
+  const [a, b] = parts.map(Number)
+  if (a === 10) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  if (a === 192 && b === 168) return true
+  if (a === 127) return true
+  if (a === 169 && b === 254) return true
+  if (a === 100 && b >= 64 && b <= 127) return true
+  if (a === 0) return true
+  if (a >= 224) return true
+  return false
 }
