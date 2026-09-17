@@ -9,26 +9,16 @@
       </template>
       <div class="logs-filter">
         <div class="desktop-only system-log-filter-grid">
-          <div class="system-log-filter-field">
-              <el-form-item label="日志类型">
-                <el-select v-model="filterForm.log_type" placeholder="选择日志类型" clearable @change="applyFilter">
-                  <el-option label="全部" value="" />
-                  <el-option label="错误" value="error" />
-                  <el-option label="警告" value="warning" />
-                  <el-option label="信息" value="info" />
-                  <el-option label="调试" value="debug" />
-                </el-select>
-              </el-form-item>
-          </div>
+          <!-- 级别筛选：与列表徽标使用同一套规则（后端 logLevelWhere）。
+               "严重/调试"档已移除——后端会把它们归一化成错误/信息，选项重复且易误解；
+               原独立的"日志类型"下拉与"日志级别"是同一个后端参数，已合并为一个。 -->
           <div class="system-log-filter-field">
               <el-form-item label="日志级别">
                 <el-select v-model="filterForm.log_level" placeholder="选择日志级别" clearable @change="applyFilter">
                   <el-option label="全部" value="" />
-                  <el-option label="严重" value="critical" />
                   <el-option label="错误" value="error" />
                   <el-option label="警告" value="warning" />
                   <el-option label="信息" value="info" />
-                  <el-option label="调试" value="debug" />
                 </el-select>
               </el-form-item>
           </div>
@@ -102,23 +92,12 @@
         </div>
         <div class="mobile-only">
           <el-form :model="filterForm" label-position="top">
-            <el-form-item label="日志类型">
-              <el-select v-model="filterForm.log_type" placeholder="选择日志类型" clearable class="full-width-control" @change="applyFilter">
-                <el-option label="全部" value="" />
-                <el-option label="错误" value="error" />
-                <el-option label="警告" value="warning" />
-                <el-option label="信息" value="info" />
-                <el-option label="调试" value="debug" />
-              </el-select>
-            </el-form-item>
             <el-form-item label="日志级别">
               <el-select v-model="filterForm.log_level" placeholder="选择日志级别" clearable class="full-width-control" @change="applyFilter">
                 <el-option label="全部" value="" />
-                <el-option label="严重" value="critical" />
                 <el-option label="错误" value="error" />
                 <el-option label="警告" value="warning" />
                 <el-option label="信息" value="info" />
-                <el-option label="调试" value="debug" />
               </el-select>
             </el-form-item>
             <el-form-item label="开始时间">
@@ -650,22 +629,20 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
       return formatDateTimeSafe(dateString, 'YYYY-MM-DD HH:mm:ss', '')
     }
     const getLogLevelTagType = (level) => {
+      // 只有三档（后端 getLogLevel 不会返回 critical/debug）
       const typeMap = {
-        'critical': 'danger',
         'error': 'danger',
         'warning': 'warning',
-        'info': 'info',
-        'debug': ''
+        'info': 'info'
       }
       return typeMap[level] || ''
     }
     const getLogLevelText = (level) => {
+      // 与后端 getLogLevel 的三档对齐（critical/debug 后端不会返回，此前是死项）
       const textMap = {
-        'critical': '严重',
         'error': '错误',
         'warning': '警告',
-        'info': '信息',
-        'debug': '调试'
+        'info': '信息'
       }
       return textMap[level] || level
     }
