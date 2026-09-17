@@ -331,7 +331,7 @@ func GetAdminSettings(c *gin.Context) {
 	settings := map[string]map[string]interface{}{
 		CatGeneral: {
 			"site_name": "CBoard Modern", "site_description": "现代化的代理服务管理平台", "site_logo": "", "default_theme": "default",
-			"support_qq": "", "support_email": "", "unified_auth_enabled": "false", "domain_name": "",
+			"support_qq": "", "support_email": "", "support_hours": "", "unified_auth_enabled": "false", "domain_name": "",
 		},
 		CatRegistration: {
 			"registration_enabled": "true", "email_verification_required": "true", "min_password_length": 8,
@@ -742,7 +742,8 @@ func GetPublicSettings(c *gin.Context) {
 	}
 
 	// 4. Support & Auth Logic (General Category)
-	generalKeys := []string{"support_qq", "support_email"}
+	// support_hours：客服服务时间，后台可配置，供帮助中心/知识库统一展示
+	generalKeys := []string{"support_qq", "support_email", "support_hours"}
 	for _, k := range generalKeys {
 		if conf, ok := configMap[k]; ok && conf.Category == CatGeneral {
 			settings[k] = strings.TrimSpace(conf.Value)

@@ -314,7 +314,7 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		}
 		couponDiscountAmount = quote.CouponDiscountAmount
 		couponFreeDays = quote.FreeDays
-		finalAmount = quote.FinalAmount
+		finalAmount = quote.AmountDueOnline
 		coupon = quote.Coupon
 	}
 
@@ -380,7 +380,7 @@ func (s *OrderService) CreateOrder(userID uint, params CreateOrderParams) (*mode
 		Amount:         baseAmount,
 		Status:         "pending",
 		DiscountAmount: database.NullFloat64(totalDiscountAmount),
-		FinalAmount:    database.NullFloat64(finalAmount),
+		AmountDueOnline:    database.NullFloat64(finalAmount),
 		ExtraData:      database.NullString(string(extraDataJSON)),
 		CreatedAt:      now,
 	}

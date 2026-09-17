@@ -114,11 +114,11 @@
                 <p>{{ contactQQ }}</p>
               </div>
             </div>
-            <div class="contact-item">
+            <div v-if="contactHours" class="contact-item">
               <el-icon class="contact-icon"><Clock /></el-icon>
               <div class="contact-details">
                 <h4>服务时间</h4>
-                <p>周一至周日 9:00-22:00</p>
+                <p>{{ contactHours }}</p>
               </div>
             </div>
           </div>
@@ -176,6 +176,8 @@ const sanitizeHtml = sanitizeArticleHtml
 const softwareConfig = ref({})
 const contactEmail = ref('')
 const contactQQ = ref('')
+// 客服服务时间：由后台「系统设置 → 服务时间」配置，未配置时不显示该行
+const contactHours = ref('')
 
 const moneyflyBrand = MONEYFLY_BRAND
 const moneyflyConfig = computed(() => readMoneyflyConfig(softwareConfig.value || {}))
@@ -255,6 +257,7 @@ onMounted(async () => {
     const settings = settingsResult.value.data.data || settingsResult.value.data || {}
     if (settings.support_email) contactEmail.value = String(settings.support_email).trim()
     if (settings.support_qq) contactQQ.value = String(settings.support_qq).trim()
+    if (settings.support_hours) contactHours.value = String(settings.support_hours).trim()
   }
 
   await loadFaq()
