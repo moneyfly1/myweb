@@ -38,6 +38,27 @@ SQLite 的 datetime 是**文本**、按字典序比较，跨偏移行的 `WHERE 
 
 备份文件位于 VPS：`/www/wwwroot/dy.moneyfly.top/backup-timestamp-migration-<时间戳>.db`
 
+## 第二步：小数秒精度统一（同日执行）
+
+统一到**秒精度**（固定 25 字符 `YYYY-MM-DD HH:MM:SS+08:00`），原因：
+
+- Go 的 sqlite 驱动按 `.999999999` 格式化并**去掉末尾零**，同一列会混有 0/3/6/9 位小数
+- 与 MySQL `DATETIME(0)` 语义对齐（本项目同时支持 MySQL/PostgreSQL）
+- 与展示格式 `utils.FormatBeijingTime` 一致，外部工具按固定长度解析也不会错
+
+代码侧同步改动（否则新写入会再次漂移）：
+
+- `timeutil.NowForDB()` = `Now().Truncate(time.Second)`；`utils.GetBeijingTime()` 委托它
+- GORM `NowFunc = timeutil.NowForDB`（覆盖全部 autoCreateTime/autoUpdateTime）
+- `selfhost` 服务、工单附件归档目录等绕开统一入口的 `time.Now()` 一并改为秒精度北京时间
+- **耗时/延迟统计仍用 `time.Now()`**（带单调时钟），不受影响
+
+`migrate_fraction.py` 用纯 SQL 截断（`substr(col,1,19) || substr(col,-6)`），
+17 万个值在单事务内完成，无需逐行往返。
+
+结果：需处理 79 个列、**171,946 个值**；迁移后残留含小数秒的值 **0**；
+`orders.created_at` 长度分布 501/501 全部为 25 字符。
+
 ## 用法（如需在新环境复用）
 
 ```bash
@@ -46,4 +67,6 @@ python3 snapshot.py before.json    # 迁移前基线
 python3 migrate_timestamps.py --dry-run
 python3 migrate_timestamps.py      # 执行（自动备份）
 python3 snapshot.py after.json     # 迁移后对比
+python3 migrate_fraction.py --dry-run   # 小数秒精度统一（看规模）
+python3 migrate_fraction.py             # 执行（自动备份）
 ```

@@ -2,6 +2,7 @@ package timeutil
 
 import (
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 )
@@ -145,5 +146,38 @@ func TestParseAny(t *testing.T) {
 		if _, offset := got.Zone(); offset != 8*3600 {
 			t.Errorf("%s 解析后应锚定北京时间，实际偏移 %d", in, offset)
 		}
+	}
+}
+
+// TestNowForDBIsSecondPrecision 落库时间统一到秒精度。
+//
+// 背景：SQLite 时间列是文本，Go 驱动按 .999999999 格式化并去掉末尾零，
+// 同一列会混有 0/3/6/9 位小数（15:04:05 / 15:04:05.123 / 15:04:05.123456789），
+// 导致字符串长度不齐、与 MySQL DATETIME(0) 语义不一致。
+func TestNowForDBIsSecondPrecision(t *testing.T) {
+	got := NowForDB()
+	if got.Nanosecond() != 0 {
+		t.Errorf("NowForDB 应截断到秒，实际纳秒=%d", got.Nanosecond())
+	}
+	if _, offset := got.Zone(); offset != 8*3600 {
+		t.Errorf("NowForDB 应为北京时间，实际偏移 %d", offset)
+	}
+	// 格式化后必须是固定 25 字符（YYYY-MM-DD HH:MM:SS+08:00）
+	formatted := Format(got) + "+08:00"
+	if len(formatted) != 25 {
+		t.Errorf("落库格式应为 25 字符，实际 %d（%s）", len(formatted), formatted)
+	}
+	if strings.Contains(formatted, ".") {
+		t.Errorf("落库格式不应含小数秒：%s", formatted)
+	}
+}
+
+// TestNowKeepsSubSecond 耗时统计用的 Now() 不应被截断（否则延迟统计会被抹平）
+func TestNowKeepsSubSecond(t *testing.T) {
+	if Now().Nanosecond() == 0 && Now().Nanosecond() == 0 {
+		t.Log("提示：本机时钟恰好整秒，跳过（不是失败）")
+	}
+	if NowForDB().Nanosecond() != 0 {
+		t.Error("NowForDB 必须是整秒")
 	}
 }

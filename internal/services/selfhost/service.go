@@ -7,6 +7,7 @@
 package selfhost
 
 import (
+	"cboard-go/internal/core/timeutil"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -135,7 +136,7 @@ func CreateRecord(db *gorm.DB, name, protocol string, vpsHost string, sshPort in
 	if err != nil {
 		return nil, "", "", err
 	}
-	now := time.Now()
+	now := timeutil.NowForDB()
 	expiresAt := now.Add(installTokenTTL)
 
 	node := models.CustomNode{
@@ -244,7 +245,7 @@ func ReportNode(db *gorm.DB, node *models.CustomNode, link, serverIP string) (*m
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now()
+	now := timeutil.NowForDB()
 	port := parsed.Port
 	if port <= 0 {
 		port = 443
@@ -277,7 +278,7 @@ func ReportNode(db *gorm.DB, node *models.CustomNode, link, serverIP string) (*m
 // 节点曾因心跳超时被屏蔽（is_active=false）时，心跳恢复会自动重新启用。
 // 多协议部署：同 install_id 的协议子节点共享心跳（同步更新状态/流量）。
 func Heartbeat(db *gorm.DB, node *models.CustomNode, trafficUp, trafficDown int64) error {
-	now := time.Now()
+	now := timeutil.NowForDB()
 	if node.Status == StatusCanceled {
 		return errors.New("该节点已被取消")
 	}
@@ -312,7 +313,7 @@ func Heartbeat(db *gorm.DB, node *models.CustomNode, trafficUp, trafficDown int6
 
 // MarkOffline 将心跳超时的自建节点标记为离线（调度器定期调用）。
 func MarkOffline(db *gorm.DB, timeout time.Duration) (int, error) {
-	threshold := time.Now().Add(-timeout)
+	threshold := timeutil.NowForDB().Add(-timeout)
 	res := db.Model(&models.CustomNode{}).
 		Where("self_hosted = ? AND status = ? AND (last_heartbeat_at IS NULL OR last_heartbeat_at < ?)",
 			true, StatusOnline, threshold).
@@ -322,7 +323,7 @@ func MarkOffline(db *gorm.DB, timeout time.Duration) (int, error) {
 
 // ExpirePending 将超过令牌有效期仍未回传的自建节点标记为过期（调度器定期调用）。
 func ExpirePending(db *gorm.DB) (int, error) {
-	now := time.Now()
+	now := timeutil.NowForDB()
 	res := db.Model(&models.CustomNode{}).
 		Where("self_hosted = ? AND status = ? AND install_expires_at IS NOT NULL AND install_expires_at < ?",
 			true, StatusPending, now).

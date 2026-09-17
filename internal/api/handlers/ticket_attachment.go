@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"cboard-go/internal/core/config"
+	"cboard-go/internal/core/timeutil"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
 
@@ -95,7 +96,7 @@ func UploadTicketAttachment(c *gin.Context) {
 	if cfg != nil && cfg.UploadDir != "" {
 		uploadBase = cfg.UploadDir
 	}
-	subDir := time.Now().Format("tickets/200601")
+	subDir := timeutil.FormatLayout(timeutil.Now(), "tickets/"+timeutil.LayoutMonth)
 	dir := filepath.Join(uploadBase, filepath.FromSlash(subDir))
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "系统错误", err)

@@ -237,8 +237,11 @@ const SubscriptionStatusActive = "active"
 // 176 个调用点全部改动。新增代码请直接用 timeutil.*，不要再在此处扩展实现。
 var BeijingTZ = timeutil.BeijingTZ
 
+// GetBeijingTime 返回当前北京时间（落库用，秒精度）。
+// 截断到秒的原因见 timeutil.NowForDB 注释：避免同一列混有 0/3/6/9 位小数。
+// 耗时统计请直接用 time.Now()，不要用本函数。
 func GetBeijingTime() time.Time {
-	return timeutil.Now()
+	return timeutil.NowForDB()
 }
 
 func ToBeijingTime(t time.Time) time.Time {

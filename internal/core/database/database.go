@@ -95,7 +95,7 @@ func InitDatabase() error {
 	// 因此必须显式锚定北京时间。
 	gormConfig := &gorm.Config{
 		Logger:  customLogger,
-		NowFunc: timeutil.Now,
+		NowFunc: timeutil.NowForDB,
 	}
 	DB, err = gorm.Open(dialector, gormConfig)
 	if err != nil {
