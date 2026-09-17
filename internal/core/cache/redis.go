@@ -118,9 +118,16 @@ func ClearSubscriptionConfigCacheWithContext(ctx context.Context, subscriptionUR
 		return nil
 	}
 
+	// 必须清全部格式：写入侧共有下面 5 种 key
+	// （见 config_update.GenerateUniversalConfig / GenerateClashConfig），
+	// 此前只删 clash 与 base64 两种，导致设备踢下线 / 改订阅后，
+	// ssr、v2rayN 这两类客户端仍能拿到变更前的节点（越权可见旧节点）。
 	keys := []string{
 		fmt.Sprintf("subscription:config:%s:clash", subscriptionURL),
 		fmt.Sprintf("subscription:config:%s:base64", subscriptionURL),
+		fmt.Sprintf("subscription:config:%s:ssr", subscriptionURL),
+		fmt.Sprintf("subscription:config:%s:base64_v2rayn", subscriptionURL),
+		fmt.Sprintf("subscription:config:%s:ssr_v2rayn", subscriptionURL),
 	}
 
 	if err := redisClient.Del(ctx, keys...).Err(); err != nil {

@@ -22,7 +22,9 @@ import (
 
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
+	"cboard-go/internal/core/timeutil"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/geoip"
 
 	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
@@ -45,13 +47,9 @@ func FormatLocation(location string) string {
 		Region  string `json:"region"`
 	}
 	if err := json.Unmarshal([]byte(location), &loc); err == nil && loc.Country != "" {
-		if loc.City != "" {
-			return loc.Country + ", " + loc.City
-		}
-		if loc.Region != "" {
-			return loc.Country + ", " + loc.Region
-		}
-		return loc.Country
+		// 拼接规则统一委托 geoip.LocationDisplayOf（唯一实现），
+		// 避免"国家, 城市"与"国家 - 城市"两种写法并存
+		return geoip.LocationDisplayOf(loc.Country, loc.City, loc.Region)
 	}
 	return location
 }
@@ -235,45 +233,55 @@ const SubscriptionStatusActive = "active"
 
 // ========== 时区相关 ==========
 
-var BeijingTZ = func() *time.Location {
-	loc, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
-		return time.FixedZone("CST", 8*3600)
-	}
-	return loc
-}()
+// 以下时间工具统一委托 internal/core/timeutil（叶子包），本包只保留历史函数名以免
+// 176 个调用点全部改动。新增代码请直接用 timeutil.*，不要再在此处扩展实现。
+var BeijingTZ = timeutil.BeijingTZ
 
 func GetBeijingTime() time.Time {
-	return time.Now().In(BeijingTZ)
+	return timeutil.Now()
 }
 
 func ToBeijingTime(t time.Time) time.Time {
-	return t.In(BeijingTZ)
+	return timeutil.ToBeijing(t)
 }
 
+// GetDayRange 返回 t 所在自然日的 [当天 0 点, 次日 0 点)。
+// 注意语义是「左闭右开」：调用方按 [start, end) 使用。
+// 时区固定为北京时间（此前用 t.Location()，传 UTC 时间会算出 UTC 的 0 点，
+// 与库中按北京时间存储的数据比较会偏差 8 小时）。
 func GetDayRange(t time.Time) (time.Time, time.Time) {
-	loc := t.Location()
-	start := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
+	start, _ := timeutil.RangeOfDay(t)
 	return start, start.Add(24 * time.Hour)
 }
 
 func FormatBeijingTime(t time.Time) string {
-	return t.In(BeijingTZ).Format("2006-01-02 15:04:05")
+	return timeutil.Format(t)
 }
 
 func FormatBeijingDate(t time.Time) string {
-	return t.In(BeijingTZ).Format("2006-01-02")
+	return timeutil.FormatDate(t)
+}
+
+// ParseBeijingLayout 在**北京时区**解析时间字符串（替代裸 time.Parse）。
+// 裸 time.Parse 会把无时区信息的时间串按 UTC 解析，而库里存的是 +08:00，
+// 两者直接比较会整体偏差 8 小时（曾导致管理端日期筛选窗口错位）。
+func ParseBeijingLayout(layout, value string) (time.Time, error) {
+	return timeutil.ParseBeijingLayout(layout, value)
+}
+
+// FormatBeijingLayout 先换算到北京时间再按指定 layout 格式化。
+// 用于替换历史上的「裸 t.Format(TimeLayout)」——裸 Format 不做时区换算，
+// 遇到库中 +00:00 / -05:00 的历史时间会显示成非北京时间的墙钟（最多差 13 小时）。
+func FormatBeijingLayout(t time.Time, layout string) string {
+	return timeutil.FormatLayout(t, layout)
 }
 
 func FormatBeijingRFC3339(t time.Time) string {
-	return t.In(BeijingTZ).Format(time.RFC3339)
+	return timeutil.RFC3339(t)
 }
 
 func FormatNullTimeBeijing(nt sql.NullTime) string {
-	if !nt.Valid {
-		return ""
-	}
-	return FormatBeijingTime(nt.Time)
+	return timeutil.FormatNull(nt)
 }
 
 // RemainingDays 计算到期剩余天数（统一 ceil 语义：剩余不足 1 天按 1 天算）。

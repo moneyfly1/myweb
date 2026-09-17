@@ -168,7 +168,7 @@ func parseCouponTime(value string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("时间不能为空")
 	}
 	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05Z07:00"} {
-		if parsed, err := time.Parse(layout, value); err == nil {
+		if parsed, err := utils.ParseBeijingLayout(layout, value); err == nil {
 			return parsed.In(utils.BeijingTZ), nil
 		}
 	}

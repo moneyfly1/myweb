@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"cboard-go/internal/core/database"
+	"cboard-go/internal/core/netutil"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/cache_service"
 	"cboard-go/internal/services/geoip"
@@ -411,7 +412,13 @@ func GetRegionStats(c *gin.Context) {
 	userRegionMap := make(map[uint]string)
 
 	parseLocation := func(locationStr string) (country, city string) {
+		locationStr = strings.TrimSpace(locationStr)
 		if locationStr == "" {
+			return "", ""
+		}
+		// "本地"/"内网" 是占位值，不是国家名：此前会被当成国家进入「用户地区分布」，
+		// 出现名为"内网"的地区行，与设备/日志里把它标为"内网"的口径冲突。
+		if locationStr == "本地" || locationStr == "内网" {
 			return "", ""
 		}
 		var locationData map[string]interface{}
@@ -438,11 +445,10 @@ func GetRegionStats(c *gin.Context) {
 		return
 	}
 
+	// 地区 key 与展示文本使用同一分隔符（此前这里是 " - "，
+	// 导致同一地区在列表显示"中国, 杭州"、在地区分布统计显示"中国 - 杭州"）
 	regionKeyOf := func(country, city string) string {
-		if city != "" {
-			return country + " - " + city
-		}
-		return country
+		return geoip.LocationDisplayOf(country, city, "")
 	}
 
 	ensureRegion := func(country, city string) *RegionStat {
@@ -473,7 +479,7 @@ func GetRegionStats(c *gin.Context) {
 		var country, city string
 		if locationStr != "" {
 			country, city = parseLocation(locationStr)
-		} else if ipStr != "" && ipStr != "127.0.0.1" && ipStr != "::1" && geoip.IsEnabled() {
+		} else if ipStr != "" && !netutil.IsPrivateOrReservedString(ipStr) && geoip.IsEnabled() {
 			locationResult := geoip.GetLocationWithCache(ipStr)
 			if locationResult.Valid && locationResult.String != "" {
 				country, city = parseLocation(locationResult.String)
@@ -487,7 +493,7 @@ func GetRegionStats(c *gin.Context) {
 		if !createdAt.IsZero() {
 			currentLastLogin := time.Time{}
 			if stat.LastLogin != "-" {
-				currentLastLogin, _ = time.Parse("2006-01-02 15:04:05", stat.LastLogin)
+				currentLastLogin, _ = utils.ParseBeijingLayout("2006-01-02 15:04:05", stat.LastLogin)
 			}
 			if createdAt.After(currentLastLogin) {
 				stat.LastLogin = utils.FormatBeijingTime(createdAt)

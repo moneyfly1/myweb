@@ -358,6 +358,7 @@ RestartSec=5
 StandardOutput=append:${PROJECT_DIR}/server.log
 StandardError=append:${PROJECT_DIR}/server.log
 Environment="PATH=/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="TZ=Asia/Shanghai"
 
 [Install]
 WantedBy=multi-user.target
