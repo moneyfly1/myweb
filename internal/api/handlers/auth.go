@@ -82,7 +82,7 @@ func Register(c *gin.Context) {
 	// 直接 POST /auth/register 在关闭注册后仍能建号（已实测 201 建号成功）。
 	if !registrationEnabled(db) {
 		go func() {
-			_ = utils.CreateRegistrationLogFailed(req.Email, regIP, regUA, "注册功能已禁用")
+			_ = utils.CreateRegistrationLogFailed(req.Username, req.Email, regIP, regUA, "注册功能已禁用")
 		}()
 		utils.ErrorResponse(c, http.StatusForbidden, "注册功能已禁用，请联系管理员", nil)
 		return
@@ -91,7 +91,7 @@ func Register(c *gin.Context) {
 	// logRegisterFailed 记录注册失败（供日志管理"注册日志-失败"筛选）
 	logRegisterFailed := func(reason string) {
 		go func() {
-			_ = utils.CreateRegistrationLogFailed(req.Email, regIP, regUA, reason)
+			_ = utils.CreateRegistrationLogFailed(req.Username, req.Email, regIP, regUA, reason)
 		}()
 	}
 
