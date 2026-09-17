@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
@@ -510,7 +511,72 @@ func UpdateRegistrationSettings(c *gin.Context) { updateSettingsCommon(c, CatReg
 func UpdateSecuritySettings(c *gin.Context)     { updateSettingsCommon(c, "security") }
 func UpdateThemeSettings(c *gin.Context)        { updateSettingsCommon(c, "theme") }
 func UpdateInviteSettings(c *gin.Context)       { updateSettingsCommon(c, "invite") }
-func UpdateSoftwareConfig(c *gin.Context)       { updateSettingsCommon(c, "software") }
+
+// isAllowedDownloadURL 校验下载地址协议白名单。
+// 这些地址会由用户端直接打开（window.open），必须限制为 http/https/pan，
+// 避免写入 javascript:、data: 等可执行协议。
+func isAllowedDownloadURL(rawURL string) bool {
+	lower := strings.ToLower(rawURL)
+	return strings.HasPrefix(lower, "http://") ||
+		strings.HasPrefix(lower, "https://") ||
+		strings.HasPrefix(lower, "pan://")
+}
+
+// validateSoftwareConfigURLs 校验并规范化软件下载配置里的 *_url 字段（去空格 + 协议白名单）。
+// 校验通过后把规范化结果写回请求体，供 updateSettingsCommon 重新绑定。
+func validateSoftwareConfigURLs(c *gin.Context) bool {
+	raw, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "读取请求失败", err)
+		return false
+	}
+	// 还原请求体，保证后续绑定仍能读到原始内容
+	c.Request.Body = io.NopCloser(bytes.NewReader(raw))
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		// 结构异常交给后续统一校验处理
+		return true
+	}
+
+	changed := false
+	for key, val := range payload {
+		if !strings.HasSuffix(key, "_url") {
+			continue
+		}
+		s, ok := val.(string)
+		if !ok {
+			continue
+		}
+		trimmed := strings.TrimSpace(s)
+		if trimmed != s {
+			payload[key] = trimmed
+			changed = true
+		}
+		if trimmed == "" {
+			continue // 允许清空（表示该平台暂不提供下载）
+		}
+		if !isAllowedDownloadURL(trimmed) {
+			utils.ErrorResponse(c, http.StatusBadRequest,
+				fmt.Sprintf("「%s」下载地址格式不支持，请填写 http:// 、https:// 或 pan:// 开头的链接", key), nil)
+			return false
+		}
+	}
+
+	if changed {
+		if b, err := json.Marshal(payload); err == nil {
+			c.Request.Body = io.NopCloser(bytes.NewReader(b))
+		}
+	}
+	return true
+}
+
+func UpdateSoftwareConfig(c *gin.Context) {
+	if !validateSoftwareConfigURLs(c) {
+		return
+	}
+	updateSettingsCommon(c, "software")
+}
 func UpdateAnnouncementSettings(c *gin.Context) { updateSettingsCommon(c, CatAnnouncement) }
 func UpdateNotificationSettings(c *gin.Context) { updateSettingsCommon(c, "notification") }
 func UpdateAdminNotificationSystemSettings(c *gin.Context) {

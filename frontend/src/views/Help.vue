@@ -26,6 +26,8 @@
             客户端下载
           </div>
         </template>
+        <!-- MoneyFly 自研客户端：置顶推荐，与仪表盘/软件教程共用同一平台定义 -->
+        <MoneyFlyDownloadPanel :software-config="softwareConfig" />
         <div class="help-client-grid">
           <div
             v-for="client in clients"
@@ -208,6 +210,7 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { safeOpen } from '@/utils/safeOpen'
 import { sanitizeBasicHtml } from '@/utils/sanitizeHtml'
 import { resolvePanDownloadUrl, pickConfiguredUrl } from '@/utils/githubDownload'
+import MoneyFlyDownloadPanel from '@/components/moneyfly/MoneyFlyDownloadPanel.vue'
 import { cachedAPI } from '@/utils/api'
 export default {
   name: 'Help',

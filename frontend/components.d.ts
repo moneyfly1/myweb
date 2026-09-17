@@ -83,6 +83,7 @@ declare module 'vue' {
     MacOSTutorials: typeof import('./src/components/tutorials/MacOSTutorials.vue')['default']
     MobileCardList: typeof import('./src/components/MobileCardList.vue')['default']
     MobileLogFields: typeof import('./src/components/MobileLogFields.vue')['default']
+    MoneyFlyDownloadPanel: typeof import('./src/components/moneyfly/MoneyFlyDownloadPanel.vue')['default']
     PaginationBar: typeof import('./src/components/PaginationBar.vue')['default']
     ResponsiveDataView: typeof import('./src/components/ResponsiveDataView.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
