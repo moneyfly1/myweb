@@ -397,6 +397,35 @@
             </div>
           </div>
         </div>
+        <div
+          v-if="moneyflyVisible"
+          class="card tutorial-card dashboard-section-card moneyfly-card"
+        >
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">
+                <el-icon class="title-icon"><StarFilled /></el-icon>
+                {{ moneyflyBrand.name }} 客户端
+                <el-tag type="success" effect="dark" size="small" class="moneyfly-badge">
+                  {{ moneyflyBrand.badge }}
+                </el-tag>
+                <el-tag type="danger" effect="plain" size="small" class="moneyfly-badge">
+                  推荐优先使用
+                </el-tag>
+              </h3>
+            </div>
+            <span v-if="moneyflyConfig.version" class="moneyfly-version">
+              v{{ moneyflyConfig.version }}
+            </span>
+          </div>
+          <div class="card-body">
+            <MoneyFlyDownloadPanel
+              :software-config="softwareConfig"
+              plain
+              hide-head
+            />
+          </div>
+        </div>
         <div class="card tutorial-card dashboard-section-card">
           <div class="card-header">
             <div>
@@ -617,6 +646,7 @@ import {
   Picture,
   Promotion,
   Reading,
+  StarFilled,
   Top,
   Trophy,
   View,
@@ -635,6 +665,8 @@ import { getOrderStatusText, getOrderStatusType } from '@/utils/statusMaps'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
 import { safeNavigate, safeOpen, safeOpenApp } from '@/utils/safeOpen'
 import { resolvePanDownloadUrl, pickConfiguredUrl } from '@/utils/githubDownload'
+import MoneyFlyDownloadPanel from '@/components/moneyfly/MoneyFlyDownloadPanel.vue'
+import { MONEYFLY_BRAND, isMoneyflyVisible, readMoneyflyConfig } from '@/utils/moneyflyClient'
 import { sanitizeBasicHtml, sanitizePlainText } from '@/utils/sanitizeHtml'
 import { useMobile } from '@/composables/useMobile'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
@@ -1440,6 +1472,13 @@ const downloadDashboardClient = (downloadKey) => {
   }
   downloadApp(downloadKey)
 }
+
+// ===== MoneyFly 自研客户端（官方推荐，置顶展示）=====
+// 渲染交给 MoneyFlyDownloadPanel（与帮助中心/软件教程共用同一套平台定义），
+// 这里只负责"是否展示"与卡片标题上的品牌信息。
+const moneyflyBrand = MONEYFLY_BRAND
+const moneyflyConfig = computed(() => readMoneyflyConfig(softwareConfig.value || {}))
+const moneyflyVisible = computed(() => isMoneyflyVisible(moneyflyConfig.value))
 // isMacPlatform 判断平台是否为 macOS（用于拆分 Apple 芯片 / Intel 下载选项）
 const isMacPlatform = (platform) => {
   return platform && String(platform.name || '').toLowerCase() === 'macos'
@@ -3819,5 +3858,26 @@ onUnmounted(() => {
 }
 .client-download-option .el-tag {
   margin-left: 2px;
+}
+
+/* ===== MoneyFly 自研客户端推荐卡片（置顶）===== */
+/* 平台网格样式由 MoneyFlyDownloadPanel 自带，这里只做外层卡片与标题装饰 */
+.moneyfly-card {
+  border: 1px solid var(--el-color-primary-light-5);
+  background: linear-gradient(180deg, var(--el-color-primary-light-9), transparent 60%);
+}
+.moneyfly-card .card-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.moneyfly-badge {
+  margin-left: 2px;
+}
+.moneyfly-version {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
 }
 </style>

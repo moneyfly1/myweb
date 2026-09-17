@@ -10,7 +10,78 @@
   <el-tabs v-model="activeTab" type="border-card">
     <el-tab-pane label="软件下载配置" name="software">
       <div class="config-section">
-        <h3>软件下载链接配置</h3>
+        <el-divider content-position="left">MoneyFly 自研客户端（用户端置顶推荐）</el-divider>
+        <el-alert
+          type="success"
+          show-icon
+          :closable="false"
+          title="这是您自研的官方客户端，会在用户仪表盘、帮助中心、软件教程页置顶展示并标注「官方自研」推荐。留空的平台不会显示下载按钮；四个都留空时用户端整块隐藏。"
+        />
+        <el-form
+          :model="softwareForm"
+          label-width="150px"
+          style="margin-top: 16px"
+        >
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item label="Android 安装包">
+                <el-input v-model="softwareForm.moneyfly_android_url" placeholder="APK 直链，或 pan://配置键" clearable />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="Windows 安装包">
+                <el-input v-model="softwareForm.moneyfly_windows_url" placeholder="exe/msi 直链，或 pan://配置键" clearable />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item label="macOS（Apple 芯片）">
+                <el-input v-model="softwareForm.moneyfly_macos_arm_url" placeholder="M 系列芯片 dmg/pkg 直链" clearable />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="macOS（Intel 芯片）">
+                <el-input v-model="softwareForm.moneyfly_macos_url" placeholder="Intel 芯片 dmg/pkg 直链" clearable />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item label="版本号（可选）">
+                <el-input v-model="softwareForm.moneyfly_version" placeholder="例如 2.1.2，展示为 v2.1.2" clearable />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="用户端展示">
+                <el-switch
+                  v-model="softwareForm.moneyfly_enabled"
+                  active-text="展示"
+                  inactive-text="隐藏"
+                />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-form-item label="客户端说明（可选）">
+            <el-input
+              v-model="softwareForm.moneyfly_note"
+              type="textarea"
+              :rows="2"
+              placeholder="留空则使用默认说明：官方自研客户端 · 一键导入订阅 · 开箱即用"
+            />
+          </el-form-item>
+          <el-form-item class="config-buttons-group">
+            <el-button type="primary" @click="saveSoftwareConfig" :loading="softwareLoading" class="config-action-btn">
+              保存软件配置
+            </el-button>
+            <el-button @click="loadSoftwareConfig" class="config-action-btn">
+              重新加载
+            </el-button>
+          </el-form-item>
+        </el-form>
+      </div>
+      <div class="config-section">
+        <el-divider content-position="left">第三方客户端下载链接</el-divider>
         <el-form
           :model="softwareForm"
           label-width="150px"
@@ -359,6 +430,14 @@ export default {
       from_email: ''
     })
     const softwareForm = reactive({
+      // MoneyFly 自研客户端（官方推荐，用户端置顶）
+      moneyfly_android_url: '',
+      moneyfly_windows_url: '',
+      moneyfly_macos_url: '',
+      moneyfly_macos_arm_url: '',
+      moneyfly_version: '',
+      moneyfly_note: '',
+      moneyfly_enabled: true,
       clash_windows_url: '',
       v2rayn_url: '',
       clash_party_windows_url: '',
@@ -404,7 +483,16 @@ export default {
       try {
         const response = await softwareConfigAPI.getSoftwareConfig()
         if (response.data && response.data.success) {
-          Object.assign(softwareForm, response.data.data)
+          const data = response.data.data || {}
+          Object.assign(softwareForm, data)
+          // 后端以字符串存储（"true"/"false"/"0"/"1"），需转回布尔，
+          // 否则 el-switch 会把字符串 "false" 当成真值显示为开启。
+          // 未配置过（缺失/空）时默认开启展示。
+          const raw = data.moneyfly_enabled
+          const isEmpty = raw === undefined || raw === null || String(raw).trim() === ''
+          const isFalsy = raw === false || raw === 0 ||
+            ['false', '0', 'off', 'no'].includes(String(raw).trim().toLowerCase())
+          softwareForm.moneyfly_enabled = isEmpty ? true : !isFalsy
         }
       } catch (error) {
         ElMessage.error('加载失败')
