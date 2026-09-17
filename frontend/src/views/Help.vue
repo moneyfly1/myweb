@@ -98,6 +98,72 @@
           </div>
         </div>
       </el-card>
+      <el-card v-if="moneyflyVisible" class="moneyfly-help-card help-section-card" id="moneyfly">
+        <template #header>
+          <div class="card-header">
+            {{ moneyflyBrand.name }} 自研客户端
+            <el-tag type="success" effect="dark" size="small">官方自研</el-tag>
+            <el-tag type="danger" effect="plain" size="small">推荐优先使用</el-tag>
+          </div>
+        </template>
+
+        <p class="moneyfly-help-summary">{{ moneyflyIntro.summary }}</p>
+        <div class="moneyfly-highlight-grid">
+          <div v-for="item in moneyflyIntro.highlights" :key="item.title" class="moneyfly-highlight">
+            <div class="moneyfly-highlight-title">{{ item.title }}</div>
+            <div class="moneyfly-highlight-desc">{{ item.desc }}</div>
+          </div>
+        </div>
+
+        <div class="moneyfly-help-block">
+          <h4 class="moneyfly-help-subtitle">下载安装包</h4>
+          <MoneyFlyDownloadPanel :software-config="softwareConfig" plain hide-head />
+        </div>
+
+        <div class="moneyfly-help-block">
+          <h4 class="moneyfly-help-subtitle">安装教程</h4>
+          <el-tabs v-model="moneyflyInstallTab" class="moneyfly-install-tabs">
+            <el-tab-pane
+              v-for="platform in moneyflyInstallSteps"
+              :key="platform.key"
+              :label="platform.label"
+              :name="platform.key"
+            >
+              <p class="moneyfly-install-hint">{{ platform.hint }}</p>
+              <ol class="moneyfly-step-list">
+                <li v-for="(step, idx) in platform.steps" :key="idx">{{ step }}</li>
+              </ol>
+            </el-tab-pane>
+          </el-tabs>
+        </div>
+
+        <div class="moneyfly-help-block">
+          <h4 class="moneyfly-help-subtitle">导入订阅并开始使用</h4>
+          <ol class="moneyfly-step-list">
+            <li v-for="(step, idx) in moneyflyUsageSteps" :key="idx">{{ step }}</li>
+          </ol>
+          <div class="moneyfly-help-actions">
+            <el-button type="primary" size="small" @click="goSubscription">
+              前往订阅管理
+              <el-icon><Link /></el-icon>
+            </el-button>
+          </div>
+        </div>
+
+        <div class="moneyfly-help-block">
+          <h4 class="moneyfly-help-subtitle">常见问题</h4>
+          <el-collapse v-model="activeMoneyflyFAQ">
+            <el-collapse-item
+              v-for="(faq, idx) in moneyflyFaq"
+              :key="idx"
+              :title="faq.q"
+              :name="`mf-faq-${idx}`"
+            >
+              <div class="faq-content">{{ faq.a }}</div>
+            </el-collapse-item>
+          </el-collapse>
+        </div>
+      </el-card>
       <el-card class="guide-card help-section-card" id="guide">
         <template #header>
           <div class="card-header">
@@ -136,6 +202,15 @@
         <template #header>
           <div class="card-header">
             客户端安装教程
+            <el-button
+              v-if="moneyflyVisible"
+              type="primary"
+              link
+              size="small"
+              @click="scrollToSection('moneyfly')"
+            >
+              查看 {{ moneyflyBrand.name }} 自研客户端教程
+            </el-button>
           </div>
         </template>
         <el-collapse v-model="activeClientGuides">
@@ -200,17 +275,31 @@ import {
   Download,
   Guide,
   Iphone,
+  Link,
   Menu,
   Message,
   Monitor,
   QuestionFilled,
-  Service
+  Service,
+  Star
 } from '@element-plus/icons-vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { safeOpen } from '@/utils/safeOpen'
 import { sanitizeBasicHtml } from '@/utils/sanitizeHtml'
 import { resolvePanDownloadUrl, pickConfiguredUrl } from '@/utils/githubDownload'
 import MoneyFlyDownloadPanel from '@/components/moneyfly/MoneyFlyDownloadPanel.vue'
+import {
+  MONEYFLY_INTRO,
+  MONEYFLY_INSTALL_STEPS,
+  MONEYFLY_USAGE_STEPS,
+  MONEYFLY_FAQ,
+} from '@/components/moneyfly/moneyflyGuide'
+import {
+  MONEYFLY_BRAND,
+  isMoneyflyVisible,
+  readMoneyflyConfig,
+  detectMoneyflyPlatform,
+} from '@/utils/moneyflyClient'
 import { cachedAPI } from '@/utils/api'
 export default {
   name: 'Help',
@@ -254,13 +343,20 @@ export default {
         console.error('获取联系信息失败:', error)
       }
     }
-    const sections = [
-      { id: 'clients', title: '客户端下载', icon: Download },
-      { id: 'guide', title: '使用指南', icon: Guide },
-      { id: 'faq', title: '常见问题', icon: QuestionFilled },
-      { id: 'client-guides', title: '安装教程', icon: Document },
-      { id: 'contact', title: '联系我们', icon: Service }
-    ]
+    const sections = computed(() => {
+      const list = [{ id: 'clients', title: '客户端下载', icon: Download }]
+      // MoneyFly 为本站自研且推荐优先使用，教程区仅在已配置下载地址时展示
+      if (moneyflyVisible.value) {
+        list.push({ id: 'moneyfly', title: `${MONEYFLY_BRAND.name} 自研客户端`, icon: Star })
+      }
+      list.push(
+        { id: 'guide', title: '使用指南', icon: Guide },
+        { id: 'faq', title: '常见问题', icon: QuestionFilled },
+        { id: 'client-guides', title: '安装教程', icon: Document },
+        { id: 'contact', title: '联系我们', icon: Service }
+      )
+      return list
+    })
     const guides = [
       {
         id: 'guide-1',
@@ -768,6 +864,23 @@ export default {
         answer: sanitizeHtml(faq.answer)
       }))
     })
+    // ===== MoneyFly 自研客户端（介绍 + 教程）=====
+    const moneyflyConfig = computed(() => readMoneyflyConfig(softwareConfig.value || {}))
+    const moneyflyVisible = computed(() => isMoneyflyVisible(moneyflyConfig.value))
+    // 默认展示访客当前系统对应的安装步骤，减少一次点击
+    // （macOS 的 Apple/Intel 共用一个教程标签，故按 os 归并）
+    const moneyflyInstallTab = ref(
+      (() => {
+        const platform = detectMoneyflyPlatform()
+        if (!platform) return 'windows'
+        return platform.os === 'macos' ? 'macos' : platform.key
+      })()
+    )
+    const activeMoneyflyFAQ = ref([])
+    const goSubscription = () => {
+      router.push('/subscription')
+    }
+
     return {
       activeNames,
       activeFAQ,
@@ -783,7 +896,18 @@ export default {
       openClientGuide,
       getClientIcon,
       clientVersion,
-      sanitizeHtml
+      sanitizeHtml,
+      // MoneyFly 自研客户端：介绍 + 安装教程 + 导入步骤 + 常见问题
+      moneyflyBrand: MONEYFLY_BRAND,
+      moneyflyConfig,
+      moneyflyVisible,
+      moneyflyIntro: MONEYFLY_INTRO,
+      moneyflyInstallSteps: MONEYFLY_INSTALL_STEPS,
+      moneyflyUsageSteps: MONEYFLY_USAGE_STEPS,
+      moneyflyFaq: MONEYFLY_FAQ,
+      moneyflyInstallTab,
+      activeMoneyflyFAQ,
+      goSubscription
     }
   }
 }
@@ -1729,5 +1853,82 @@ export default {
 }
 .client-download-option .el-tag {
   margin-left: 2px;
+}
+
+/* ===== MoneyFly 自研客户端：介绍 + 教程卡片 ===== */
+.moneyfly-help-card {
+  border: 1px solid var(--el-color-primary-light-5);
+  background: linear-gradient(180deg, var(--el-color-primary-light-9), transparent 55%);
+}
+.moneyfly-help-card .card-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.moneyfly-help-summary {
+  margin: 0 0 14px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #303133;
+}
+.moneyfly-highlight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.moneyfly-highlight {
+  padding: 12px 14px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  background: #fff;
+}
+.moneyfly-highlight-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 4px;
+}
+.moneyfly-highlight-desc {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: #606266;
+}
+.moneyfly-help-block {
+  margin-top: 20px;
+}
+.moneyfly-help-subtitle {
+  margin: 0 0 10px;
+  padding-left: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  border-left: 3px solid var(--el-color-primary);
+  line-height: 1.2;
+}
+.moneyfly-install-hint {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: #909399;
+}
+.moneyfly-step-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13.5px;
+  line-height: 1.9;
+  color: #303133;
+}
+.moneyfly-step-list li {
+  margin-bottom: 4px;
+}
+.moneyfly-help-actions {
+  margin-top: 12px;
+}
+
+@media (max-width: 768px) {
+  .moneyfly-highlight-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
