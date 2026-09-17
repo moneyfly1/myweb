@@ -55,6 +55,17 @@ func getMinPasswordLength(db *gorm.DB) int {
 	return 8
 }
 
+// registrationEnabled 读取注册开关（category=registration）。
+// 与 SendVerificationCode 中的判断保持一致；配置更新后会清空设置缓存，
+// 因此管理员关闭注册可立即生效。配置项缺失时视为允许注册。
+func registrationEnabled(db *gorm.DB) bool {
+	v, err := utils.GetCachedSetting(db, "registration_enabled", "registration")
+	if err != nil {
+		return true
+	}
+	return v == "true"
+}
+
 func Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -66,6 +77,16 @@ func Register(c *gin.Context) {
 	db := database.GetDB()
 	regIP := utils.GetRealClientIP(c)
 	regUA := c.GetHeader("User-Agent")
+
+	// 注册开关必须由服务端把关：前端只是隐藏表单、发验证码接口会被拦，
+	// 直接 POST /auth/register 在关闭注册后仍能建号（已实测 201 建号成功）。
+	if !registrationEnabled(db) {
+		go func() {
+			_ = utils.CreateRegistrationLogFailed(req.Email, regIP, regUA, "注册功能已禁用")
+		}()
+		utils.ErrorResponse(c, http.StatusForbidden, "注册功能已禁用，请联系管理员", nil)
+		return
+	}
 
 	// logRegisterFailed 记录注册失败（供日志管理"注册日志-失败"筛选）
 	logRegisterFailed := func(reason string) {
