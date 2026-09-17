@@ -11,6 +11,7 @@
       <el-tabs v-model="activeTab" class="tutorial-tabs">
         <el-tab-pane label="Windows" name="windows">
           <MoneyFlyDownloadPanel :software-config="softwareConfig" only-platform="windows" />
+          <MoneyFlyInstallSteps platform="windows" show-usage :software-config="softwareConfig" />
           <div class="client-grid tutorial-client-grid">
             <div class="client-row">
               <div>
@@ -34,6 +35,7 @@
         </el-tab-pane>
         <el-tab-pane label="macOS" name="macos">
           <MoneyFlyDownloadPanel :software-config="softwareConfig" only-platform="macos_arm,macos_intel" />
+          <MoneyFlyInstallSteps platform="macos" :software-config="softwareConfig" />
           <div class="client-grid tutorial-client-grid">
             <div class="client-row">
               <div>
@@ -79,6 +81,7 @@
         </el-tab-pane>
         <el-tab-pane label="Android" name="android">
           <MoneyFlyDownloadPanel :software-config="softwareConfig" only-platform="android" />
+          <MoneyFlyInstallSteps platform="android" :software-config="softwareConfig" />
           <div class="client-grid tutorial-client-grid">
             <div class="client-row">
               <div>
@@ -112,6 +115,7 @@ import AndroidTutorials from '@/components/tutorials/AndroidTutorials.vue'
 import MacOSTutorials from '@/components/tutorials/MacOSTutorials.vue'
 import iOSTutorials from '@/components/tutorials/iOSTutorials.vue'
 import MoneyFlyDownloadPanel from '@/components/moneyfly/MoneyFlyDownloadPanel.vue'
+import MoneyFlyInstallSteps from '@/components/moneyfly/MoneyFlyInstallSteps.vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { cachedAPI } from '@/utils/api'
 import { safeOpen } from '@/utils/safeOpen'

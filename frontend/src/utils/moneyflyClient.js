@@ -93,19 +93,24 @@ export function isMoneyflyVisible(moneyfly) {
   return !!moneyfly && moneyfly.enabled && moneyfly.hasAny
 }
 
-// detectMoneyflyPlatformKey 识别访问者当前设备应下载哪个包，用于"推荐给你的设备"高亮。
-// 返回 configKey（如 moneyfly_windows_url）；无法识别时返回 ''（此时不做高亮）。
-export function detectMoneyflyPlatformKey() {
+// detectMoneyflyPlatform 识别访问者当前设备对应的平台定义，无法识别时返回 null。
+export function detectMoneyflyPlatform() {
   let detected
   try {
     detected = detectSystem()
   } catch {
-    return ''
+    return null
   }
-  const matched = MONEYFLY_PLATFORMS.find(
-    p => p.os === detected.os && (!p.arch || p.arch === detected.arch)
+  return (
+    MONEYFLY_PLATFORMS.find(p => p.os === detected.os && (!p.arch || p.arch === detected.arch)) || null
   )
-  return matched ? matched.configKey : ''
+}
+
+// detectMoneyflyPlatformKey 识别访问者当前设备应下载哪个包，用于"推荐给你的设备"高亮。
+// 返回 configKey（如 moneyfly_windows_url）；无法识别时返回 ''（此时不做高亮）。
+export function detectMoneyflyPlatformKey() {
+  const platform = detectMoneyflyPlatform()
+  return platform ? platform.configKey : ''
 }
 
 // resolveMoneyflyUrl 把配置值转成可打开的地址：
