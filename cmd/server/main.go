@@ -259,6 +259,13 @@ func ensureDefaultAdmin() {
 	}
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// 创建前先按忽略大小写确认没有同名用户：登录区分大小写，
+		// 若已存在 "Admin" 而这里新建 "admin"，会出现两个肉眼无法区分的管理员账号。
+		var sameName models.User
+		if e := db.Where("LOWER(username) = ?", strings.ToLower(username)).First(&sameName).Error; e == nil {
+			log.Printf("已存在同名（仅大小写不同）的用户 %q，为避免出现两个无法区分的账号，本次不创建，请使用该用户名重试", sameName.Username)
+			return
+		}
 		// 首次创建管理员：优先使用 ADMIN_PASSWORD 环境变量（部署可预测、重建不随机），
 		// 未设置则生成随机密码并打印到日志（仅显示一次）。
 		password := adminPassword
