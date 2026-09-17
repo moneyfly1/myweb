@@ -143,6 +143,9 @@ func Register(c *gin.Context) {
 	}
 
 	var user models.User
+	// 由 processInviteCode 回填：记录本次注册实际归属的邀请人（来自 invite_relations，
+	// 而不是 users.invited_by —— 那个字段从来没有被写入过，导致注册日志"邀请人"列一直为空）
+	var inviterID *uint
 	err := utils.WithTransaction(db, func(tx *gorm.DB) error {
 		hashed, hashErr := auth.HashPassword(req.Password)
 		if hashErr != nil {
@@ -171,7 +174,7 @@ func Register(c *gin.Context) {
 			return fmt.Errorf("创建默认订阅失败: %v", err)
 		}
 		if req.InviteCode != "" {
-			processInviteCode(tx, req.InviteCode, user.ID)
+			inviterID = processInviteCode(tx, req.InviteCode, user.ID)
 		}
 		return nil
 	})
@@ -236,22 +239,22 @@ func Register(c *gin.Context) {
 		fmt.Sprintf("注册成功: 用户 %s (IP: %s)", user.Username, ipAddress),
 		map[string]interface{}{"user_id": user.ID, "username": user.Username, "ip": ipAddress})
 
-	// 记录注册日志
-	var inviterID *uint
-	if user.InvitedBy.Valid {
-		id := utils.MustSafeInt64ToUint(user.InvitedBy.Int64)
-		inviterID = &id
+	// 记录注册日志（inviterID 已由 processInviteCode 返回）
+	registerSource := utils.RegisterSourceDirect
+	if req.InviteCode != "" {
+		registerSource = utils.RegisterSourceInviteCode
 	}
 	go func() {
-		if err := utils.CreateRegistrationLog(
-			user.ID,
-			user.Username,
-			user.Email,
-			ipAddress,
-			c.GetHeader("User-Agent"),
-			req.InviteCode,
-			inviterID,
-		); err != nil {
+		if err := utils.CreateRegistrationLog(utils.RegistrationLogInput{
+			UserID:     user.ID,
+			Username:   user.Username,
+			Email:      user.Email,
+			IPAddress:  ipAddress,
+			UserAgent:  regUA,
+			Source:     registerSource,
+			InviteCode: req.InviteCode,
+			InviterID:  inviterID,
+		}); err != nil {
 			log.Printf("failed to create registration log: %v", err)
 		}
 	}()
@@ -820,11 +823,15 @@ func finalizeLogin(c *gin.Context, db *gorm.DB, user *models.User, ipAddress str
 	})
 }
 
-func processInviteCode(db *gorm.DB, inviteCodeStr string, newUserID uint) {
+// processInviteCode 绑定邀请关系，并返回邀请人 ID（无邀请码/邀请码无效/已存在关系时返回 nil）。
+// 返回值供注册日志记录"邀请人"，使日志与 invite_relations 一致。
+func processInviteCode(db *gorm.DB, inviteCodeStr string, newUserID uint) *uint {
 	if inviteCodeStr == "" {
-		return
+		return nil
 	}
 	inviteCodeStr = strings.ToUpper(strings.TrimSpace(inviteCodeStr))
+
+	var resolvedInviterID *uint
 
 	txErr := db.Transaction(func(tx *gorm.DB) error {
 		// FOR UPDATE 行锁防止并发超用
@@ -849,8 +856,14 @@ func processInviteCode(db *gorm.DB, inviteCodeStr string, newUserID uint) {
 
 		var existingRelation models.InviteRelation
 		if err := tx.Where("invitee_id = ?", newUserID).First(&existingRelation).Error; err == nil {
-			return nil // 已有邀请关系
+			// 已有邀请关系：仍返回该关系的邀请人，保证日志与关系表一致
+			existingInviterID := existingRelation.InviterID
+			resolvedInviterID = &existingInviterID
+			return nil
 		}
+
+		inviterID := inviteCode.UserID
+		resolvedInviterID = &inviterID
 
 		inviteRelation := models.InviteRelation{
 			InviteCodeID:        inviteCode.ID,
@@ -889,7 +902,10 @@ func processInviteCode(db *gorm.DB, inviteCodeStr string, newUserID uint) {
 
 	if txErr != nil {
 		utils.LogError("processInviteCode: transaction failed", txErr, map[string]interface{}{"invite_code": inviteCodeStr, "new_user_id": newUserID})
+		return nil
 	}
+
+	return resolvedInviterID
 }
 
 // distributeInviteRewardAfterCommit 在注册事务提交后发放即时邀请奖励。

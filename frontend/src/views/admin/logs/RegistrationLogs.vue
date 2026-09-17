@@ -78,6 +78,9 @@
             <el-table-column prop="location" label="地区" width="120">
               <template #default="{ row }">{{ displayLocation(row.location) }}</template>
             </el-table-column>
+            <el-table-column prop="register_source" label="来源" width="110">
+              <template #default="{ row }">{{ sourceText(row.register_source) }}</template>
+            </el-table-column>
             <el-table-column prop="status" label="状态" width="80" />
             <el-table-column prop="invite_code" label="邀请码" width="100" />
             <el-table-column prop="inviter_name" label="邀请人" width="100" />
@@ -105,6 +108,10 @@
           <div class="mobile-log-field">
             <span class="mobile-log-label">邮箱</span>
             <span class="mobile-log-value">{{ item.email || '-' }}</span>
+          </div>
+          <div class="mobile-log-field">
+            <span class="mobile-log-label">来源</span>
+            <span class="mobile-log-value">{{ sourceText(item.register_source) }}</span>
           </div>
           <div class="mobile-log-field">
             <span class="mobile-log-label">状态</span>
@@ -146,6 +153,19 @@ const displayLocation = (loc) => {
   if (!loc) return '-'
   const result = formatLocation(loc)
   return result || loc
+}
+
+// 注册来源文案：与后端 utils.RegisterSource* 常量对应
+// direct=客户自助注册、invite_code=凭邀请码注册、admin=管理员在后台代建
+const SOURCE_TEXT = {
+  direct: '自助注册',
+  invite_code: '邀请码',
+  admin: '管理员创建'
+}
+const sourceText = (source) => {
+  const key = String(source || '').trim()
+  if (!key) return '-'
+  return SOURCE_TEXT[key] || key
 }
 
 const reasonColWidth = ref(160)

@@ -1433,6 +1433,24 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
+	// 注册日志：管理员代建的账号同样计入"注册日志"，来源标注为 admin，
+	// 便于在日志管理里区分「客户自助注册」与「管理员创建」。
+	// （此前只有用户自助注册才写这张表，后台建号在注册日志里完全看不到）
+	regLogIP := utils.GetRealClientIP(c)
+	regLogUA := c.GetHeader("User-Agent")
+	go func(createdUser models.User, ipAddress, userAgent string) {
+		if err := utils.CreateRegistrationLog(utils.RegistrationLogInput{
+			UserID:    createdUser.ID,
+			Username:  createdUser.Username,
+			Email:     createdUser.Email,
+			IPAddress: ipAddress,
+			UserAgent: userAgent,
+			Source:    utils.RegisterSourceAdmin,
+		}); err != nil {
+			log.Printf("failed to create registration log for admin-created user: %v", err)
+		}
+	}(user, regLogIP, regLogUA)
+
 	deviceLimit := req.DeviceLimit
 	defaultDeviceLimit, defaultDurationMonths := getDefaultSubscriptionSettings(db)
 	if deviceLimit == 0 {
@@ -1480,13 +1498,19 @@ func CreateUser(c *gin.Context) {
 		}
 	} else {
 		// 记录订阅日志
-		go func() {
-			ipAddress := utils.GetRealClientIP(c)
-			adminUser, _ := middleware.GetCurrentUser(c)
+		// gin.Context 在请求结束后会被复用，异步 goroutine 里不能再读它，
+		// 否则可能记到别的请求的 IP/身份（先取出再进 goroutine）
+		subLogIP := utils.GetRealClientIP(c)
+		subLogAdmin, _ := middleware.GetCurrentUser(c)
+		subLogAdminID := uint(0)
+		if subLogAdmin != nil {
+			subLogAdminID = subLogAdmin.ID
+		}
+		go func(subscriptionID, userID, adminID uint, ipAddress string) {
 			var actionByUserID *uint
 			actionBy := "admin"
-			if adminUser != nil {
-				actionByUserID = &adminUser.ID
+			if adminID != 0 {
+				actionByUserID = &adminID
 			}
 			afterData := map[string]interface{}{
 				"subscription_id": subscription.ID,
@@ -1494,22 +1518,23 @@ func CreateUser(c *gin.Context) {
 				"expire_time":     utils.FormatBeijingTime(subscription.ExpireTime),
 				"status":          subscription.Status,
 			}
-			if err := utils.CreateSubscriptionLog(subscription.ID, user.ID, "create", actionBy, actionByUserID, ipAddress, nil, afterData, "管理员创建用户时自动创建订阅"); err != nil {
+			if err := utils.CreateSubscriptionLog(subscriptionID, userID, "create", actionBy, actionByUserID, ipAddress, nil, afterData, "管理员创建用户时自动创建订阅"); err != nil {
 				log.Printf("failed to create subscription log: %v", err)
 			}
-		}()
+		}(subscription.ID, user.ID, subLogAdminID, subLogIP)
 	}
 
 	utils.CreateAuditLog(c, "create_user", "user", user.ID,
 		fmt.Sprintf("管理员创建用户: %s (%s), 管理员权限:%v", user.Username, user.Email, user.IsAdmin), nil, map[string]interface{}{"target_user_id": user.ID, "target_username": user.Username, "target_email": user.Email, "is_admin": user.IsAdmin, "is_active": user.IsActive})
 
+	notifyAdmin, _ := middleware.GetCurrentUser(c)
+	notifyCreatedBy := "系统"
+	if notifyAdmin != nil {
+		notifyCreatedBy = notifyAdmin.Username
+	}
 	go func() {
 		notificationService := notification.NewNotificationService()
-		adminUser, _ := middleware.GetCurrentUser(c)
-		createdBy := "系统"
-		if adminUser != nil {
-			createdBy = adminUser.Username
-		}
+		createdBy := notifyCreatedBy
 		createTime := utils.FormatBeijingTime(utils.GetBeijingTime())
 
 		expireTimeStr := "未设置"
@@ -1719,19 +1744,24 @@ func UpdateUser(c *gin.Context) {
 					"expire_time":  utils.FormatBeijingTime(subscription.ExpireTime),
 				}
 
-				go func() {
-					adminUser, _ := middleware.GetCurrentUser(c)
+				// gin.Context 请求结束后会被复用，异步 goroutine 里不能再读它
+				subUpdIP := utils.GetRealClientIP(c)
+				subUpdAdmin, _ := middleware.GetCurrentUser(c)
+				subUpdActionBy := "admin"
+				var subUpdAdminID uint
+				if subUpdAdmin != nil {
+					subUpdAdminID = subUpdAdmin.ID
+					subUpdActionBy = subUpdAdmin.Username
+				}
+				go func(subscriptionID, userID, adminID uint, actionBy, ipAddress string) {
 					var actionByUserID *uint
-					actionBy := "admin"
-					if adminUser != nil {
-						actionByUserID = &adminUser.ID
-						actionBy = adminUser.Username
+					if adminID != 0 {
+						actionByUserID = &adminID
 					}
-					ipAddress := utils.GetRealClientIP(c)
-					if err := utils.CreateSubscriptionLog(subscription.ID, user.ID, "update", actionBy, actionByUserID, ipAddress, beforeSubData, afterSubData, "管理员通过编辑用户更新订阅信息"); err != nil {
+					if err := utils.CreateSubscriptionLog(subscriptionID, userID, "update", actionBy, actionByUserID, ipAddress, beforeSubData, afterSubData, "管理员通过编辑用户更新订阅信息"); err != nil {
 						log.Printf("failed to create subscription log: %v", err)
 					}
-				}()
+				}(subscription.ID, user.ID, subUpdAdminID, subUpdActionBy, subUpdIP)
 
 				// 清除订阅配置缓存
 				go func(subURL string) {
@@ -1764,22 +1794,27 @@ func UpdateUser(c *gin.Context) {
 
 	// 如果余额有变更，记录余额日志
 	if req.Balance != nil && oldBalance != user.Balance {
-		go func() {
-			adminUser, _ := middleware.GetCurrentUser(c)
+		// 同上：gin.Context 不能在异步 goroutine 里读，先取出再进 goroutine
+		balanceOp := "system"
+		var balanceOpID uint
+		if adminUser, _ := middleware.GetCurrentUser(c); adminUser != nil {
+			balanceOp = adminUser.Username
+			balanceOpID = adminUser.ID
+		}
+		balanceIP := utils.GetRealClientIP(c)
+		balanceAmount := user.Balance - oldBalance
+		balanceNew := user.Balance
+		go func(amount float64, newBalance float64, operator, ipAddress string, operatorID uint) {
 			var operatorUserID *uint
-			operator := "system"
-			if adminUser != nil {
-				operator = adminUser.Username
-				operatorUserID = &adminUser.ID
+			if operatorID != 0 {
+				operatorUserID = &operatorID
 			}
-			amount := user.Balance - oldBalance
-			ipAddress := utils.GetRealClientIP(c)
 			if err := utils.CreateBalanceLog(
 				user.ID,
 				"admin_adjust",
 				amount,
 				oldBalance,
-				user.Balance,
+				newBalance,
 				nil,
 				nil,
 				fmt.Sprintf("管理员调整余额: %s", operator),
@@ -1789,7 +1824,7 @@ func UpdateUser(c *gin.Context) {
 			); err != nil {
 				log.Printf("failed to create balance log: %v", err)
 			}
-		}()
+		}(balanceAmount, balanceNew, balanceOp, balanceIP, balanceOpID)
 	}
 
 	utils.SetResponseStatus(c, http.StatusOK)
