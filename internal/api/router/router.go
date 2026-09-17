@@ -2,9 +2,12 @@ package router
 
 import (
 	"cboard-go/internal/api/handlers"
+	"cboard-go/internal/core/config"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/utils"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -12,9 +15,14 @@ import (
 func SetupRouter() *gin.Engine {
 	r := gin.New()
 
-	// 信任本机 nginx 反向代理，使 ClientIP() 能通过 X-Forwarded-For 正确获取真实客户端 IP
-	// （Gin v1.11 中 SetTrustedProxies(nil) 表示不信任任何代理，会导致 IP 被记录为 127.0.0.1）
-	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
+	// 信任代理列表与 utils.GetRealClientIP 使用同一份配置，避免出现两条互不感知的信任链：
+	// 此前这里是硬编码 ["127.0.0.1","::1"]，而 GetRealClientIP 读 TRUSTED_PROXIES(.env)，
+	// 两者不一致时空 ClientIP() 与 GetRealClientIP 会给出不同 IP
+	// （同一请求在 server.log 与 audit_logs 里 IP 不同即由此而来）。
+	//
+	// 注意：Gin v1.11 中 SetTrustedProxies(nil) 表示不信任任何代理。
+	// 传入无效值会返回错误，此时保持不信任（安全默认），并记录告警。
+	if err := r.SetTrustedProxies(trustedProxiesForGin()); err != nil {
 		utils.LogErrorMsg("failed to set trusted proxies: %v", err)
 	}
 
@@ -74,13 +82,13 @@ func SetupRouter() *gin.Engine {
 		api.POST("/payment/notify/:type", func(c *gin.Context) {
 			utils.LogInfo("========== 收到支付回调请求 ==========")
 			utils.LogInfo("路由中间件: method=%s, path=%s, type=%s, remote_addr=%s",
-				c.Request.Method, c.Request.URL.Path, c.Param("type"), c.ClientIP())
+				c.Request.Method, c.Request.URL.Path, c.Param("type"), utils.GetRealClientIP(c))
 			handlers.PaymentNotify(c)
 		})
 		api.GET("/payment/notify/:type", func(c *gin.Context) {
 			utils.LogInfo("========== 收到支付回调请求(GET) ==========")
 			utils.LogInfo("路由中间件: method=%s, path=%s, type=%s, remote_addr=%s",
-				c.Request.Method, c.Request.URL.Path, c.Param("type"), c.ClientIP())
+				c.Request.Method, c.Request.URL.Path, c.Param("type"), utils.GetRealClientIP(c))
 			handlers.PaymentNotify(c)
 		})
 
@@ -641,4 +649,26 @@ func SetupRouter() *gin.Engine {
 	})
 
 	return r
+}
+
+// trustedProxiesForGin 返回 Gin 引擎应信任的代理列表（与 utils.InitTrustedProxies 同源）。
+// 空列表表示不信任任何代理（Gin 会把 ClientIP() 视为直连地址）。
+func trustedProxiesForGin() []string {
+	raw := ""
+	if config.AppConfig != nil {
+		raw = config.AppConfig.TrustedProxies
+	}
+	if strings.TrimSpace(raw) == "" {
+		raw = os.Getenv("TRUSTED_PROXIES")
+	}
+	if strings.TrimSpace(raw) == "" {
+		raw = "127.0.0.1,::1"
+	}
+	parts := make([]string, 0, 4)
+	for _, item := range strings.Split(raw, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			parts = append(parts, item)
+		}
+	}
+	return parts
 }

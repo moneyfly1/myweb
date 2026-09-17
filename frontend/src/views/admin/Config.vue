@@ -412,6 +412,7 @@
 <script>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
+import { unwrapList } from '@/utils/format'
 import { configAPI, softwareConfigAPI, cloudAPI } from '@/utils/api'
 export default {
   name: 'AdminConfig',
@@ -636,7 +637,7 @@ export default {
         ])
         const status = statusRes.data?.data || {}
         if (versionsRes.data?.success) {
-          panVersions.value = versionsRes.data.data?.list || []
+          panVersions.value = unwrapList(versionsRes)
         }
         if (status.running) {
           // 实时进度展示

@@ -55,6 +55,7 @@ func GetKnowledgeArticles(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"list":      articles,
 		"items":     articles,
 		"total":     total,
 		"page":      page,

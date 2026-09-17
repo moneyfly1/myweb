@@ -83,7 +83,7 @@ func GetAdminInvites(c *gin.Context) {
 			"created_at":     utils.FormatBeijingTime(code.CreatedAt),
 		})
 	}
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"invite_codes": result, "total": total, "page": page, "size": size})
+	utils.SuccessResponse(c, http.StatusOK, "", utils.PaginatedList(result, "invite_codes", total, page, size))
 }
 
 func GetAdminInviteRelations(c *gin.Context) {
@@ -142,7 +142,7 @@ func GetAdminInviteRelations(c *gin.Context) {
 			"created_at":                utils.FormatBeijingTime(relation.CreatedAt),
 		})
 	}
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"relations": result, "total": total, "page": page, "size": size})
+	utils.SuccessResponse(c, http.StatusOK, "", utils.PaginatedList(result, "relations", total, page, size))
 }
 
 func GetAdminInviteStatistics(c *gin.Context) {
@@ -351,7 +351,7 @@ func GetAdminTickets(c *gin.Context) {
 			})
 		}
 	}
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"tickets": ticketList, "total": total, "page": page, "size": size})
+	utils.SuccessResponse(c, http.StatusOK, "", utils.PaginatedList(ticketList, "tickets", total, page, size))
 }
 
 func GetAdminTicketStatistics(c *gin.Context) {
@@ -506,7 +506,7 @@ func GetAdminCoupons(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取优惠券列表失败", err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"coupons": coupons, "total": total, "page": page, "size": size})
+	utils.SuccessResponse(c, http.StatusOK, "", utils.PaginatedList(coupons, "coupons", total, page, size))
 }
 
 func GetAdminUserLevels(c *gin.Context) {
@@ -823,7 +823,7 @@ func GetAdminEmailQueue(c *gin.Context) {
 	if pages < 1 {
 		pages = 1
 	}
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"emails": emails, "total": total, "page": page, "size": size, "pages": pages})
+	utils.SuccessResponse(c, http.StatusOK, "", utils.PaginatedList(emails, "emails", total, page, size))
 }
 
 func GetEmailQueueStatistics(c *gin.Context) {
@@ -1015,7 +1015,7 @@ func GetPaymentConfig(c *gin.Context) {
 			}
 		}
 	}
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"items": configsResponse, "total": total, "page": p.Page, "size": p.Size})
+	utils.SuccessResponse(c, http.StatusOK, "", utils.PaginatedList(configsResponse, "items", total, p.Page, p.Size))
 }
 
 func GetUserTrend(c *gin.Context) {

@@ -260,6 +260,7 @@ defineOptions({ name: 'AdminPromotions' })
 
 import { ref, onMounted, reactive, onActivated} from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
+import { unwrapList } from '@/utils/format'
 import { Plus } from '@element-plus/icons-vue'
 import { promotionAPI } from '@/utils/api'
 import { formatDateTimeSafe } from '@/utils/date'
@@ -388,7 +389,7 @@ const loadData = async () => {
     const res = await promotionAPI.getAll(params)
     if (seq !== loadSeq) return
     const data = res.data?.data || {}
-    promotions.value = data.list || []
+    promotions.value = unwrapList(data)
     pagination.total = data.total || 0
   } catch (e) {
     if (seq !== loadSeq) return

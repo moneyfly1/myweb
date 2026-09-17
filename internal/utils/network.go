@@ -231,14 +231,24 @@ func GetRealClientIP(c *gin.Context) string {
 	return ""
 }
 
-// directClientIP 返回与请求直连的地址（Gin ClientIP，优先）。
+// directClientIP 返回与请求**真实直连**的对端地址。
+//
+// 必须是 TCP 对端（RemoteAddr），不能用 c.ClientIP()：
+// 后者是 Gin 按其自身信任链解析 XFF 之后的结果，拿它再去做"是否来自可信代理"的判断
+// 属于循环论证 —— 会让 CF-Connecting-IP / X-Real-IP 分支在多数部署下不可达。
+// 只有在 RemoteAddr 不可解析时才退回 c.ClientIP() 兜底。
 func directClientIP(c *gin.Context) string {
-	if ip := c.ClientIP(); ip != "" {
-		if realIP := ParseIP(ip); realIP != "" {
+	if c.Request != nil {
+		if host, _, err := net.SplitHostPort(c.Request.RemoteAddr); err == nil {
+			if realIP := ParseIP(host); realIP != "" {
+				return realIP
+			}
+		}
+		if realIP := ParseIP(c.Request.RemoteAddr); realIP != "" {
 			return realIP
 		}
 	}
-	if ip, _, err := net.SplitHostPort(c.Request.RemoteAddr); err == nil {
+	if ip := c.ClientIP(); ip != "" {
 		if realIP := ParseIP(ip); realIP != "" {
 			return realIP
 		}

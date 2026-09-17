@@ -785,7 +785,7 @@ import {
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatDateTimeSafe } from '@/utils/date'
-import { formatFileSize } from '@/utils/format'
+import { formatFileSize, unwrapList } from '@/utils/format'
 import { copyToClipboard } from '@/utils/textSelection'
 import { confirmDelete, confirmWarning, confirmAction } from '@/utils/confirmAction'
 import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
@@ -1350,7 +1350,7 @@ export default {
       try {
         const res = await adminAPI.getCustomNodeSubscriptions()
         if (res.data?.success) {
-          subscriptionList.value = res.data.data?.list || []
+          subscriptionList.value = unwrapList(res)
         }
       } catch (e) {
         console.warn('加载已导入订阅失败', e)
@@ -1448,7 +1448,7 @@ export default {
       try {
         const res = await adminAPI.getSelfHostNodes()
         if (res.data?.success) {
-          selfHostNodes.value = res.data.data?.list || []
+          selfHostNodes.value = unwrapList(res)
         }
       } catch (e) {
         console.warn('加载自建节点失败', e)
@@ -1551,7 +1551,7 @@ export default {
       loadingUsers.value = true
       try {
         const res = await adminAPI.getUsers({ keyword: userSearchKeyword.value, page: 1, size: 50 })
-        searchedUsers.value = res.data.data?.users || []
+        searchedUsers.value = unwrapList(res)
       } finally { loadingUsers.value = false }
     }
     const handleAssign = async () => {

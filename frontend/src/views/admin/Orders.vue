@@ -745,7 +745,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useApi, adminAPI } from '@/utils/api'
 import { formatDateTimeSafe, formatLocation } from '@/utils/date'
-import { formatMoney as formatMoneyUtil } from '@/utils/format'
+import { formatMoney as formatMoneyUtil, unwrapList } from '@/utils/format'
 import { getOrderStatusType as getStatusType, getOrderStatusText as getStatusText } from '@/utils/statusMaps'
 import { useMobile } from '@/composables/useMobile'
 import { debounce } from '@/composables/useDebounce'
@@ -960,7 +960,7 @@ export default {
         if (activeTab.value === 'orders') params.include_recharges = 'true'
         
         const response = await api.get('/admin/orders', { params })
-        const ordersList = response.data.data?.orders || []
+        const ordersList = unwrapList(response)
         
         if (activeTab.value === 'orders') {
           allRecords.value = ordersList

@@ -400,6 +400,7 @@
 <script>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
+import { unwrapList } from '@/utils/format'
 import { Search, Refresh, Download, Delete } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatDateTimeSafe, formatLocation } from '@/utils/date'
@@ -483,7 +484,7 @@ export default {
         }
         const response = await adminAPI.getSystemLogs(params)
         const data = response?.data?.data ?? response?.data ?? {}
-        logsList.value = data.logs || []
+        logsList.value = unwrapList(data)
         pagination.total = data.total || 0
       } catch (error) {
         const errorMsg = error.response?.data?.message || error.message || '加载日志失败'

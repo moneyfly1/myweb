@@ -221,6 +221,7 @@ func GetMyCheckinHistory(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"list":    records,
 		"records": records,
 		"total":   total,
 		"page":    pagination.Page,

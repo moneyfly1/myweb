@@ -412,6 +412,7 @@ func GetTickets(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"list":    ticketList,
 		"tickets": ticketList,
 		"total":   total,
 		"page":    pagination.Page,

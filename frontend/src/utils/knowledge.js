@@ -10,6 +10,7 @@
  * 后台改名后也能通过模糊匹配继续找到。
  */
 import { knowledgeAPI } from '@/utils/api'
+import { unwrapList } from '@/utils/format'
 
 // 客户端教程所在分类名（后台可改，改这里即可）
 export const CLIENT_TUTORIAL_CATEGORY = '客户端教程'
@@ -29,7 +30,7 @@ function unwrap(response) {
 export async function getCategories({ force = false } = {}) {
   if (categoryCache && !force) return categoryCache
   const data = unwrap(await knowledgeAPI.getCategories())
-  categoryCache = Array.isArray(data) ? data : data?.categories || data?.items || []
+  categoryCache = unwrapList(data)
   return categoryCache
 }
 
@@ -62,7 +63,7 @@ export async function buildTutorialIndex({ force = false } = {}) {
       const data = unwrap(
         await knowledgeAPI.getArticles({ category_id: categoryId || undefined, page: 1, page_size: 100 })
       )
-      const items = data?.items || (Array.isArray(data) ? data : [])
+      const items = unwrapList(data)
       items.forEach(item => {
         if (!item || !item.title) return
         index.set(normalizeTitle(item.title), item)
@@ -140,7 +141,7 @@ export async function loadArticles({ categoryName = '', keyword = '', pageSize =
   const data = unwrap(
     await knowledgeAPI.getArticles({ category_id: categoryId || undefined, keyword: keyword || undefined, page: 1, page_size: pageSize })
   )
-  const items = data?.items || (Array.isArray(data) ? data : [])
+  const items = unwrapList(data)
   return { items, total: data?.total ?? items.length }
 }
 

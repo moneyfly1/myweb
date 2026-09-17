@@ -329,7 +329,7 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { useRouter } from 'vue-router'
 import { useApi } from '@/utils/api'
 import { adminAPI } from '@/utils/api'
-import { formatMoney as formatMoneyUtil } from '@/utils/format'
+import { formatMoney as formatMoneyUtil, unwrapList } from '@/utils/format'
 import { confirmAction } from '@/utils/confirmAction'
 import { getOrderStatusType, getOrderStatusText } from '@/utils/statusMaps'
 import {
@@ -488,7 +488,7 @@ export default {
         if (response && response.data) {
           if (response.data.success !== false) {
             const data = response.data.data || response.data
-            dashboardActivity.value = (data.list || []).slice(0, 12)
+            dashboardActivity.value = unwrapList(data).slice(0, 12)
             activityUpdatedAt.value = formatTimeAgo(Date.now())
           } else {
             dashboardActivity.value = []

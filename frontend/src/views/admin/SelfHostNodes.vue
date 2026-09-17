@@ -415,7 +415,7 @@ import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Promotion, DocumentCopy, Refresh, Setting, Operation, ArrowDown, Connection, VideoPlay, Edit } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatDateTimeSafe } from '@/utils/date'
-import { formatFileSize } from '@/utils/format'
+import { formatFileSize, unwrapList } from '@/utils/format'
 import { copyToClipboard } from '@/utils/textSelection'
 import { confirmAction } from '@/utils/confirmAction'
 import { useMobile } from '@/composables/useMobile'
@@ -444,7 +444,7 @@ const loadSelfHostNodes = async () => {
       page_size: selfHostPagination.size,
     })
     if (res.data?.success) {
-      selfHostNodes.value = res.data.data?.list || []
+      selfHostNodes.value = unwrapList(res)
       selfHostPagination.total = res.data.data?.total || 0
       // 并行加载每个节点的分配客户
       selfHostNodes.value.forEach(n => loadAssignments(n))
@@ -620,7 +620,7 @@ const loadSavedVps = async () => {
   savedVpsLoading.value = true
   try {
     const res = await adminAPI.getSavedSelfHostVPS()
-    const list = res.data?.data?.list || []
+    const list = unwrapList(res)
     savedVpsList.value = list
     // key → node_id 映射（有密码的节点）
     const idMap = {}

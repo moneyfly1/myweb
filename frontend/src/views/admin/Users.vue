@@ -801,6 +801,7 @@
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted, onActivated, watch, nextTick } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
+import { unwrapList } from '@/utils/format'
 import {
   Plus, Edit, Delete, Search, Refresh, Switch, Key, Close, Filter,
   Connection, Monitor, Unlock, Check, Message, Bell, Loading, CircleCheck, View
@@ -1189,7 +1190,7 @@ export default {
         if (seq !== loadUsersSeq) return // 丢弃过时的响应
         if (response.data?.success && response.data?.data) {
           const responseData = response.data.data
-          let userList = normalizeUserData(responseData.users || [])
+          let userList = normalizeUserData(unwrapList(responseData))
           if (searchForm.status === 'device_overlimit') {
             userList = userList.filter(user => isDeviceOverlimit(user))
           }

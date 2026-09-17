@@ -330,6 +330,7 @@
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
+import { unwrapList } from '@/utils/format'
 import { UserFilled } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
@@ -464,7 +465,7 @@ const loadTickets = async () => {
     if (filters.type) params.type = filters.type
     const response = await ticketAPI.getUserTickets(params)
     if (response.data && response.data.success) {
-      tickets.value = response.data.data?.tickets || []
+      tickets.value = unwrapList(response)
       pagination.total = response.data.data?.total || 0
     } else {
       ElMessage.error(response.data?.message || '加载工单列表失败')

@@ -208,9 +208,6 @@ func ReloadLoginRateLimiter() {
 func LoginRateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := utils.GetRealClientIP(c)
-		if key == "" {
-			key = c.ClientIP()
-		}
 
 		allowed, resetAt, locked := loginRateLimiter.Check(key)
 
@@ -276,9 +273,6 @@ func GetLoginAttemptStatus(ip string) (allowed bool, resetAt time.Time, locked b
 func RegisterRateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := utils.GetRealClientIP(c)
-		if key == "" {
-			key = c.ClientIP()
-		}
 
 		allowed, resetAt, locked := registerRateLimiter.Allow(key)
 
@@ -311,9 +305,6 @@ func RegisterRateLimitMiddleware() gin.HandlerFunc {
 func VerifyCodeRateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := utils.GetRealClientIP(c)
-		if key == "" {
-			key = c.ClientIP()
-		}
 
 		allowed, resetAt, locked := verifyCodeLimiter.Allow(key)
 
@@ -347,9 +338,6 @@ func VerifyCodeRateLimitMiddleware() gin.HandlerFunc {
 func ResetCodeRateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := utils.GetRealClientIP(c)
-		if key == "" {
-			key = c.ClientIP()
-		}
 
 		allowed, resetAt, locked := resetCodeLimiter.Allow(key)
 

@@ -347,7 +347,7 @@ func GetAbnormalUsers(c *gin.Context) {
 
 	candidateIDs := collectAbnormalUserCandidateIDs(db, startTime, endTime, oneMonthAgo, minSub, minReset)
 	if len(candidateIDs) == 0 {
-		utils.SuccessResponse(c, http.StatusOK, "", gin.H{"users": []gin.H{}, "total": 0, "page": page, "size": size})
+		utils.SuccessResponse(c, http.StatusOK, "", utils.PaginatedList([]gin.H{}, "users", 0, page, size))
 		return
 	}
 
@@ -381,7 +381,7 @@ func GetAbnormalUsers(c *gin.Context) {
 		userList = paginateAbnormalUserData(userList, pagination.GetOffset(), pagination.Size)
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"users": userList, "total": total, "page": page, "size": size})
+	utils.SuccessResponse(c, http.StatusOK, "", utils.PaginatedList(userList, "users", total, page, size))
 }
 
 func collectAbnormalUserCandidateIDs(db *gorm.DB, startTime, endTime, oneMonthAgo time.Time, minSub, minReset int) []uint {
