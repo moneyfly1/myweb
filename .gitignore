@@ -116,3 +116,8 @@ audit-moneyfly/
 
 # pi 插件本地配置（含密钥，勿提交）
 .pi/
+
+# 前端构建时自动生成的类型声明（unplugin-vue-components / 曾经用过的 unplugin-auto-import）
+# 这两个文件由 vite 构建过程重写，不入库，避免每次构建都产生无意义 diff
+frontend/components.d.ts
+frontend/auto-imports.d.ts

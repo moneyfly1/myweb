@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"cboard-go/internal/core/config"
@@ -636,29 +637,38 @@ func GetSessionTimeout(userID uint) int {
 	return 60
 }
 
-// 会话超时全局配置缓存：低频变更，2 分钟 TTL，避免每次签发 token 都查库
-var (
-	sessionTimeoutCache     int
-	sessionTimeoutCacheTime time.Time
-	sessionTimeoutCacheSet  bool
-)
+// 会话超时全局配置缓存：低频变更，2 分钟 TTL，避免每次签发 token 都查库。
+// 签发 token 是每请求都走的并发路径，InvalidateSessionTimeoutCache 又会在
+// 管理员改安全设置时被调用，因此读写必须加锁（此前是无锁的全局变量，存在数据竞态）。
+var sessionTimeoutCache struct {
+	mu    sync.RWMutex
+	set   bool
+	value int
+	at    time.Time
+}
 
 func getCachedSessionTimeout() (int, bool) {
-	if sessionTimeoutCacheSet && time.Since(sessionTimeoutCacheTime) < 2*time.Minute {
-		return sessionTimeoutCache, true
+	sessionTimeoutCache.mu.RLock()
+	defer sessionTimeoutCache.mu.RUnlock()
+	if sessionTimeoutCache.set && time.Since(sessionTimeoutCache.at) < 2*time.Minute {
+		return sessionTimeoutCache.value, true
 	}
 	return 0, false
 }
 
 func cacheSessionTimeout(v int) {
-	sessionTimeoutCache = v
-	sessionTimeoutCacheTime = time.Now()
-	sessionTimeoutCacheSet = true
+	sessionTimeoutCache.mu.Lock()
+	defer sessionTimeoutCache.mu.Unlock()
+	sessionTimeoutCache.value = v
+	sessionTimeoutCache.at = time.Now()
+	sessionTimeoutCache.set = true
 }
 
 // InvalidateSessionTimeoutCache 安全设置变更时清除缓存（由 UpdateSecuritySettings 调用）
 func InvalidateSessionTimeoutCache() {
-	sessionTimeoutCacheSet = false
+	sessionTimeoutCache.mu.Lock()
+	defer sessionTimeoutCache.mu.Unlock()
+	sessionTimeoutCache.set = false
 }
 
 func CreateAccessToken(userID uint, email string, isAdmin bool) (string, error) {

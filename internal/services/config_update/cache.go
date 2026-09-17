@@ -137,7 +137,7 @@ func (cs *CacheService) GetSubscriptionConfigCache(subscriptionURL, format strin
 		return "", false
 	}
 
-	cacheKey := fmt.Sprintf("subscription:config:%s:%s", subscriptionURL, format)
+	cacheKey := cache.SubscriptionConfigKey(subscriptionURL, format)
 	cached, err := cache.Get(cacheKey)
 	if err != nil || cached == "" {
 		return "", false
@@ -164,8 +164,7 @@ func (cs *CacheService) SetSubscriptionConfigCache(subscriptionURL, format, conf
 		return err
 	}
 
-	cacheKey := fmt.Sprintf("subscription:config:%s:%s", subscriptionURL, format)
-	return cache.Set(cacheKey, string(data), ttl)
+	return cache.Set(cache.SubscriptionConfigKey(subscriptionURL, format), string(data), ttl)
 }
 
 // ClearSubscriptionConfigCache 清除指定订阅的配置缓存
@@ -175,12 +174,10 @@ func (cs *CacheService) ClearSubscriptionConfigCache(subscriptionURL string) err
 		return nil
 	}
 
-	// 清除该订阅的所有格式缓存
-	if err := cache.Del(fmt.Sprintf("subscription:config:%s:clash", subscriptionURL)); err != nil {
-		log.Printf("failed to delete clash cache: %v", err)
-	}
-	if err := cache.Del(fmt.Sprintf("subscription:config:%s:base64", subscriptionURL)); err != nil {
-		log.Printf("failed to delete base64 cache: %v", err)
+	// 清除该订阅的所有格式缓存：key 清单来自 cache.SubscriptionConfigKeys，
+	// 与写入侧共用一份，避免再次出现"漏删某些格式导致旧节点仍可见"
+	if err := cache.ClearSubscriptionConfigCache(subscriptionURL); err != nil {
+		log.Printf("failed to clear subscription config cache: %v", err)
 	}
 
 	return nil

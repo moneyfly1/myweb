@@ -29,20 +29,20 @@ var defaultDownloadProxyPrefixes = []string{
 func ResolveDownload(c *gin.Context) {
 	target := strings.TrimSpace(c.Query("target"))
 	if target == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "缺少 target 参数"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "缺少 target 参数", nil)
 		return
 	}
 
 	// 仅允许 http(s) 链接，避免被滥用于任意协议跳转
 	if !strings.HasPrefix(target, "https://") && !strings.HasPrefix(target, "http://") {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "无效的下载链接"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "无效的下载链接", nil)
 		return
 	}
 
 	// 防 SSRF：目标与代理前缀均需通过 URL 合法性校验（协议白名单 + 禁止内网地址）
 	if err := validateDownloadURL(target); err != nil {
 		utils.LogWarn("ResolveDownload: target 校验失败: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "无效的下载链接"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "无效的下载链接", nil)
 		return
 	}
 

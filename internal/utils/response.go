@@ -19,6 +19,10 @@ type APIResponse struct {
 	Data      interface{} `json:"data,omitempty"`
 	Timestamp int64       `json:"timestamp"`
 	RequestID string      `json:"request_id,omitempty"`
+	// Reason 机器可读的失败原因（如 "vps_occupied"），供前端做分支处理。
+	// code 恒为整数（与 HTTP 状态语义一致），业务原因不再挤进 code 字段，
+	// 避免同一字段有时是整数、有时是字符串。
+	Reason string `json:"reason,omitempty"`
 }
 
 // Standard error codes
@@ -105,6 +109,23 @@ func ErrorResponse(c *gin.Context, code int, message string, err error) {
 		Success:   false,
 		Code:      errCode,
 		Message:   userMessage,
+		Timestamp: time.Now().Unix(),
+		RequestID: GetRequestID(c),
+	}
+	c.JSON(code, resp)
+}
+
+// ErrorResponseWithData 与 ErrorResponse 相同的统一格式，但携带业务数据与机器可读原因。
+// 用于"HTTP 状态码 + 业务原因 + 附加数据"这类需要前端分支处理的失败响应
+// （例：409 + reason=vps_occupied + data.existing_node_id），
+// 替代此前手写 c.JSON 并把 code 写成字符串 "vps_occupied" 的做法。
+func ErrorResponseWithData(c *gin.Context, code int, reason, message string, data interface{}) {
+	resp := APIResponse{
+		Success:   false,
+		Code:      getErrorCode(code),
+		Message:   message,
+		Data:      data,
+		Reason:    reason,
 		Timestamp: time.Now().Unix(),
 		RequestID: GetRequestID(c),
 	}

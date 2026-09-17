@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { api, resetRefreshFailed } from '@/utils/api'
 import { secureStorage } from '@/utils/api'
 import { useThemeStore } from '@/store/theme'
+import { clearKnowledgeCache } from '@/utils/knowledge'
 export const useAuthStore = defineStore('auth', () => {
   const isAdminPath = () => typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')
   const TOKEN_TTL = 60 * 60 * 1000
@@ -148,6 +149,8 @@ export const useAuthStore = defineStore('auth', () => {
           message: '登录响应格式错误'
         }
       }
+      // 会话切换：清掉知识库缓存，避免沿用上一个账号会话里的教程内容
+      clearKnowledgeCache()
       const isAdminUser = !!userData.is_admin
       if (credentials.requireAdmin && !isAdminUser) {
         return {
@@ -201,6 +204,8 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
   const logout = (role = null) => {
+    // 退出登录后清掉知识库缓存（下次登录重新拉取）
+    clearKnowledgeCache()
     const targetRole = normalizeRole(role)
     if (targetRole === 'all') {
       const roles = ['admin', 'user']

@@ -172,17 +172,9 @@ func DeploySelfHostVPS(c *gin.Context) {
 	// ===== 防二次部署覆盖：该 VPS 已有自建节点时必须显式复用 =====
 	if req.ReuseNodeID == 0 {
 		if existing := findSelfHostNodeBySSHHost(db, host, sshPort); existing != nil {
-			c.JSON(http.StatusConflict, gin.H{
-				"success": false,
-				"code":    "vps_occupied",
-				"message": fmt.Sprintf("该 VPS 已部署自建节点「%s」（#%d），直接再次搭建会覆盖它并使旧节点失效。如需重装请确认复用该节点。", existing.Name, existing.ID),
-				"data": gin.H{
-					"existing_node_id":     existing.ID,
-					"existing_node_name":   existing.Name,
-					"existing_node_status": existing.Status,
-				},
-				"timestamp": time.Now().Unix(),
-			})
+			utils.ErrorResponseWithData(c, http.StatusConflict, "vps_occupied", fmt.Sprintf("该 VPS 已部署自建节点「%s」（#%d），直接再次搭建会覆盖它并使旧节点失效。如需重装请确认复用该节点。", existing.Name, existing.ID), gin.H{"existing_node_id": existing.ID,
+				"existing_node_name":   existing.Name,
+				"existing_node_status": existing.Status})
 			return
 		}
 	}
@@ -382,17 +374,9 @@ func DeploySelfHostVPSDomain(c *gin.Context) {
 	// ===== 防二次部署覆盖：该 VPS 已有自建节点时必须显式复用 =====
 	if req.ReuseNodeID == 0 {
 		if existing := findSelfHostNodeBySSHHost(db, host, sshPort); existing != nil {
-			c.JSON(http.StatusConflict, gin.H{
-				"success": false,
-				"code":    "vps_occupied",
-				"message": fmt.Sprintf("该 VPS 已部署自建节点「%s」（#%d），直接再次搭建会覆盖它并使旧节点失效。如需重装请确认复用该节点。", existing.Name, existing.ID),
-				"data": gin.H{
-					"existing_node_id":     existing.ID,
-					"existing_node_name":   existing.Name,
-					"existing_node_status": existing.Status,
-				},
-				"timestamp": time.Now().Unix(),
-			})
+			utils.ErrorResponseWithData(c, http.StatusConflict, "vps_occupied", fmt.Sprintf("该 VPS 已部署自建节点「%s」（#%d），直接再次搭建会覆盖它并使旧节点失效。如需重装请确认复用该节点。", existing.Name, existing.ID), gin.H{"existing_node_id": existing.ID,
+				"existing_node_name":   existing.Name,
+				"existing_node_status": existing.Status})
 			return
 		}
 	}

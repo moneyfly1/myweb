@@ -27,6 +27,9 @@ func GetPaymentMethods(c *gin.Context) {
 	cacheService := cache_service.NewCacheService()
 
 	// 尝试从缓存获取
+	// 查库前取缓存版本号：写回时若管理员刚改过支付配置，丢弃这次写入
+	generation := cacheService.PaymentMethodsCacheGeneration()
+
 	if cached, ok := cacheService.GetPaymentMethodsCache(); ok {
 		utils.SuccessResponse(c, http.StatusOK, "", cached)
 		return
@@ -134,8 +137,11 @@ func GetPaymentMethods(c *gin.Context) {
 		cacheData[i] = map[string]interface{}(item)
 	}
 
-	// 异步写入缓存
-	go cacheService.SetPaymentMethodsCache(cacheData)
+	// 同步写回缓存（带版本校验）。此前异步写会与"改支付配置后清缓存"乱序，
+	// 把停用前的旧列表写回并缓存 1 小时。
+	if _, err := cacheService.SetPaymentMethodsCacheIfUnchanged(generation, cacheData); err != nil {
+		utils.LogError("GetPaymentMethods: 写入支付方式缓存失败", err, nil)
+	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", res)
 }

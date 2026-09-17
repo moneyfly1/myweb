@@ -714,7 +714,7 @@ const redeploySavedVps = async (v) => {
   } catch (e) {
     const resp = e.response?.data
     // 密码未保存时需要手动输入：打开搭建弹窗并回填信息
-    if (resp?.code === 'vps_occupied' || (resp && !resp.success)) {
+    if (resp?.reason === 'vps_occupied' || (resp && !resp.success)) {
       // 后端拒绝（可能占用/无密码）→ 回退到编辑模式
       editSavedVps(v)
       ElMessage.warning('已回退到编辑模式，请补充信息后重试: ' + (resp?.message || e.message))
@@ -790,7 +790,7 @@ const deploySelfHostVPSNode = async () => {
   } catch (e) {
     const resp = e.response?.data
     // 该 VPS 已部署过节点：提示并让管理员确认复用（覆盖旧节点重装）
-    if (resp?.code === 'vps_occupied' && resp?.data?.existing_node_id) {
+    if (resp?.reason === 'vps_occupied' && resp?.data?.existing_node_id) {
       const exId = resp.data.existing_node_id
       const exName = resp.data.existing_node_name || '旧节点'
       try {

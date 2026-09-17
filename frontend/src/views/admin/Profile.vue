@@ -84,7 +84,7 @@
                 placeholder="请输入新密码"
                 show-password
               />
-              <small class="form-tip">密码长度至少8位，包含字母和数字</small>
+              <small class="form-tip">密码长度至少 {{ minPasswordLength }} 位，包含字母和数字</small>
             </el-form-item>
             <el-form-item label="确认新密码" prop="confirm_password">
               <el-input
@@ -237,6 +237,7 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Plus } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
+import { useSettingsStore } from '@/store/settings'
 import { adminAPI } from '@/utils/api'
 import { formatDateTimeSafe, getLocationText as getLocationTextUtil } from '@/utils/date'
 import router from '@/router'
@@ -265,6 +266,9 @@ export default {
     const securityLoading = ref(false)
     const uploadUrl = '/api/v1/admin/upload'
     const authStore = useAuthStore()
+    const settingsStore = useSettingsStore()
+    // 密码最小长度取自 settings store，与后端 min_password_length 保持一致
+    const minPasswordLength = computed(() => settingsStore.minPasswordLength)
     const uploadHeaders = computed(() => {
       const headers = {}
       const token = secureStorage.get('admin_token')
@@ -313,13 +317,13 @@ export default {
         { max: 200, message: '个人简介不能超过200个字符', trigger: 'blur' }
       ]
     }
-    const passwordRules = {
+    const passwordRules = computed(() => ({
       current_password: [
         { required: true, message: '请输入当前密码', trigger: 'blur' }
       ],
       new_password: [
         { required: true, message: '请输入新密码', trigger: 'blur' },
-        { min: 8, message: '密码长度至少8位', trigger: 'blur' },
+        { min: minPasswordLength.value, message: settingsStore.passwordMinLengthHint, trigger: 'blur' },
         { pattern: /^(?=.*[A-Za-z])(?=.*\d)/, message: '密码必须包含字母和数字', trigger: 'blur' }
       ],
       confirm_password: [
@@ -335,7 +339,7 @@ export default {
           trigger: 'blur'
         }
       ]
-    }
+    }))
     const loadBasicInfo = async () => {
       try {
         const response = await adminAPI.getProfile()
@@ -516,9 +520,12 @@ export default {
         ElMessage.warning('请先输入通知邮箱地址')
         return
       }
-      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (securityForm.notification_email && !emailPattern.test(securityForm.notification_email)) {
-        ElMessage.warning('请输入正确的邮箱地址')
+      // 邮箱校验统一走 settings store，避免与其它表单各留一套正则
+      const emailError = securityForm.notification_email
+        ? settingsStore.getEmailError(securityForm.notification_email)
+        : null
+      if (emailError) {
+        ElMessage.warning(emailError)
         return
       }
       securityLoading.value = true
@@ -649,6 +656,7 @@ export default {
       mobileLoginHistoryFields,
       basicRules,
       passwordRules,
+      minPasswordLength,
       uploadUrl,
       uploadHeaders,
       saveBasicInfo,
