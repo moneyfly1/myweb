@@ -130,6 +130,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
+import { unwrapList } from '@/utils/format'
 import { Search, Folder, View, Clock, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook } from '@element-plus/icons-vue'
 import AppDrawer from '@/components/AppDrawer.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -186,7 +187,7 @@ const loadArticles = async () => {
     if (keyword.value) params.keyword = keyword.value
     const res = await knowledgeAPI.getArticles(params)
     const data = res.data?.data || {}
-    articles.value = data.items || []
+    articles.value = unwrapList(data)
     total.value = data.total || 0
   } catch (e) {
     ElMessage.error('加载文章失败')

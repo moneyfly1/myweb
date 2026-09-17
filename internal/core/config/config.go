@@ -56,6 +56,10 @@ type Config struct {
 	DeviceUpgradePricePerMonth float64 // 设备升级价格（每月，兼容旧逻辑）
 	DeviceUpgradePricePerYear  float64 // 设备升级参考年度价格（如 200 元/年）
 	DeviceUpgradeBaseDevices   int     // 年度价格对应的设备数（如 200 元对应 5 台）
+	// TrustedProxies 可信反向代理列表（逗号分隔 IP/CIDR）。
+	// 纳入 viper 是为了与 .env 的其他配置一致生效：此前仅用 os.Getenv 读取，
+	// 而 start.sh 启动方式不 export .env，导致该项静默失效（转发头不被信任）。
+	TrustedProxies string
 }
 
 var AppConfig *Config
@@ -129,6 +133,8 @@ func LoadConfig() (*Config, error) {
 		DeviceUpgradePricePerMonth: getFloat64("DEVICE_UPGRADE_PRICE_PER_MONTH", 10.0),
 		DeviceUpgradePricePerYear:  getFloat64("DEVICE_UPGRADE_PRICE_PER_YEAR", 200.0),
 		DeviceUpgradeBaseDevices:   getInt("DEVICE_UPGRADE_BASE_DEVICES", 5),
+		// 默认信任本机反代（nginx 通常与本服务同机）；公网反代/Cloudflare 需在 .env 显式配置
+		TrustedProxies: getString("TRUSTED_PROXIES", "127.0.0.1,::1"),
 	}
 
 	if err := validateConfig(config); err != nil {

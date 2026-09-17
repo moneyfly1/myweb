@@ -89,6 +89,7 @@
 import { ref, onMounted } from 'vue'
 import { debounce } from '@/composables/useDebounce'
 import { adminAPI } from '@/utils/api'
+import { unwrapList } from '@/utils/format'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
@@ -309,7 +310,7 @@ async function fetch() {
     }
     const res = await adminAPI.getAuditLogs(params)
     const data = res?.data?.data ?? res?.data ?? {}
-    const raw = data.logs || []
+    const raw = unwrapList(data)
     // 后端 GetAuditLogs 已排除 security_/business_/scheduler_/system_error，
     // 这里不再二次过滤，避免 total 与列表条数不一致导致分页错乱。
     list.value = raw || []

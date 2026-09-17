@@ -149,9 +149,12 @@ func applySystemLogsFilters(query *gorm.DB, c *gin.Context, includeLevel bool) *
 // genericSuccessResponse 统一的分页响应封装
 func genericSuccessResponse(c *gin.Context, data interface{}, total int64, p utils.PaginationParams) {
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"logs":        data, // 注意：某些接口返回字段名叫 "attempts" 或其他，如有特定需求需调整
+		// 标准 list 字段 + 兼容字段 logs（前端统一按 list 解包）
+		"list":        data,
+		"logs":        data,
 		"total":       total,
 		"page":        p.Page,
+		"size":        p.Size,
 		"page_size":   p.Size,
 		"total_pages": (total + int64(p.Size) - 1) / int64(p.Size),
 	})
@@ -805,12 +808,7 @@ func GetAuditLogs(c *gin.Context) {
 		items = append(items, item)
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"logs":      items,
-		"total":     total,
-		"page":      p.Page,
-		"page_size": p.Size,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", utils.PaginatedList(items, "logs", total, p.Page, p.Size))
 }
 
 func GetLoginAttempts(c *gin.Context) {
@@ -849,12 +847,7 @@ func GetLoginAttempts(c *gin.Context) {
 		items = append(items, item)
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"attempts":  items,
-		"total":     total,
-		"page":      p.Page,
-		"page_size": p.Size,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", utils.PaginatedList(items, "attempts", total, p.Page, p.Size))
 }
 
 func GetSystemLogs(c *gin.Context) {
@@ -883,12 +876,7 @@ func GetSystemLogs(c *gin.Context) {
 	// 3. 批量格式化
 	logList := batchFormatAuditLogs(db, logs)
 
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"logs":  logList,
-		"total": total,
-		"page":  p.Page,
-		"size":  p.Size,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "", utils.PaginatedList(logList, "logs", total, p.Page, p.Size))
 }
 
 func GetLogsStats(c *gin.Context) {

@@ -1028,6 +1028,7 @@ func GetOrders(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"list":   formattedOrders,
 		"orders": formattedOrders,
 		"total":  total,
 		"page":   page,
@@ -1159,6 +1160,7 @@ func GetAdminOrders(c *gin.Context) {
 		}
 
 		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+			"list":   mergedList,
 			"orders": mergedList,
 			"total":  total,
 			"page":   page,
@@ -1199,6 +1201,7 @@ func GetAdminOrders(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"list":   orderList,
 		"orders": orderList,
 		"total":  total,
 		"page":   page,

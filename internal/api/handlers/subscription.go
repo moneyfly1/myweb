@@ -528,7 +528,7 @@ func GetAdminSubscriptions(c *gin.Context) {
 	}
 
 	list := buildSubscriptionListData(db, subscriptions, c)
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"subscriptions": list, "total": total, "page": page, "size": size})
+	utils.SuccessResponse(c, http.StatusOK, "", utils.PaginatedList(list, "subscriptions", total, page, size))
 }
 
 func buildSubscriptionListData(db *gorm.DB, subscriptions []models.Subscription, c *gin.Context) []gin.H {

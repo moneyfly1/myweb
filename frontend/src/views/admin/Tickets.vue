@@ -405,6 +405,7 @@ defineOptions({ name: 'AdminTickets' })
 
 import { ref, reactive, computed, onMounted, onActivated} from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
+import { unwrapList } from '@/utils/format'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
 import { formatDateTimeSafe } from '@/utils/date'
@@ -492,7 +493,7 @@ const loadTickets = async () => {
     if (filters.priority && filters.priority.trim()) params.priority = filters.priority.trim()
     const response = await ticketAPI.getAllTickets(params)
     if (response.data && response.data.success) {
-      tickets.value = response.data.data?.tickets || []
+      tickets.value = unwrapList(response)
       pagination.total = response.data.data?.total || 0
     } else {
       ElMessage.error(response.data?.message || '加载工单列表失败')

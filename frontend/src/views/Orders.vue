@@ -406,7 +406,7 @@ import { Loading, Wallet } from '@element-plus/icons-vue'
 import { useApi, rechargeAPI, paymentAPI, pendingPaymentStorage, cachedAPI } from '@/utils/api'
 import { formatDateTime } from '@/utils/date'
 import { getOrderStatusType, getOrderStatusText, getPaymentMethodType, getPaymentMethodText as getPaymentMethodTextShared } from '@/utils/statusMaps'
-import { formatMoney } from '@/utils/format'
+import { formatMoney, unwrapList } from '@/utils/format'
 import { confirmWarning } from '@/utils/confirmAction'
 import { safeNavigate } from '@/utils/safeOpen'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
@@ -714,7 +714,7 @@ export default {
           params.end_date = filters.date_range[1]
         }
         const response = await api.get('/orders/', { params })
-        const orderList = response.data.data?.orders || []
+        const orderList = unwrapList(response)
         orders.value = orderList.map(order => {
           // 统一使用 payment_method
           const paymentMethod = order.payment_method || null

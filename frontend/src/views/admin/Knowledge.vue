@@ -298,6 +298,7 @@ defineOptions({ name: 'AdminKnowledge' })
 
 import { ref, onMounted, reactive, onActivated} from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
+import { unwrapList } from '@/utils/format'
 import { FolderAdd, DocumentAdd, Search, Folder, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook, Clock, View } from '@element-plus/icons-vue'
 import { knowledgeAPI } from '@/utils/api'
 import { formatDateTimeSafe } from '@/utils/date'
@@ -397,7 +398,7 @@ const loadArticles = async () => {
 
     const res = await knowledgeAPI.getAdminArticles(params)
     const data = res.data?.data || {}
-    articles.value = data.list || []
+    articles.value = unwrapList(data)
     articlePagination.total = data.total || 0
   } catch (e) {
     ElMessage.error('加载文章失败')
