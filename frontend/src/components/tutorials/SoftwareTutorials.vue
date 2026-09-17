@@ -1,322 +1,318 @@
 <template>
   <div class="list-container tutorial-container">
-    <div class="breadcrumb">首页 / 软件教程</div>
+    <div class="breadcrumb">首页 / 客户端中心</div>
     <div class="page-header">
       <div class="page-title">
-        <h1>软件教程</h1>
-        <p>对应路由 /tutorials，按 Windows、macOS、iOS、Android 分类展示软件安装和订阅导入步骤。</p>
+        <h1>客户端中心</h1>
+        <p>按系统选择客户端下载，并查看对应的安装与导入订阅教程。</p>
       </div>
     </div>
+
     <div class="card tutorial-card">
       <el-tabs v-model="activeTab" class="tutorial-tabs">
-        <el-tab-pane label="Windows" name="windows">
-          <MoneyFlyDownloadPanel :software-config="softwareConfig" only-platform="windows" />
-          <MoneyFlyInstallSteps platform="windows" show-usage :software-config="softwareConfig" />
+        <el-tab-pane
+          v-for="platform in platforms"
+          :key="platform.key"
+          :label="platform.label"
+          :name="platform.key"
+        >
+          <!-- 自研客户端置顶推荐（已配置下载地址时展示） -->
+          <div v-if="moneyflyVisible && moneyflySupports(platform.key)" class="official-block">
+            <div class="official-head">
+              <span class="official-name">{{ moneyflyBrand.name }}</span>
+              <el-tag type="success" effect="dark" size="small">{{ moneyflyBrand.badge }}</el-tag>
+              <el-tag type="danger" effect="plain" size="small">推荐优先使用</el-tag>
+              <span v-if="moneyflyConfig.version" class="official-version">v{{ moneyflyConfig.version }}</span>
+            </div>
+            <p class="official-intro">{{ moneyflyDescription }}</p>
+            <MoneyFlyDownloadPanel
+              :software-config="softwareConfig"
+              plain
+              hide-head
+              :only-platform="moneyflyPlatformKeys(platform.key)"
+            />
+            <div class="official-actions">
+              <el-button
+                size="small"
+                :loading="tutorialLoading === 'moneyfly'"
+                @click="toggleTutorial('moneyfly')"
+              >
+                {{ isTutorialOpen('moneyfly') ? '收起教程' : '查看使用教程' }}
+              </el-button>
+              <router-link to="/subscription">
+                <el-button size="small" type="primary" plain>获取订阅地址</el-button>
+              </router-link>
+            </div>
+            <div v-if="isTutorialOpen('moneyfly')" class="tutorial-body">
+              <TutorialContent :state="tutorialState('moneyfly')" />
+            </div>
+          </div>
+
+          <!-- 第三方客户端列表（来自客户端注册表） -->
           <div class="client-grid tutorial-client-grid">
-            <div class="client-row">
-              <div>
-                <div class="client-title">Clash Verge</div>
-                <div class="item-meta">下载软件 → 安装 → 复制 Clash 订阅 → 导入配置</div>
+            <div v-for="client in clientsOf(platform.key)" :key="client.id" class="client-row-block">
+              <div class="client-row">
+                <div class="client-info">
+                  <div class="client-title">{{ client.name }}</div>
+                  <div class="item-meta">{{ client.description }}</div>
+                </div>
+                <div class="button-row">
+                  <!-- macOS 双架构：拆成 Apple 芯片 / Intel 两个选项 -->
+                  <el-dropdown
+                    v-if="clientSupportsArchSplit(client, platform.key)"
+                    trigger="click"
+                    @command="(arch) => download(client, platform.key, arch)"
+                  >
+                    <el-button type="primary" size="small">
+                      下载<el-icon><ArrowDown /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="apple">
+                          <span class="client-download-option">
+                            {{ client.name }}（Apple 芯片）
+                            <el-tag size="small" type="success" effect="plain">ARM</el-tag>
+                          </span>
+                        </el-dropdown-item>
+                        <el-dropdown-item command="intel">
+                          <span class="client-download-option">
+                            {{ client.name }}（Intel）
+                            <el-tag size="small" type="info" effect="plain">x64</el-tag>
+                          </span>
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                  <el-button
+                    v-else
+                    type="primary"
+                    size="small"
+                    @click="download(client, platform.key)"
+                  >
+                    下载
+                  </el-button>
+                  <el-button
+                    size="small"
+                    :loading="tutorialLoading === client.id"
+                    @click="toggleTutorial(client.id)"
+                  >
+                    {{ isTutorialOpen(client.id) ? '收起教程' : '教程' }}
+                  </el-button>
+                </div>
               </div>
-              <div class="button-row">
-                <el-button
-                  type="primary"
-                  size="small"
-                  :loading="downloadingKey === 'clash_verge_windows_url'"
-                  @click="downloadClient('clash_verge_windows_url', 'clash-verge')"
-                >
-                  下载<template v-if="versionFor('clash_verge_windows_url')"> v{{ versionFor('clash_verge_windows_url') }}</template>
-                </el-button>
-                <el-button size="small" @click="copySubscription('clash')">复制订阅</el-button>
+              <div v-if="isTutorialOpen(client.id)" class="tutorial-body">
+                <TutorialContent :state="tutorialState(client.id)" />
               </div>
             </div>
           </div>
-          <WindowsTutorials />
-        </el-tab-pane>
-        <el-tab-pane label="macOS" name="macos">
-          <MoneyFlyDownloadPanel :software-config="softwareConfig" only-platform="macos_arm,macos_intel" />
-          <MoneyFlyInstallSteps platform="macos" :software-config="softwareConfig" />
-          <div class="client-grid tutorial-client-grid">
-            <div class="client-row">
-              <div>
-                <div class="client-title">Clash 系列</div>
-                <div class="item-meta">下载软件 → 安装 → 复制 Clash 订阅 → 导入配置</div>
-              </div>
-              <div class="button-row">
-                <el-button
-                  type="primary"
-                  size="small"
-                  :loading="downloadingKey === 'clash_verge_macos_url'"
-                  @click="downloadClient(['clash_verge_macos_arm_url', 'clash_verge_macos_url'], 'clash-verge')"
-                >
-                  下载<template v-if="versionFor(['clash_verge_macos_arm_url', 'clash_verge_macos_url'])"> v{{ versionFor(['clash_verge_macos_arm_url', 'clash_verge_macos_url']) }}</template>
-                </el-button>
-                <el-button size="small" @click="copySubscription('clash')">复制订阅</el-button>
-              </div>
-            </div>
-          </div>
-          <MacOSTutorials />
-        </el-tab-pane>
-        <el-tab-pane label="iOS" name="ios">
-          <div class="client-grid tutorial-client-grid">
-            <div class="client-row">
-              <div>
-                <div class="client-title">Shadowrocket</div>
-                <div class="item-meta">App Store 安装 → 扫码 / 一键导入 → 选择节点</div>
-              </div>
-              <div class="button-row">
-                <el-button
-                  type="primary"
-                  size="small"
-                  :loading="downloadingKey === 'shadowrocket_url'"
-                  @click="downloadClient('shadowrocket_url', null, 'https://apps.apple.com/app/shadowrocket/id932747118')"
-                >
-                  打开商店
-                </el-button>
-                <el-button size="small" @click="openSubscriptionQr">显示二维码</el-button>
-              </div>
-            </div>
-          </div>
-          <iOSTutorials />
-        </el-tab-pane>
-        <el-tab-pane label="Android" name="android">
-          <MoneyFlyDownloadPanel :software-config="softwareConfig" only-platform="android" />
-          <MoneyFlyInstallSteps platform="android" :software-config="softwareConfig" />
-          <div class="client-grid tutorial-client-grid">
-            <div class="client-row">
-              <div>
-                <div class="client-title">Clash Meta / V2rayNG</div>
-                <div class="item-meta">下载 APK → 安装 → 复制订阅 → 导入配置</div>
-              </div>
-              <div class="button-row">
-                <el-button
-                  type="primary"
-                  size="small"
-                  :loading="downloadingKey === 'clash_meta_android_url'"
-                  @click="downloadClient('clash_meta_android_url', 'clash-meta')"
-                >
-                  下载<template v-if="versionFor('clash_android_url')"> v{{ versionFor('clash_android_url') }}</template>
-                </el-button>
-                <el-button size="small" @click="copySubscription('clash')">复制订阅</el-button>
-              </div>
-            </div>
-          </div>
-          <AndroidTutorials />
+
+          <el-alert
+            v-if="!clientsOf(platform.key).length && !(moneyflyVisible && moneyflySupports(platform.key))"
+            type="info"
+            show-icon
+            :closable="false"
+            title="该平台暂无客户端"
+          />
         </el-tab-pane>
       </el-tabs>
     </div>
   </div>
 </template>
-<script setup>
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import WindowsTutorials from '@/components/tutorials/WindowsTutorials.vue'
-import AndroidTutorials from '@/components/tutorials/AndroidTutorials.vue'
-import MacOSTutorials from '@/components/tutorials/MacOSTutorials.vue'
-import iOSTutorials from '@/components/tutorials/iOSTutorials.vue'
-import MoneyFlyDownloadPanel from '@/components/moneyfly/MoneyFlyDownloadPanel.vue'
-import MoneyFlyInstallSteps from '@/components/moneyfly/MoneyFlyInstallSteps.vue'
-import { ElMessage } from '@/utils/elementPlusServices'
-import { cachedAPI } from '@/utils/api'
-import { safeOpen } from '@/utils/safeOpen'
-import { resolvePanDownloadUrl, pickConfiguredUrl } from '@/utils/githubDownload'
-import { copyToClipboard as copyText } from '@/utils/textSelection'
 
-const router = useRouter()
+<script setup>
+/**
+ * 客户端中心（路由 /tutorials）
+ *
+ * 全站唯一的客户端下载入口：客户端清单来自 data/clientRegistry.js（唯一数据源），
+ * 教程正文来自知识库（后台可维护），本页不再硬编码任何教程文案。
+ * 兼容旧深链 /tutorials?client=xxx 与 /help?client=xxx（由路由层重定向而来）。
+ */
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { ArrowDown } from '@element-plus/icons-vue'
+import { cachedAPI } from '@/utils/api'
+import { openClientDownload } from '@/utils/clientDownload'
+import {
+  CLIENT_PLATFORMS,
+  clientsForPlatform,
+  clientSupportsArchSplit,
+  getClientById,
+  normalizeClientId,
+} from '@/data/clientRegistry'
+import { loadTutorialContent } from '@/utils/knowledge'
+import { MONEYFLY_BRAND, isMoneyflyVisible, readMoneyflyConfig } from '@/utils/moneyflyClient'
+import MoneyFlyDownloadPanel from '@/components/moneyfly/MoneyFlyDownloadPanel.vue'
+import TutorialContent from '@/components/tutorials/TutorialContent.vue'
+
+const route = useRoute()
+
 const activeTab = ref('windows')
 const softwareConfig = ref({})
-const subscription = ref({})
-const softwareVersions = ref({})
-const downloadingKey = ref('')
+const platforms = CLIENT_PLATFORMS
 
-const getResponseData = (response) => {
-  if (!response?.data) return {}
-  if (response.data.success === false) return {}
-  return response.data.data || response.data || {}
-}
+const moneyflyBrand = MONEYFLY_BRAND
+const moneyflyConfig = computed(() => readMoneyflyConfig(softwareConfig.value || {}))
+const moneyflyVisible = computed(() => isMoneyflyVisible(moneyflyConfig.value))
+const moneyflyDescription = computed(() => moneyflyConfig.value.note || moneyflyBrand.intro)
+const moneyflySupports = (platformKey) => ['windows', 'macos', 'android'].includes(platformKey)
+const moneyflyPlatformKeys = (platformKey) =>
+  platformKey === 'macos' ? 'macos_arm,macos_intel' : platformKey
 
-const loadRuntimeData = async () => {
-  const [softwareResult, subscriptionResult] = await Promise.allSettled([
-    cachedAPI.getSoftwareConfig(),
-    cachedAPI.getUserSubscription()
-  ])
-  if (softwareResult.status === 'fulfilled') {
-    softwareConfig.value = getResponseData(softwareResult.value)
-  }
-  if (subscriptionResult.status === 'fulfilled') {
-    subscription.value = getResponseData(subscriptionResult.value)
-  }
+// 客户端列表：注册表里排除自研（自研单独置顶展示）
+const clientsOf = (platformKey) => clientsForPlatform(platformKey).filter(c => !c.official)
+
+// ===== 教程正文（按需加载）=====
+const tutorialOpen = ref(new Set())
+const tutorialCache = ref({})
+const tutorialLoading = ref('')
+
+const isTutorialOpen = (id) => tutorialOpen.value.has(id)
+const tutorialState = (id) => tutorialCache.value[id] || { status: 'loading' }
+
+async function ensureTutorial(client) {
+  if (!client || tutorialCache.value[client.id]) return
+  tutorialLoading.value = client.id
+  tutorialCache.value = { ...tutorialCache.value, [client.id]: { status: 'loading' } }
   try {
-    const vRes = await fetch('/api/v1/software/versions')
-    const vData = await vRes.json()
-    const map = {}
-    ;(vData?.data?.list || []).forEach(item => {
-      map[item.key] = item.version
-    })
-    softwareVersions.value = map
-  } catch (error) {
-    // 版本信息可选
-  }
-}
-
-const downloadClient = async (configKey, githubKey = null, fallbackUrl = '') => {
-  const keys = Array.isArray(configKey) ? configKey : [configKey]
-  if (!keys.length) return
-  const primaryKey = keys[0]
-  downloadingKey.value = primaryKey
-  try {
-    const configuredUrl = String(pickConfiguredUrl(keys, softwareConfig.value || {}) || '').trim()
-    if (configuredUrl) {
-      safeOpen(resolvePanDownloadUrl(configuredUrl))
-      ElMessage.success('已打开下载页面')
-      return
+    const tutorial = await loadTutorialContent(client)
+    tutorialCache.value = {
+      ...tutorialCache.value,
+      [client.id]: tutorial
+        ? { status: 'ready', title: tutorial.title, summary: tutorial.summary, content: tutorial.content }
+        : { status: 'missing' },
     }
-    if (fallbackUrl) {
-      safeOpen(fallbackUrl)
-      ElMessage.success('已打开下载页面')
-      return
-    }
-    if (githubKey) {
-      ElMessage.info('正在获取最新下载链接...')
-      const { getClientDownloadUrl, getClientReleasesUrl } = await import('@/utils/githubDownload')
-      try {
-        const downloadUrl = await getClientDownloadUrl(githubKey, softwareConfig.value || {})
-        safeOpen(downloadUrl)
-        ElMessage.success('已打开下载页面')
-      } catch (error) {
-        const releasesUrl = getClientReleasesUrl(githubKey)
-        if (releasesUrl) {
-          safeOpen(releasesUrl)
-          ElMessage.warning('已打开发布页面，请手动选择下载')
-          return
-        }
-        throw error
-      }
-      return
-    }
-    ElMessage.error('下载链接未配置，请联系管理员')
-  } catch (error) {
-    console.error('下载失败:', error)
-    ElMessage.error('下载失败，请稍后重试')
+  } catch {
+    tutorialCache.value = { ...tutorialCache.value, [client.id]: { status: 'missing' } }
   } finally {
-    downloadingKey.value = ''
+    tutorialLoading.value = ''
   }
 }
 
-// versionFor 返回指定配置键对应的已同步版本号（用于下载按钮旁展示）
-const versionFor = (configKey) => {
-  const keys = Array.isArray(configKey) ? configKey : [configKey]
-  const key = keys.find(k => softwareVersions.value?.[k])
-  return key ? softwareVersions.value[key] || '' : ''
+async function toggleTutorial(id) {
+  const client = getClientById(id)
+  const next = new Set(tutorialOpen.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+    await ensureTutorial(client)
+  }
+  tutorialOpen.value = next
 }
 
-const copySubscription = async (type = 'universal') => {
-  const url = type === 'clash'
-    ? subscription.value?.clash_url || subscription.value?.universal_url
-    : subscription.value?.universal_url || subscription.value?.clash_url
-  await copyText(url, '订阅链接已复制')
+// ===== 下载 =====
+const download = async (client, platformKey, arch = null) => {
+  await openClientDownload(client, {
+    softwareConfig: softwareConfig.value,
+    os: platformKey,
+    arch,
+  })
 }
 
-const openSubscriptionQr = () => {
-  router.push('/subscription')
-  ElMessage.info('请在订阅管理中查看真实订阅二维码')
+// ===== 初始化：系统识别 + 深链 =====
+function detectPlatformTab() {
+  const ua = (navigator.userAgent || '').toLowerCase()
+  if (ua.includes('android')) return 'android'
+  if (/iphone|ipad|ipod/.test(ua)) return 'ios'
+  if (ua.includes('mac os') || ua.includes('macintosh')) return 'macos'
+  return 'windows'
 }
 
-onMounted(loadRuntimeData)
+function applyClientQuery() {
+  const id = normalizeClientId(route.query.client)
+  const client = id ? getClientById(id) : null
+  if (!client) return
+  activeTab.value = client.platforms[0]
+  toggleTutorial(client.id)
+}
+
+onMounted(async () => {
+  activeTab.value = detectPlatformTab()
+  try {
+    const res = await cachedAPI.getSoftwareConfig()
+    if (res?.data?.success !== false) softwareConfig.value = res?.data?.data || {}
+  } catch {
+    softwareConfig.value = {}
+  }
+  applyClientQuery()
+})
+
+watch(() => route.query.client, () => applyClientQuery())
 </script>
+
 <style scoped>
 .tutorial-container {
-  padding: 0;
-}
-.breadcrumb {
-  margin-bottom: 12px;
-  color: #606266;
-  font-size: 13px;
-}
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 14px;
-  padding: 16px;
-  background: #fff;
-  border: 1px solid #dcdfe6;
-  border-radius: 8px;
-}
-.page-title h1 {
-  margin: 0;
-  color: #303133;
-  font-size: 22px;
-  line-height: 1.25;
+  padding-bottom: 24px;
 }
 .page-title p {
   margin: 6px 0 0;
-  color: #606266;
-  line-height: 1.5;
+  color: #909399;
+  font-size: 13px;
 }
-.card {
-  background: #fff;
-  border: 1px solid #dcdfe6;
+.official-block {
+  border: 1px solid var(--el-color-primary-light-5);
   border-radius: 8px;
-  overflow: hidden;
-}
-.tutorial-tabs :deep(.el-tabs__header) {
-  margin: 0;
-  border-bottom: 1px solid #ebeef5;
-}
-.tutorial-tabs :deep(.el-tabs__nav-wrap) {
-  padding: 0 16px;
-}
-.tutorial-tabs :deep(.el-tabs__content) {
   padding: 16px;
+  margin-bottom: 18px;
+  background: linear-gradient(180deg, var(--el-color-primary-light-9), transparent 70%);
 }
-.tutorial-client-grid {
-  display: grid;
-  gap: 14px;
-  margin-bottom: 14px;
+.official-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.official-version {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--el-text-color-secondary);
+}
+.official-intro {
+  margin: 8px 0 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--el-text-color-regular);
+}
+.official-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.client-row-block {
+  border-bottom: 1px solid #f0f2f5;
+  padding: 12px 0;
+}
+.client-row-block:last-child {
+  border-bottom: 0;
 }
 .client-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 14px;
-  border: 1px solid #dcdfe6;
-  border-radius: 8px;
-  background: #fff;
-}
-.client-title {
-  color: #303133;
-  font-weight: 700;
-}
-.item-meta {
-  margin-top: 6px;
-  color: #909399;
-  font-size: 12px;
-  line-height: 1.5;
-}
-.button-row {
-  display: flex;
+  gap: 12px;
   flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
+}
+.client-info {
+  min-width: 0;
+}
+.tutorial-body {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  background: #fafafa;
 }
 @media (max-width: 768px) {
-  .tutorial-tabs :deep(.el-tabs__nav-wrap) {
-    padding: 0 12px;
-  }
-  .tutorial-tabs :deep(.el-tabs__item) {
-    padding: 0 10px;
-  }
-  .tutorial-tabs :deep(.el-tabs__content) {
-    padding: 0 12px 12px;
-  }
   .client-row {
-    display: grid;
+    align-items: flex-start;
   }
   .button-row {
-    justify-content: flex-start;
+    width: 100%;
   }
 }
 </style>
