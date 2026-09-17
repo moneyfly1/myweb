@@ -133,13 +133,10 @@ func applySystemTaskTypeFilter(query *gorm.DB, taskType string) *gorm.DB {
 func applySystemLogsFilters(query *gorm.DB, c *gin.Context, includeLevel bool) *gorm.DB {
 	if includeLevel {
 		if logLevel := getRequestedLogLevel(c); logLevel != "" {
-			switch logLevel {
-			case "error":
-				query = query.Where("(audit_logs.response_status >= ? OR audit_logs.action_type = ?)", 400, "system_error")
-			case "warning":
-				query = query.Where("audit_logs.response_status >= ? AND audit_logs.response_status < ?", 300, 400)
-			case "info":
-				query = query.Where("(audit_logs.response_status < ? OR audit_logs.response_status IS NULL) AND audit_logs.action_type != ?", 300, "system_error")
+			// 级别规则见 getLogLevel / logLevelWhere：筛选与列表徽标必须同一套规则，
+			// 否则会出现"徽标显示警告、点错误卡片却列出它"这类自相矛盾
+			if where := logLevelWhere(logLevel); where != "" {
+				query = query.Where(where)
 			}
 		}
 	}
@@ -238,6 +235,47 @@ func getLocationDisplay(location sql.NullString, ip sql.NullString) (string, map
 // 核心日志逻辑
 // ==========================================
 
+// ===== 日志级别语义：唯一事实来源 =====
+//
+// 级别由 action_type 语义（安全事件、业务日志、系统错误）结合 response_status 判定，
+// 见 getLogLevel。列表筛选与统计卡必须使用同一规则——
+// 历史缺陷：筛选/统计只用 response_status 阈值判断，而列表徽标用语义判断，导致
+//   - business_* + status=400：徽标显示"警告"，点"错误"卡片却列出它
+//   - security_login_failed + status=200：徽标显示"错误"，点"错误"卡片找不到它
+// 因此下面三组清单既供 getLogLevel 使用，也用于生成等价的 SQL 谓词（logLevelWhereXxx）。
+
+// securityInfoActions 安全类中语义为"信息"的动作
+var securityInfoActions = []string{
+	"security_login_success", "security_login_attempt", "security_admin_login_success",
+	"security_register_success", "security_user_unlock", "security_user_enabled",
+	"security_password_reset_requested",
+}
+
+// securityErrorActions 安全类中语义为"错误"的动作
+var securityErrorActions = []string{
+	"security_login_failed", "security_login_blocked", "security_ip_blocked",
+	"security_register_ip_blocked",
+}
+
+// securityWarningActions 安全类中语义为"警告"的动作
+var securityWarningActions = []string{
+	"security_login_rate_limit", "security_register_rate_limit", "security_verify_code_rate_limit",
+	"security_admin_login_as", "security_user_disabled",
+	"security_password_change_failed", "security_reset_code_failed",
+	"security_auth_token_invalid", "security_auth_token_blacklisted", "security_admin_forbidden",
+	"security_csrf_validation_failed", "security_refresh_token_invalid", "security_verification_code_failed",
+	"security_admin_reset_password",
+}
+
+// allSecurityClassifiedActions 三组清单的并集，用于判断某条安全日志是否已被显式分类
+func allSecurityClassifiedActions() []string {
+	all := make([]string, 0, len(securityInfoActions)+len(securityErrorActions)+len(securityWarningActions))
+	all = append(all, securityInfoActions...)
+	all = append(all, securityErrorActions...)
+	all = append(all, securityWarningActions...)
+	return all
+}
+
 func getLogLevel(log models.AuditLog, useCN bool) string {
 	actionType := log.ActionType
 
@@ -264,22 +302,16 @@ func getLogLevel(log models.AuditLog, useCN bool) string {
 	}
 
 	if strings.HasPrefix(actionType, "security_") {
-		switch actionType {
-		case "security_login_success", "security_login_attempt", "security_admin_login_success",
-			"security_register_success", "security_user_unlock", "security_user_enabled",
-			"security_password_reset_requested":
+		switch {
+		case containsAction(securityInfoActions, actionType):
 			return ret("信息", "info")
-		case "security_login_failed", "security_login_blocked", "security_ip_blocked",
-			"security_register_ip_blocked":
+		case containsAction(securityErrorActions, actionType):
 			return ret("错误", "error")
-		case "security_login_rate_limit", "security_register_rate_limit", "security_verify_code_rate_limit",
-			"security_admin_login_as", "security_user_disabled",
-			"security_password_change_failed", "security_reset_code_failed",
-			"security_auth_token_invalid", "security_auth_token_blacklisted", "security_admin_forbidden",
-			"security_csrf_validation_failed", "security_refresh_token_invalid", "security_verification_code_failed",
-			"security_admin_reset_password":
+		case containsAction(securityWarningActions, actionType):
 			return ret("警告", "warning")
 		default:
+			// 未显式分类的安全事件：按描述里的严重度标记判定，
+			// 都没有则落到下方通用规则（与 SQL 谓词保持一致）
 			if log.ActionDescription.Valid {
 				desc := log.ActionDescription.String
 				if strings.Contains(desc, "[CRITICAL]") || strings.Contains(desc, "[HIGH]") {
@@ -307,6 +339,72 @@ func getLogLevel(log models.AuditLog, useCN bool) string {
 		return ret("警告", "warning")
 	}
 	return ret("信息", "info")
+}
+
+func containsAction(list []string, action string) bool {
+	for _, item := range list {
+		if item == action {
+			return true
+		}
+	}
+	return false
+}
+
+// sqlInList 生成 "(a, b, c)" 形式的内联值列表（值来自代码常量，不含外部输入）
+func sqlInList(list []string) string {
+	quoted := make([]string, 0, len(list))
+	for _, item := range list {
+		quoted = append(quoted, "'"+item+"'")
+	}
+	return "(" + strings.Join(quoted, ", ") + ")"
+}
+
+// logLevelWhere 返回与 getLogLevel 语义等价的 SQL 谓词，供筛选与统计使用。
+// 规则来源与 getLogLevel 共用同一组常量，避免两处规则再次分叉。
+func logLevelWhere(level string) string {
+	var (
+		securityUnclassified = "audit_logs.action_type LIKE 'security_%' AND audit_logs.action_type NOT IN "
+		noSeverityMarker     = "(COALESCE(audit_logs.action_description, '') NOT LIKE '%[CRITICAL]%' " +
+			"AND COALESCE(audit_logs.action_description, '') NOT LIKE '%[HIGH]%' " +
+			"AND COALESCE(audit_logs.action_description, '') NOT LIKE '%[MEDIUM]%')"
+		hasHighMarker = "(audit_logs.action_description LIKE '%[CRITICAL]%' " +
+			"OR audit_logs.action_description LIKE '%[HIGH]%')"
+		hasMediumMarker = "audit_logs.action_description LIKE '%[MEDIUM]%'"
+		// 已被显式分类的安全动作清单（与 getLogLevel 共用）
+		classifiedList = "audit_logs.action_type IN " + sqlInList(allSecurityClassifiedActions())
+		// 通用规则：非 business_/security_/system_error/login 的日志按状态码判定
+		genericScope = "(audit_logs.action_type NOT LIKE 'business_%' " +
+			"AND audit_logs.action_type NOT LIKE 'security_%' " +
+			"AND audit_logs.action_type <> 'system_error' " +
+			"AND audit_logs.action_type <> 'login')"
+	)
+	_ = classifiedList
+
+	switch level {
+	case "error":
+		return "(" +
+			"audit_logs.action_type = 'system_error'" +
+			" OR (audit_logs.action_type LIKE 'business_%' AND COALESCE(audit_logs.response_status, 0) >= 500)" +
+			" OR audit_logs.action_type IN " + sqlInList(securityErrorActions) +
+			" OR (" + securityUnclassified + sqlInList(allSecurityClassifiedActions()) + " AND " + hasHighMarker + ")" +
+			" OR (" + securityUnclassified + sqlInList(allSecurityClassifiedActions()) + " AND " + noSeverityMarker + " AND COALESCE(audit_logs.response_status, 0) >= 400)" +
+			" OR (" + genericScope + " AND COALESCE(audit_logs.response_status, 0) >= 400)" +
+			")"
+	case "warning":
+		return "(" +
+			"(audit_logs.action_type LIKE 'business_%' AND COALESCE(audit_logs.response_status, 0) >= 400 AND COALESCE(audit_logs.response_status, 0) < 500)" +
+			" OR audit_logs.action_type IN " + sqlInList(securityWarningActions) +
+			" OR (" + securityUnclassified + sqlInList(allSecurityClassifiedActions()) + " AND " + hasMediumMarker + ")" +
+			" OR (" + securityUnclassified + sqlInList(allSecurityClassifiedActions()) +
+			" AND " + noSeverityMarker + " AND COALESCE(audit_logs.response_status, 0) >= 300 AND COALESCE(audit_logs.response_status, 0) < 400)" +
+			" OR (" + genericScope + " AND COALESCE(audit_logs.response_status, 0) >= 300 AND COALESCE(audit_logs.response_status, 0) < 400)" +
+			")"
+	case "info":
+		// 信息级 = 既不属于 error 也不属于 warning
+		return "(NOT " + logLevelWhere("error") + " AND NOT " + logLevelWhere("warning") + ")"
+	default:
+		return ""
+	}
 }
 
 // batchFormatAuditLogs 批量格式化审计日志，避免逐条查用户名的 N+1 问题
@@ -818,21 +916,21 @@ func GetLogsStats(c *gin.Context) {
 	errorQuery := db.Model(&models.AuditLog{})
 	errorQuery = applySystemLogsBaseScope(errorQuery)
 	errorQuery = applySystemLogsFilters(errorQuery, c, false)
-	if err := errorQuery.Where("(audit_logs.response_status >= ? OR audit_logs.action_type = ?)", 400, "system_error").Count(&stats.Error).Error; err != nil {
+	if err := errorQuery.Where(logLevelWhere("error")).Count(&stats.Error).Error; err != nil {
 		utils.LogError("GetLogsStats: count error failed", err, nil)
 	}
 
 	warningQuery := db.Model(&models.AuditLog{})
 	warningQuery = applySystemLogsBaseScope(warningQuery)
 	warningQuery = applySystemLogsFilters(warningQuery, c, false)
-	if err := warningQuery.Where("audit_logs.response_status >= ? AND audit_logs.response_status < ?", 300, 400).Count(&stats.Warning).Error; err != nil {
+	if err := warningQuery.Where(logLevelWhere("warning")).Count(&stats.Warning).Error; err != nil {
 		utils.LogError("GetLogsStats: count warning failed", err, nil)
 	}
 
 	infoQuery := db.Model(&models.AuditLog{})
 	infoQuery = applySystemLogsBaseScope(infoQuery)
 	infoQuery = applySystemLogsFilters(infoQuery, c, false)
-	if err := infoQuery.Where("(audit_logs.response_status < ? OR audit_logs.response_status IS NULL) AND audit_logs.action_type != ?", 300, "system_error").Count(&stats.Info).Error; err != nil {
+	if err := infoQuery.Where(logLevelWhere("info")).Count(&stats.Info).Error; err != nil {
 		utils.LogError("GetLogsStats: count info failed", err, nil)
 	}
 
