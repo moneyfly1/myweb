@@ -293,27 +293,14 @@ func ParseIP(ip string) string {
 // NormalizeIP 规范化 IP 字符串：去除 host:port、::1→127.0.0.1、去 ::ffff: 前缀。
 // 与 ParseIP 的区别：对无法解析的字符串原样返回（而非丢弃），适合展示场景。
 func NormalizeIP(ip string) string {
-	ip = strings.TrimSpace(ip)
-	if ip == "" {
-		return ""
-	}
-
-	if host, _, err := net.SplitHostPort(ip); err == nil {
-		ip = host
-	}
-
-	if ip == "::1" {
-		return "127.0.0.1"
-	}
-
-	if strings.HasPrefix(ip, "::ffff:") {
-		ipv4 := strings.TrimPrefix(ip, "::ffff:")
-		if parsedIPv4 := net.ParseIP(ipv4); parsedIPv4 != nil && parsedIPv4.To4() != nil {
-			return ipv4
-		}
-	}
-
-	return ip
+	// 统一委托 netutil.Normalize（全站唯一的 IP 规范化实现）。
+	// 此前这里是一份手写实现，与 netutil.Normalize 行为不一致：
+	//   - "localhost" 这里原样保留，netutil 归一为 127.0.0.1；
+	//   - IPv6 这里原样返回（大小写/压缩形式保持库里的原始写法），
+	//     netutil 会规范成标准压缩小写形式。
+	// 结果是同一个 IP 在"用户详情抽屉"（走本函数）与其它页面（走 netutil）
+	// 显示不一致，故统一到 netutil。
+	return netutil.Normalize(ip, false)
 }
 
 // FormatIP 规范化 IP 并处理空值（空值返回 "-"），用于前端展示。

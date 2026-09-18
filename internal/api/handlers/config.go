@@ -1051,18 +1051,40 @@ func UpdateGeoIPDatabase(c *gin.Context) {
 		return
 	}
 
-	// 重新初始化 GeoIP
-	if err := geoip.InitGeoIP(""); err != nil {
+	// 重新初始化 GeoIP：必须显式加载"刚下载的这份"。
+	// 此前传空路径，而 InitGeoIP("") 会按硬编码候选顺序扫描（DB-IP 排第一），
+	// 于是下载 GeoLite2 之后实际加载的仍是 dbip-city-lite.mmdb ——
+	// 管理员以为换成了 GeoLite2，位置却继续按另一份库解析（曾表现为位置变英文）。
+	reloadPath := targetPath
+	if err := geoip.InitGeoIP(reloadPath); err != nil {
 		utils.CreateAuditLogSimple(c, "update_geoip_database", "settings", 0, fmt.Sprintf("管理员操作: 更新 GeoIP 数据库 (%s, 重载失败)", req.Type))
 		utils.SuccessResponse(c, http.StatusOK, "更新成功，但重载失败: "+err.Error(), nil)
 		return
 	}
 
-	utils.CreateAuditLogSimple(c, "update_geoip_database", "settings", 0, fmt.Sprintf("管理员操作: 更新 GeoIP 数据库 (%s, %d bytes)", req.Type, written))
-	utils.SuccessResponse(c, http.StatusOK, "GeoIP 数据库更新成功", gin.H{
-		"type":     req.Type,
-		"filename": filename,
-		"size":     formatFileSize(written),
+	// 把实际生效的库写回配置，保证"设置页显示当前使用"与真实加载一致
+	var geoipConf models.SystemConfig
+	db.Where("key = ? AND category = ?", "geoip_database_path", CatSystem).FirstOrInit(&geoipConf)
+	geoipConf.Key = "geoip_database_path"
+	geoipConf.Category = CatSystem
+	// 与 GetGeoIPStatus 候选清单里的写法保持一致（"./xxx.mmdb"），
+	// 否则设置页比较 db.Path == geoip_database_path 会失配、无法标出"当前使用"
+	geoipConf.Value = "./" + filename
+	if err := db.Save(&geoipConf).Error; err != nil {
+		log.Printf("failed to persist geoip_database_path: %v", err)
+	}
+
+	// 换库后清空位置缓存，否则同一 IP 在 24 小时内仍返回旧库的位置
+	if err := geoip.ClearLocationCaches(); err != nil {
+		log.Printf("failed to clear location caches after geoip update: %v", err)
+	}
+
+	utils.CreateAuditLogSimple(c, "update_geoip_database", "settings", 0, fmt.Sprintf("管理员操作: 更新 GeoIP 数据库 (%s, %d bytes, 已生效: %s)", req.Type, written, filename))
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("GeoIP 数据库更新成功，已切换为 %s", filename), gin.H{
+		"type":            req.Type,
+		"filename":        filename,
+		"size":            formatFileSize(written),
+		"active_database": filename,
 	})
 }
 
@@ -1213,6 +1235,12 @@ func SwitchGeoIPDatabase(c *gin.Context) {
 	if err := geoip.InitGeoIP(req.Path); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "切换数据库失败", err)
 		return
+	}
+
+	// 换库后清空位置缓存（Redis geoip:* TTL 24h + 进程内 ping0 缓存），
+	// 否则切换后同一 IP 仍会返回旧库的位置，看起来像"切换没生效/位置不准"
+	if err := geoip.ClearLocationCaches(); err != nil {
+		log.Printf("failed to clear location caches after geoip switch: %v", err)
 	}
 
 	utils.CreateAuditLogSimple(c, "switch_geoip_database", "settings", 0, fmt.Sprintf("管理员操作: 切换 GeoIP 数据库到 %s", req.Path))

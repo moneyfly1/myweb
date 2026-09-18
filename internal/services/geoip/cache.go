@@ -3,6 +3,7 @@ package geoip
 import (
 	"cboard-go/internal/core/cache"
 	"cboard-go/internal/core/netutil"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -111,6 +112,48 @@ func LocationDisplayOf(country, city, region string) string {
 		return country + ", " + region
 	}
 	return country
+}
+
+// ClearLocationCaches 清空地理位置缓存（Redis 的 geoip:* + 进程内 ping0 缓存）。
+//
+// 切换 / 更新 GeoIP 数据库后必须调用：Redis 里的 geoip 结果缓存 TTL 是 24 小时，
+// 不清的话同一个 IP 在换库后最长 24 小时仍返回旧库的位置
+// （表现为"位置显示成另一个地方 / 还是旧库的中文或英文风格"）。
+func ClearLocationCaches() error {
+	ClearPing0Cache()
+
+	if !cache.IsRedisEnabled() {
+		return nil
+	}
+	client := cache.GetRedisClient()
+	if client == nil {
+		return nil
+	}
+
+	ctx := context.Background()
+	var cursor uint64
+	deleted := 0
+	for {
+		keys, next, err := client.Scan(ctx, cursor, "geoip:*", 200).Result()
+		if err != nil {
+			return fmt.Errorf("扫描 geoip 缓存失败: %w", err)
+		}
+		if len(keys) > 0 {
+			if err := client.Del(ctx, keys...).Err(); err != nil {
+				return fmt.Errorf("删除 geoip 缓存失败: %w", err)
+			}
+			deleted += len(keys)
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+
+	if deleted > 0 {
+		log.Printf("已清空 %d 条地理位置缓存", deleted)
+	}
+	return nil
 }
 
 // GetLocationWithFallbackCached 带缓存的详细地理位置查询（包含 Fallback）
