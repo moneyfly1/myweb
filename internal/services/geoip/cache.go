@@ -100,18 +100,57 @@ func LocationDisplay(raw string) string {
 // LocationDisplayOf 由结构化字段拼装展示文本 —— 全站唯一的"国家, 城市"拼接规则。
 // 此前后端 4 处、前端 3 处各写一遍，其中统计模块用了 " - " 分隔符，
 // 导致同一地区在列表显示"中国, 杭州"、在地区统计显示"中国 - 杭州"。
+//
+// 展示前会对字段做一次清洗 —— 因为**库里已经存了历史值**，光改解析规则救不了老数据：
+//   - 城市名去掉 "(Downtown)" 之类括号补充与 " City"/" Shi" 后缀；
+//   - 中国的位置只显示中文：城市不是中文就不用它、退回省份；省份也不是中文就只留国家。
+//     于是"中国, 河南 Guancheng""中国, 天津 Youyilu"显示为"中国, 河南""中国, 天津"，
+//     位置列不再混着英文（历史 835 条中英混排记录靠这一步兜底）。
 func LocationDisplayOf(country, city, region string) string {
 	country = strings.TrimSpace(country)
 	if country == "" {
 		return ""
 	}
-	if city = strings.TrimSpace(city); city != "" {
+
+	city = cleanCityName(city)
+	region = strings.TrimSpace(region)
+
+	if isChinaCountry(country) {
+		// 历史存量值里的城市/省份往往是英文（当年存的是英文库的结果），
+		// 这里就地翻译一次：能翻成中文的用中文（"Guangzhou" → "广州"），
+		// 翻不出来且不是纯中文的（"河南 Guancheng" 这类中英混排）才丢弃，
+		// 由下一级兜底 —— 城市→省份→国家，保证中国的位置里不出现英文。
+		if city != "" && !isChineseName(city) {
+			if zhCity := translateCityName(city); zhCity != "" {
+				city = zhCity
+			} else {
+				city = ""
+			}
+		}
+		if region != "" && !isChineseName(region) {
+			region = translateRegionName(region)
+			if !isChineseName(region) {
+				region = ""
+			}
+		}
+	}
+
+	if city != "" {
 		return country + ", " + city
 	}
-	if region = strings.TrimSpace(region); region != "" {
+	if region != "" {
 		return country + ", " + region
 	}
 	return country
+}
+
+// isChinaCountry 判断国家字段是否为中国（后端存中文"中国"，同时兼容英文与代码写法）
+func isChinaCountry(country string) bool {
+	switch strings.TrimSpace(country) {
+	case "中国", "China", "CN", "中国香港", "中国澳门", "中国台湾":
+		return true
+	}
+	return false
 }
 
 // ClearLocationCaches 清空地理位置缓存（Redis 的 geoip:* + 进程内 ping0 缓存）。
