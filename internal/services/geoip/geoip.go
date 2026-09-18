@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/ip2location/ip2location-go/v9"
 	"github.com/oschwald/geoip2-golang"
@@ -242,10 +243,7 @@ func getLocationFromGeoIP2(parsedIP net.IP) (*LocationInfo, error) {
 		location.City = record.City.Names["en"]
 	}
 
-	// 翻译常见英文城市名为中文
-	if location.CountryCode == "CN" && location.City != "" {
-		location.City = translateCityName(location.City, location.Region)
-	}
+	finalizeLocationNames(location)
 
 	if record.Location.Latitude != 0 || record.Location.Longitude != 0 {
 		location.Latitude = record.Location.Latitude
@@ -259,8 +257,96 @@ func getLocationFromGeoIP2(parsedIP net.IP) (*LocationInfo, error) {
 	return location, nil
 }
 
-// translateCityName 将英文城市名翻译为中文
-func translateCityName(cityEN string, regionEN string) string {
+// finalizeLocationNames 位置字段的最终命名规则 —— 两条解析路径（GeoIP2 mmdb /
+// IP2Location）共用同一份实现，避免"同一 IP 在不同库/不同路径下命名规则不同"。
+//
+// 规则（方案：位置列不出现中英混排）：
+//  1. 城市名统一清理：去掉 "(Downtown)" 这类括号补充与 " City"/" Shi" 后缀
+//     —— 此前只在中文翻译内部做，导致非中国城市显示成
+//     "美国, Los Angeles (Downtown Los Angeles)"；
+//  2. 中国 IP：省份翻成中文；城市能翻成中文就用中文，翻不出来就丢弃英文城市名，
+//     交给展示层退回中文省份（"中国, 河南 Guancheng" → "中国, 河南"）；
+//     省份也翻不出中文时一并丢弃，只留国家，避免位置列里蹦出英文；
+//  3. 其它国家：保留清理后的当地名称（本来就是英文，属正常展示）。
+func finalizeLocationNames(location *LocationInfo) {
+	if location == nil {
+		return
+	}
+
+	location.City = cleanCityName(location.City)
+
+	if location.CountryCode != "CN" {
+		return
+	}
+
+	if location.Region != "" {
+		location.Region = translateRegionName(location.Region)
+		if !isChineseName(location.Region) {
+			location.Region = ""
+		}
+	}
+
+	if location.City != "" {
+		switch {
+		case isChineseName(location.City):
+			// 已经是中文（如 GeoLite2 的 zh-CN 城市名"北京"），原样保留
+		default:
+			if zhCity := translateCityName(location.City); zhCity != "" {
+				location.City = zhCity
+			} else {
+				location.City = ""
+			}
+		}
+	}
+}
+
+// cleanCityName 清理城市名：去掉括号补充与常见英文后缀。
+// 各国通用（此前只在 translateCityName 内部做，导致非中国城市带着括号显示）。
+func cleanCityName(city string) string {
+	city = strings.TrimSpace(city)
+	// 去掉括号补充，例如 "Jinrongjie (Xicheng District)"、"Singapore (Pioneer)"
+	if idx := strings.Index(city, "("); idx > 0 {
+		city = strings.TrimSpace(city[:idx])
+	}
+	// 去掉常见后缀
+	city = strings.TrimSpace(strings.TrimSuffix(city, " City"))
+	city = strings.TrimSpace(strings.TrimSuffix(city, " Shi"))
+	return city
+}
+
+// containsCJK 判断是否含中文字符
+func containsCJK(s string) bool {
+	for _, r := range s {
+		if unicode.Is(unicode.Han, r) {
+			return true
+		}
+	}
+	return false
+}
+
+// containsLatinLetter 判断是否含拉丁字母
+func containsLatinLetter(s string) bool {
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			return true
+		}
+	}
+	return false
+}
+
+// isChineseName 判断是否为"纯中文名"。
+// 注意不能只用 containsCJK：历史值 "河南 Guancheng" 含中文，但它是
+// "中文省 + 英文城市"的中英混排，必须算作"没翻出来"，否则清理不掉。
+// 反过来"北京"这类真正的中文名（GeoLite2 的 zh-CN 名）必须保留。
+func isChineseName(s string) bool {
+	return containsCJK(s) && !containsLatinLetter(s)
+}
+
+// translateCityName 将英文城市名翻译为中文；表中没有时返回空串。
+//
+// 空串表示"翻不出来"：调用方据此丢弃英文城市名、退回中文省份，
+// 而不是拼出"河南 Guancheng"这种中英混排（历史上就是这么拼的）。
+func translateCityName(cityEN string) string {
 	// 常见中国城市英文到中文的映射
 	cityMap := map[string]string{
 		"Beijing": "北京", "Shanghai": "上海", "Guangzhou": "广州", "Shenzhen": "深圳",
@@ -278,39 +364,11 @@ func translateCityName(cityEN string, regionEN string) string {
 		"Zhu Cheng": "诸城", "Jinrongjie": "金融街",
 	}
 
-	// 清理城市名称
-	cityEN = strings.TrimSpace(cityEN)
-
-	// 移除括号内容 (例如: "Jinrongjie (Xicheng District)" -> "Jinrongjie")
-	if idx := strings.Index(cityEN, "("); idx > 0 {
-		cityEN = strings.TrimSpace(cityEN[:idx])
-	}
-
-	// 优先查找完整匹配
+	cityEN = cleanCityName(cityEN)
 	if zhCity, ok := cityMap[cityEN]; ok {
 		return zhCity
 	}
-
-	// 移除常见后缀再查找
-	cleanCity := strings.TrimSuffix(cityEN, " City")
-	cleanCity = strings.TrimSuffix(cleanCity, " Shi")
-	cleanCity = strings.TrimSpace(cleanCity)
-
-	if zhCity, ok := cityMap[cleanCity]; ok {
-		return zhCity
-	}
-
-	// 如果有地区信息，翻译地区
-	if regionEN != "" {
-		zhRegion := translateRegionName(regionEN)
-		if zhRegion != regionEN {
-			// 地区翻译成功，返回"地区 城市"
-			return zhRegion + " " + cleanCity
-		}
-	}
-
-	// 无法翻译，返回清理后的原文
-	return cleanCity
+	return ""
 }
 
 func getLocationFromIP2Location(ipAddress string) (*LocationInfo, error) {
@@ -352,13 +410,7 @@ func getLocationFromIP2Location(ipAddress string) (*LocationInfo, error) {
 		location.Country = location.CountryCode
 	}
 
-	// 翻译中国城市名为中文
-	if location.CountryCode == "CN" && location.City != "" {
-		location.City = translateCityName(location.City, location.Region)
-		if location.Region != "" {
-			location.Region = translateRegionName(location.Region)
-		}
-	}
+	finalizeLocationNames(location)
 
 	return location, nil
 }

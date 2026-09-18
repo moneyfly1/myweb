@@ -2,32 +2,29 @@ package geoip
 
 import "testing"
 
-// TestTranslateCityNameRealData 用生产库（DB-IP City Lite）真实返回的名称，
-// 固化"城市名翻译"的现状，便于判断"位置不准"的成因。
+// TestTranslateCityNameReturnsEmptyWhenUnknown 翻译表查不到时返回空串。
 //
-// DB-IP City Lite 只有英文名（其 city/subdivision 没有 zh-CN 键），因此中文名
-// 完全依赖这张手写映射表；表里没有的城市会退化成"中文省 + 英文城市"，
-// 在界面上就表现为"中国, 河南 Guancheng""中国, 天津 Youyilu"这类中英混排。
-func TestTranslateCityNameRealData(t *testing.T) {
+// 空串表示"翻不出来"：调用方据此丢弃英文城市名、退回中文省份，
+// 而不是像历史实现那样拼出"河南 Guancheng"这种中英混排。
+// （DB-IP City Lite 只有英文名，中文完全依赖这张手写映射表。）
+func TestTranslateCityNameReturnsEmptyWhenUnknown(t *testing.T) {
 	cases := []struct {
-		cityEN   string
-		regionEN string
-		want     string
-		why      string
+		cityEN string
+		want   string
+		why    string
 	}{
-		{"Guangzhou", "Guangdong", "广州", "表内城市：正常翻成中文"},
-		{"Zhu Cheng City", "Shandong", "诸城", "去掉 City 后缀后命中表内特例"},
-		{"Jinrongjie (Xicheng District)", "Beijing", "金融街", "去括号后命中表内特例"},
-		{"Zhengzhou", "Henan", "郑州", "表内城市"},
-		{"Guancheng", "Henan", "河南 Guancheng", "表内没有 → 中文省 + 英文城市（中英混排）"},
-		{"Youyilu", "Tianjin", "天津 Youyilu", "同上，街道级英文名无法翻译"},
-		{"Chengde", "Hebei", "河北 Chengde", "同上，承德不在表内"},
-		{"Wenquan", "Fujian", "福建 Wenquan", "同上，区级名不在表内"},
+		{"Guangzhou", "广州", "表内城市"},
+		{"Zhu Cheng City", "诸城", "去 City 后缀后命中表内特例"},
+		{"Jinrongjie (Xicheng District)", "金融街", "去括号后命中表内特例"},
+		{"Zhengzhou", "郑州", "表内城市"},
+		{"Guancheng", "", "表内没有 → 空串（由展示层退回中文省份）"},
+		{"Youyilu", "", "街道级英文名同样翻不出来"},
+		{"Chengde", "", "承德不在表内"},
+		{"Wenquan", "", "区级名不在表内"},
 	}
 	for _, c := range cases {
-		if got := translateCityName(c.cityEN, c.regionEN); got != c.want {
-			t.Errorf("translateCityName(%q, %q) = %q，期望 %q（%s）",
-				c.cityEN, c.regionEN, got, c.want, c.why)
+		if got := translateCityName(c.cityEN); got != c.want {
+			t.Errorf("translateCityName(%q) = %q，期望 %q（%s）", c.cityEN, got, c.want, c.why)
 		}
 	}
 }
@@ -42,18 +39,77 @@ func TestTranslateRegionName(t *testing.T) {
 	}
 }
 
-// TestLocationDisplayOfNonCNKeepsParenthetical 非中国城市的括号内容不会被清理
-// （去括号只发生在 translateCityName 内，而它只对中国 IP 调用），
-// 所以美国 IP 会显示成"美国, Los Angeles (Downtown Los Angeles)"。
-func TestLocationDisplayOfNonCNKeepsParenthetical(t *testing.T) {
-	got := LocationDisplayOf("美国", "Los Angeles (Downtown Los Angeles)", "California")
-	want := "美国, Los Angeles (Downtown Los Angeles)"
-	if got != want {
-		t.Errorf("当前行为应为 %q，实际 %q", want, got)
+// TestCleanCityName 城市名清理：去括号补充、去常见后缀（各国通用）
+func TestCleanCityName(t *testing.T) {
+	cases := map[string]string{
+		"Jinrongjie (Xicheng District)":      "Jinrongjie",
+		"Los Angeles (Downtown Los Angeles)": "Los Angeles",
+		"Singapore (Pioneer)":                "Singapore",
+		"Zhu Cheng City":                     "Zhu Cheng",
+		"  Guangzhou  ":                      "Guangzhou",
+	}
+	for in, want := range cases {
+		if got := cleanCityName(in); got != want {
+			t.Errorf("cleanCityName(%q) = %q，期望 %q", in, got, want)
+		}
 	}
 }
 
-// TestLocationDisplayOfRule 展示拼接规则：国家 + ", " + 城市；无城市退回省份；无省份只剩国家
+// TestFinalizeLocationNamesChinaOnlyChinese 中国 IP 的位置只保留中文：
+// 城市翻不出来就丢城市（退回省份）、省份也不是中文就丢省份（只留国家）
+func TestFinalizeLocationNamesChinaOnlyChinese(t *testing.T) {
+	// 城市翻不出来 → 丢城市，保留中文省份
+	loc := &LocationInfo{Country: "中国", CountryCode: "CN", City: "Guancheng", Region: "Henan"}
+	finalizeLocationNames(loc)
+	if loc.City != "" || loc.Region != "河南" {
+		t.Errorf("应丢英文城市并保留中文省份，实际 city=%q region=%q", loc.City, loc.Region)
+	}
+
+	// 城市能翻出来 → 用中文城市
+	loc2 := &LocationInfo{Country: "中国", CountryCode: "CN", City: "Guangzhou (Tianhe)", Region: "Guangdong"}
+	finalizeLocationNames(loc2)
+	if loc2.City != "广州" || loc2.Region != "广东" {
+		t.Errorf("应译为中文城市/省份，实际 city=%q region=%q", loc2.City, loc2.Region)
+	}
+
+	// 省份也翻不出来 → 一并丢掉，避免位置列出现英文
+	loc3 := &LocationInfo{Country: "中国", CountryCode: "CN", City: "Unknownville", Region: "Nowhere"}
+	finalizeLocationNames(loc3)
+	if loc3.City != "" || loc3.Region != "" {
+		t.Errorf("中英混排都应丢弃，实际 city=%q region=%q", loc3.City, loc3.Region)
+	}
+
+	// 非中国：保留清理后的当地名称
+	loc4 := &LocationInfo{Country: "美国", CountryCode: "US", City: "Los Angeles (Downtown Los Angeles)", Region: "California"}
+	finalizeLocationNames(loc4)
+	if loc4.City != "Los Angeles" {
+		t.Errorf("非中国城市应保留并去括号，实际 %q", loc4.City)
+	}
+}
+
+// TestLocationDisplayOfCleansHistoricalValues 展示层清洗历史存量值：
+// 库里已存的"中国, 河南 Guancheng"这类中英混排、以及带括号的英文城市，
+// 在展示时被整理成干净文本（历史数据无法回填，只能在这一层兜底）。
+func TestLocationDisplayOfCleansHistoricalValues(t *testing.T) {
+	cases := []struct{ country, city, region, want, why string }{
+		{"中国", "河南 Guancheng", "Henan", "中国, 河南", "中英混排 → 退回省份"},
+		{"中国", "天津 Youyilu", "Tianjin", "中国, 天津", "同上"},
+		{"中国", "河北 Chengde", "Hebei", "中国, 河北", "同上"},
+		{"中国", "Guangzhou", "Guangdong", "中国, 广州", "历史英文城市名就地翻译为中文"},
+		{"中国", "北京", "北京市", "中国, 北京", "GeoLite2 已是中文名 → 原样保留"},
+		{"中国", "广州", "广东", "中国, 广州", "中文城市照常显示"},
+		{"美国", "Los Angeles (Downtown Los Angeles)", "California", "美国, Los Angeles", "非中国：去括号"},
+		{"日本", "Shinagawa (1 Chome)", "Tokyo", "日本, Shinagawa", "非中国：去括号"},
+	}
+	for _, c := range cases {
+		if got := LocationDisplayOf(c.country, c.city, c.region); got != c.want {
+			t.Errorf("LocationDisplayOf(%q,%q,%q) = %q，期望 %q（%s）",
+				c.country, c.city, c.region, got, c.want, c.why)
+		}
+	}
+}
+
+// TestLocationDisplayOfRule 拼接规则：国家 + ", " + 城市；无城市退回省份；无省份只剩国家
 func TestLocationDisplayOfRule(t *testing.T) {
 	if got := LocationDisplayOf("中国", "广州", "广东"); got != "中国, 广州" {
 		t.Errorf("有城市时应显示城市，实际 %q", got)
