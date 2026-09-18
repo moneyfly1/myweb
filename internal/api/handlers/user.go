@@ -69,7 +69,12 @@ func createDefaultSubscription(db *gorm.DB, userID uint) error {
 	now := utils.GetBeijingTime()
 	var expireTime time.Time
 	if durationMonths <= 0 {
-		expireTime = time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+		// 未配置默认赠送时长（生产 default_subscription_duration_months=0）：
+		// 直接置为"已到期"，不再给"当天 23:59:59"这种不到一天的窗口。
+		// 否则刚注册的用户会拿到一个有效期到今晚的订阅，
+		// 一旦再买个 1 台设备扩容（0.06 元）就满足"未到期 + 设备数>0"，当天即可正常拉节点，
+		// 相当于花了 6 分钱白用一天。新注册用户应当是"已到期、待开通套餐"的状态。
+		expireTime = now
 	} else {
 		expireTime = now.AddDate(0, durationMonths, 0)
 	}
@@ -1474,12 +1479,12 @@ func CreateUser(c *gin.Context) {
 		} else {
 			expireTime = parsedTime.In(utils.BeijingTZ)
 		}
+	} else if defaultDurationMonths > 0 {
+		expireTime = utils.GetBeijingTime().AddDate(0, defaultDurationMonths, 0)
 	} else {
-		months := defaultDurationMonths
-		if months <= 0 {
-			months = 1
-		}
-		expireTime = utils.GetBeijingTime().AddDate(0, months, 0)
+		// 未配置默认赠送时长、管理员也没填到期时间：与注册保持一致，置为"已到期"。
+		// 此前会回退成"赠送 1 个月"，与 default_subscription_duration_months=0 的意图相反。
+		expireTime = utils.GetBeijingTime()
 	}
 
 	subscription := models.Subscription{
