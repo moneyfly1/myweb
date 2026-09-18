@@ -9,6 +9,18 @@
     @open="handleUpgradeDialogOpen"
   >
     <div class="upgrade-content" v-if="subscription">
+      <el-alert
+        v-if="notEligibleReason"
+        :title="notEligibleReason"
+        type="warning"
+        show-icon
+        :closable="false"
+        class="upgrade-blocked-alert"
+      >
+        <template #default>
+          <p>升级设备数量需要「已开通套餐且未到期」的订阅：{{ notEligibleReason }}</p>
+        </template>
+      </el-alert>
       <section class="upgrade-hero">
         <div>
           <div class="hero-eyebrow">设备扩容</div>
@@ -203,7 +215,7 @@
           type="primary"
           @click="confirmUpgrade"
           :loading="upgradeLoading"
-          :disabled="!upgradeForm.additionalDevices || upgradeForm.additionalDevices < 1"
+          :disabled="!!notEligibleReason || !upgradeForm.additionalDevices || upgradeForm.additionalDevices < 1"
         >
           {{ finalAmount > 0 ? '确认升级并支付' : '确认升级' }}
         </el-button>
@@ -342,6 +354,19 @@ const paymentStatusRequest = ref(null)
 let paymentManualVisibilityHandler = null
 const isMobile = useMobile()
 const currentDeviceLimit = computed(() => props.subscription?.device_limit || props.subscription?.maxDevices || 0)
+
+// 与后端 checkDeviceUpgradeEligibility 同一套准入规则（后端为准，这里只是提前告知）：
+// 必须已开通套餐（设备数 > 0）且未到期；未到期才有可承载新增设备的有效期。
+const notEligibleReason = computed(() => {
+  const sub = props.subscription
+  if (!sub) return '订阅不存在，请先购买套餐'
+  if (Number(currentDeviceLimit.value) <= 0) return '尚未开通套餐，请先购买套餐'
+  const expire = sub.expire_time
+  if (expire && new Date(String(expire).replace(' ', 'T')).getTime() <= Date.now()) {
+    return '订阅已到期，请先续费套餐'
+  }
+  return ''
+})
 const targetDeviceLimit = computed(() => currentDeviceLimit.value + (upgradeForm.value.additionalDevices || 0))
 const remainingDays = computed(() => getRemainingDays(props.subscription))
 const additionalMonths = computed(() => Math.round((upgradeForm.value.additionalDays || 0) / 30))
