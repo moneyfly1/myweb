@@ -61,6 +61,13 @@ func getPing0Cache(ip string) (ping0CacheEntry, bool) {
 	return entry, true
 }
 
+// ClearPing0Cache 清空进程内 ping0 兜底缓存（换库后必须清，见 ClearLocationCaches）
+func ClearPing0Cache() {
+	ping0Cache.mu.Lock()
+	ping0Cache.entries = make(map[string]ping0CacheEntry)
+	ping0Cache.mu.Unlock()
+}
+
 func setPing0Cache(ip string, location *LocationInfo, ok bool) {
 	ttl := ping0CacheFailureTTL
 	if ok {
