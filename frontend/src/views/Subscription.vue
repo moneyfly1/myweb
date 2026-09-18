@@ -105,7 +105,7 @@
           </div>
         </div>
         <el-alert
-          v-if="subscription && isDeviceFull(subscription) && isSubscriptionActive(subscription)"
+          v-if="subscription && isDeviceFull(subscription) && isSubscriptionActive(subscription) && hasOpenedPlan(subscription)"
           title="设备数量已达上限，无法连接新设备"
           type="error"
           show-icon
@@ -324,7 +324,7 @@
                     type="warning"
                     class="action-btn upgrade-btn"
                     @click="showUpgradeDrawer = true"
-                    v-if="isSubscriptionActive(subscription)"
+                    v-if="isSubscriptionActive(subscription) && hasOpenedPlan(subscription)"
                   >
                     升级设备数量
                   </el-button>
@@ -731,6 +731,9 @@ export default {
       if (subscription.status) return subscription.status === 'active'
       return false
     }
+    // 升级设备数量需要"已开通套餐"：默认订阅（设备数 0）属于未开通，
+    // 后端 checkDeviceUpgradeEligibility 会拒绝，这里也不要给入口
+    const hasOpenedPlan = (sub) => Number(sub?.device_limit ?? sub?.maxDevices ?? 0) > 0
     const isDeviceFull = (sub) => {
       if (!sub) return false
       const online = sub.onlineDevices ?? sub.current_devices ?? 0
@@ -785,6 +788,7 @@ export default {
       getStatusText,
       isSubscriptionActive,
       isDeviceFull,
+      hasOpenedPlan,
       deviceUsage,
       getSpecialNodeModeText
     }

@@ -1717,6 +1717,26 @@ func calcDeviceUpgradeAmount(expireTime time.Time, currentDeviceLimit, additiona
 	return cost
 }
 
+// checkDeviceUpgradeEligibility 校验用户能否"升级设备数量"，返回错误提示（空串=可以）。
+//
+// 规则：只有**已开通套餐且未到期**的用户才能升级设备数量。
+//   - 未开通套餐：设备数为 0 的默认订阅（新注册用户拿到的就是这个，expire_time 为当天 23:59:59），
+//     它并没有"已开通的套餐"，此时买设备扩容没有意义，正确路径是先买套餐；
+//   - 已到期：设备数量是挂在有效期上的，没有剩余有效期就没有可承载新增设备的基础，
+//     正确路径是先续费套餐，再升级设备。
+func checkDeviceUpgradeEligibility(subscription *models.Subscription, now time.Time) string {
+	if subscription == nil {
+		return "订阅不存在，请先购买套餐后再升级设备数量"
+	}
+	if subscription.DeviceLimit <= 0 {
+		return "尚未开通套餐，请先购买套餐后再升级设备数量"
+	}
+	if !subscription.ExpireTime.After(now) {
+		return "订阅已到期，请先续费套餐后再升级设备数量"
+	}
+	return ""
+}
+
 func UpgradeDevices(c *gin.Context) {
 	user, ok := middleware.GetCurrentUser(c)
 	if !ok {
@@ -1738,8 +1758,17 @@ func UpgradeDevices(c *gin.Context) {
 
 	db := database.GetDB()
 	var subscription models.Subscription
-	if err := db.Where("user_id = ?", user.ID).First(&subscription).Error; err != nil {
+	// 取"有效期最靠后"的那条：First 只按 id 升序取最早一条，
+	// 用户若有多条订阅会拿到过期的那条来算基线
+	if err := db.Where("user_id = ?", user.ID).
+		Order("expire_time DESC, id DESC").
+		First(&subscription).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusNotFound, "订阅不存在", err)
+		return
+	}
+
+	if msg := checkDeviceUpgradeEligibility(&subscription, utils.GetBeijingTime()); msg != "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, msg, nil)
 		return
 	}
 
