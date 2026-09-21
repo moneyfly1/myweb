@@ -1548,8 +1548,9 @@ func BatchTestCustomNodes(c *gin.Context) {
 
 	clearNodeCaches()
 
-	// 统计口径必须与节点状态常量一致：只有 online 算成功，
-	// unsupported（UDP 协议探测不到）既不算成功也不算失败。
+	// 统计口径必须与节点状态常量一致：online 算在线，timeout/offline/error 算失败。
+	// UDP 协议（hysteria2/tuic）现在按 online 返回（服务端测不到不代表不可用），
+	// StatusUnsupported 只可能出现在历史数据里，这里仍然兜住，避免总数对不上。
 	onlineCount, failedCount, unsupportedCount := 0, 0, 0
 	for _, r := range results {
 		status, _ := r["status"].(string)
@@ -1562,9 +1563,12 @@ func BatchTestCustomNodes(c *gin.Context) {
 			failedCount++
 		}
 	}
-	utils.CreateAuditLogSimple(c, "batch_test_custom_nodes", "custom_node", 0,
-		fmt.Sprintf("管理员操作: 批量测试专线节点 %d 个 在线 %d 个 离线/超时 %d 个 无法探测 %d 个",
-			len(req.NodeIDs), onlineCount, failedCount, unsupportedCount))
+	auditMsg := fmt.Sprintf("管理员操作: 批量测试专线节点 %d 个 在线 %d 个 离线/超时 %d 个",
+		len(req.NodeIDs), onlineCount, failedCount)
+	if unsupportedCount > 0 {
+		auditMsg += fmt.Sprintf(" 无法探测 %d 个", unsupportedCount)
+	}
+	utils.CreateAuditLogSimple(c, "batch_test_custom_nodes", "custom_node", 0, auditMsg)
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"results":     results,

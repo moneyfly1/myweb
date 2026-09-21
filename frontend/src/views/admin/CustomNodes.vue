@@ -1168,13 +1168,9 @@ export default {
         const res = await adminAPI.batchTestCustomNodes(selectedNodes.value.map(n => n.id))
         const data = res?.data?.data || res?.data || {}
         if (typeof data.success === 'number') {
-          // 结果口径由后端给出：仅 online 计成功，unsupported 为 UDP 协议无法探测
-          const parts = [`在线 ${data.success}`, `离线/超时 ${data.failed ?? 0}`]
-          if (data.unsupported) parts.push(`无法探测 ${data.unsupported}`)
-          ElMessage.success(`测试完成：${parts.join(' / ')}`)
-          if (data.unsupported) {
-            ElMessage.info(`${data.unsupported} 个节点为 UDP 协议（hysteria2/tuic），无法用 TCP 探测，请以客户端实测为准`)
-          }
+          // 结果口径由后端给出：online 计在线；离线/超时计失败
+          // （UDP 协议如 hysteria2/tuic 服务端无法用 TCP 探测，按在线处理，不计入失败）
+          ElMessage.success(`测试完成：在线 ${data.success} / 离线超时 ${data.failed ?? 0}`)
         } else {
           ElMessage.success('批量测试请求已发送')
         }

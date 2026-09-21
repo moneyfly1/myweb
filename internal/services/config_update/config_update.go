@@ -1278,6 +1278,16 @@ func (s *ConfigUpdateService) appendCustomNodes(userID uint, now time.Time, isGl
 	}
 }
 
+// autoDisableTimeoutEnabled 读取「自动屏蔽失效节点」开关（system_configs category=node_health，
+// 与 node_health.UpdateNodeStatus 用的是同一个开关，缺省开启）。
+func autoDisableTimeoutEnabled(db *gorm.DB) bool {
+	var cfg models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", "auto_disable_timeout", "node_health").First(&cfg).Error; err == nil {
+		return cfg.Value != "false" && cfg.Value != "0"
+	}
+	return true
+}
+
 func (s *ConfigUpdateService) appendSystemNodes(proxies *[]*ProxyNode, processed map[string]bool) {
 	cache := &CacheService{}
 	if cached, ok := cache.GetSystemNodesCache(); ok {
@@ -1291,7 +1301,14 @@ func (s *ConfigUpdateService) appendSystemNodes(proxies *[]*ProxyNode, processed
 	}
 
 	var nodes []models.Node
-	s.db.Where("is_active = ? AND status != ?", true, "timeout").Order("order_index ASC, created_at ASC").Find(&nodes)
+	// status='timeout' 的节点是否二次排除，跟随「自动屏蔽失效节点」开关（node_health.auto_disable_timeout）：
+	// 开关关闭 = 探测结果不用于隐藏节点（2026-09-21 业务决定：服务端 TCP 探测会误判，
+	// 节点屏蔽了机房 IP 时用户其实可用）。开启时保留原有的双重排除。
+	if autoDisableTimeoutEnabled(s.db) {
+		s.db.Where("is_active = ? AND status != ?", true, "timeout").Order("order_index ASC, created_at ASC").Find(&nodes)
+	} else {
+		s.db.Where("is_active = ?", true).Order("order_index ASC, created_at ASC").Find(&nodes)
+	}
 	var sysNodes []*ProxyNode
 
 	for _, n := range nodes {

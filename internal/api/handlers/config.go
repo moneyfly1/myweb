@@ -656,7 +656,17 @@ func UpdateAdminNotificationSystemSettings(c *gin.Context) {
 	updateSettingsCommon(c, CatAdminNotification)
 	notification.ClearAdminNotificationCache()
 }
-func UpdateNodeHealthSettings(c *gin.Context)     { updateSettingsCommon(c, "node_health") }
+// UpdateNodeHealthSettings 保存节点监控配置。
+// 保存后必须清掉系统节点缓存：节点列表内容受 auto_disable_timeout 影响
+// （关掉开关后 status=timeout 的节点也要下发给用户），缓存 TTL 一小时，
+// 不清会出现"改了设置一小时不生效"。
+func UpdateNodeHealthSettings(c *gin.Context) {
+	updateSettingsCommon(c, "node_health")
+	if c.IsAborted() {
+		return
+	}
+	clearNodeCaches()
+}
 func UpdateBackupSettings(c *gin.Context)         { updateSettingsCommon(c, "backup") }
 func UpdateProtocolFilterSettings(c *gin.Context) { updateSettingsCommon(c, "protocol_filter") }
 

@@ -167,11 +167,13 @@ func (s *NodeHealthService) TestNode(node *models.Node) (*TestResult, error) {
 		return result, nil
 	}
 
-	// UDP-only 协议（hysteria2/tuic 等）没有 TCP 监听端口，TCP 握手必然失败。
-	// 明确给出"无法探测"，既不误判离线（会触发自动屏蔽），也不谎报在线。
+	// UDP-only 协议（hysteria2/tuic 等）只监听 UDP，没有 TCP 监听端口，TCP 握手必然失败。
+	// 本探测方式对它们不适用，因此**按在线处理**（2026-09-21 业务决定：这类节点
+	// 在客户端实测可用，服务端测不到不等于不可用，不应显示异常、更不能被自动屏蔽）。
+	// 延迟保持 0，表示"未测到"而不是"很快"。
 	if IsUDPOnlyProtocol(proxyNode.Type) {
-		result.Status = StatusUnsupported
-		result.Error = fmt.Sprintf("%s 为 UDP(QUIC) 协议，无法用 TCP 探测，请以客户端实测为准", strings.ToUpper(proxyNode.Type))
+		result.Status = StatusOnline
+		result.Latency = 0
 		return result, nil
 	}
 
