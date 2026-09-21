@@ -1671,7 +1671,7 @@ func GetExpiringSubscriptions(c *gin.Context) {
 // 订阅配置管理
 // ==========================================
 
-func validateSubscription(subscription *models.Subscription, user *models.User, db *gorm.DB, clientIP, userAgent string) (string, int, int, bool) {
+func validateSubscription(subscription *models.Subscription, user *models.User, db *gorm.DB, clientIP, userAgent string, mfHeaders map[string]string) (string, int, int, bool) {
 	now := utils.GetBeijingTime()
 
 	isExpired := subscription.ExpireTime.Before(now)
@@ -1697,7 +1697,7 @@ func validateSubscription(subscription *models.Subscription, user *models.User, 
 	}
 
 	if subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit {
-		currentDevice, isCurrentDeviceExists, err := device.NewDeviceManager().FindExistingDevice(subscription.ID, userAgent, clientIP)
+		currentDevice, isCurrentDeviceExists, err := device.NewDeviceManager().FindExistingDeviceWithHeaders(subscription.ID, userAgent, clientIP, mfHeaders)
 		if err != nil {
 			return "设备校验失败，请稍后重试", int(count), subscription.DeviceLimit, false
 		}
@@ -1782,14 +1782,15 @@ func GetSubscriptionConfig(c *gin.Context) {
 
 	// 设备管理逻辑（类似 GetUniversalSubscription）
 	deviceManager := device.NewDeviceManager()
-	_, deviceExists, findDeviceErr := deviceManager.FindExistingDevice(subscription.ID, userAgent, clientIP)
+	mfHeaders := extractMFHeaders(c)
+	_, deviceExists, findDeviceErr := deviceManager.FindExistingDeviceWithHeaders(subscription.ID, userAgent, clientIP, mfHeaders)
 	if findDeviceErr != nil {
 		log.Printf("failed to check existing device: %v", findDeviceErr)
 	}
 
 	// 被踢下线检查：该设备曾被从设备列表删除（软删 + KickedAt）→ 拒绝重新
 	// 拉取订阅并明确提示，防止静默重新注册复活
-	if kicked, kickErr := deviceManager.FindKickedDevice(subscription.ID, userAgent, clientIP); kickErr == nil && kicked != nil {
+	if kicked, kickErr := deviceManager.FindKickedDeviceWithHeaders(subscription.ID, userAgent, clientIP, mfHeaders); kickErr == nil && kicked != nil {
 		utils.ErrorResponse(c, http.StatusForbidden,
 			"此设备已被移除并踢下线,如需继续使用请重新登录或联系客服", nil)
 		return
@@ -1806,7 +1807,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 	}
 
 	// 异步记录设备访问和更新计数（不阻塞配置返回，带超时）
-	mfHeaders := extractMFHeaders(c)
+	// mfHeaders 已在上面声明（避免重复声明遮蔽）
 	if shouldRecord {
 		go func(ctx context.Context, subID, userID uint, ua, ip string, mfh map[string]string) {
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -1929,7 +1930,7 @@ func UpdateSubscriptionConfig(c *gin.Context) {
 	clientIP := utils.GetRealClientIP(c)
 	userAgent := c.GetHeader("User-Agent")
 
-	message, deviceCount, deviceLimit, isValid := validateSubscription(&subscription, user, db, clientIP, userAgent)
+	message, deviceCount, deviceLimit, isValid := validateSubscription(&subscription, user, db, clientIP, userAgent, extractMFHeaders(c))
 	if !isValid {
 		utils.CreateBusinessLogAsync(c, "subscription_validation_failed", "订阅校验未通过: "+message, "warning", map[string]interface{}{
 			"user_id": user.ID, "subscription_id": subscription.ID, "reason": message,
@@ -2027,7 +2028,7 @@ func GetUniversalSubscription(c *gin.Context) {
 		mfHeaders2 := extractMFHeaders(c)
 
 		// 被踢下线检查：该设备曾被从设备列表删除（软删 + KickedAt）→ 拒绝
-		if kicked, kickErr := deviceManager.FindKickedDevice(sub.ID, deviceUA, deviceIP); kickErr == nil && kicked != nil {
+		if kicked, kickErr := deviceManager.FindKickedDeviceWithHeaders(sub.ID, deviceUA, deviceIP, mfHeaders2); kickErr == nil && kicked != nil {
 			utils.ErrorResponse(c, http.StatusForbidden,
 				"此设备已被移除并踢下线,如需继续使用请重新登录或联系客服", nil)
 			return
@@ -2040,7 +2041,7 @@ func GetUniversalSubscription(c *gin.Context) {
 			unlimitedDevices = user.SpecialNodeUnlimitedDevices
 		}
 
-		_, deviceExists, findDeviceErr := deviceManager.FindExistingDevice(sub.ID, deviceUA, deviceIP)
+		_, deviceExists, findDeviceErr := deviceManager.FindExistingDeviceWithHeaders(sub.ID, deviceUA, deviceIP, mfHeaders2)
 		if findDeviceErr != nil {
 			log.Printf("failed to check existing device: %v", findDeviceErr)
 		}

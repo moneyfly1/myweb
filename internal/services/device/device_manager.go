@@ -232,7 +232,14 @@ func (dm *DeviceManager) findClashMetaAndroidAliasDevice(subscriptionID uint, us
 }
 
 func (dm *DeviceManager) FindExistingDevice(subscriptionID uint, userAgent, ipAddress string) (*models.Device, bool, error) {
-	deviceHash := dm.GenerateDeviceHash(userAgent, ipAddress, "")
+	return dm.FindExistingDeviceWithHeaders(subscriptionID, userAgent, ipAddress, nil)
+}
+
+// FindExistingDeviceWithHeaders 同 FindExistingDevice，但带上 X-MF-* 头：
+// 设备身份优先用客户端上报的稳定设备 ID（X-MF-Device-Id），并支持把按旧算法
+// （含版本号）写入的存量行「认领」过来 —— 见 GenerateLegacyDeviceHash。
+func (dm *DeviceManager) FindExistingDeviceWithHeaders(subscriptionID uint, userAgent, ipAddress string, headers map[string]string) (*models.Device, bool, error) {
+	deviceHash := dm.GenerateDeviceHashWithHeaders(userAgent, ipAddress, "", headers)
 
 	var device models.Device
 	err := dm.db.Where("device_hash = ? AND subscription_id = ?", deviceHash, subscriptionID).First(&device).Error
@@ -241,6 +248,22 @@ func (dm *DeviceManager) FindExistingDevice(subscriptionID uint, userAgent, ipAd
 	}
 	if err != gorm.ErrRecordNotFound {
 		return nil, false, err
+	}
+
+	// 存量自愈：这一行是旧算法（含版本号）写的 → 认领它并改写为新稳定哈希，
+	// 避免升级 App/系统后重复注册出幽灵设备（旧行会一直占着名额）
+	if legacyHash := dm.GenerateLegacyDeviceHash(userAgent, headers); legacyHash != "" && legacyHash != deviceHash {
+		if err := dm.db.Where("device_hash = ? AND subscription_id = ?", legacyHash, subscriptionID).
+			First(&device).Error; err == nil {
+			if updErr := dm.db.Model(&models.Device{}).Where("id = ?", device.ID).
+				Update("device_hash", deviceHash).Error; updErr != nil {
+				return nil, false, updErr
+			}
+			device.DeviceHash = &deviceHash
+			return &device, true, nil
+		} else if err != gorm.ErrRecordNotFound {
+			return nil, false, err
+		}
 	}
 
 	if userAgent != "" {
@@ -253,6 +276,16 @@ func (dm *DeviceManager) FindExistingDevice(subscriptionID uint, userAgent, ipAd
 		if err != gorm.ErrRecordNotFound {
 			return nil, false, err
 		}
+	}
+
+	// 历史行兜底：跨版本升级后哈希与 UA 都对不上（旧算法把版本号算进身份，
+	// 客户端又换成了稳定设备 ID），按**稳定指纹**（软件名+系统名+机型+品牌）
+	// 把同一台设备认回来，并把它的 device_hash 改写成稳定值 —— 否则每次升级
+	// 都会多出一行幽灵设备，设备名额被悄悄吃掉。
+	if adopted, err := dm.adoptLegacyRowByFingerprint(subscriptionID, userAgent, ipAddress, headers, deviceHash); err != nil {
+		return nil, false, err
+	} else if adopted != nil {
+		return adopted, true, nil
 	}
 
 	if aliasDevice, aliasErr := dm.findClashMetaAndroidAliasDevice(subscriptionID, userAgent, ipAddress); aliasErr == nil {
@@ -269,23 +302,19 @@ func (dm *DeviceManager) FindExistingDevice(subscriptionID uint, userAgent, ipAd
 // 尝试重新拉取订阅 —— 订阅接口应拒绝并提示「已被移除/踢下线」，
 // 防止其静默重新注册复活（设备名额已释放，不再放行）。
 func (dm *DeviceManager) FindKickedDevice(subscriptionID uint, userAgent, ipAddress string) (*models.Device, error) {
-	deviceHash := dm.GenerateDeviceHash(userAgent, ipAddress, "")
+	return dm.FindKickedDeviceWithHeaders(subscriptionID, userAgent, ipAddress, nil)
+}
 
-	var device models.Device
-	err := dm.db.Where("device_hash = ? AND subscription_id = ? AND is_active = ? AND kicked_at IS NOT NULL",
-		deviceHash, subscriptionID, false).First(&device).Error
-	if err == nil {
-		return &device, nil
-	}
-	if err != gorm.ErrRecordNotFound {
-		return nil, err
-	}
+// FindKickedDeviceWithHeaders 同 FindKickedDevice，但带上 X-MF-* 头：设备身份改用
+// 稳定特征后，必须同时用**旧算法哈希**再找一遍，否则升级一次 App 就能绕过
+// 「已被移除并踢下线」的判定（也就等于绕过用户"删除设备"的意图）。
+func (dm *DeviceManager) FindKickedDeviceWithHeaders(subscriptionID uint, userAgent, ipAddress string, headers map[string]string) (*models.Device, error) {
+	deviceHash := dm.GenerateDeviceHashWithHeaders(userAgent, ipAddress, "", headers)
 
-	if userAgent != "" {
-		err = dm.db.Where("subscription_id = ? AND user_agent = ? AND is_active = ? AND kicked_at IS NOT NULL",
-			subscriptionID, userAgent, false).
-			Order("last_access DESC").
-			First(&device).Error
+	for _, hash := range dm.kickCandidateHashes(userAgent, headers, deviceHash) {
+		var device models.Device
+		err := dm.db.Where("device_hash = ? AND subscription_id = ? AND is_active = ? AND kicked_at IS NOT NULL",
+			hash, subscriptionID, false).First(&device).Error
 		if err == nil {
 			return &device, nil
 		}
@@ -293,7 +322,93 @@ func (dm *DeviceManager) FindKickedDevice(subscriptionID uint, userAgent, ipAddr
 			return nil, err
 		}
 	}
+
+	if userAgent != "" {
+		var byUA models.Device
+		err := dm.db.Where("subscription_id = ? AND user_agent = ? AND is_active = ? AND kicked_at IS NOT NULL",
+			subscriptionID, userAgent, false).
+			Order("last_access DESC").
+			First(&byUA).Error
+		if err == nil {
+			return &byUA, nil
+		}
+		if err != gorm.ErrRecordNotFound {
+			return nil, err
+		}
+	}
+
+	// 历史行兜底：被删除（踢下线）的设备在用户升级 App/系统后哈希与 UA 都变了，
+	// 必须按稳定指纹再找一遍，否则「删除设备」的意图可以被一次升级绕过。
+	if kicked, err := dm.findKickedLegacyRowByFingerprint(subscriptionID, userAgent, headers); err != nil {
+		return nil, err
+	} else if kicked != nil {
+		return kicked, nil
+	}
 	return nil, nil
+}
+
+// adoptLegacyRowByFingerprint 在订阅内按稳定指纹找到「历史算法写下」的同设备行，
+// 把 device_hash 改写为新的稳定值后返回（自愈迁移，不新增行、不丢备注）。
+func (dm *DeviceManager) adoptLegacyRowByFingerprint(subscriptionID uint, userAgent, ipAddress string, headers map[string]string, stableHash string) (*models.Device, error) {
+	rows, err := dm.legacyRowsByFingerprint(subscriptionID, userAgent, headers, false)
+	if err != nil || len(rows) == 0 {
+		return nil, err
+	}
+	row := rows[0]
+	if err := dm.db.Model(&models.Device{}).Where("id = ?", row.ID).
+		Update("device_hash", stableHash).Error; err != nil {
+		return nil, err
+	}
+	row.DeviceHash = &stableHash
+	if ipAddress != "" {
+		row.IPAddress = &ipAddress
+	}
+	return &row, nil
+}
+
+// findKickedLegacyRowByFingerprint 同上，但只找**被踢下线**的历史行。
+func (dm *DeviceManager) findKickedLegacyRowByFingerprint(subscriptionID uint, userAgent string, headers map[string]string) (*models.Device, error) {
+	rows, err := dm.legacyRowsByFingerprint(subscriptionID, userAgent, headers, true)
+	if err != nil || len(rows) == 0 {
+		return nil, err
+	}
+	return &rows[0], nil
+}
+
+// legacyRowsByFingerprint 按稳定指纹列出候选行（仅历史行，见 isLegacyHashRow）。
+func (dm *DeviceManager) legacyRowsByFingerprint(subscriptionID uint, userAgent string, headers map[string]string, onlyKicked bool) ([]models.Device, error) {
+	info := dm.ParseUserAgentWithHeaders(userAgent, headers)
+	if _, ok := fingerprintKeyOf(info.SoftwareName, info.OSName, info.DeviceModel, info.DeviceBrand); !ok {
+		return nil, nil // 指纹不完整（机型/品牌缺失）→ 不做模糊匹配，避免误伤
+	}
+
+	q := dm.db.Where(
+		"subscription_id = ? AND software_name = ? AND os_name = ? AND device_model = ? AND device_brand = ?",
+		subscriptionID, info.SoftwareName, info.OSName, info.DeviceModel, info.DeviceBrand)
+	if onlyKicked {
+		q = q.Where("is_active = ? AND kicked_at IS NOT NULL", false)
+	}
+	var rows []models.Device
+	if err := q.Order("last_access DESC").Limit(5).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]models.Device, 0, len(rows))
+	for i := range rows {
+		if isLegacyHashRow(&rows[i]) {
+			out = append(out, rows[i])
+		}
+	}
+	return out, nil
+}
+
+// kickCandidateHashes 返回该请求可能对应的设备哈希（稳定哈希 + 旧算法哈希）。
+// 去重且跳过空值。
+func (dm *DeviceManager) kickCandidateHashes(userAgent string, headers map[string]string, stableHash string) []string {
+	out := []string{stableHash}
+	if legacy := dm.GenerateLegacyDeviceHash(userAgent, headers); legacy != "" && legacy != stableHash {
+		out = append(out, legacy)
+	}
+	return out
 }
 
 // ReviveKickedDevice 解除「踢下线」：把被软删的设备重新登记为活跃设备。
@@ -999,27 +1114,98 @@ func (dm *DeviceManager) GenerateDeviceHash(userAgent, ipAddress, deviceID strin
 	return dm.GenerateDeviceHashWithHeaders(userAgent, ipAddress, deviceID, nil)
 }
 
+// fingerprintKeyOf 稳定指纹：软件名 + 系统名 + 机型 + 品牌（四者必须齐备且非 Unknown）。
+// **不含版本号** —— 见 GenerateDeviceHashWithHeaders 的说明。
+func fingerprintKeyOf(sw, osName, model, brand string) (string, bool) {
+	sw = strings.TrimSpace(sw)
+	osName = strings.TrimSpace(osName)
+	model = strings.TrimSpace(model)
+	brand = strings.TrimSpace(brand)
+	if sw == "" || osName == "" || model == "" || brand == "" {
+		return "", false
+	}
+	if strings.EqualFold(sw, "Unknown") || strings.EqualFold(osName, "Unknown") {
+		return "", false
+	}
+	return strings.ToLower(sw) + "|" + strings.ToLower(osName) + "|" +
+		strings.ToLower(model) + "|" + strings.ToLower(brand), true
+}
+
+// stableHashFromFeatures 由稳定特征（无客户端设备 ID 时）计算哈希，
+// 必须与 GenerateDeviceHashWithHeaders 的特征顺序完全一致。
+func stableHashFromFeatures(sw, osName, model, brand string) string {
+	features := []string{}
+	if sw != "" && !strings.EqualFold(sw, "Unknown") {
+		features = append(features, "software:"+sw)
+	}
+	if osName != "" && !strings.EqualFold(osName, "Unknown") {
+		features = append(features, "os:"+osName)
+	}
+	if model != "" {
+		features = append(features, "model:"+model)
+	}
+	if brand != "" {
+		features = append(features, "brand:"+brand)
+	}
+	deviceString := strings.Join(features, "|")
+	if deviceString == "" {
+		return ""
+	}
+	hash := sha256.Sum256([]byte(deviceString))
+	return hex.EncodeToString(hash[:])
+}
+
+// isLegacyHashRow 该行的 device_hash 是否还是旧算法（含版本号）写下的值。
+// 判断方式：用该行自己的字段算一遍稳定哈希，和存的值不一致 → 说明是历史行。
+// 只有历史行才允许被「稳定指纹」兜底认领/命中，避免对已是稳定身份的行做模糊匹配。
+func isLegacyHashRow(d *models.Device) bool {
+	if d.DeviceHash == nil || *d.DeviceHash == "" {
+		return true
+	}
+	get := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	expected := stableHashFromFeatures(get(d.SoftwareName), get(d.OSName), get(d.DeviceModel), get(d.DeviceBrand))
+	if expected == "" {
+		return false // 字段不全，无法判断 → 不当作历史行
+	}
+	return expected != *d.DeviceHash
+}
+
+// GenerateDeviceHashWithHeaders 计算设备身份哈希（**稳定身份**）。
+//
+// 身份来源优先级：
+//  1. 显式设备 ID（`deviceID` 参数，或客户端请求头 `X-MF-Device-Id`）——
+//     MoneyFly 客户端会带安装级唯一 ID：既唯一（同型号两台手机不会互相顶号），
+//     又稳定（升级 App/系统都不变，只有重装才变）。
+//  2. 退化到 UA/请求头解析出的**稳定特征**：软件名 + 系统名 + 机型 + 品牌。
+//
+// ⚠️ 特征集里**刻意不含 App 版本号与系统版本号**（2026-09-21 修复）：
+// 旧算法把 `version:` / `os_version:` 也算进身份，于是用户每次升级 App 或系统，
+// 设备哈希就变了 —— 同一台手机会以「新设备」重复注册，旧行变成永久占用名额的
+// 幽灵设备；被踢下线（删除设备）的判定也会随之漂移（升级即可绕过，或者反过来
+// 永远命中旧行）。升级不应该改变"我是哪台设备"。
 func (dm *DeviceManager) GenerateDeviceHashWithHeaders(userAgent, ipAddress, deviceID string, headers map[string]string) string {
-	if deviceID != "" {
+	if deviceID == "" && headers != nil {
+		deviceID = headers["X-MF-Device-Id"]
+	}
+	if strings.TrimSpace(deviceID) != "" {
 		hash := sha256.Sum256([]byte("device_id:" + strings.TrimSpace(deviceID)))
 		return hex.EncodeToString(hash[:])
 	}
 
-	info := dm.ParseUserAgent(userAgent)
+	info := dm.ParseUserAgentWithHeaders(userAgent, headers)
 	features := []string{}
 
 	if info.SoftwareName != "Unknown" {
 		features = append(features, "software:"+info.SoftwareName)
-		if info.SoftwareVersion != "" {
-			features = append(features, "version:"+info.SoftwareVersion)
-		}
 	}
 
 	if info.OSName != "Unknown" {
 		features = append(features, "os:"+info.OSName)
-		if info.OSVersion != "" {
-			features = append(features, "os_version:"+info.OSVersion)
-		}
 	}
 
 	if info.DeviceModel != "" {
@@ -1044,6 +1230,51 @@ func (dm *DeviceManager) GenerateDeviceHashWithHeaders(userAgent, ipAddress, dev
 		deviceString = userAgent
 	}
 
+	hash := sha256.Sum256([]byte(deviceString))
+	return hex.EncodeToString(hash[:])
+}
+
+// GenerateLegacyDeviceHash 旧算法哈希（含 App 版本号 / 系统版本号）。
+//
+// 只用于**存量迁移**：库里已有的行是按旧算法写的，客户端换成稳定身份后第一请求
+// 必然对不上；用旧算法再算一次能精确认领「就是这台设备」的那一行，把它的
+// device_hash 改写成新的稳定值（自愈，不新增幽灵设备、也不丢设备备注）。
+// 新代码不要再用它写库。
+func (dm *DeviceManager) GenerateLegacyDeviceHash(userAgent string, headers map[string]string) string {
+	info := dm.ParseUserAgentWithHeaders(userAgent, headers)
+	features := []string{}
+
+	if info.SoftwareName != "Unknown" {
+		features = append(features, "software:"+info.SoftwareName)
+		if info.SoftwareVersion != "" {
+			features = append(features, "version:"+info.SoftwareVersion)
+		}
+	}
+	if info.OSName != "Unknown" {
+		features = append(features, "os:"+info.OSName)
+		if info.OSVersion != "" {
+			features = append(features, "os_version:"+info.OSVersion)
+		}
+	}
+	if info.DeviceModel != "" {
+		features = append(features, "model:"+info.DeviceModel)
+	}
+	if info.DeviceBrand != "" {
+		features = append(features, "brand:"+info.DeviceBrand)
+	}
+	if headers != nil {
+		if v := headers["X-MF-Device-Model"]; v != "" && info.DeviceModel == "" {
+			features = append(features, "mf_model:"+v)
+		}
+		if v := headers["X-MF-OS"]; v != "" && info.OSName == "Unknown" {
+			features = append(features, "mf_os:"+v)
+		}
+	}
+
+	deviceString := strings.Join(features, "|")
+	if deviceString == "" {
+		deviceString = userAgent
+	}
 	hash := sha256.Sum256([]byte(deviceString))
 	return hex.EncodeToString(hash[:])
 }
@@ -1126,7 +1357,7 @@ func (dm *DeviceManager) RecordDeviceAccessWithHeaders(subscriptionID uint, user
 
 	deviceHash := dm.GenerateDeviceHashWithHeaders(userAgent, ipAddress, "", headers)
 
-	if existingDevice, exists, err := dm.FindExistingDevice(subscriptionID, userAgent, ipAddress); err != nil {
+	if existingDevice, exists, err := dm.FindExistingDeviceWithHeaders(subscriptionID, userAgent, ipAddress, headers); err != nil {
 		return nil, err
 	} else if exists {
 		if err := dm.updateExistingDeviceAccess(existingDevice, deviceInfo, deviceHash, userAgent, ipAddress, subscriptionType); err != nil {
