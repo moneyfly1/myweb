@@ -1112,9 +1112,20 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrderTx(db *gorm.DB, node
 		region := s.resolveRegion(item.node.Name, item.node.Server)
 
 		if exist := existingMap[key]; exist != nil {
-			exist.Config, exist.Status, exist.IsActive, exist.IsManual = &cfgStr, "online", true, false
-			exist.OrderIndex, exist.SourceIndex, exist.Region, exist.Name = item.orderIndex, item.sourceIndex, region, item.node.Name
-			if db.Save(exist).Error == nil {
+			// 只更新采集侧负责的字段。status / is_active / latency / last_test 由节点健康检查维护：
+			// 旧实现用 db.Save(exist) 整行回写，既硬编码把 status 置回 "online"、is_active 置回 true，
+			// 又把同步开始时读到的旧延迟/测试时间一起写回，结果是每次节点更新（默认每小时一次）
+			// 都会抹掉健康检查的结论，节点列表长期全是"在线 0ms"，
+			// "自动屏蔽失效节点"开关也随之形同虚设。
+			updates := map[string]interface{}{
+				"config":       cfgStr,
+				"name":         item.node.Name,
+				"region":       region,
+				"order_index":  item.orderIndex,
+				"source_index": item.sourceIndex,
+				"is_manual":    false,
+			}
+			if db.Model(&models.Node{}).Where("id = ?", exist.ID).Updates(updates).Error == nil {
 				stats.Updated++
 			}
 		} else {
