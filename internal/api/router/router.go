@@ -143,6 +143,7 @@ func SetupRouter() *gin.Engine {
 			subscriptions.POST("/reset-subscription", handlers.ResetUserSubscriptionSelf)
 			subscriptions.POST("/send-subscription-email", handlers.SendSubscriptionEmailSelf)
 			subscriptions.POST("/convert-to-balance", handlers.ConvertSubscriptionToBalance)
+			subscriptions.POST("/devices/rebind", handlers.RebindCurrentDevice)
 			subscriptions.DELETE("/devices/:id", handlers.DeleteDevice)
 			subscriptions.PUT("/devices/:id/remark", handlers.UpdateDeviceRemark)
 		}

@@ -134,6 +134,58 @@ func DeleteDevice(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "设备已删除并下线", nil)
 }
 
+// RebindCurrentDevice 把「被踢下线」的本机重新登记回设备列表（用户自助恢复）。
+//
+// 背景：删除设备 = 软删 + kicked_at，此后该设备拉订阅一律 403
+// 「此设备已被移除并踢下线,如需继续使用请重新登录或联系客服」；而此前没有任何
+// 代码会清除 kicked_at（详见 DeviceManager.ReviveKickedDevice 的注释），
+// 用户删掉本机后就永久失联，只能找客服改库。
+//
+// 客户端在收到「已被移除」提示时调用本接口一次即可恢复，无需重新登录、
+// 也不需要重新输入密码（token 仍然有效，被踢只影响订阅接口）。
+// 名额已满时返回 403 并提示先删除闲置设备（与设备超限的引导一致）。
+func RebindCurrentDevice(c *gin.Context) {
+	db := database.GetDB()
+	user, ok := getCurrentUserOrError(c)
+	if !ok {
+		return
+	}
+
+	var sub models.Subscription
+	if err := db.Where("user_id = ?", user.ID).Order("created_at DESC").First(&sub).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			utils.ErrorResponse(c, http.StatusNotFound, "当前账号没有订阅", nil)
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "查询订阅失败", err)
+		}
+		return
+	}
+
+	clientIP := utils.GetRealClientIP(c)
+	userAgent := c.GetHeader("User-Agent")
+	dm := devicesvc.NewDeviceManager() // 内部使用全局数据库连接
+	subID := sub.ID
+	revived, reason, err := dm.ReviveKickedDevice(sub.ID, sub.DeviceLimit, user.SpecialNodeUnlimitedDevices, userAgent, clientIP)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "重新绑定设备失败", err)
+		return
+	}
+	if !revived {
+		if reason == "device-limit" {
+			utils.ErrorResponse(c, http.StatusForbidden,
+				"设备名额已满，请先在设备管理里删除不再使用的设备后再试", nil)
+			return
+		}
+		// 本机并未处于被踢状态：直接告诉客户端可以去更新订阅了
+		utils.SuccessResponse(c, http.StatusOK, "本机设备正常，无需重新绑定", nil)
+		return
+	}
+
+	utils.CreateAuditLogSimpleFast(c, "rebind_device", "subscription", subID,
+		fmt.Sprintf("用户自助重新绑定被踢设备(UA: %s, IP: %s)", userAgent, clientIP))
+	utils.SuccessResponse(c, http.StatusOK, "本机设备已重新绑定", nil)
+}
+
 func RemoveDevice(c *gin.Context) {
 	db := database.GetDB()
 	deviceID := c.Param("id")
