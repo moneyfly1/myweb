@@ -69,8 +69,9 @@ export const NODE_STATUS_MAP = {
   maintenance: { text: '维护中', type: 'warning' },
   unknown: { text: '未知', type: 'info' },
   timeout: { text: '超时', type: 'warning' },
-  // UDP(QUIC) 协议（hysteria2/tuic）无法用 TCP 探测，后端返回 unsupported，不代表节点不可用
-  unsupported: { text: '无法探测', type: 'info' },
+  // 历史值：UDP 协议（hysteria2/tuic）无法用 TCP 探测，早期版本会写入 unsupported。
+  // 2026-09-21 业务决定：这类节点一律按「在线」展示（客户端实测可用，服务端测不到不算异常）。
+  unsupported: { text: '在线', type: 'success' },
   inactive: { text: '未激活', type: 'info' },
   pending: { text: '安装中', type: 'warning' },
   expired: { text: '已过期', type: 'info' },
@@ -84,7 +85,7 @@ const CUSTOM_NODE_STATUS_MAP = {
   online: { text: '在线', type: 'success' },
   offline: { text: '离线', type: 'danger' },
   timeout: { text: '超时', type: 'warning' },
-  unsupported: { text: '无法探测', type: 'info' },
+  unsupported: { text: '在线', type: 'success' },
   error: { text: '错误', type: 'danger' }
 }
 

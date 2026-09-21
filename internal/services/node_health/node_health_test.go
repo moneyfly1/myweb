@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -87,27 +86,29 @@ func TestShouldAutoDisable(t *testing.T) {
 	}
 }
 
-// UDP 协议即使端口上恰好有 TCP 监听，也不能报在线；必须是 unsupported。
-func TestTestNodeUDPProtocolIsUnsupported(t *testing.T) {
+// UDP 协议（hysteria2/tuic）按在线处理：TCP 探测不适用于它们，
+// 不能因此报离线或"无法探测"，更不能被自动屏蔽（2026-09-21 业务决定）。
+func TestTestNodeUDPProtocolTreatedAsOnline(t *testing.T) {
 	port := listenTCP(t)
 	svc := newTestService("")
 
-	res, err := svc.TestNode(testNode(nodeConfigJSON("hysteria2", port)))
-	if err != nil {
-		t.Fatalf("TestNode: %v", err)
-	}
-
-	if res.Status != StatusUnsupported {
-		t.Fatalf("status = %q, want %q", res.Status, StatusUnsupported)
-	}
-	if res.Latency != 0 {
-		t.Errorf("latency = %d, want 0（未测到不能伪装成很快）", res.Latency)
-	}
-	if !strings.Contains(res.Error, "UDP") {
-		t.Errorf("error = %q, 应说明是 UDP 协议无法探测", res.Error)
-	}
-	if ShouldAutoDisable(res.Status) {
-		t.Error("unsupported 会触发自动屏蔽，UDP 节点将被误禁")
+	for _, protocol := range []string{"hysteria2", "tuic", "wireguard"} {
+		res, err := svc.TestNode(testNode(nodeConfigJSON(protocol, port)))
+		if err != nil {
+			t.Fatalf("TestNode(%s): %v", protocol, err)
+		}
+		if res.Status != StatusOnline {
+			t.Fatalf("%s status = %q, want %q", protocol, res.Status, StatusOnline)
+		}
+		if res.Latency != 0 {
+			t.Errorf("%s latency = %d, want 0（未测到不能伪装成很快）", protocol, res.Latency)
+		}
+		if res.Error != "" {
+			t.Errorf("%s error = %q, 不应显示异常提示", protocol, res.Error)
+		}
+		if ShouldAutoDisable(res.Status) {
+			t.Errorf("%s 被判为可自动屏蔽，UDP 节点会被误禁", protocol)
+		}
 	}
 }
 

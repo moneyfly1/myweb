@@ -202,3 +202,47 @@ func TestImportNeverRemovesManualNodes(t *testing.T) {
 		t.Errorf("手动节点数量 = %d, want 1", count)
 	}
 }
+
+// 「自动屏蔽失效节点」开关关闭时，status=timeout 的节点也必须下发给用户
+// （2026-09-21 业务决定：服务端 TCP 探测会误判，探测结果不用于隐藏节点）。
+func TestAppendSystemNodesRespectsAutoDisableSwitch(t *testing.T) {
+	cases := []struct {
+		name      string
+		switchVal string
+		wantCount int
+	}{
+		{"开关关闭：timeout 节点照常下发", "false", 2},
+		{"开关开启：排除 timeout 节点", "true", 1},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupNodeSyncTestDB(t)
+			if err := db.AutoMigrate(&models.SystemConfig{}); err != nil {
+				t.Fatalf("迁移 system_configs 失败: %v", err)
+			}
+			if err := db.Create(&models.SystemConfig{
+				Key: "auto_disable_timeout", Value: tc.switchVal, Category: "node_health",
+			}).Error; err != nil {
+				t.Fatalf("写入开关失败: %v", err)
+			}
+
+			mk := func(name, status string) {
+				cfg := `{"Type":"vless","Server":"1.2.3.4","Port":443,"Name":"` + name + `"}`
+				if err := db.Create(&models.Node{Name: name, Type: "vless", Config: &cfg, Status: status, IsActive: true}).Error; err != nil {
+					t.Fatalf("创建节点失败: %v", err)
+				}
+			}
+			mk("在线节点", "online")
+			mk("超时节点", "timeout")
+
+			svc := &ConfigUpdateService{db: db}
+			var proxies []*ProxyNode
+			svc.appendSystemNodes(&proxies, map[string]bool{})
+
+			if len(proxies) != tc.wantCount {
+				t.Errorf("下发节点数 = %d, want %d", len(proxies), tc.wantCount)
+			}
+		})
+	}
+}
