@@ -296,6 +296,67 @@ func (dm *DeviceManager) FindKickedDevice(subscriptionID uint, userAgent, ipAddr
 	return nil, nil
 }
 
+// ReviveKickedDevice 解除「踢下线」：把被软删的设备重新登记为活跃设备。
+//
+// 为什么需要（2026-09-21 生产排查结论）：
+//   删除设备 = is_active=false + kicked_at=now，此后该设备拉订阅一律 403
+//   「此设备已被移除并踢下线,如需继续使用请重新登录或联系客服」。
+//   但**代码里没有任何地方会清除 kicked_at**（FindKickedDevice 只读、删除接口只写），
+//   于是「请重新登录」实际无效：用户只要删掉了本机（例如到期后清理设备、或先删光
+//   再续费），就永久拿不到订阅、设备列表里也不再出现这台设备，只能找客服改库。
+//
+// 语义（与「防静默复活」的设计意图兼容）：
+//   - 只有**确实被踢过的这一台**（按设备哈希/UA 命中软删行）才允许恢复；
+//   - **名额未满**才恢复：名额已满说明是"用满额度"场景，应引导用户先删闲置设备；
+//   - 恢复保留原行（备注、首次出现时间等都在），只清 kicked_at 并置回活跃；
+//   - 恢复后同步订阅的 current_devices。
+//
+// 返回 (是否恢复, 未恢复原因, 错误)；原因取值："not-kicked" / "device-limit"。
+func (dm *DeviceManager) ReviveKickedDevice(subscriptionID uint, deviceLimit int, unlimited bool, userAgent, ipAddress string) (bool, string, error) {
+	kicked, err := dm.FindKickedDevice(subscriptionID, userAgent, ipAddress)
+	if err != nil {
+		return false, "", err
+	}
+	if kicked == nil {
+		return false, "not-kicked", nil
+	}
+
+	count, err := CountActiveDevices(dm.db, subscriptionID)
+	if err != nil {
+		return false, "", err
+	}
+	if !unlimited && deviceLimit > 0 && int(count) >= deviceLimit {
+		return false, "device-limit", nil
+	}
+
+	now := utils.GetBeijingTime()
+	err = dm.db.Transaction(func(tx *gorm.DB) error {
+		updates := map[string]interface{}{
+			"is_active":   true,
+			"kicked_at":   nil,
+			"last_access": now,
+			"last_seen":   now,
+		}
+		if ipAddress != "" {
+			updates["ip_address"] = ipAddress
+		}
+		if err := tx.Model(&models.Device{}).Where("id = ?", kicked.ID).
+			Updates(updates).Error; err != nil {
+			return err
+		}
+		newCount, cErr := CountActiveDevices(tx, subscriptionID)
+		if cErr != nil {
+			return cErr
+		}
+		return tx.Model(&models.Subscription{}).Where("id = ?", subscriptionID).
+			Update("current_devices", newCount).Error
+	})
+	if err != nil {
+		return false, "", err
+	}
+	return true, "", nil
+}
+
 func (dm *DeviceManager) deactivateClashMetaAndroidAliasDuplicates(canonical *models.Device, ipAddress string) error {
 	if canonical == nil || canonical.ID == 0 || ipAddress == "" || !dm.isClashMetaAndroidDevice(canonical) {
 		return nil
