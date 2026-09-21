@@ -748,27 +748,74 @@ func updateCustomNodeSubscription(db *gorm.DB, urlStr string, replaceAll bool) (
 		return 0, 0, 0, []string{"订阅内容中没有解析到节点"}
 	}
 
-	// 加载候选旧节点：replaceAll 时取全部 subscription 来源；否则仅该 URL 下的
-	var oldNodes []models.CustomNode
-	if replaceAll {
-		db.Where("source = ?", "subscription").Find(&oldNodes)
-	} else {
-		db.Where("source = ? AND source_url = ?", "subscription", urlStr).Find(&oldNodes)
+	// 加载候选旧节点（订阅来源 + source 为空的历史遗留节点）
+	oldNodes := loadCustomNodeMatchCandidates(db, urlStr, replaceAll)
+
+	// 合并订阅链接：匹配则就地更新，未匹配则新增，订阅里已消失的旧节点保留不删除
+	merge := mergeCustomNodesFromLinks(oldNodes, links, urlStr)
+
+	errs = merge.errs
+	for _, u := range merge.updates {
+		if err := db.Model(&models.CustomNode{}).Where("id = ?", u.ID).Updates(u.Fields).Error; err != nil {
+			errs = append(errs, fmt.Sprintf("更新节点 %s 失败: %s", u.Name, err.Error()))
+			continue
+		}
+		updated++
 	}
 
-	// 建立匹配索引：名称 → 节点；协议:域名:端口 → 节点
-	type matchedInfo struct {
-		node     *models.CustomNode
-		consumed bool
+	if len(merge.newNodes) > 0 {
+		if err := db.CreateInBatches(merge.newNodes, 100).Error; err != nil {
+			errs = append(errs, fmt.Sprintf("批量写入节点失败: %s", err.Error()))
+			return added, updated, merge.kept, errs
+		}
+		added = len(merge.newNodes)
 	}
-	byName := make(map[string]*matchedInfo, len(oldNodes))
-	byAddr := make(map[string]*matchedInfo, len(oldNodes))
+	return added, updated, merge.kept, errs
+}
+
+// loadCustomNodeMatchCandidates 加载参与「订阅更新」匹配的旧节点。
+//
+// 除了 source=subscription 的订阅节点，还包括 source 为空的历史遗留节点：
+// source 字段是后加的，线上有 300+ 个节点的 source 为空，它们在旧逻辑里
+// 完全不在候选集内 —— 于是同一个订阅每更新一次就重新插入一份，
+// 节点列表越更新越多（2026-09-21 排查确认）。
+//
+// 自建节点（self_hosted=true，source=selfhost）与手动链接导入（source=link）
+// 不参与匹配，避免订阅更新误改管理员手工维护的节点。
+func loadCustomNodeMatchCandidates(db *gorm.DB, urlStr string, replaceAll bool) []models.CustomNode {
+	const legacyCond = "source = '' OR source IS NULL"
+	var oldNodes []models.CustomNode
+	if replaceAll {
+		db.Where("self_hosted = ? AND (source = ? OR "+legacyCond+")", false, "subscription").Find(&oldNodes)
+	} else {
+		db.Where("self_hosted = ? AND ((source = ? AND source_url = ?) OR "+legacyCond+")",
+			false, "subscription", urlStr).Find(&oldNodes)
+	}
+	return oldNodes
+}
+
+// customNodeMatch 候选节点及其是否已被本次订阅内容认领。
+type customNodeMatch struct {
+	node     *models.CustomNode
+	consumed bool
+}
+
+// buildCustomNodeMatchers 建立匹配索引。
+//
+//	byName：名称 → 节点。仅订阅来源节点参与「同名视为同一节点」，
+//	        历史遗留节点来源不明，按名称匹配可能把管理员手工维护的节点静默改地址。
+//	byAddr：协议:域名:端口 → 节点。订阅来源与历史遗留节点都参与，
+//	        这是「同一个订阅重复导入不再产生重复节点」的关键。
+func buildCustomNodeMatchers(oldNodes []models.CustomNode) (byName, byAddr map[string]*customNodeMatch) {
+	byName = make(map[string]*customNodeMatch, len(oldNodes))
+	byAddr = make(map[string]*customNodeMatch, len(oldNodes))
 	for i := range oldNodes {
-		mi := &matchedInfo{node: &oldNodes[i]}
-		nm := strings.TrimSpace(oldNodes[i].Name)
-		if nm != "" {
-			if _, ok := byName[nm]; !ok {
-				byName[nm] = mi
+		mi := &customNodeMatch{node: &oldNodes[i]}
+		if oldNodes[i].Source == "subscription" {
+			if nm := strings.TrimSpace(oldNodes[i].Name); nm != "" {
+				if _, ok := byName[nm]; !ok {
+					byName[nm] = mi
+				}
 			}
 		}
 		key := fmt.Sprintf("%s:%s:%d", oldNodes[i].Protocol, oldNodes[i].Domain, oldNodes[i].Port)
@@ -776,21 +823,44 @@ func updateCustomNodeSubscription(db *gorm.DB, urlStr string, replaceAll bool) (
 			byAddr[key] = mi
 		}
 	}
+	return byName, byAddr
+}
 
-	// 解析订阅链接并合并：优先匹配名称，其次匹配地址
+// customNodeUpdate 一次「就地更新」：保留 ID、分配关系、激活状态、到期时间、
+// 状态与测试结果，只刷新订阅侧字段。
+type customNodeUpdate struct {
+	ID     uint
+	Name   string
+	Fields map[string]interface{}
+}
+
+type customNodeMergeResult struct {
+	newNodes []models.CustomNode
+	updates  []customNodeUpdate
+	kept     int
+	errs     []string
+}
+
+// mergeCustomNodesFromLinks 把订阅解析出的链接合并进已有专线节点（纯函数，便于测试）：
+// 先按名称（仅订阅来源）匹配，再按「协议:域名:端口」匹配（含历史遗留节点）；
+// 未匹配的追加为新节点；订阅里消失的旧节点保留不删除（分配保护）。
+func mergeCustomNodesFromLinks(oldNodes []models.CustomNode, links []string, urlStr string) customNodeMergeResult {
+	var res customNodeMergeResult
+
+	byName, byAddr := buildCustomNodeMatchers(oldNodes)
 	seenLinks := make(map[string]bool)
-	consumedOld := make(map[*matchedInfo]bool)
-	var newNodes []models.CustomNode
+
 	for _, link := range links {
 		parsed, err := config_update.ParseNodeLink(link)
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("链接解析失败: %s", err.Error()))
+			res.errs = append(res.errs, fmt.Sprintf("链接解析失败: %s", err.Error()))
 			continue
 		}
-		if seenLinks[fmt.Sprintf("%s:%s:%d", parsed.Type, parsed.Server, parsed.Port)] {
+		addrKey := fmt.Sprintf("%s:%s:%d", parsed.Type, parsed.Server, parsed.Port)
+		if seenLinks[addrKey] {
 			continue
 		}
-		seenLinks[fmt.Sprintf("%s:%s:%d", parsed.Type, parsed.Server, parsed.Port)] = true
+		seenLinks[addrKey] = true
 
 		configJSON, _ := json.Marshal(parsed)
 		configStr := string(configJSON)
@@ -800,34 +870,36 @@ func updateCustomNodeSubscription(db *gorm.DB, urlStr string, replaceAll bool) (
 		}
 		name = truncateNodeName(name)
 
-		// 匹配已有节点：先按名称，再按地址
-		var match *matchedInfo
-		if m, ok := byName[name]; ok && !consumedOld[m] {
+		// 匹配已有节点：先按名称，再按地址（含历史遗留节点）
+		var match *customNodeMatch
+		if m, ok := byName[name]; ok && !m.consumed {
 			match = m
-		} else if m, ok := byAddr[fmt.Sprintf("%s:%s:%d", parsed.Type, parsed.Server, parsed.Port)]; ok && !consumedOld[m] {
+		} else if m, ok := byAddr[addrKey]; ok && !m.consumed {
 			match = m
 		}
+
 		if match != nil {
-			// 更新已有节点：保留 ID、分配关系、激活状态、到期时间；仅刷新配置/名称/地址/来源URL
-			consumedOld[match] = true
-			cn := match.node
-			updates := map[string]interface{}{
-				"name":       name,
-				"protocol":   parsed.Type,
-				"domain":     parsed.Server,
-				"port":       parsed.Port,
-				"config":     configStr,
-				"source_url": urlStr,
-			}
-			if err := db.Model(&models.CustomNode{}).Where("id = ?", cn.ID).Updates(updates).Error; err != nil {
-				errs = append(errs, fmt.Sprintf("更新节点 %s 失败: %s", name, err.Error()))
-				continue
-			}
-			updated++
+			match.consumed = true
+			res.updates = append(res.updates, customNodeUpdate{
+				ID:   match.node.ID,
+				Name: name,
+				Fields: map[string]interface{}{
+					"name":       name,
+					"protocol":   parsed.Type,
+					"domain":     parsed.Server,
+					"port":       parsed.Port,
+					"config":     configStr,
+					"source_url": urlStr,
+					// 历史遗留节点被订阅内容认领后归入订阅来源，
+					// 之后按 source_url 精确匹配，避免再次重复
+					"source": "subscription",
+				},
+			})
 			continue
 		}
+
 		// 未匹配：追加新节点
-		newNodes = append(newNodes, models.CustomNode{
+		res.newNodes = append(res.newNodes, models.CustomNode{
 			Name:      name,
 			Protocol:  parsed.Type,
 			Domain:    parsed.Server,
@@ -842,27 +914,20 @@ func updateCustomNodeSubscription(db *gorm.DB, urlStr string, replaceAll bool) (
 
 	// 订阅中已消失的旧节点（未匹配到新订阅内容）：保留不删除，仅计入 kept（分配保护）
 	for _, mi := range byName {
-		if !consumedOld[mi] && !mi.consumed {
+		if !mi.consumed {
 			mi.consumed = true
-			kept++
+			res.kept++
 		}
 	}
-	// byAddr 中未覆盖的（byName 索引与 byAddr 可能指向同一节点，需去重）
+	// byAddr 中未覆盖的（byName 与 byAddr 可能指向同一节点，需去重）
 	for _, mi := range byAddr {
-		if !consumedOld[mi] && !mi.consumed {
+		if !mi.consumed {
 			mi.consumed = true
-			kept++
+			res.kept++
 		}
 	}
 
-	if len(newNodes) > 0 {
-		if err := db.CreateInBatches(newNodes, 100).Error; err != nil {
-			errs = append(errs, fmt.Sprintf("批量写入节点失败: %s", err.Error()))
-			return added, updated, kept, errs
-		}
-		added = len(newNodes)
-	}
-	return added, updated, kept, errs
+	return res
 }
 
 func UpdateCustomNode(c *gin.Context) {
