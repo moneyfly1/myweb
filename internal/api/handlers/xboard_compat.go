@@ -180,11 +180,12 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 
 	// 设备管理
 	deviceManager := device.NewDeviceManager()
-	_, deviceExists, _ := deviceManager.FindExistingDevice(subscription.ID, userAgent, clientIP)
+	mfHeaders := extractMFHeaders(c)
+	_, deviceExists, _ := deviceManager.FindExistingDeviceWithHeaders(subscription.ID, userAgent, clientIP, mfHeaders)
 
 	// 被踢下线检查：该设备曾被从设备列表删除（软删 + KickedAt）→ 拒绝重新
 	// 拉取订阅并明确提示，防止静默重新注册复活
-	if kicked, kickErr := deviceManager.FindKickedDevice(subscription.ID, userAgent, clientIP); kickErr == nil && kicked != nil {
+	if kicked, kickErr := deviceManager.FindKickedDeviceWithHeaders(subscription.ID, userAgent, clientIP, mfHeaders); kickErr == nil && kicked != nil {
 		utils.ErrorResponse(c, http.StatusForbidden,
 			"此设备已被移除并踢下线,如需继续使用请重新登录或联系客服", nil)
 		return

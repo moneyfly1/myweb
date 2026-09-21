@@ -34,7 +34,7 @@ func respondEmptySubscriptionForBrowser(c *gin.Context) {
 
 // extractMFHeaders 提取 MoneyFly 客户端发送的 X-MF-* 自定义设备信息头
 func extractMFHeaders(c *gin.Context) map[string]string {
-	keys := []string{"X-MF-Device-Model", "X-MF-Device-Brand", "X-MF-OS", "X-MF-Device-Type"}
+	keys := []string{"X-MF-Device-Model", "X-MF-Device-Brand", "X-MF-OS", "X-MF-Device-Type", "X-MF-Device-Id"}
 	headers := make(map[string]string, len(keys))
 	for _, k := range keys {
 		if v := c.GetHeader(k); v != "" {
