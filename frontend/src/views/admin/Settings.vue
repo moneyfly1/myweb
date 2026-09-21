@@ -610,11 +610,14 @@
                 </div>
                 <el-form-item label="辅助测速 URL" class="mt-3">
                   <el-input v-model="nodeHealthSettings.test_url" placeholder="例如: https://ping.pe" />
-                  <div class="form-tip">用于 HTTP 延迟测试，不填则仅测 TCP 端口。</div>
+                  <div class="form-tip">
+                    探测页面必须能在返回内容中直接给出毫秒数；取不到延迟时会自动回退为 TCP 端口探测（不会把网页加载耗时当作节点延迟）。
+                    建议留空，仅测 TCP 端口，更快更准。UDP 协议（hysteria2/tuic）无法用 TCP 探测，状态显示为「无法探测」，也不会被自动屏蔽。
+                  </div>
                 </el-form-item>
                 <el-form-item label="自动屏蔽失效节点" class="mt-3">
                   <el-switch v-model="nodeHealthSettings.auto_disable_timeout" />
-                  <div class="form-tip">开启后，健康检测到超时/离线的节点（含采集节点与专线节点）会自动禁用，用户订阅中不再出现失效节点。</div>
+                  <div class="form-tip">开启后，健康检测到超时/离线的节点（含采集节点与专线节点）会自动禁用，用户订阅中不再出现失效节点。「无法探测」的 UDP 节点不受影响。</div>
                 </el-form-item>
                 <div class="mt-3 node-health-actions">
                   <el-button type="primary" @click="saveNodeHealthSettings" :class="{ 'full-width': isMobile }">保存监控配置</el-button>

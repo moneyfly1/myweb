@@ -1355,10 +1355,11 @@ func TestCustomNode(c *gin.Context) {
 	node.Status = res.Status
 	node.Latency = res.Latency
 	node.LastTest = &now
-	// 自动屏蔽超时/离线专线节点（与普通节点同一开关）
-	if autoDisableTimeoutEnabled(db) && (res.Status == "timeout" || res.Status == "offline") {
+	// 自动屏蔽超时/离线专线节点（与普通节点同一开关）；
+	// unsupported（UDP 协议无法探测）不参与判定，避免误禁可用节点
+	if autoDisableTimeoutEnabled(db) && node_health.ShouldAutoDisable(res.Status) {
 		node.IsActive = false
-	} else if res.Status == "online" {
+	} else if res.Status == node_health.StatusOnline {
 		node.IsActive = true
 	}
 	if err := db.Save(&node).Error; err != nil {
@@ -1430,10 +1431,10 @@ func BatchTestCustomNodes(c *gin.Context) {
 			continue
 		}
 
-		node.Status = "active"
-		db.Save(node)
+		// 注意：这里不要预写 status（旧代码先写 active 再测试，属于假测试残留，
+		// 测试中途失败会留下与真实状态不符的 active）。状态一律由测试结果决定。
 
-		// 真实连通性测试：逐节点 TCP 探测
+		// 真实连通性测试：非 UDP 协议走 TCP 握手/网页测速，UDP 协议返回 unsupported
 		svc := node_health.NewNodeHealthService()
 		cfgJSON, _ := json.Marshal(config_update.ProxyNode{
 			Type:     config.Type,
@@ -1462,10 +1463,11 @@ func BatchTestCustomNodes(c *gin.Context) {
 		node.Status = res.Status
 		node.Latency = res.Latency
 		node.LastTest = &now
-		// 自动屏蔽超时/离线专线节点（与普通节点同一开关：node_health.auto_disable_timeout）
-		if autoDisableTimeoutEnabled(db) && (res.Status == "timeout" || res.Status == "offline") {
+		// 自动屏蔽超时/离线专线节点（与普通节点同一开关：node_health.auto_disable_timeout）；
+		// unsupported 不参与判定，否则 hysteria2/tuic 等 UDP 节点会被误禁
+		if autoDisableTimeoutEnabled(db) && node_health.ShouldAutoDisable(res.Status) {
 			node.IsActive = false
-		} else if res.Status == "online" {
+		} else if res.Status == node_health.StatusOnline {
 			node.IsActive = true
 		}
 		db.Save(node)
@@ -1481,18 +1483,30 @@ func BatchTestCustomNodes(c *gin.Context) {
 
 	clearNodeCaches()
 
-	successCount := 0
+	// 统计口径必须与节点状态常量一致：只有 online 算成功，
+	// unsupported（UDP 协议探测不到）既不算成功也不算失败。
+	onlineCount, failedCount, unsupportedCount := 0, 0, 0
 	for _, r := range results {
-		if status, ok := r["status"].(string); ok && status == "active" {
-			successCount++
+		status, _ := r["status"].(string)
+		switch {
+		case status == node_health.StatusOnline:
+			onlineCount++
+		case status == node_health.StatusUnsupported:
+			unsupportedCount++
+		case status == node_health.StatusTimeout || status == node_health.StatusOffline || status == "error":
+			failedCount++
 		}
 	}
-	utils.CreateAuditLogSimple(c, "batch_test_custom_nodes", "custom_node", 0, fmt.Sprintf("管理员操作: 批量测试专线节点 %d 个 成功 %d 个", len(req.NodeIDs), successCount))
+	utils.CreateAuditLogSimple(c, "batch_test_custom_nodes", "custom_node", 0,
+		fmt.Sprintf("管理员操作: 批量测试专线节点 %d 个 在线 %d 个 离线/超时 %d 个 无法探测 %d 个",
+			len(req.NodeIDs), onlineCount, failedCount, unsupportedCount))
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"results": results,
-		"total":   len(req.NodeIDs),
-		"success": len(results),
+		"results":     results,
+		"total":       len(req.NodeIDs),
+		"success":     onlineCount,
+		"failed":      failedCount,
+		"unsupported": unsupportedCount,
 	})
 }
 
