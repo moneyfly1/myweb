@@ -1134,8 +1134,40 @@ func fingerprintKeyOf(sw, osName, model, brand string) (string, bool) {
 	if strings.EqualFold(sw, "Unknown") || strings.EqualFold(osName, "Unknown") {
 		return "", false
 	}
+	if !IsSpecificDeviceModel(model) {
+		return "", false
+	}
 	return strings.ToLower(sw) + "|" + strings.ToLower(osName) + "|" +
 		strings.ToLower(model) + "|" + strings.ToLower(brand), true
+}
+
+// genericDeviceModels 无法区分「哪一台设备」的机型值（UA 解析只给到品类级别）。
+// 用它们做指纹合并会把同一用户的多台同品类设备误判成一台（每个都删掉，等于
+// 无故剥夺用户的设备名额），所以这类值一律不参与指纹匹配/合并。
+var genericDeviceModels = map[string]bool{
+	"iphone": true, "ipad": true, "ipod": true, "iphone simulator": true,
+	"android": true, "android phone": true, "phone": true, "mobile": true,
+	"windows": true, "windows nt": true, "pc": true, "desktop": true,
+	"macintosh": true, "mac": true, "macos": true, "linux": true,
+	"unknown": true, "unknown device": true, "generic": true, "web": true,
+}
+
+// IsSpecificDeviceModel 机型字段是否**足够具体**（能唯一指认一台设备）。
+//
+// 两类不算具体（线上真实数据踩过）：
+//  1. 纯品类名：`iPhone` / `Android` / `PC` / `Windows` —— 同用户多台同型号设备会撞在一起；
+//  2. 被解析串味的「系统版本」：如 `iPhone 18.1`（Shadowrocket 之类 UA 的机型位拿了
+//     OS 版本）—— 同一台手机升级系统就会变，把它当身份会把真实设备误合并。
+func IsSpecificDeviceModel(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	if m == "" || genericDeviceModels[m] {
+		return false
+	}
+	// 形如 "iphone 18.1" / "android 13" / "windows 10.0"：品类 + 纯版本号 → 不具体
+	if matched, _ := regexp.MatchString(`^(iphone|ipad|ipod|android|windows|macos|mac|harmonyos|ios)[\s_-]?[0-9]+(\.[0-9]+)*$`, m); matched {
+		return false
+	}
+	return true
 }
 
 // stableHashFromFeatures 由稳定特征（无客户端设备 ID 时）计算哈希，

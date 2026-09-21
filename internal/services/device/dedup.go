@@ -40,6 +40,9 @@ func stableFingerprintKey(d *models.Device) (string, bool) {
 	if strings.EqualFold(sw, "Unknown") || strings.EqualFold(os, "Unknown") {
 		return "", false
 	}
+	if !IsSpecificDeviceModel(model) {
+		return "", false
+	}
 	return strings.ToLower(sw) + "|" + strings.ToLower(os) + "|" +
 		strings.ToLower(model) + "|" + strings.ToLower(brand), true
 }
@@ -58,14 +61,52 @@ func stableFingerprintKey(d *models.Device) (string, bool) {
 //
 // apply=false（默认）：只报告将要做什么，不写库。
 func MergeDuplicateDevices(db *gorm.DB, apply bool) (DedupReport, error) {
+	return MergeDuplicateDevicesFiltered(db, apply, DedupFilter{})
+}
+
+// DedupFilter 限定处理范围（留空 = 全部）。用于客服针对单个用户执行，
+// 避免全量清理的风险（历史数据里"同型号多台真机"和"升级残留"难以区分）。
+type DedupFilter struct {
+	UserEmail      string
+	SubscriptionID uint
+}
+
+// MergeDuplicateDevicesFiltered 同 MergeDuplicateDevices，但可按用户/订阅过滤。
+func MergeDuplicateDevicesFiltered(db *gorm.DB, apply bool, filter DedupFilter) (DedupReport, error) {
 	report := DedupReport{}
 
-	var subIDs []uint
-	if err := db.Model(&models.Device{}).
+	q := db.Model(&models.Device{}).
 		Select("subscription_id").
 		Group("subscription_id").
-		Having("COUNT(*) > 1").
-		Pluck("subscription_id", &subIDs).Error; err != nil {
+		Having("COUNT(*) > 1")
+	if filter.SubscriptionID > 0 {
+		q = q.Where("subscription_id = ?", filter.SubscriptionID)
+	}
+	if filter.UserEmail != "" {
+		var uid uint
+		if err := db.Model(&models.User{}).
+			Where("LOWER(email) = ? OR username = ?",
+				strings.ToLower(strings.TrimSpace(filter.UserEmail)),
+				strings.TrimSpace(filter.UserEmail)).
+			Pluck("id", &uid).Error; err != nil {
+			return report, err
+		}
+		if uid == 0 {
+			return report, fmt.Errorf("未找到用户: %s", filter.UserEmail)
+		}
+		var sids []uint
+		if err := db.Model(&models.Subscription{}).Where("user_id = ?", uid).
+			Pluck("id", &sids).Error; err != nil {
+			return report, err
+		}
+		if len(sids) == 0 {
+			return report, nil
+		}
+		q = q.Where("subscription_id IN ?", sids)
+	}
+
+	var subIDs []uint
+	if err := q.Pluck("subscription_id", &subIDs).Error; err != nil {
 		return report, err
 	}
 	report.SubscriptionsScanned = len(subIDs)
@@ -88,6 +129,11 @@ func MergeDuplicateDevices(db *gorm.DB, apply bool) (DedupReport, error) {
 
 		for _, group := range groups {
 			if len(group) < 2 {
+				continue
+			}
+			// 额外保险：版本号完全相同却有多行 → 不能证明是"同一台设备升级后残留"，
+			// 可能是同型号的两台真机，宁可不合并（合并错误 = 剥夺用户设备名额）
+			if !hasVersionSpread(group) {
 				continue
 			}
 			sort.SliceStable(group, func(i, j int) bool {
@@ -169,6 +215,30 @@ func MergeDuplicateDevices(db *gorm.DB, apply bool) (DedupReport, error) {
 		}
 	}
 	return report, nil
+}
+
+// hasVersionSpread 同组内是否存在「软件名相同但版本不同」的行。
+// 这是"同一台设备因升级被重复登记"的判定依据；版本全同说明证据不足。
+func hasVersionSpread(group []models.Device) bool {
+	seen := map[string]bool{}
+	for _, d := range group {
+		v := ""
+		if d.SoftwareVersion != nil {
+			v = strings.TrimSpace(*d.SoftwareVersion)
+		}
+		if seen[v] && v != "" {
+			continue
+		}
+		seen[v] = true
+	}
+	// 至少两个不同的非空版本
+	distinct := 0
+	for v := range seen {
+		if v != "" {
+			distinct++
+		}
+	}
+	return distinct >= 2
 }
 
 func deviceLabel(d *models.Device) string {
