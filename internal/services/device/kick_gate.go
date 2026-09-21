@@ -3,6 +3,8 @@ package device
 import (
 	"os"
 	"strings"
+
+	"cboard-go/internal/models"
 )
 
 // KickGateResult 是「被删除（踢下线）的设备再次拉取订阅」的处理结论。
@@ -57,11 +59,14 @@ func (dm *DeviceManager) ResolveKickGate(
 
 	res := KickGateResult{DeviceID: kicked.ID}
 
-	// 1) 这台设备此刻已经在活跃列表里（同一台机器既有历史软删行、又有活跃行，
-	//    或刚刚被其它路径恢复）→ 历史软删行不该再拦住它。
-	if active, exists, fErr := dm.FindExistingDeviceWithHeaders(subscriptionID, userAgent, ipAddress, headers); fErr != nil {
-		return KickGateResult{}, fErr
-	} else if exists && active != nil && active.ID != kicked.ID && active.IsActive && active.KickedAt == nil {
+	// 1) 这台设备此刻已经在活跃列表里（另一行、不同身份哈希）→ 历史软删行不该
+	//    再拦住它。
+	//
+	//    ⚠️ 这里刻意只按**哈希**查活跃行，不走 FindExistingDeviceWithHeaders：
+	//    后者带「存量行认领」副作用（会把旧算法哈希改写成稳定哈希）。把改写放在
+	//    判定之前，会让软删行瞬间不再被指纹命中 → 闸门放行、随后又新建一行，
+	//    同一台机器变成两行（线上 sub 638 实测踩到）。判定阶段只读。
+	if activeID := dm.findActiveRowIDByHash(subscriptionID, userAgent, headers); activeID != 0 && activeID != kicked.ID {
 		res.Reason = "already-active"
 		return res, nil
 	}
@@ -72,7 +77,8 @@ func (dm *DeviceManager) ResolveKickGate(
 		return res, nil
 	}
 
-	// 2) 名额未满 → 自动恢复这一行（保留备注/首次出现时间，只清 kicked_at）
+	// 2) 名额未满 → 直接恢复**命中这一行**（保留备注/首次出现时间，只清 kicked_at），
+	//    而不是放行后再新建一行，避免同一台机器重复占名额。
 	revived, reason, rErr := dm.ReviveKickedDeviceWithHeaders(subscriptionID, deviceLimit, unlimited, userAgent, ipAddress, headers)
 	if rErr != nil {
 		return KickGateResult{}, rErr
@@ -90,4 +96,20 @@ func (dm *DeviceManager) ResolveKickGate(
 	// not-kicked：并发下已被其它请求恢复 → 放行。
 	res.Reason = reason
 	return res, nil
+}
+
+// findActiveRowIDByHash 只按设备哈希查活跃行 id（纯读，不做任何存量认领/改写）。
+// 命中说明「这台设备此刻已在列表里」，其历史软删行不应再拦截请求。
+func (dm *DeviceManager) findActiveRowIDByHash(subscriptionID uint, userAgent string, headers map[string]string) uint {
+	hash := dm.GenerateDeviceHashWithHeaders(userAgent, "", "", headers)
+	if hash == "" {
+		return 0
+	}
+	var row models.Device
+	if err := dm.db.Select("id").
+		Where("device_hash = ? AND subscription_id = ? AND is_active = ? AND kicked_at IS NULL", hash, subscriptionID, true).
+		First(&row).Error; err != nil {
+		return 0
+	}
+	return row.ID
 }

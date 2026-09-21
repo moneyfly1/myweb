@@ -229,3 +229,32 @@ func subscriptionDeviceCount(t *testing.T, db *gorm.DB, subID uint) int {
 	}
 	return sub.CurrentDevices
 }
+
+// 恢复必须落在**同一行**上：放行后紧跟的设备访问记录不能又新建一行，
+// 否则同一台机器会重复占名额（线上 sub 638 曾出现 9890 + 10703 两行）。
+func TestResolveKickGateRevivesSameRowNoDuplicate(t *testing.T) {
+	db, dm, subID := setupReviveTestDB(t)
+	kicked := seedKickedDevice(t, db, dm, subID, "本机")
+
+	res, err := dm.ResolveKickGate(subID, 3, false, testUA, "1.2.3.4", nil)
+	if err != nil {
+		t.Fatalf("ResolveKickGate 出错: %v", err)
+	}
+	if !res.Revived || res.DeviceID != kicked.ID {
+		t.Fatalf("应恢复命中行 %d，实际 %+v", kicked.ID, res)
+	}
+
+	if _, err := dm.RecordDeviceAccessWithHeaders(subID, 1, testUA, "1.2.3.4", "clash", nil); err != nil {
+		t.Fatalf("记录设备访问失败: %v", err)
+	}
+	var total int64
+	if err := db.Model(&models.Device{}).Where("subscription_id = ?", subID).Count(&total).Error; err != nil {
+		t.Fatalf("统计设备数失败: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("恢复后不应新增重复行，实际 %d 行", total)
+	}
+	if got := subscriptionDeviceCount(t, db, subID); got != 1 {
+		t.Fatalf("current_devices 应为 1，实际 %d", got)
+	}
+}
