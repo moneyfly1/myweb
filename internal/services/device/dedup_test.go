@@ -54,11 +54,19 @@ func fingerprintFrom(hash string) string {
 func mkDevice(t *testing.T, db *gorm.DB, subID uint, hash, sw, osName, model, brand, remark string,
 	active bool, lastAccess time.Time) models.Device {
 	t.Helper()
+	// 默认给一个版本号；同一台设备升级残留时调用方会用不同版本
+	return mkDeviceVer(t, db, subID, hash, sw, osName, model, brand, remark, "2.2.14", active, lastAccess)
+}
+
+func mkDeviceVer(t *testing.T, db *gorm.DB, subID uint, hash, sw, osName, model, brand, remark, ver string,
+	active bool, lastAccess time.Time) models.Device {
+	t.Helper()
 	d := models.Device{
 		SubscriptionID:    subID,
 		DeviceFingerprint: fingerprintFrom(hash),
 		DeviceHash:        &hash,
 		SoftwareName:      &sw,
+		SoftwareVersion:   &ver,
 		OSName:            &osName,
 		DeviceModel:       &model,
 		DeviceBrand:       &brand,
@@ -86,8 +94,8 @@ func TestMergeDuplicateDevices(t *testing.T) {
 	now := time.Now()
 
 	// 同一台 iPhone：升级 2.2.14 → 2.2.15 各登记了一行（旧算法身份含版本号）
-	old := mkDevice(t, db, subID, "hashOld", "MoneyFly", "iOS", "iPhone14,3", "Apple", "", true, now.Add(-48*time.Hour))
-	mkDevice(t, db, subID, "hashNew", "MoneyFly", "iOS", "iPhone14,3", "Apple", "我的主力机", true, now)
+	old := mkDeviceVer(t, db, subID, "hashOld", "MoneyFly", "iOS", "iPhone14,3", "Apple", "", "2.2.14", true, now.Add(-48*time.Hour))
+	mkDeviceVer(t, db, subID, "hashNew", "MoneyFly", "iOS", "iPhone14,3", "Apple", "我的主力机", "2.2.15", true, now)
 
 	// 另一台确实不同的设备：不能被误合并
 	other := mkDevice(t, db, subID, "hashOther", "MoneyFly", "Android", "V2072A", "vivo", "", true, now)
@@ -145,8 +153,8 @@ func TestMergeDuplicateDevices_KeepsKickedState(t *testing.T) {
 	now := time.Now()
 	// 同一台设备被用户删过（被踢）后又因升级多登记了一行活跃行：
 	// 合并时必须保留「活跃且未踢」的那行（用户现在在用它）
-	mkDevice(t, db, subID, "hashA", "MoneyFly", "iOS", "iPhone14,3", "Apple", "", false, now.Add(-2*time.Hour))
-	live := mkDevice(t, db, subID, "hashB", "MoneyFly", "iOS", "iPhone14,3", "Apple", "", true, now)
+	mkDeviceVer(t, db, subID, "hashA", "MoneyFly", "iOS", "iPhone14,3", "Apple", "", "2.2.13", false, now.Add(-2*time.Hour))
+	live := mkDeviceVer(t, db, subID, "hashB", "MoneyFly", "iOS", "iPhone14,3", "Apple", "", "2.2.15", true, now)
 
 	if _, err := MergeDuplicateDevices(db, true); err != nil {
 		t.Fatalf("合并失败: %v", err)
@@ -164,8 +172,8 @@ func TestMergeDuplicateDevices_KeepsKickedState(t *testing.T) {
 func TestMergeDuplicateDevices_DryRun(t *testing.T) {
 	db, subID := setupDedupDB(t)
 	now := time.Now()
-	mkDevice(t, db, subID, "hashA", "MoneyFly", "iOS", "iPhone14,3", "Apple", "", true, now.Add(-time.Hour))
-	mkDevice(t, db, subID, "hashB", "MoneyFly", "iOS", "iPhone14,3", "Apple", "", true, now)
+	mkDeviceVer(t, db, subID, "hashA", "MoneyFly", "iOS", "iPhone14,3", "Apple", "", "2.2.14", true, now.Add(-time.Hour))
+	mkDeviceVer(t, db, subID, "hashB", "MoneyFly", "iOS", "iPhone14,3", "Apple", "", "2.2.15", true, now)
 
 	report, err := MergeDuplicateDevices(db, false)
 	if err != nil {
@@ -199,5 +207,35 @@ func TestMergeDuplicateDevices_SkipsIncompleteFingerprint(t *testing.T) {
 	db.Model(&models.Device{}).Where("subscription_id = ?", subID).Count(&count)
 	if count != 2 {
 		t.Fatalf("不应删除任何行，实际剩 %d", count)
+	}
+}
+
+// 版本完全相同却多行 → 不能证明是"升级残留"，可能是同型号两台真机：不合并
+func TestMergeDuplicateDevices_SameVersionNotMerged(t *testing.T) {
+	db, subID := setupDedupDB(t)
+	now := time.Now()
+	mkDeviceVer(t, db, subID, "hashA", "MoneyFly", "iOS", "iPhone14,3", "Apple", "", "2.2.15", true, now.Add(-time.Hour))
+	mkDeviceVer(t, db, subID, "hashB", "MoneyFly", "iOS", "iPhone14,3", "Apple", "", "2.2.15", true, now)
+
+	report, err := MergeDuplicateDevices(db, true)
+	if err != nil {
+		t.Fatalf("合并失败: %v", err)
+	}
+	if report.GroupsMerged != 0 {
+		t.Fatalf("同版本多行不应合并（可能是两台真机），实际合并 %d 组", report.GroupsMerged)
+	}
+}
+
+// 品类级机型（UA 只解析出 iPhone/PC/Windows）不能作为指纹：会误合并同型号多台设备
+func TestIsSpecificDeviceModel(t *testing.T) {
+	for _, m := range []string{"iPhone", "iPad", "Android", "PC", "Windows", "windows nt", "Unknown", "iPhone 18.1", "android 13", "Windows 10.0"} {
+		if IsSpecificDeviceModel(m) {
+			t.Fatalf("品类名/系统版本不应算具体机型: %q", m)
+		}
+	}
+	for _, m := range []string{"iPhone14,3", "iPhone 13 Pro Max", "SGT-AL00", "V2072A", "Mac16,12", "2509FPN0BC", "Windows 10 Pro"} {
+		if !IsSpecificDeviceModel(m) {
+			t.Fatalf("真实机型应算具体机型: %q", m)
+		}
 	}
 }

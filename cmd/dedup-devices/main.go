@@ -15,7 +15,11 @@
 //	go run ./cmd/dedup-devices -apply
 //
 // 合并规则（保守，详见 internal/services/device.MergeDuplicateDevices）：
-//   - 只合并同一订阅内**稳定指纹完全相同**的行（四要素齐备且非 Unknown）；
+//   - 只合并同一订阅内**稳定指纹完全相同**的行（四要素齐备、非 Unknown，
+//     且机型必须"足够具体"—— `iPhone`/`PC`/`iPhone 18.1` 这类品类名或串味的
+//     系统版本不参与匹配，否则会把用户多台同型号设备误合并成一台）；
+//   - 同组必须有「软件版本不同」的证据（同一台设备升级后残留才会版本不同，
+//     版本全同可能是两台真机，不合并）；
 //   - 保留最近使用的那行；整组都被踢下线时保持被踢状态（不偷偷复活设备）；
 //   - 合并访问次数/备注/首见时间，随后重算 current_devices。
 package main
@@ -32,6 +36,8 @@ import (
 
 func main() {
 	apply := flag.Bool("apply", false, "真正写库（缺省只预演，不修改任何数据）")
+	user := flag.String("user", "", "只处理该用户（邮箱或用户 ID），留空 = 全部")
+	subID := flag.Uint("sub", 0, "只处理该订阅 ID，留空 = 全部")
 	flag.Parse()
 
 	if _, err := config.LoadConfig(); err != nil {
@@ -48,13 +54,19 @@ func main() {
 	}
 	fmt.Printf("=== 设备重复行合并 · %s ===\n", mode)
 
-	report, err := devicesvc.MergeDuplicateDevices(db, *apply)
+	report, err := devicesvc.MergeDuplicateDevicesFiltered(db, *apply, devicesvc.DedupFilter{
+		UserEmail:      *user,
+		SubscriptionID: *subID,
+	})
 	if err != nil {
 		log.Fatalf("合并失败: %v", err)
 	}
 
 	for _, line := range report.Details {
 		fmt.Println(" -", line)
+	}
+	if *user != "" || *subID > 0 {
+		fmt.Printf("过滤条件：user=%q sub=%d\n", *user, *subID)
 	}
 	fmt.Printf("扫描订阅 %d 个，合并 %d 组，%s %d 行\n",
 		report.SubscriptionsScanned, report.GroupsMerged,
