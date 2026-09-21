@@ -106,6 +106,7 @@ type nodeWithOrder struct {
 type importStats struct {
 	Created int
 	Updated int
+	Removed int
 	Skipped int
 }
 
@@ -415,16 +416,11 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 
 		time.Sleep(400 * time.Millisecond)
 
-		// 事务保护：删除旧节点 + 导入新节点，避免中间崩溃导致节点全空
+		// 事务保护：增量导入新节点 + 清理已消失节点，避免中间崩溃导致节点全空。
+		// 注意：这里不再"先整表删除再重建"——那会让所有采集节点每次同步都换 ID，
+		// 健康检查的结果会全部落到已删除的行上（详见 importNodesToDatabaseWithOrderTx 内注释）。
 		var importResult importStats
-		var deletedCount int64
 		txErr := s.db.Transaction(func(tx *gorm.DB) error {
-			res := tx.Where("is_manual = ?", false).Delete(&models.Node{})
-			if res.Error != nil {
-				return res.Error
-			}
-			deletedCount = res.RowsAffected
-			s.infof("💾 数据库清理: 移除旧节点 %d 个，开始入库新节点...", deletedCount)
 			importResult = s.importNodesToDatabaseWithOrderTx(tx, nodesWithOrder)
 			return nil
 		})
@@ -452,7 +448,7 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		}
 
 		time.Sleep(300 * time.Millisecond)
-		s.successf("📊 入库完成 => 新增: %d | 更新: %d | 手动跳过: %d", importResult.Created, importResult.Updated, importResult.Skipped)
+		s.successf("📊 入库完成 => 新增: %d | 更新: %d | 移除: %d | 手动跳过: %d", importResult.Created, importResult.Updated, importResult.Removed, importResult.Skipped)
 
 		s.clearAllCaches()
 
@@ -1148,6 +1144,26 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrderTx(db *gorm.DB, node
 			stats.Created = len(newNodes)
 		}
 	}
+
+	// 上游已消失的节点：只删除本次同步未再出现的采集节点。
+	// 旧实现是「整表删除 + 全量重建」，所有节点每次都换 ID：
+	// 健康检查刚写入的 status/latency/last_test 落在被删掉的行上，
+	// 于是节点列表长期显示"在线 0ms"、auto_disable_timeout 形同虚设；
+	// 同时节点 ID 每小时变化，任何按 ID 记录的数据都会变成孤儿。
+	var staleIDs []uint
+	for key, exist := range existingMap {
+		if !seenKeys[key] {
+			staleIDs = append(staleIDs, exist.ID)
+		}
+	}
+	if len(staleIDs) > 0 {
+		if err := db.Where("id IN ?", staleIDs).Delete(&models.Node{}).Error; err != nil {
+			s.warnf("清理上游已消失的采集节点失败: %v（本批 %d 个未清理）", err, len(staleIDs))
+		} else {
+			stats.Removed = len(staleIDs)
+		}
+	}
+
 	return stats
 }
 

@@ -123,3 +123,82 @@ func TestImportNewNodeDefaultsUnchanged(t *testing.T) {
 		t.Error("采集节点 is_manual 应为 false")
 	}
 }
+
+// 同步必须保持节点 ID 稳定（不再整表删除重建）：ID 变了，健康检查写入的结果
+// 就会落到已删除的行上，节点列表永远显示"在线 0ms"。
+func TestImportNodesPreservesIDAndRemovesStale(t *testing.T) {
+	db := setupNodeSyncTestDB(t)
+	svc := &ConfigUpdateService{db: db}
+
+	keep := ProxyNode{Name: "香港-01", Type: "vless", Server: "1.2.3.4", Port: 443, UUID: "uuid-keep"}
+	drop := ProxyNode{Name: "香港-02", Type: "vless", Server: "1.2.3.5", Port: 443, UUID: "uuid-drop"}
+	cfgKeep, _ := json.Marshal(keep)
+	cfgDrop, _ := json.Marshal(drop)
+	keepStr, dropStr := string(cfgKeep), string(cfgDrop)
+
+	seedKeep := models.Node{Name: keep.Name, Type: keep.Type, Config: &keepStr, Status: "online", IsActive: true}
+	seedDrop := models.Node{Name: drop.Name, Type: drop.Type, Config: &dropStr, Status: "online", IsActive: true}
+	if err := db.Create(&seedKeep).Error; err != nil {
+		t.Fatalf("创建节点失败: %v", err)
+	}
+	if err := db.Create(&seedDrop).Error; err != nil {
+		t.Fatalf("创建节点失败: %v", err)
+	}
+
+	// 上游只剩 keep 一个节点
+	incoming := keep
+	stats := svc.importNodesToDatabaseWithOrderTx(db, []nodeWithOrder{{node: &incoming, orderIndex: 1}})
+
+	if stats.Updated != 1 {
+		t.Errorf("stats.Updated = %d, want 1（同 key 应更新而不是重建）", stats.Updated)
+	}
+	if stats.Created != 0 {
+		t.Errorf("stats.Created = %d, want 0（不得重建已有节点）", stats.Created)
+	}
+	if stats.Removed != 1 {
+		t.Errorf("stats.Removed = %d, want 1（上游消失的节点应清理）", stats.Removed)
+	}
+
+	var got models.Node
+	if err := db.Where("name = ?", keep.Name).First(&got).Error; err != nil {
+		t.Fatalf("读取保留节点失败: %v", err)
+	}
+	if got.ID != seedKeep.ID {
+		t.Errorf("节点 ID = %d, want %d（同步不得换 ID）", got.ID, seedKeep.ID)
+	}
+	if got.Status != "online" {
+		t.Errorf("status = %q, want online（同步不得重置健康状态）", got.Status)
+	}
+
+	var count int64
+	db.Model(&models.Node{}).Where("name = ?", drop.Name).Count(&count)
+	if count != 0 {
+		t.Errorf("上游已消失的节点仍存在 %d 条，want 0", count)
+	}
+}
+
+// 手动节点不属于采集管理范围：同步（含空同步）绝不能删除它们。
+func TestImportNeverRemovesManualNodes(t *testing.T) {
+	db := setupNodeSyncTestDB(t)
+	svc := &ConfigUpdateService{db: db}
+
+	manualCfg := `{"Name":"自建-东京","Type":"vless","Server":"9.9.9.9","Port":443,"UUID":"manual-1"}`
+	manual := models.Node{Name: "自建-东京", Type: "vless", Config: &manualCfg, Status: "online", IsActive: true}
+	if err := db.Create(&manual).Error; err != nil {
+		t.Fatalf("创建手动节点失败: %v", err)
+	}
+	if err := db.Model(&models.Node{}).Where("id = ?", manual.ID).Update("is_manual", true).Error; err != nil {
+		t.Fatalf("设置 is_manual=true 失败: %v", err)
+	}
+
+	stats := svc.importNodesToDatabaseWithOrderTx(db, nil)
+
+	if stats.Removed != 0 {
+		t.Errorf("stats.Removed = %d, want 0（手动节点不能被采集同步删除）", stats.Removed)
+	}
+	var count int64
+	db.Model(&models.Node{}).Where("is_manual = ?", true).Count(&count)
+	if count != 1 {
+		t.Errorf("手动节点数量 = %d, want 1", count)
+	}
+}
