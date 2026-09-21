@@ -1165,8 +1165,19 @@ export default {
       if (!selectedNodes.value.length) return
       batchTesting.value = true
       try {
-        await adminAPI.batchTestCustomNodes(selectedNodes.value.map(n => n.id))
-        ElMessage.success('批量测试请求已发送')
+        const res = await adminAPI.batchTestCustomNodes(selectedNodes.value.map(n => n.id))
+        const data = res?.data?.data || res?.data || {}
+        if (typeof data.success === 'number') {
+          // 结果口径由后端给出：仅 online 计成功，unsupported 为 UDP 协议无法探测
+          const parts = [`在线 ${data.success}`, `离线/超时 ${data.failed ?? 0}`]
+          if (data.unsupported) parts.push(`无法探测 ${data.unsupported}`)
+          ElMessage.success(`测试完成：${parts.join(' / ')}`)
+          if (data.unsupported) {
+            ElMessage.info(`${data.unsupported} 个节点为 UDP 协议（hysteria2/tuic），无法用 TCP 探测，请以客户端实测为准`)
+          }
+        } else {
+          ElMessage.success('批量测试请求已发送')
+        }
         setTimeout(loadCustomNodes, 1000)
       } catch { ElMessage.error('测试请求失败') }
       finally { batchTesting.value = false }
