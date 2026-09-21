@@ -408,16 +408,19 @@ func ImportCustomNodeLinks(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	imported, errorCount, errors := importCustomNodesFromLinks(db, req.Links, "link", "")
-	utils.CreateAuditLogSimple(c, "import_custom_node_links", "custom_node", 0, fmt.Sprintf("管理员操作: 导入专线节点链接 成功 %d 失败 %d", imported, errorCount))
+	imported, skipped, errorCount, errors := importCustomNodesFromLinks(db, req.Links, "link", "")
+	message := customNodeImportMessage(len(req.Links), imported, skipped, errorCount)
+	utils.CreateAuditLogSimple(c, "import_custom_node_links", "custom_node", 0,
+		fmt.Sprintf("管理员操作: 导入专线节点链接 成功 %d 跳过 %d 失败 %d", imported, skipped, errorCount))
 	if imported > 0 {
 		clearNodeCaches()
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"imported":    imported,
+		"skipped":     skipped, // 已存在被跳过的数量（不是失败）
 		"error_count": errorCount,
 		"errors":      errors,
-		"message":     fmt.Sprintf("成功导入 %d 个节点", imported),
+		"message":     message,
 	})
 }
 
@@ -519,17 +522,20 @@ func ImportCustomNodeSubscription(c *gin.Context) {
 		return
 	}
 
-	imported, errorCount, errors := importCustomNodesFromLinks(db, links, "subscription", urlStr)
-	utils.CreateAuditLogSimple(c, "import_custom_node_subscription", "custom_node", 0, fmt.Sprintf("管理员操作: 导入专线节点订阅 %s 解析 %d 个 成功 %d 失败 %d", urlStr, len(links), imported, errorCount))
+	imported, skipped, errorCount, errors := importCustomNodesFromLinks(db, links, "subscription", urlStr)
+	message := customNodeImportMessage(len(links), imported, skipped, errorCount)
+	utils.CreateAuditLogSimple(c, "import_custom_node_subscription", "custom_node", 0,
+		fmt.Sprintf("管理员操作: 导入专线节点订阅 %s 解析 %d 个 成功 %d 跳过 %d 失败 %d", urlStr, len(links), imported, skipped, errorCount))
 	if imported > 0 {
 		clearNodeCaches()
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"imported":    imported,
+		"skipped":     skipped, // 已存在被跳过的数量（不是失败）
 		"error_count": errorCount,
 		"errors":      errors,
 		"total":       len(links),
-		"message":     fmt.Sprintf("订阅解析出 %d 个节点，成功导入 %d 个", len(links), imported),
+		"message":     message,
 	})
 }
 
@@ -600,7 +606,44 @@ func DeleteCustomNodeSubscription(c *gin.Context) {
 // importCustomNodesFromLinks 解析节点链接并创建专线节点，返回成功数、失败数与错误明细。
 // source 标识节点来源: manual / link / subscription / selfhost；
 // sourceURL 为订阅导入时的来源订阅 URL（仅 subscription 来源使用，用于更新/替换定位）。
-func importCustomNodesFromLinks(db *gorm.DB, links []string, source string, sourceURL string) (imported, errorCount int, errors []string) {
+// customNodeImportMessage 生成专线节点导入的结果提示。
+//
+// 必须把"新增 / 已存在跳过 / 解析失败"三件事分开说：此前只回报"成功 0 个"，
+// 前端在"导入 0 且无报错"时统一提示"没有解析到可导入的节点"，
+// 管理员看到就会以为链接无法解析——线上真实案例：11 个节点早已导入，
+// 三次尝试都提示"无法解析"，实际是全部被"已存在"跳过。
+func customNodeImportMessage(parsed, imported, skipped, failed int) string {
+	parts := make([]string, 0, 3)
+	if imported > 0 {
+		parts = append(parts, fmt.Sprintf("成功导入 %d 个", imported))
+	}
+	if skipped > 0 {
+		parts = append(parts, fmt.Sprintf("跳过 %d 个（节点已存在，无需重复导入）", skipped))
+	}
+	if failed > 0 {
+		parts = append(parts, fmt.Sprintf("失败 %d 个", failed))
+	}
+
+	switch {
+	case len(parts) == 0:
+		return "没有解析到可导入的节点，请检查链接格式是否正确"
+	case imported == 0 && skipped > 0 && failed == 0:
+		// 全部已存在：必须明确说"已存在"，否则会被误读成"链接解析不了"
+		if parsed > 0 {
+			return fmt.Sprintf("解析到 %d 个节点，但它们都已存在于专线节点中，本次未新增", parsed)
+		}
+		return fmt.Sprintf("这 %d 个节点都已存在于专线节点中，本次未新增", skipped)
+	default:
+		return strings.Join(parts, "，")
+	}
+}
+
+// importCustomNodesFromLinks 把链接导入为专线节点。
+// 返回值：imported 新增数、skipped 因「已存在（协议:域名:端口 重复）」跳过数、
+// errorCount 解析/写入失败数、errors 失败原因。
+// 区分 skipped 与 errorCount 很重要：此前"全部已存在"也会被报成"没有解析到节点"，
+// 让管理员误以为链接无法解析（线上实际发生：11 个节点早已导入，提示却是"无法解析"）。
+func importCustomNodesFromLinks(db *gorm.DB, links []string, source string, sourceURL string) (imported, skipped, errorCount int, errors []string) {
 	// 基于 (protocol, domain, port) 预加载现有专线节点用于去重，
 	// 避免重复导入同一链接创建重复节点
 	var existing []models.CustomNode
@@ -626,9 +669,10 @@ func importCustomNodesFromLinks(db *gorm.DB, links []string, source string, sour
 			continue
 		}
 
-		// 去重键：本批次内 + 数据库中
+		// 去重键：本批次内 + 数据库中；重复 = "已存在"，计入 skipped（不是错误）
 		dupKey := fmt.Sprintf("%s:%s:%d", parsed.Type, parsed.Server, parsed.Port)
 		if seen[dupKey] || existingKeys[dupKey] {
+			skipped++
 			continue
 		}
 		seen[dupKey] = true
@@ -660,11 +704,11 @@ func importCustomNodesFromLinks(db *gorm.DB, links []string, source string, sour
 		if err := db.CreateInBatches(newNodes, 100).Error; err != nil {
 			errorCount += len(newNodes)
 			errors = append(errors, fmt.Sprintf("批量写入节点失败: %s", err.Error()))
-			return imported, errorCount, errors
+			return imported, skipped, errorCount, errors
 		}
 		imported = len(newNodes)
 	}
-	return imported, errorCount, errors
+	return imported, skipped, errorCount, errors
 }
 
 // updateCustomNodeSubscription 拉取订阅 URL 并增量更新订阅导入的专线节点。

@@ -1277,18 +1277,24 @@ export default {
       saving.value = true
       try {
         const res = await adminAPI.importCustomNodeLinks(links)
-        const imported = res.data.data?.imported ?? res.data.imported ?? 0
-        const errorCount = res.data.data?.error_count ?? res.data.error_count ?? 0
-        const errors = res.data.data?.errors ?? []
+        const data = res.data.data || {}
+        const imported = data.imported ?? 0
+        const errorCount = data.error_count ?? 0
+        const skipped = data.skipped ?? 0   // 已存在被跳过的数量（不是失败）
+        const errors = data.errors ?? []
         if (imported > 0) {
-          ElMessage.success(`导入成功: ${imported} 个${errorCount ? `，失败 ${errorCount} 个` : ''}`)
+          ElMessage.success(`导入成功: ${imported} 个${skipped ? `，跳过 ${skipped} 个（已存在）` : ''}${errorCount ? `，失败 ${errorCount} 个` : ''}`)
           showAddDialog.value = false
           loadCustomNodes()
+        } else if (skipped > 0 && errorCount === 0) {
+          // 节点已存在：明确告知"已存在"，不要提示成"无法解析"
+          ElMessage.warning(`这 ${skipped} 个节点已存在于专线节点中，本次未新增。如需刷新配置（如服务商更换了密钥/端口），请用「订阅导入 → 更新模式」`)
+          showAddDialog.value = false
         } else if (errorCount > 0) {
           // 全部失败时保留弹窗，方便用户修改链接后重试
           ElMessage.error(`导入失败 ${errorCount} 个：${errors[0] || '未知原因'}`)
         } else {
-          ElMessage.warning('没有解析到可导入的节点')
+          ElMessage.warning('没有解析到可导入的节点，请检查链接格式是否正确')
           showAddDialog.value = false
         }
       } catch { ElMessage.error('导入失败') }
@@ -1322,10 +1328,15 @@ export default {
             ElMessage.warning(res.data?.message || '订阅中没有解析到可更新的节点')
           }
         } else if (imported > 0) {
-          ElMessage.success(`订阅解析出 ${total} 个节点，成功导入 ${imported} 个`)
+          const skipped = data.skipped ?? 0
+          ElMessage.success(`订阅解析出 ${total} 个节点，成功导入 ${imported} 个${skipped ? `，跳过 ${skipped} 个（已存在）` : ''}`)
           showAddDialog.value = false
           loadCustomNodes()
           loadSubscriptionList()
+        } else if ((data.skipped ?? 0) > 0) {
+          // 订阅里的节点都已存在：说明"已存在"，而不是"解析不到"
+          ElMessage.warning(res.data?.message || `订阅解析出 ${total} 个节点，但它们都已存在，本次未新增`)
+          showAddDialog.value = false
         } else {
           ElMessage.warning(res.data?.message || '订阅中没有解析到节点')
         }
