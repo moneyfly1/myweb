@@ -165,7 +165,8 @@ func RebindCurrentDevice(c *gin.Context) {
 	userAgent := c.GetHeader("User-Agent")
 	dm := devicesvc.NewDeviceManager() // 内部使用全局数据库连接
 	subID := sub.ID
-	revived, reason, err := dm.ReviveKickedDevice(sub.ID, sub.DeviceLimit, user.SpecialNodeUnlimitedDevices, userAgent, clientIP)
+	revived, reason, err := dm.ReviveKickedDeviceWithHeaders(
+		sub.ID, sub.DeviceLimit, user.SpecialNodeUnlimitedDevices, userAgent, clientIP, extractMFHeaders(c))
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "重新绑定设备失败", err)
 		return

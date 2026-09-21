@@ -428,7 +428,14 @@ func (dm *DeviceManager) kickCandidateHashes(userAgent string, headers map[strin
 //
 // 返回 (是否恢复, 未恢复原因, 错误)；原因取值："not-kicked" / "device-limit"。
 func (dm *DeviceManager) ReviveKickedDevice(subscriptionID uint, deviceLimit int, unlimited bool, userAgent, ipAddress string) (bool, string, error) {
-	kicked, err := dm.FindKickedDevice(subscriptionID, userAgent, ipAddress)
+	return dm.ReviveKickedDeviceWithHeaders(subscriptionID, deviceLimit, unlimited, userAgent, ipAddress, nil)
+}
+
+// ReviveKickedDeviceWithHeaders 同 ReviveKickedDevice，但带上 X-MF-* 头：
+// 设备身份与旧算法哈希都要用同一份头来算，才能精确命中「这台设备」的历史行
+// （例如 Windows 客户端的机型来自 X-MF-Device-Model，光靠 UA 算不出同样的身份）。
+func (dm *DeviceManager) ReviveKickedDeviceWithHeaders(subscriptionID uint, deviceLimit int, unlimited bool, userAgent, ipAddress string, headers map[string]string) (bool, string, error) {
+	kicked, err := dm.FindKickedDeviceWithHeaders(subscriptionID, userAgent, ipAddress, headers)
 	if err != nil {
 		return false, "", err
 	}

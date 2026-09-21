@@ -749,7 +749,7 @@ func checkMaintenanceMode(c *gin.Context, db *gorm.DB, username, password, ip st
 // reviveKickedDeviceOnLogin 登录成功后的 best-effort 设备恢复：
 // 把「本机」从被踢下线（软删 + kicked_at）状态恢复成活跃设备，让「请重新登录」
 // 这句提示真正成立。任何失败都不影响登录流程（客户端还有设备管理里的自助入口）。
-func reviveKickedDeviceOnLogin(db *gorm.DB, userID uint, userAgent, ipAddress string) {
+func reviveKickedDeviceOnLogin(db *gorm.DB, userID uint, userAgent, ipAddress string, headers map[string]string) {
 	defer func() {
 		if r := recover(); r != nil {
 			utils.LogError("revive kicked device on login panic", fmt.Errorf("%v", r), nil)
@@ -760,21 +760,27 @@ func reviveKickedDeviceOnLogin(db *gorm.DB, userID uint, userAgent, ipAddress st
 	if err := db.Select("id", "special_node_unlimited_devices").First(&user, userID).Error; err != nil {
 		return
 	}
-	var sub models.Subscription
-	if err := db.Where("user_id = ?", userID).Order("created_at DESC").First(&sub).Error; err != nil {
+	// 遍历该用户的**全部**订阅：设备行可能挂在历史订阅上（续费/换套餐后
+	// subscribe_url 变化、或旧订阅未清理），只看最近一条会漏掉被踢的那一行
+	var subs []models.Subscription
+	if err := db.Where("user_id = ?", userID).Find(&subs).Error; err != nil || len(subs) == 0 {
 		return // 没有订阅：无需处理
 	}
 
 	dm := device.NewDeviceManager()
-	revived, reason, err := dm.ReviveKickedDevice(sub.ID, sub.DeviceLimit, user.SpecialNodeUnlimitedDevices, userAgent, ipAddress)
-	if err != nil {
-		utils.LogError("revive kicked device on login failed", err, nil)
-		return
-	}
-	if revived {
-		utils.LogInfo("登录时恢复本机设备: user=%d subscription=%d ip=%s", userID, sub.ID, ipAddress)
-	} else if reason == "device-limit" {
-		utils.LogInfo("登录时本机处于被踢状态但设备名额已满，未恢复: user=%d subscription=%d", userID, sub.ID)
+	for i := range subs {
+		sub := subs[i]
+		revived, reason, err := dm.ReviveKickedDeviceWithHeaders(
+			sub.ID, sub.DeviceLimit, user.SpecialNodeUnlimitedDevices, userAgent, ipAddress, headers)
+		if err != nil {
+			utils.LogError("revive kicked device on login failed", err, nil)
+			continue
+		}
+		if revived {
+			utils.LogInfo("登录时恢复本机设备: user=%d subscription=%d ip=%s", userID, sub.ID, ipAddress)
+		} else if reason == "device-limit" {
+			utils.LogInfo("登录时本机处于被踢状态但设备名额已满，未恢复: user=%d subscription=%d", userID, sub.ID)
+		}
 	}
 }
 
@@ -816,7 +822,7 @@ func finalizeLogin(c *gin.Context, db *gorm.DB, user *models.User, ipAddress str
 	// 于是提示里的"重新登录"实际无效，用户删掉本机后永久失联、设备列表里也不再
 	// 出现这台设备（2026-09-21 生产排查）。这里在登录成功时按名额恢复本机：
 	// 只有确实被踢过的这一台才恢复；名额已满则不动（引导用户先删闲置设备）。
-	go reviveKickedDeviceOnLogin(db, user.ID, ua, ipAddress)
+	go reviveKickedDeviceOnLogin(db, user.ID, ua, ipAddress, extractMFHeaders(c))
 
 	// 异步记录登录历史，不阻塞登录流程
 	go func(userID uint, ip, userAgent, devHash string, loginTime time.Time) {
