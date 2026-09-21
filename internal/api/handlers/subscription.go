@@ -1671,6 +1671,19 @@ func GetExpiringSubscriptions(c *gin.Context) {
 // 订阅配置管理
 // ==========================================
 
+// kickedDeviceFullMessage 生成「设备被移除且名额已满」的拒绝文案。
+//
+// 为什么不用旧的「此设备已被移除并踢下线,如需继续使用请重新登录或联系客服」：
+//   - 名额已满时「重新登录」并不能解决问题（恢复需要空名额），文案必须给出
+//     可执行的下一步（先删闲置设备）；
+//   - 客户端按关键词分类：带「设备 + 已达」会落到「设备数量已达上限」引导面板
+//     （MoneyFly ≥2.2.15 直接给「设备管理」入口），避免误导用户反复重登。
+func kickedDeviceFullMessage(subscription *models.Subscription) string {
+	count, _ := device.CountActiveDevices(database.GetDB(), subscription.ID)
+	return fmt.Sprintf("设备数量已达上限（当前 %d/%d），本机无法自动恢复。请先在「设备管理」删除不再使用的设备后重试，或重新登录。",
+		count, subscription.DeviceLimit)
+}
+
 func validateSubscription(subscription *models.Subscription, user *models.User, db *gorm.DB, clientIP, userAgent string, mfHeaders map[string]string) (string, int, int, bool) {
 	now := utils.GetBeijingTime()
 
@@ -1788,12 +1801,25 @@ func GetSubscriptionConfig(c *gin.Context) {
 		log.Printf("failed to check existing device: %v", findDeviceErr)
 	}
 
-	// 被踢下线检查：该设备曾被从设备列表删除（软删 + KickedAt）→ 拒绝重新
-	// 拉取订阅并明确提示，防止静默重新注册复活
-	if kicked, kickErr := deviceManager.FindKickedDeviceWithHeaders(subscription.ID, userAgent, clientIP, mfHeaders); kickErr == nil && kicked != nil {
-		utils.ErrorResponse(c, http.StatusForbidden,
-			"此设备已被移除并踢下线,如需继续使用请重新登录或联系客服", nil)
+	// 被踢下线检查：该设备曾被从设备列表删除（软删 + KickedAt）。
+	//
+	// 2026-09-21 生产事故修复：旧逻辑无条件 403，而代码里没有任何地方清除
+	// kicked_at → 软删行等于永久黑名单（线上 148 个有效订阅被锁死，名额根本
+	// 没用满也照锁）。现在走 ResolveKickGate：设备已在活跃列表 → 放行；
+	// 名额未满 → 自动恢复该设备并放行；名额已满 → 才拒绝并引导先删闲置设备。
+	kickGate, kickErr := deviceManager.ResolveKickGate(subscription.ID, subscription.DeviceLimit, user.SpecialNodeUnlimitedDevices, userAgent, clientIP, mfHeaders)
+	if kickErr != nil {
+		log.Printf("failed to resolve kick gate: %v", kickErr)
+	}
+	if kickGate.Blocked {
+		utils.CreateBusinessLogAsync(c, "subscription_pull_device_kicked", "订阅拉取: 设备被移除且名额已满，拒绝", "warning",
+			map[string]interface{}{"subscription_id": subscription.ID, "device_id": kickGate.DeviceID, "reason": kickGate.Reason})
+		utils.ErrorResponse(c, http.StatusForbidden, kickedDeviceFullMessage(&subscription), nil)
 		return
+	}
+	if kickGate.Revived {
+		utils.CreateBusinessLogAsync(c, "device_auto_revive", "订阅拉取: 已自动恢复被移除的设备（名额未满）", "info",
+			map[string]interface{}{"subscription_id": subscription.ID, "device_id": kickGate.DeviceID})
 	}
 
 	count, _ := device.CountActiveDevices(db, subscription.ID)
@@ -2027,18 +2053,29 @@ func GetUniversalSubscription(c *gin.Context) {
 		deviceManager := device.NewDeviceManager()
 		mfHeaders2 := extractMFHeaders(c)
 
-		// 被踢下线检查：该设备曾被从设备列表删除（软删 + KickedAt）→ 拒绝
-		if kicked, kickErr := deviceManager.FindKickedDeviceWithHeaders(sub.ID, deviceUA, deviceIP, mfHeaders2); kickErr == nil && kicked != nil {
-			utils.ErrorResponse(c, http.StatusForbidden,
-				"此设备已被移除并踢下线,如需继续使用请重新登录或联系客服", nil)
-			return
-		}
-
-		// 加载用户信息以检查不限制设备标志
+		// 加载用户信息以检查不限制设备标志（踢下线判定也需要它）
 		var user models.User
 		unlimitedDevices := false
 		if err := db.First(&user, sub.UserID).Error; err == nil {
 			unlimitedDevices = user.SpecialNodeUnlimitedDevices
+		}
+
+		// 被踢下线检查：该设备曾被从设备列表删除（软删 + KickedAt）。
+		// 见 ResolveKickGate：设备已在列表 → 放行；名额未满 → 自动恢复并放行；
+		// 名额已满 → 才 403（旧的"永久黑名单"语义已废弃）。
+		kickGate, kickErr := deviceManager.ResolveKickGate(sub.ID, sub.DeviceLimit, unlimitedDevices, deviceUA, deviceIP, mfHeaders2)
+		if kickErr != nil {
+			log.Printf("failed to resolve kick gate: %v", kickErr)
+		}
+		if kickGate.Blocked {
+			utils.CreateBusinessLogAsync(c, "subscription_pull_device_kicked", "订阅拉取: 设备被移除且名额已满，拒绝", "warning",
+				map[string]interface{}{"subscription_id": sub.ID, "device_id": kickGate.DeviceID, "reason": kickGate.Reason})
+			utils.ErrorResponse(c, http.StatusForbidden, kickedDeviceFullMessage(&sub), nil)
+			return
+		}
+		if kickGate.Revived {
+			utils.CreateBusinessLogAsync(c, "device_auto_revive", "订阅拉取: 已自动恢复被移除的设备（名额未满）", "info",
+				map[string]interface{}{"subscription_id": sub.ID, "device_id": kickGate.DeviceID})
 		}
 
 		_, deviceExists, findDeviceErr := deviceManager.FindExistingDeviceWithHeaders(sub.ID, deviceUA, deviceIP, mfHeaders2)

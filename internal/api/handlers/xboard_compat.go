@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -183,12 +184,22 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 	mfHeaders := extractMFHeaders(c)
 	_, deviceExists, _ := deviceManager.FindExistingDeviceWithHeaders(subscription.ID, userAgent, clientIP, mfHeaders)
 
-	// 被踢下线检查：该设备曾被从设备列表删除（软删 + KickedAt）→ 拒绝重新
-	// 拉取订阅并明确提示，防止静默重新注册复活
-	if kicked, kickErr := deviceManager.FindKickedDeviceWithHeaders(subscription.ID, userAgent, clientIP, mfHeaders); kickErr == nil && kicked != nil {
-		utils.ErrorResponse(c, http.StatusForbidden,
-			"此设备已被移除并踢下线,如需继续使用请重新登录或联系客服", nil)
+	// 被踢下线检查：该设备曾被从设备列表删除（软删 + KickedAt）。
+	// 见 ResolveKickGate：设备已在列表 → 放行；名额未满 → 自动恢复并放行；
+	// 名额已满 → 才 403（旧的"永久黑名单"语义已废弃）。
+	kickGate, kickErr := deviceManager.ResolveKickGate(subscription.ID, subscription.DeviceLimit, user.SpecialNodeUnlimitedDevices, userAgent, clientIP, mfHeaders)
+	if kickErr != nil {
+		log.Printf("failed to resolve kick gate: %v", kickErr)
+	}
+	if kickGate.Blocked {
+		utils.CreateBusinessLogAsync(c, "subscription_pull_device_kicked", "订阅拉取: 设备被移除且名额已满，拒绝", "warning",
+			map[string]interface{}{"subscription_id": subscription.ID, "device_id": kickGate.DeviceID, "reason": kickGate.Reason})
+		utils.ErrorResponse(c, http.StatusForbidden, kickedDeviceFullMessage(&subscription), nil)
 		return
+	}
+	if kickGate.Revived {
+		utils.CreateBusinessLogAsync(c, "device_auto_revive", "订阅拉取: 已自动恢复被移除的设备（名额未满）", "info",
+			map[string]interface{}{"subscription_id": subscription.ID, "device_id": kickGate.DeviceID})
 	}
 
 	count, _ := device.CountActiveDevices(db, subscription.ID)
