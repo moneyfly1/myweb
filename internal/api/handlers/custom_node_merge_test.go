@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"encoding/json"
 	"testing"
 
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/config_update"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -87,15 +89,17 @@ func TestLoadCustomNodeMatchCandidates(t *testing.T) {
 	}
 }
 
-// 核心回归：历史遗留节点按「协议:域名:端口」命中时就地更新，不再重复插入。
-func TestMergeUpdatesLegacyNodeByAddress(t *testing.T) {
-	legacy := models.CustomNode{ID: 109, Name: "老节点", Protocol: "vless", Domain: "th.example.org", Port: 37579, Source: ""}
+// 核心回归：历史遗留节点与传入链接是**同一个节点**（协议+地址+凭据+传输参数全同）时，
+// 就地更新，不再重复插入。
+func TestMergeUpdatesLegacyNodeByIdentity(t *testing.T) {
+	cfg := storedConfigJSON(t, "vless://uuid-1@th.example.org:37579?encryption=none&security=tls&type=ws#老节点")
+	legacy := models.CustomNode{ID: 109, Name: "老节点", Protocol: "vless", Domain: "th.example.org", Port: 37579, Source: "", Config: cfg}
 	links := []string{"vless://uuid-1@th.example.org:37579?encryption=none&security=tls&type=ws#新名字"}
 
 	res := mergeCustomNodesFromLinks([]models.CustomNode{legacy}, links, "https://sub/x")
 
 	if len(res.newNodes) != 0 {
-		t.Fatalf("新增 %d 个节点, want 0（历史遗留节点应被就地更新而不是重复插入）", len(res.newNodes))
+		t.Fatalf("新增 %d 个节点, want 0（同一节点应就地更新而不是重复插入）", len(res.newNodes))
 	}
 	if len(res.updates) != 1 {
 		t.Fatalf("更新 %d 个节点, want 1", len(res.updates))
@@ -115,6 +119,48 @@ func TestMergeUpdatesLegacyNodeByAddress(t *testing.T) {
 	}
 	if res.kept != 0 {
 		t.Errorf("kept = %d, want 0", res.kept)
+	}
+}
+
+// 用户要求（2026-09-22）：服务器 IP + 端口相同，但其他配置不同（凭据/传输参数不同）
+// 时必须能导入为**新节点**，不能被当成"已存在"拒收或覆盖老节点。
+func TestMergeAllowsSameAddressDifferentConfig(t *testing.T) {
+	cases := []struct {
+		name    string
+		oldLink string
+		newLink string
+	}{
+		{"同地址不同 UUID", "vless://uuid-old@1.2.3.4:443?encryption=none&security=tls#A", "vless://uuid-new@1.2.3.4:443?encryption=none&security=tls#B"},
+		{"同地址不同传输参数(path)", "vless://uuid-1@1.2.3.4:443?encryption=none&type=ws&path=%2Fold#A", "vless://uuid-1@1.2.3.4:443?encryption=none&type=ws&path=%2Fnew#B"},
+		{"同地址不同协议", "vless://uuid-1@1.2.3.4:443?encryption=none#A", "trojan://pw-1@1.2.3.4:443#B"},
+		{"同地址不同密码", "trojan://pw-old@1.2.3.4:443#A", "trojan://pw-new@1.2.3.4:443#B"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := storedConfigJSON(t, tc.oldLink)
+			old := models.CustomNode{ID: 500, Name: "老节点", Protocol: "vless", Domain: "1.2.3.4", Port: 443, Source: "", Config: cfg}
+
+			res := mergeCustomNodesFromLinks([]models.CustomNode{old}, []string{tc.newLink}, "https://sub/x")
+
+			if len(res.updates) != 0 {
+				t.Errorf("地址相同但配置不同，不应覆盖老节点: %+v", res.updates)
+			}
+			if len(res.newNodes) != 1 {
+				t.Fatalf("新增 %d 个节点, want 1（必须允许导入）", len(res.newNodes))
+			}
+		})
+	}
+}
+
+// 存量行 config 为空/损坏时算不出身份 → 按"不重复"处理，宁可允许导入也不误拒。
+func TestMergeAllowsImportWhenStoredConfigUnreadable(t *testing.T) {
+	old := models.CustomNode{ID: 600, Name: "老节点", Protocol: "vless", Domain: "1.2.3.4", Port: 443, Source: "", Config: "{不是合法 json"}
+	res := mergeCustomNodesFromLinks([]models.CustomNode{old}, []string{"vless://uuid-1@1.2.3.4:443?encryption=none#新"}, "https://sub/x")
+	if len(res.newNodes) != 1 {
+		t.Fatalf("新增 %d 个节点, want 1", len(res.newNodes))
+	}
+	if len(res.updates) != 0 {
+		t.Errorf("不应覆盖无法解析的存量行: %+v", res.updates)
 	}
 }
 
@@ -182,5 +228,75 @@ func TestMergeReportsUnparsableLinks(t *testing.T) {
 	}
 	if len(res.newNodes) != 0 || len(res.updates) != 0 {
 		t.Errorf("非法链接不应产生写入: new=%d upd=%d", len(res.newNodes), len(res.updates))
+	}
+}
+
+// storedConfigJSON 把节点链接解析成 ProxyNode 并序列化，模拟库里存的 config 字段。
+func storedConfigJSON(t *testing.T, link string) string {
+	t.Helper()
+	p, err := config_update.ParseNodeLink(link)
+	if err != nil {
+		t.Fatalf("解析链接失败 %q: %v", link, err)
+	}
+	b, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("序列化失败: %v", err)
+	}
+	return string(b)
+}
+
+// 用户场景（2026-09-22）：手动导入链接时，服务器 IP + 端口相同但配置不同的节点
+// 必须能导入；只有**同一个节点**（连凭据/传输参数都一样）才按"已存在"跳过。
+func TestImportLinksAllowsSameAddressDifferentConfig(t *testing.T) {
+	db := setupCustomNodeMergeDB(t)
+
+	sameNode := "vless://uuid-a@1.2.3.4:443?encryption=none&security=tls#节点A"
+	otherOnSameAddr := "vless://uuid-b@1.2.3.4:443?encryption=none&security=tls#节点B"
+
+	// 先导入一次
+	imported, skipped, errCount, errs := importCustomNodesFromLinks(db, []string{sameNode}, "link", "")
+	if imported != 1 || skipped != 0 || errCount != 0 {
+		t.Fatalf("首次导入 imported=%d skipped=%d err=%d errs=%v", imported, skipped, errCount, errs)
+	}
+
+	// 再次导入：同一个节点被跳过，同地址不同 UUID 的必须导入成功
+	imported, skipped, errCount, errs = importCustomNodesFromLinks(db, []string{sameNode, otherOnSameAddr}, "link", "")
+	if errCount != 0 {
+		t.Fatalf("导入失败: %v", errs)
+	}
+	if imported != 1 {
+		t.Errorf("imported = %d, want 1（同 IP:端口但配置不同的节点必须能导入）", imported)
+	}
+	if skipped != 1 {
+		t.Errorf("skipped = %d, want 1（同一个节点才跳过）", skipped)
+	}
+
+	var count int64
+	db.Model(&models.CustomNode{}).Where("domain = ? AND port = ?", "1.2.3.4", 443).Count(&count)
+	if count != 2 {
+		t.Errorf("同地址节点数 = %d, want 2（两个不同配置的节点应同时存在）", count)
+	}
+}
+
+// 同一批次里粘贴两条"同 IP:端口、不同凭据"的链接，两条都要导入。
+func TestImportLinksKeepsBothInSameBatch(t *testing.T) {
+	db := setupCustomNodeMergeDB(t)
+
+	links := []string{
+		"trojan://pw-one@5.6.7.8:8443#入口一",
+		"trojan://pw-two@5.6.7.8:8443#入口二",
+	}
+	imported, skipped, errCount, errs := importCustomNodesFromLinks(db, links, "link", "")
+	if errCount != 0 {
+		t.Fatalf("导入失败: %v", errs)
+	}
+	if imported != 2 || skipped != 0 {
+		t.Errorf("imported=%d skipped=%d, want 2/0（同地址不同凭据都要导入）", imported, skipped)
+	}
+
+	// 完全相同的一条重复出现时才跳过
+	imported, skipped, _, _ = importCustomNodesFromLinks(db, []string{links[0]}, "link", "")
+	if imported != 0 || skipped != 1 {
+		t.Errorf("重复导入 imported=%d skipped=%d, want 0/1", imported, skipped)
 	}
 }
