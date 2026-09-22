@@ -656,6 +656,7 @@ func UpdateAdminNotificationSystemSettings(c *gin.Context) {
 	updateSettingsCommon(c, CatAdminNotification)
 	notification.ClearAdminNotificationCache()
 }
+
 // UpdateNodeHealthSettings 保存节点监控配置。
 // 保存后必须清掉系统节点缓存：节点列表内容受 auto_disable_timeout 影响
 // （关掉开关后 status=timeout 的节点也要下发给用户），缓存 TTL 一小时，

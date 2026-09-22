@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -426,8 +428,9 @@ func ImportCustomNodeLinks(c *gin.Context) {
 
 // ImportCustomNodeSubscription 从订阅链接拉取并自动解析节点，导入为专线节点。
 // 支持三种语义（mode/replace 组合）：
-//   - 追加导入（缺省）：仅追加新节点，已存在的 (protocol, domain, port) 跳过；
-//   - mode="update" + replace=false：增量更新该 source_url 下节点——按名称/地址匹配
+//   - 追加导入（缺省）：仅追加新节点，**同一个节点**（协议+地址+凭据+传输参数全同）跳过；
+//     同 IP:端口但配置不同的节点照常导入（可能是同一服务器的不同入口）；
+//   - mode="update" + replace=false：增量更新该 source_url 下节点——按名称/节点身份匹配
 //     到的更新配置（保留节点 ID 与用户分配），新节点追加，订阅中已消失的旧节点保留不删；
 //   - mode="update" + replace=true：匹配范围扩大到全部 subscription 来源节点
 //     （更换订阅地址场景），同样增量更新 + 分配保护，从不删除节点。
@@ -639,18 +642,30 @@ func customNodeImportMessage(parsed, imported, skipped, failed int) string {
 }
 
 // importCustomNodesFromLinks 把链接导入为专线节点。
-// 返回值：imported 新增数、skipped 因「已存在（协议:域名:端口 重复）」跳过数、
+// 返回值：imported 新增数、skipped 因「已存在（同一个节点重复：协议+地址+凭据+传输参数全同）」跳过数、
 // errorCount 解析/写入失败数、errors 失败原因。
 // 区分 skipped 与 errorCount 很重要：此前"全部已存在"也会被报成"没有解析到节点"，
 // 让管理员误以为链接无法解析（线上实际发生：11 个节点早已导入，提示却是"无法解析"）。
 func importCustomNodesFromLinks(db *gorm.DB, links []string, source string, sourceURL string) (imported, skipped, errorCount int, errors []string) {
-	// 基于 (protocol, domain, port) 预加载现有专线节点用于去重，
-	// 避免重复导入同一链接创建重复节点
+	// 预加载现有专线节点的「节点身份」用于去重。
+	// 注意：判重必须精确到"同一个节点"，不能只看 (协议, 域名, 端口)——
+	// 同一台服务器同一端口上完全可以有多个不同凭据/传输参数的节点
+	// （同一 IP:port 不同 UUID 的 vless、不同 password 的 trojan、不同 path/sni 的变体），
+	// 按地址判重会把它们当成"已存在"直接拒收（2026-09-22 用户反馈）。
+	// 配置无法解析的存量行算不出身份，按"不重复"处理（宁可允许导入，也不误拒）。
 	var existing []models.CustomNode
-	db.Select("protocol", "domain", "port").Find(&existing)
+	db.Select("protocol", "domain", "port", "config").Find(&existing)
 	existingKeys := make(map[string]bool, len(existing))
 	for _, cn := range existing {
-		existingKeys[fmt.Sprintf("%s:%s:%d", cn.Protocol, cn.Domain, cn.Port)] = true
+		if key := customNodeIdentityKeyFromConfig(cn.Config); key != "" {
+			existingKeys[key] = true
+			continue
+		}
+		// 兜底：config 缺失时无法比对凭据，只能按地址记一个弱键，
+		// 但只有当传入节点连凭据都没有时才可能撞上（见 customNodeIdentityKey 的退化分支）
+		if key := customNodeIdentityKey(&config_update.ProxyNode{Type: cn.Protocol, Server: cn.Domain, Port: cn.Port}); key != "" {
+			existingKeys[key] = true
+		}
 	}
 
 	seen := make(map[string]bool)
@@ -669,8 +684,9 @@ func importCustomNodesFromLinks(db *gorm.DB, links []string, source string, sour
 			continue
 		}
 
-		// 去重键：本批次内 + 数据库中；重复 = "已存在"，计入 skipped（不是错误）
-		dupKey := fmt.Sprintf("%s:%s:%d", parsed.Type, parsed.Server, parsed.Port)
+		// 去重键 = 节点身份（同一节点才算重复）：本批次内 + 数据库中；
+		// 重复 = "已存在"，计入 skipped（不是错误）
+		dupKey := customNodeIdentityKey(parsed)
 		if seen[dupKey] || existingKeys[dupKey] {
 			skipped++
 			continue
@@ -711,13 +727,64 @@ func importCustomNodesFromLinks(db *gorm.DB, links []string, source string, sour
 	return imported, skipped, errorCount, errors
 }
 
+// customNodeIdentityKey 计算专线节点的「节点身份」键：协议 + 地址 + 凭据 + 传输参数。
+//
+// 为什么不能只用 (协议, 域名, 端口) 判重（2026-09-22 用户反馈"IP 端口一样就导入不进来"）：
+// 同一台服务器同一端口上可以有多个不同的节点 —— 同一 IP:port 上不同 UUID 的 vless、
+// 不同 password 的 trojan、不同 path/sni/host 的 ws/reality 变体。它们的地址相同，
+// 但**不是同一个节点**，必须能同时存在，否则用户无法把服务商提供的多个入口都加进来。
+//
+// 反过来，同一个节点（地址、凭据、传输参数全同）重复导入仍会被识别为"已存在"，
+// 避免同一订阅反复导入产生重复行。
+func customNodeIdentityKey(p *config_update.ProxyNode) string {
+	if p == nil {
+		return ""
+	}
+	cred := strings.TrimSpace(p.UUID)
+	if cred == "" {
+		cred = strings.TrimSpace(p.Password)
+	}
+	opts := ""
+	if len(p.Options) > 0 {
+		// Options 里装的是 path/sni/host/serviceName 等传输参数，参与身份计算。
+		// 用哈希是为了避免把整串参数塞进 map key（长度可控、也不泄露到日志）。
+		if b, err := json.Marshal(p.Options); err == nil {
+			sum := sha256.Sum256(b)
+			opts = hex.EncodeToString(sum[:8])
+		}
+	}
+	return strings.Join([]string{
+		strings.ToLower(strings.TrimSpace(p.Type)),
+		strings.ToLower(strings.TrimSpace(p.Server)),
+		strconv.Itoa(p.Port),
+		cred,
+		strings.ToLower(strings.TrimSpace(p.Network)),
+		strings.ToLower(strings.TrimSpace(p.Cipher)),
+		strconv.FormatBool(p.TLS),
+		opts,
+	}, "|")
+}
+
+// customNodeIdentityKeyFromConfig 从库里存的 config JSON 反算节点身份；
+// 配置缺失或无法解析时返回空串（调用方按"无法判定"处理，即不参与判重，宁可放行导入）。
+func customNodeIdentityKeyFromConfig(configJSON string) string {
+	if strings.TrimSpace(configJSON) == "" {
+		return ""
+	}
+	var p config_update.ProxyNode
+	if err := json.Unmarshal([]byte(configJSON), &p); err != nil {
+		return ""
+	}
+	return customNodeIdentityKey(&p)
+}
+
 // updateCustomNodeSubscription 拉取订阅 URL 并增量更新订阅导入的专线节点。
 // 返回 (新增数, 更新数, 保留数, 错误列表)。
 //
 // 核心原则（分配保护）：已分配给用户的节点在更新后仍保持分配关系，绝不因订阅更新而丢失。
-// 匹配策略：新订阅节点按「名称相同」或「(协议, 域名, 端口) 相同」匹配已有订阅节点——
+// 匹配策略：新订阅节点按「名称相同」（订阅来源节点）或「同一节点（协议+地址+凭据+传输参数）」匹配——
 //   - 匹配到：更新该节点的配置（Config/名称/端口等），保留节点 ID 与用户分配（UserCustomNode 不动）；
-//   - 未匹配（新节点）：追加创建；
+//   - 未匹配（新节点，含"同地址但凭据/参数不同"）：追加创建，不会被当作已有节点覆盖；
 //   - 订阅中已消失的旧节点（找不到匹配）：保留不删除（避免破坏分配），仅报告数量，
 //     由管理员决定是否手动删除（删除 API 会同时清理分配）。
 //
@@ -804,11 +871,14 @@ type customNodeMatch struct {
 //
 //	byName：名称 → 节点。仅订阅来源节点参与「同名视为同一节点」，
 //	        历史遗留节点来源不明，按名称匹配可能把管理员手工维护的节点静默改地址。
-//	byAddr：协议:域名:端口 → 节点。订阅来源与历史遗留节点都参与，
-//	        这是「同一个订阅重复导入不再产生重复节点」的关键。
-func buildCustomNodeMatchers(oldNodes []models.CustomNode) (byName, byAddr map[string]*customNodeMatch) {
+//	byIdentity：节点身份（协议+地址+凭据+传输参数）→ 节点。订阅来源与历史遗留节点都参与。
+//	        这是「同一个订阅重复导入不再产生重复节点」的关键；
+//	        同时因为带上了凭据与传输参数，"同 IP:端口但配置不同"的节点不会被误当成已有节点
+//	        （否则用户无法把服务商给的多个入口加进来，2026-09-22 用户反馈）。
+//	        配置无法解析的存量行算不出身份，不参与身份匹配（宁可新增，也不误覆盖）。
+func buildCustomNodeMatchers(oldNodes []models.CustomNode) (byName, byIdentity map[string]*customNodeMatch) {
 	byName = make(map[string]*customNodeMatch, len(oldNodes))
-	byAddr = make(map[string]*customNodeMatch, len(oldNodes))
+	byIdentity = make(map[string]*customNodeMatch, len(oldNodes))
 	for i := range oldNodes {
 		mi := &customNodeMatch{node: &oldNodes[i]}
 		if oldNodes[i].Source == "subscription" {
@@ -818,12 +888,13 @@ func buildCustomNodeMatchers(oldNodes []models.CustomNode) (byName, byAddr map[s
 				}
 			}
 		}
-		key := fmt.Sprintf("%s:%s:%d", oldNodes[i].Protocol, oldNodes[i].Domain, oldNodes[i].Port)
-		if _, ok := byAddr[key]; !ok {
-			byAddr[key] = mi
+		if key := customNodeIdentityKeyFromConfig(oldNodes[i].Config); key != "" {
+			if _, ok := byIdentity[key]; !ok {
+				byIdentity[key] = mi
+			}
 		}
 	}
-	return byName, byAddr
+	return byName, byIdentity
 }
 
 // customNodeUpdate 一次「就地更新」：保留 ID、分配关系、激活状态、到期时间、
@@ -842,12 +913,12 @@ type customNodeMergeResult struct {
 }
 
 // mergeCustomNodesFromLinks 把订阅解析出的链接合并进已有专线节点（纯函数，便于测试）：
-// 先按名称（仅订阅来源）匹配，再按「协议:域名:端口」匹配（含历史遗留节点）；
+// 先按名称（仅订阅来源）匹配，再按「节点身份：协议+地址+凭据+传输参数」匹配（含历史遗留节点）；
 // 未匹配的追加为新节点；订阅里消失的旧节点保留不删除（分配保护）。
 func mergeCustomNodesFromLinks(oldNodes []models.CustomNode, links []string, urlStr string) customNodeMergeResult {
 	var res customNodeMergeResult
 
-	byName, byAddr := buildCustomNodeMatchers(oldNodes)
+	byName, byIdentity := buildCustomNodeMatchers(oldNodes)
 	seenLinks := make(map[string]bool)
 
 	for _, link := range links {
@@ -856,11 +927,12 @@ func mergeCustomNodesFromLinks(oldNodes []models.CustomNode, links []string, url
 			res.errs = append(res.errs, fmt.Sprintf("链接解析失败: %s", err.Error()))
 			continue
 		}
-		addrKey := fmt.Sprintf("%s:%s:%d", parsed.Type, parsed.Server, parsed.Port)
-		if seenLinks[addrKey] {
+		// 本批次内去重同样按节点身份：同 IP:端口但配置不同的两条链接都要保留
+		idKey := customNodeIdentityKey(parsed)
+		if seenLinks[idKey] {
 			continue
 		}
-		seenLinks[addrKey] = true
+		seenLinks[idKey] = true
 
 		configJSON, _ := json.Marshal(parsed)
 		configStr := string(configJSON)
@@ -870,11 +942,11 @@ func mergeCustomNodesFromLinks(oldNodes []models.CustomNode, links []string, url
 		}
 		name = truncateNodeName(name)
 
-		// 匹配已有节点：先按名称，再按地址（含历史遗留节点）
+		// 匹配已有节点：先按名称（仅订阅来源），再按节点身份（含历史遗留节点）
 		var match *customNodeMatch
 		if m, ok := byName[name]; ok && !m.consumed {
 			match = m
-		} else if m, ok := byAddr[addrKey]; ok && !m.consumed {
+		} else if m, ok := byIdentity[idKey]; ok && !m.consumed {
 			match = m
 		}
 
@@ -919,8 +991,8 @@ func mergeCustomNodesFromLinks(oldNodes []models.CustomNode, links []string, url
 			res.kept++
 		}
 	}
-	// byAddr 中未覆盖的（byName 与 byAddr 可能指向同一节点，需去重）
-	for _, mi := range byAddr {
+	// byIdentity 中未覆盖的（byName 与 byIdentity 可能指向同一节点，需去重）
+	for _, mi := range byIdentity {
 		if !mi.consumed {
 			mi.consumed = true
 			res.kept++
