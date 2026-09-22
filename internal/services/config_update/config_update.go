@@ -1862,6 +1862,43 @@ var clashExcludedOptions = map[string]map[string]bool{
 	"anytls":    {"encryption": true, "header-type": true},
 }
 
+// socksAuthFromNode 解析 SOCKS/HTTP 代理的用户名与密码。
+//
+// 为什么需要专门拆（2026-09-22 线上问题：socks 专线节点在 Clash 里一直「超时」）：
+// 面板里 socks 节点的凭据有三种存量形态，而 Clash 需要 username / password 两个独立字段，
+// 旧实现是把 UUID 整串当作 username、password 留空 —— 认证必然失败，Clash 表现为连接超时。
+//
+//	形态 1（正常链接 socks5://user:pass@host）：UUID=user，Password=pass
+//	形态 2（userinfo 整体 base64：socks://BASE64(user:pass)@host）：UUID=BASE64，Password 空
+//	形态 3（GOST：socks://BASE64(user:pass@host:port)?...）：UUID=BASE64（解出来还含 @host）
+func socksAuthFromNode(n *ProxyNode) (username, password string) {
+	raw := strings.TrimSpace(n.UUID)
+	fallbackPwd := strings.TrimSpace(n.Password)
+	if raw == "" {
+		return "", fallbackPwd
+	}
+
+	// 形态 2/3：UUID 是 base64(user:pass) / base64(user:pass@host:port)
+	if !strings.Contains(raw, ":") {
+		if decoded, err := DecodeBase64(raw); err == nil && strings.Contains(decoded, ":") {
+			raw = decoded
+		}
+	}
+	// 形态 3 解出来还带 @host，取 @ 之前的部分
+	if at := strings.Index(raw, "@"); at >= 0 {
+		raw = raw[:at]
+	}
+
+	if parts := strings.SplitN(raw, ":", 2); len(parts) == 2 {
+		user, pass := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+		if pass == "" {
+			pass = fallbackPwd
+		}
+		return user, pass
+	}
+	return raw, fallbackPwd
+}
+
 func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
 	server, uuid := n.Server, n.UUID
 	if n.UUID == "" && (n.Type == "vless" || n.Type == "vmess" || n.Type == "tuic") {
@@ -1963,8 +2000,14 @@ func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
 			res["auth"] = res["password"]
 		}
 	case "socks", "socks5", "http":
-		if n.UUID != "" {
-			res["username"] = n.UUID
+		// 凭据必须拆成 username / password 两个字段（UUID 里可能是明文 user:pass，
+		// 也可能是 base64(user:pass) 的存量形态）；旧实现把 UUID 整串当 username、
+		// password 留空 → Clash 认证失败，表现为节点「超时」。
+		if user, pass := socksAuthFromNode(n); user != "" {
+			res["username"] = user
+			if pass != "" {
+				res["password"] = pass
+			}
 		}
 	}
 
