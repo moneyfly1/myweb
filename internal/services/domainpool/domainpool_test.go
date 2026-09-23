@@ -134,3 +134,36 @@ func TestFindVhostFileFallsBackToConvention(t *testing.T) {
 		t.Errorf("默认路径应为 域名.conf: %s", VhostPath("sub.example.com"))
 	}
 }
+
+// 关键回归（线上事故）：server_name 必须**精确**匹配。
+// `server_name sub.moneyfly.dpdns.org;` 用子串包含会命中 moneyfly.dpdns.org，
+// 导致给 moneyfly.dpdns.org 做一键配置时改写了 sub.* 的站点配置（订阅域名直接 404）。
+func TestServerNameMatchesIsExact(t *testing.T) {
+	subConf := "server {\n    listen 443 ssl;\n    server_name sub.moneyfly.dpdns.org;\n}\n"
+	if serverNameMatches(subConf, "moneyfly.dpdns.org") {
+		t.Error("子域名站点不应匹配到父域名（会误改配置）")
+	}
+	if serverNameMatches(subConf, "sub.moneyfly.dpdns.org") {
+		// 应该匹配（正向用例放下面断言）
+	} else {
+		t.Error("精确同名应匹配")
+	}
+
+	multi := "    server_name moneyfly.dpdns.org dy.moneyfly.club moneyfly.eu.org;\n"
+	if !serverNameMatches(multi, "dy.moneyfly.club") {
+		t.Error("多域名 server_name 里的成员应匹配")
+	}
+	if serverNameMatches(multi, "moneyfly.dpdns.org.evil.com") {
+		t.Error("后缀不同的域名不应匹配")
+	}
+	if serverNameMatches("server_name other.com;", "moneyfly.dpdns.org") {
+		t.Error("无关域名不应匹配")
+	}
+	if serverNameMatches("", "a.com") {
+		t.Error("空内容不应匹配")
+	}
+	// 注释里的 server_name 不应参与匹配
+	if serverNameMatches("# server_name a.com;\nserver_name b.com;", "a.com") {
+		t.Error("注释里的 server_name 不应匹配")
+	}
+}

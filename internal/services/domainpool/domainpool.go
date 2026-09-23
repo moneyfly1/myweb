@@ -190,12 +190,8 @@ func FindVhostFile(domain string) string {
 			if rerr != nil {
 				continue
 			}
-			lower := strings.ToLower(string(data))
-			for _, line := range strings.Split(lower, "\n") {
-				norm := strings.Join(strings.Fields(line), " ")
-				if strings.HasPrefix(norm, "server_name ") && strings.Contains(norm, strings.ToLower(domain)) {
-					return full
-				}
+			if serverNameMatches(string(data), domain) {
+				return full
 			}
 		}
 	}
@@ -354,7 +350,7 @@ func (m *Manager) nginxTestAndReload(ctx context.Context) error {
 // writeFileWithBackup 写文件（同名文件先备份）
 func writeFileWithBackup(path, content string) (string, error) {
 	if _, err := os.Stat(path); err == nil {
-		bak := fmt.Sprintf("%s.bak-%s", path, time.Now().Format("20060102-150405"))
+		bak := fmt.Sprintf("%s.bak-%s", path, time.Now().Format("20060102-150405.000"))
 		if err := os.Rename(path, bak); err != nil {
 			return "", fmt.Errorf("备份原配置失败: %v", err)
 		}
@@ -396,18 +392,7 @@ func (m *Manager) Configure(ctx context.Context, rawDomain string) (Status, []St
 		return "暂未解析出地址 —— 请先在 DNS 服务商添加 A 记录指向本服务器，再重试"
 	}())
 
-	// 1) 临时 ACME 站点（只有 80 端口，证书未签发时也能通过 nginx -t）
-	if _, err := writeFileWithBackup(FindVhostFile(domain), acmeOnlyVhost(domain, webroot)); err != nil {
-		addStep("写入站点配置（ACM 校验用）", false, err.Error())
-		return Status{Domain: domain}, steps, err
-	}
-	if err := m.nginxTestAndReload(ctx); err != nil {
-		addStep("重载 nginx", false, err.Error())
-		return Status{Domain: domain}, steps, err
-	}
-	addStep("写入站点配置（ACM 校验用）", true, FindVhostFile(domain))
-
-	// 2) 证书：已有覆盖该域名且剩余 >30 天的证书就直接复用（常见于共享证书/SAN 覆盖），
+	// 1) 证书：已有覆盖该域名且剩余 >30 天的证书就直接复用（常见于共享证书/SAN 覆盖），
 	//    避免重复签发 —— Let's Encrypt 有「同域名每周 5 张」的限流，撞上就得等一周。
 	nginxBin, _ := m.nginxBin()
 	full, key := "", ""
@@ -416,6 +401,17 @@ func (m *Manager) Configure(ctx context.Context, rawDomain string) (Status, []St
 		addStep("复用已有证书", true, fmt.Sprintf("证书 %s 覆盖该域名，剩余 %d 天，无需重新签发", info.Name, info.DaysLeft))
 	}
 	if full == "" {
+		// 需要签发新证书：先落一个只监听 80 的临时站点用于 HTTP-01 校验
+		// （证书还不存在时，带 443 ssl 的配置会让 nginx -t 失败）
+		if _, err := writeFileWithBackup(FindVhostFile(domain), acmeOnlyVhost(domain, webroot)); err != nil {
+			addStep("写入站点配置（ACM 校验用）", false, err.Error())
+			return Status{Domain: domain}, steps, err
+		}
+		if err := m.nginxTestAndReload(ctx); err != nil {
+			addStep("重载 nginx", false, err.Error())
+			return Status{Domain: domain}, steps, err
+		}
+		addStep("写入站点配置（ACM 校验用）", true, FindVhostFile(domain))
 		certbotOut, certErr := runCmd(ctx, 180*time.Second, "certbot", "certonly",
 			"--webroot", "-w", webroot,
 			"--cert-name", CertNameFor(domain),
@@ -475,7 +471,7 @@ func (m *Manager) RemoveVhost(ctx context.Context, rawDomain string) ([]Step, er
 	var steps []Step
 	path := FindVhostFile(domain)
 	if _, err := os.Stat(path); err == nil {
-		bak := fmt.Sprintf("%s.bak-%s", path, time.Now().Format("20060102-150405"))
+		bak := fmt.Sprintf("%s.bak-%s", path, time.Now().Format("20060102-150405.000"))
 		if err := os.Rename(path, bak); err != nil {
 			return nil, fmt.Errorf("备份配置失败: %v", err)
 		}
@@ -549,6 +545,31 @@ func (m *Manager) InspectMany(ctx context.Context, domains []string, primary, si
 		out = append(out, m.Inspect(ctx, d, true, strings.EqualFold(d, primary)))
 	}
 	return out
+}
+
+// serverNameMatches 判断配置内容里的 server_name 是否**精确**包含该域名。
+//
+// 必须按 token 精确比较，不能用子串包含：`server_name sub.moneyfly.dpdns.org;`
+// 用子串判断会命中 `moneyfly.dpdns.org` —— 线上真实事故：给 moneyfly.dpdns.org
+// 做一键配置时，误把 sub.moneyfly.dpdns.org 的站点配置覆盖掉了（订阅域名直接 404）。
+func serverNameMatches(content, domain string) bool {
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	if domain == "" {
+		return false
+	}
+	for _, line := range strings.Split(strings.ToLower(content), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "server_name ") {
+			continue
+		}
+		value := strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(trimmed, "server_name ")), ";")
+		for _, token := range strings.Fields(value) {
+			if token == domain {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // CertInfo 覆盖某域名的证书信息
