@@ -1761,9 +1761,47 @@ export default {
   border-radius: 8px;
   border: 1px solid var(--el-border-color-lighter);
 }
+/* 筛选区：模板里一直用着 .filter-grid，但样式里从未定义 —— 4 个下拉 + 搜索框 + 两个按钮
+   全靠默认流式排列，390/360px 下把卡片撑出横向滚动（实测卡片体溢出 31px）。
+   这里补上定义：桌面一行铺开、窄屏两列栅格、搜索与按钮占满整行。 */
+.filter-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.filter-grid > .el-select {
+  width: 150px;
+}
+.filter-grid .search-box {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.filter-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
 @media (max-width: 768px) {
+  .filter-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .filter-grid > .el-select {
+    width: 100%;
+    min-width: 0;
+  }
   .search-box {
     grid-column: 1 / -1;
+  }
+  .filter-actions {
+    grid-column: 1 / -1;
+    margin-left: 0;
+  }
+  .filter-actions :deep(.el-button) {
+    flex: 1;
+    margin-left: 0 !important;
   }
 }
 .view-mode-group { margin-right: 8px; }
@@ -1958,6 +1996,8 @@ export default {
   font-weight: 600;
   font-size: 15px;
   flex: 1;
+  /* flex 子项默认 min-width:auto，长节点名不收缩会把右侧状态标签挤出屏幕（实测超 8px） */
+  min-width: 0;
   overflow: clip;
   text-overflow: ellipsis;
   white-space: nowrap;

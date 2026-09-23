@@ -14,15 +14,11 @@
 
     <!-- 主体设置区域 -->
     <el-card class="settings-shell list-card" shadow="never">
-      <!-- 移动端：12 个 tab 横排会变成一条 1000+px 的横向滚动条（实测 390px 屏幕上
-           只能露出 2~3 个，还要来回滑），改用下拉选择；桌面端仍用左侧导航。
+      <!-- 桌面端：左侧导航；移动端：12 个 tab 横排会变成 1000+px 的横向滚动条
+           （实测 390px 只露 2~3 个），改用下拉选择（MobileTabSelect + hide-tabs-mobile）。
            下拉项与下方 el-tab-pane 的 name/label 一一对应，由 mounted 时的自检保证不漂移。 -->
-      <div v-if="isMobile" class="settings-tab-picker">
-        <el-select v-model="activeTab" class="settings-tab-select" size="default">
-          <el-option v-for="t in settingsTabs" :key="t.name" :label="t.label" :value="t.name" />
-        </el-select>
-      </div>
-      <el-tabs v-model="activeTab" class="settings-tabs" :tab-position="settingsTabPosition">
+      <MobileTabSelect v-model="activeTab" :tabs="settingsTabs" />
+      <el-tabs v-model="activeTab" class="settings-tabs hide-tabs-mobile" :tab-position="settingsTabPosition">
         
         <!-- ==================== 基本设置 ==================== -->
         <!-- 版面约定：单列分区卡片（站点信息 / 订阅域名 / 客服与界面 / 系统工具）。
@@ -1139,6 +1135,7 @@ import { ref, reactive, onMounted, onBeforeUnmount, computed } from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Check, Plus, Refresh, Message, Bell } from '@element-plus/icons-vue'
 import { useApi, adminAPI, secureStorage } from '@/utils/api'
+import MobileTabSelect from '@/components/MobileTabSelect.vue'
 import { formatFileSize as formatFileSizeUtil } from '@/utils/format'
 import { copyToClipboard } from '@/utils/textSelection'
 import { useThemeStore } from '@/store/theme'
@@ -2591,10 +2588,6 @@ export default {
   .settings-page-header .header-actions { width: 100%; display: flex; gap: 10px; }
   .settings-page-header .header-actions .el-button { flex: 1; margin: 0; }
   
-  /* 移动端用下拉导航，隐藏横向滚动的 tab 条（12 个 tab ≈ 1098px 宽） */
-  .settings-tabs :deep(.el-tabs__header.is-top) { display: none; }
-  .settings-tab-picker { padding: 10px 10px 0; }
-  .settings-tab-select { width: 100%; }
 
   /* 逐层压缩内边距：390px 屏幕上「页面 12 + 卡片 20 + 内容 12 + 分区 18」两侧要吃掉约 100px，
      留给表单的只剩 244px，输入框和按钮全都挤成一团 */

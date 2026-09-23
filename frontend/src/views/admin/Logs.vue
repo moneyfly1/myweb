@@ -7,7 +7,9 @@
           <p>查看和管理各类系统日志</p>
         </div>
       </template>
-      <el-tabs v-model="activeTab" class="logs-tabs-host">
+      <!-- 移动端：7 个 tab 横排 ≈654px（390px 屏幕只露 3 个）→ 下拉导航 -->
+      <MobileTabSelect v-model="activeTab" :tabs="logTabs" />
+      <el-tabs v-model="activeTab" class="logs-tabs-host hide-tabs-mobile">
         <el-tab-pane label="注册日志" name="registration">
           <RegistrationLogs />
         </el-tab-pane>
@@ -34,6 +36,19 @@
   </div>
 </template>
 <script setup>
+import MobileTabSelect from '@/components/MobileTabSelect.vue'
+
+// 与下方 el-tab-pane 的 name/label 一一对应（新增 tab 时两处都要加）
+const logTabs = [
+  { name: 'registration', label: '注册日志' },
+  { name: 'subscription', label: '订阅日志' },
+  { name: 'balance', label: '余额日志' },
+  { name: 'commission', label: '佣金日志' },
+  { name: 'subscription-reset', label: '重置订阅日志' },
+  { name: 'email', label: '邮件日志' },
+  { name: 'audit', label: '管理员操作日志' }
+]
+
 defineOptions({ name: 'AdminLogs' })
 
 import { ref } from 'vue'
