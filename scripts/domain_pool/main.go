@@ -4,16 +4,19 @@
 // 那时后台按钮点不了，但 SSH 还能连上，用它在服务器上一条命令完成换域名：
 // 建 nginx 站点 → 签证书（带自动续期钩子）→ 重载 nginx → 写面板配置。
 //
-// 用法（在服务器上、项目根目录执行）：
+// 用法（在服务器上执行；**产物必须放在面板项目根目录**）：
 //
-//	go run ./scripts/domain_pool -list                    # 列出域名池 + 体检
-//	go run ./scripts/domain_pool -domain sub2.x.com       # 配置该域名并加入池
-//	go run ./scripts/domain_pool -domain sub2.x.com -primary   # 同时设为订阅主域名
-//	go run ./scripts/domain_pool -remove sub2.x.com       # 从池里移除并移除站点配置
+//	cd /www/wwwroot/dy.moneyfly.top
+//	go build -o ./domain_pool ./scripts/domain_pool     # 与 server 同目录
+//	./domain_pool -list                                 # 列出域名池 + 体检
+//	./domain_pool -domain sub2.x.com                     # 配置该域名并加入池
+//	./domain_pool -domain sub2.x.com -primary            # 同时设为订阅主域名
+//	./domain_pool -remove sub2.x.com                     # 移出域名池并移除站点配置
 //
-// 也可以用已编译好的二进制（install.sh 构建出的 server 不含本工具，需要单独 go build）：
-//
-//	go build -o /root/domain_pool ./scripts/domain_pool && /root/domain_pool -list
+// ⚠️ 必须放在项目根目录（与 server、cboard.db 同目录）：
+// 面板把相对数据库路径解析为「可执行文件所在目录」，放到 /root 之类的地方
+// 会连到另一个（空）cboard.db。工具会在发现库里没有面板配置时拒绝写入并提示。
+// 也可显式指定库：DATABASE_URL=sqlite:////www/wwwroot/dy.moneyfly.top/cboard.db ./domain_pool -list
 package main
 
 import (
