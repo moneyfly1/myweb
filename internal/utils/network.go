@@ -151,13 +151,23 @@ func SubscriptionBaseURL(c *http.Request, db *gorm.DB) string {
 func SubscriptionBaseURLs(c *http.Request, db *gorm.DB) []string {
 	primary := SubscriptionBaseURL(c, db)
 	out := make([]string, 0, 5)
-	seen := make(map[string]bool, 5)
+	// 按「主机名」去重（而不是整串 URL）：同一域名同时出现 https://x 和 http://x 时只保留先到的
+	// （列表顺序固定为 主域名 → 备用 → 网站域名，先到的基本都是带 https 的那条）。
+	seenHost := make(map[string]bool, 5)
 	add := func(v string) {
 		v = normalizeBaseURLValue(v)
-		if v == "" || seen[v] || len(out) >= 5 {
+		if v == "" || len(out) >= 5 {
 			return
 		}
-		seen[v] = true
+		host := v
+		if i := strings.Index(host, "://"); i >= 0 {
+			host = host[i+3:]
+		}
+		host = strings.ToLower(strings.TrimSuffix(host, "/"))
+		if host == "" || seenHost[host] {
+			return
+		}
+		seenHost[host] = true
 		out = append(out, v)
 	}
 
