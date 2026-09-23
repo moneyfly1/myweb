@@ -166,9 +166,39 @@ func CertPaths(domain string) (fullchain, privkey string) {
 	return filepath.Join(base, "fullchain.pem"), filepath.Join(base, "privkey.pem")
 }
 
-// VhostPath 该域名的 vhost 文件路径
+// VhostPath 新建 vhost 时的默认文件路径（域名原样 + .conf，与面板里手工建的保持一致）
 func VhostPath(domain string) string {
-	return filepath.Join(VhostDir, CertNameFor(domain)+".conf")
+	return filepath.Join(VhostDir, domain+".conf")
+}
+
+// FindVhostFile 找出该域名**当前实际生效**的 vhost 文件。
+//
+// 为什么不能直接用 VhostPath：历史配置文件命名并不统一（例如 sub.moneyfly.dpdns.org
+// 用的是 cboard_sub.conf），按固定文件名找会误判「站点不存在」，一键配置还会再写一个
+// 同 server_name 的文件，造成 nginx "conflicting server name" 警告、实际生效的可能还是旧文件。
+// 这里按 server_name 扫描，命中就原地改那个文件（并保留备份）。
+func FindVhostFile(domain string) string {
+	entries, err := os.ReadDir(VhostDir)
+	if err == nil {
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".conf") {
+				continue
+			}
+			full := filepath.Join(VhostDir, e.Name())
+			data, rerr := os.ReadFile(full)
+			if rerr != nil {
+				continue
+			}
+			lower := strings.ToLower(string(data))
+			for _, line := range strings.Split(lower, "\n") {
+				norm := strings.Join(strings.Fields(line), " ")
+				if strings.HasPrefix(norm, "server_name ") && strings.Contains(norm, strings.ToLower(domain)) {
+					return full
+				}
+			}
+		}
+	}
+	return VhostPath(domain)
 }
 
 // acmeOnlyVhost 只监听 80、仅用于 ACME 校验的临时站点
@@ -366,7 +396,7 @@ func (m *Manager) Configure(ctx context.Context, rawDomain string) (Status, []St
 	}())
 
 	// 1) 临时 ACME 站点（只有 80 端口，证书未签发时也能通过 nginx -t）
-	if _, err := writeFileWithBackup(VhostPath(domain), acmeOnlyVhost(domain, webroot)); err != nil {
+	if _, err := writeFileWithBackup(FindVhostFile(domain), acmeOnlyVhost(domain, webroot)); err != nil {
 		addStep("写入站点配置（ACM 校验用）", false, err.Error())
 		return Status{Domain: domain}, steps, err
 	}
@@ -374,7 +404,7 @@ func (m *Manager) Configure(ctx context.Context, rawDomain string) (Status, []St
 		addStep("重载 nginx", false, err.Error())
 		return Status{Domain: domain}, steps, err
 	}
-	addStep("写入站点配置（ACM 校验用）", true, VhostPath(domain))
+	addStep("写入站点配置（ACM 校验用）", true, FindVhostFile(domain))
 
 	// 2) 签证书（webroot 模式：不占用 80 端口，可与 nginx 共存；
 	//    --deploy-hook 保证以后自动续期后重载 nginx，新证书真正生效）
@@ -399,7 +429,7 @@ func (m *Manager) Configure(ctx context.Context, rawDomain string) (Status, []St
 	// 3) 完整反代站点
 	full, key := CertPaths(domain)
 	staticRoot := m.staticRootOf()
-	if _, err := writeFileWithBackup(VhostPath(domain), fullVhost(domain, webroot, staticRoot, full, key)); err != nil {
+	if _, err := writeFileWithBackup(FindVhostFile(domain), fullVhost(domain, webroot, staticRoot, full, key)); err != nil {
 		addStep("写入站点配置（反代）", false, err.Error())
 		return Status{Domain: domain}, steps, err
 	}
@@ -434,7 +464,7 @@ func (m *Manager) RemoveVhost(ctx context.Context, rawDomain string) ([]Step, er
 		return nil, fmt.Errorf("%s 是网站域名，不能从这里移除", domain)
 	}
 	var steps []Step
-	path := VhostPath(domain)
+	path := FindVhostFile(domain)
 	if _, err := os.Stat(path); err == nil {
 		bak := fmt.Sprintf("%s.bak-%s", path, time.Now().Format("20060102-150405"))
 		if err := os.Rename(path, bak); err != nil {
@@ -465,7 +495,7 @@ func (m *Manager) Inspect(ctx context.Context, domain string, inPool, isPrimary 
 		IsPrimary:    isPrimary,
 		IsSiteDomain: m.SiteDomain != "" && d == strings.ToLower(m.SiteDomain),
 	}
-	if _, err := os.Stat(VhostPath(d)); err == nil {
+	if _, err := os.Stat(FindVhostFile(d)); err == nil {
 		st.VhostExists = true
 	}
 	if ips, ok := resolveDomain(ctx, d); ok {

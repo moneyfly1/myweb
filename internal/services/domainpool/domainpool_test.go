@@ -56,7 +56,8 @@ func TestCertNameAndPaths(t *testing.T) {
 	if !strings.HasSuffix(key, "/sub-moneyfly-dpdns-org/privkey.pem") {
 		t.Errorf("privkey 路径异常: %s", key)
 	}
-	if !strings.HasSuffix(VhostPath("sub.moneyfly.dpdns.org"), "/sub-moneyfly-dpdns-org.conf") {
+	// 新建 vhost 用「域名.conf」（与面板里手工建的命名一致）；已有配置由 FindVhostFile 定位
+	if !strings.HasSuffix(VhostPath("sub.moneyfly.dpdns.org"), "/sub.moneyfly.dpdns.org.conf") {
 		t.Errorf("vhost 路径异常: %s", VhostPath("sub.moneyfly.dpdns.org"))
 	}
 }
@@ -118,5 +119,18 @@ func TestFullVhostWithoutStaticRoot(t *testing.T) {
 	}
 	if strings.Count(cfg, "proxy_pass http://127.0.0.1:8000;") < 4 {
 		t.Error("入口也应反代到面板后端")
+	}
+}
+
+// 按 server_name 定位 vhost：历史文件命名不统一（cboard_sub.conf 之类）时也要能找到，
+// 否则一键配置会另写一个同 server_name 的文件，nginx 会告警且实际生效的可能还是旧文件。
+func TestFindVhostFileFallsBackToConvention(t *testing.T) {
+	// 测试环境里没有 /www/server/panel/vhost/nginx，应回退到「域名.conf」
+	got := FindVhostFile("sub.example.com")
+	if !strings.HasSuffix(got, "/sub.example.com.conf") {
+		t.Errorf("回退路径异常: %s", got)
+	}
+	if !strings.HasSuffix(VhostPath("sub.example.com"), "/sub.example.com.conf") {
+		t.Errorf("默认路径应为 域名.conf: %s", VhostPath("sub.example.com"))
 	}
 }
