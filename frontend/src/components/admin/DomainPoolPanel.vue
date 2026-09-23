@@ -118,30 +118,34 @@
       <template #header="{ item }">
         <div class="dp-mobile-head">
           <div class="dp-mobile-title">
-            <span class="dp-domain">{ item.domain }</span>
+            <span class="dp-domain">{{ item.domain }}</span>
             <el-tag v-if="item.is_primary" size="small" type="success">订阅主域名</el-tag>
             <el-tag v-else-if="item.is_site_domain" size="small" type="info">网站域名</el-tag>
             <el-tag v-else size="small">备用</el-tag>
           </div>
           <el-tag :type="item.https_ok ? 'success' : 'danger'" size="small" effect="plain">
-            { item.https_ok ? '自检正常' : '自检失败' }
+            {{ item.https_ok ? '自检正常' : '自检失败' }}
           </el-tag>
         </div>
       </template>
       <template #field-cert="{ item }">
         <template v-if="item.cert_exists">
-          <el-tag :type="certType(item.cert_days_left)" size="small" effect="plain">{ item.cert_days_left } 天</el-tag>
+          <el-tag :type="certType(item.cert_days_left)" size="small" effect="plain">{{ item.cert_days_left }} 天</el-tag>
           <span v-if="item.auto_renew" class="dp-note">自动续期 ✓</span>
           <span v-else class="dp-note dp-warn">无续期配置</span>
         </template>
         <el-tag v-else type="danger" size="small" effect="plain">未签发</el-tag>
       </template>
-      <template #field-actions="{ item }">
-        <div class="dp-mobile-actions">
-          <el-button link type="primary" size="small" :disabled="item.is_primary" @click="setPrimary(item.domain)">设为主域名</el-button>
-          <el-button link type="primary" size="small" @click="repair(item.domain)">一键修复</el-button>
-          <el-button link type="danger" size="small" :disabled="item.is_site_domain" @click="remove(item.domain)">移除</el-button>
-        </div>
+      <template #actions="{ item }">
+        <el-button
+          size="small" type="primary" plain
+          :disabled="item.is_primary" @click="setPrimary(item.domain)"
+        >设为主域名</el-button>
+        <el-button size="small" type="primary" plain @click="repair(item.domain)">一键修复</el-button>
+        <el-button
+          size="small" type="danger" plain
+          :disabled="item.is_site_domain" @click="remove(item.domain)"
+        >移除</el-button>
       </template>
     </ResponsiveDataView>
 
@@ -189,10 +193,9 @@ const steps = ref([])
 
 // 窄屏卡片字段：与表格列一一对应（ResponsiveDataView 在窄屏自动切换为卡片）
 const mobileFields = [
-  { key: 'dns_resolved', label: 'DNS', format: (v) => (v ? '已解析' : '未解析') },
-  { key: 'vhost_exists', label: '站点配置', format: (v) => (v ? '已配置' : '缺失') },
-  { key: 'cert', label: '证书' },
-  { key: 'actions', label: '操作' }
+  { key: 'dns_resolved', label: 'DNS', formatter: (v) => (v ? '已解析' : '未解析') },
+  { key: 'vhost_exists', label: '站点配置', formatter: (v) => (v ? '已配置' : '缺失') },
+  { key: 'cert', label: '证书' }
 ]
 
 const certType = (days) => (days > 30 ? 'success' : (days >= 7 ? 'warning' : 'danger'))
@@ -329,6 +332,35 @@ onMounted(load)
 </script>
 
 <style scoped>
+/* 窄屏：卡片头部（域名 + 状态标签）要能换行，否则长域名把标签挤出屏幕 */
+.domain-pool :deep(.mobile-card-header) { padding: 10px 12px; }
+.domain-pool :deep(.card-field) { min-width: 0; }
+.dp-mobile-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.dp-mobile-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.dp-mobile-title .dp-domain { word-break: break-all; }
+
+@media (max-width: 768px) {
+  /* 输入行窄屏竖排：输入框占满、按钮各自一行（原来横排溢出 25px） */
+  .dp-add { flex-direction: column; align-items: stretch; gap: 8px; }
+  .dp-add .dp-add-input { width: 100%; }
+  .dp-add :deep(.el-button) { width: 100%; margin-left: 0 !important; }
+  .dp-actions { width: 100%; }
+  .dp-actions :deep(.el-button) { width: 100%; margin-left: 0 !important; }
+  .dp-head { flex-direction: column; align-items: stretch; }
+}
 .dp-foot-actions {
   display: flex;
   align-items: center;
