@@ -17,6 +17,9 @@ type Target struct {
 	Preferred []*regexp.Regexp
 	// Patterns 匹配规则（对齐各仓库实际资产命名，已逐一核对 2026-08）
 	Patterns []*regexp.Regexp
+	// SumsAsset 可选：该平台校验和文件在 Release 里的资产名（如 SHA256SUMS-windows.txt）。
+	// 供「最新版本查询」接口给出 sha256（客户端下载后校验完整性）；留空表示该仓库不提供。
+	SumsAsset string
 }
 
 // Software 一个软件
@@ -62,11 +65,11 @@ var Catalog = []Software{
 		Key: "moneyfly", Name: "MoneyFly", Repo: "moneyfly004/moneyfly",
 		VersionKey: "moneyfly_version",
 		Targets: []Target{
-			{ConfigKey: "moneyfly_windows_url", OS: "windows", Arch: "x64", Label: "Windows x64", Patterns: rx(`(?i)^MoneyFly-setup-.*\.exe$`)},
-			{ConfigKey: "moneyfly_macos_arm_url", OS: "macos", Arch: "apple", Label: "macOS Apple 芯片", Patterns: rx(`(?i)^MoneyFly-macos-arm64-.*\.dmg$`)},
-			{ConfigKey: "moneyfly_macos_url", OS: "macos", Arch: "intel", Label: "macOS Intel", Patterns: rx(`(?i)^MoneyFly-macos-x64-.*\.dmg$`)},
+			{ConfigKey: "moneyfly_windows_url", OS: "windows", Arch: "x64", Label: "Windows x64", SumsAsset: "SHA256SUMS-windows.txt", Patterns: rx(`(?i)^MoneyFly-setup-.*\.exe$`)},
+			{ConfigKey: "moneyfly_macos_arm_url", OS: "macos", Arch: "apple", Label: "macOS Apple 芯片", SumsAsset: "SHA256SUMS-macos-arm64.txt", Patterns: rx(`(?i)^MoneyFly-macos-arm64-.*\.dmg$`)},
+			{ConfigKey: "moneyfly_macos_url", OS: "macos", Arch: "intel", Label: "macOS Intel", SumsAsset: "SHA256SUMS-macos-x64.txt", Patterns: rx(`(?i)^MoneyFly-macos-x64-.*\.dmg$`)},
 			// Android 只发 apk（同 Release 另有 .aab 上架包，被 \.apk$ 排除）
-			{ConfigKey: "moneyfly_android_url", OS: "android", Arch: "universal", Label: "Android APK", Preferred: rx(`(?i)^MoneyFly-android-arm64-v8a-.*\.apk$`), Patterns: rx(`(?i)^MoneyFly-android-.*\.apk$`)},
+			{ConfigKey: "moneyfly_android_url", OS: "android", Arch: "universal", Label: "Android APK", SumsAsset: "SHA256SUMS-android-apk.txt", Preferred: rx(`(?i)^MoneyFly-android-arm64-v8a-.*\.apk$`), Patterns: rx(`(?i)^MoneyFly-android-.*\.apk$`)},
 		},
 	},
 	{

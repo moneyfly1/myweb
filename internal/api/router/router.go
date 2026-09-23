@@ -331,6 +331,8 @@ func SetupRouter() *gin.Engine {
 
 		api.GET("/software-config", handlers.GetSoftwareConfig)
 		api.GET("/software/versions", handlers.GetSoftwareVersions)
+		// 自研客户端更新检查用：由服务器代查 GitHub（App 在国内直连 api.github.com 常失败，镜像又不代理 API）
+		api.GET("/software/latest", handlers.SoftwareLatest)
 		api.GET("/download/resolve", handlers.ResolveDownload)
 		api.GET("/download/gh", handlers.GitHubResolve)
 
