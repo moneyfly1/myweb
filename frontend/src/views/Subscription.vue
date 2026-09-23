@@ -184,8 +184,27 @@
                         </el-button>
                       </td>
                     </tr>
+                    <!-- 备用订阅地址：某个域名在你所在地区打不开时，换下面任意一个（token 相同，配置一样） -->
+                    <tr v-for="(url, idx) in backupSubscriptionUrls" :key="'backup-' + idx">
+                      <td>
+                        <span class="backup-tag">备用</span>
+                      </td>
+                      <td><el-tag size="small" type="info">Clash</el-tag></td>
+                      <td>
+                        <el-input :model-value="url" readonly size="small" />
+                      </td>
+                      <td>
+                        <el-button size="small" @click="copyUrl(url)">
+                          <el-icon><DocumentCopy /></el-icon>
+                          复制
+                        </el-button>
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
+              </div>
+              <div v-if="backupSubscriptionUrls.length" class="backup-tip">
+                上面带「备用」的地址指向同一个订阅（token 相同、配置一样）：如果你所在地区打不开主地址，复制任意一个备用地址填进客户端即可。
               </div>
               <div class="subscription-mobile-list">
                 <div
@@ -449,6 +468,13 @@ export default {
         url: subscription.value?.clash_url
       }
     ].filter(item => item.url))
+    // 备用订阅地址（后端 subscribe_urls 下发）：主域名之外的其它域名，token 相同、配置一样。
+    // 某个域名在用户所在地区被墙时，可直接复制备用地址填进客户端。
+    const backupSubscriptionUrls = computed(() => {
+      const main = subscription.value?.clash_url || ''
+      const all = Array.isArray(subscription.value?.subscribe_urls) ? subscription.value.subscribe_urls : []
+      return all.filter(url => url && url !== main)
+    })
     const moreClientSubscriptionRows = computed(() => [
       {
         key: 'stash',
@@ -774,6 +800,7 @@ export default {
       subscriptionQrReady,
       availableProtocolOptions,
       primarySubscriptionRows,
+      backupSubscriptionUrls,
       moreClientSubscriptionRows,
       copyUrl,
       buildSubscriptionUrl,
@@ -860,6 +887,21 @@ export default {
   border-collapse: collapse;
   background: #fff;
   font-size: 14px;
+}
+/* 备用订阅地址：主域名被墙时的替换入口 */
+.backup-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #909399;
+  background: #f4f4f5;
+}
+.backup-tip {
+  margin: 8px 12px 0;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: #909399;
 }
 .subscription-table th,
 .subscription-table td {

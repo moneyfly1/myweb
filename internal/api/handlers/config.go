@@ -382,6 +382,9 @@ func GetAdminSettings(c *gin.Context) {
 		CatGeneral: {
 			"site_name": "CBoard Modern", "site_description": "现代化的代理服务管理平台", "site_logo": "", "default_theme": "default",
 			"support_qq": "", "support_email": "", "support_hours": "", "unified_auth_enabled": "false", "domain_name": "",
+			// 订阅域名（与官网分开，官网被墙地区客户仍可用订阅域名更新节点）：
+			// 主域名用于生成订阅链接；备用域名随订阅接口下发（subscribe_urls），客户端逐一尝试。
+			"subscription_domain": "", "subscription_backup_domains": "",
 		},
 		CatRegistration: {
 			"registration_enabled": "true", "email_verification_required": "true", "min_password_length": 8,

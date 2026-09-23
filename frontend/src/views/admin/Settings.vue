@@ -34,7 +34,22 @@
                 </el-form-item>
                 <el-form-item label="网站域名" prop="domain_name">
                   <el-input v-model="generalSettings.domain_name" placeholder="例如: example.com (不需要 http://)" />
-                  <div class="form-tip">用于生成订阅地址和邮件链接。留空则使用请求域名。</div>
+                  <div class="form-tip">用于官网/登录/支付回调/邮件里的官网链接。留空则使用请求域名。</div>
+                </el-form-item>
+                <el-form-item label="订阅域名（主）">
+                  <el-input v-model="generalSettings.subscription_domain" placeholder="例如: https://sub.example.com" />
+                  <div class="form-tip">
+                    订阅链接（客户端拉取节点用）走这个域名，可与官网分开 —— 官网在某些地区被墙时，客户仍能用订阅域名更新节点。
+                    留空则跟随「网站域名」。改这里**不会**让已发出的订阅地址失效：同一后端、token 通用，老域名一直可用。
+                  </div>
+                </el-form-item>
+                <el-form-item label="订阅域名（备用）">
+                  <el-input v-model="generalSettings.subscription_backup_domains" type="textarea" :rows="2"
+                    placeholder="每行一个，或用逗号分隔，例如：&#10;https://moneyfly.dpdns.org&#10;https://dy.moneyfly.top" />
+                  <div class="form-tip">
+                    备用订阅域名，会随订阅接口一起下发给客户端（subscribe_urls 字段）供其逐一尝试；
+                    用户面板也会展示。建议至少配 1 个与主域名不同线路/不同服务商的域名。
+                  </div>
                 </el-form-item>
                 <el-form-item label="网站Logo">
                   <el-upload
@@ -1226,6 +1241,8 @@ export default {
 
     const generalSettings = reactive({
       site_name: '', site_description: '', domain_name: '', site_logo: '',
+      // 订阅域名：主域名用于生成订阅链接；备用域名随订阅接口下发，供客户端逐一尝试
+      subscription_domain: '', subscription_backup_domains: '',
       default_theme: 'default', support_qq: '', support_email: '', support_hours: '', unified_auth_enabled: false
     })
     const registrationSettings = reactive({

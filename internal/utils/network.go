@@ -97,6 +97,86 @@ func GetBuildBaseURL(c *http.Request, db *gorm.DB) string {
 	return BuildBaseURL(c, domain)
 }
 
+// 订阅域名相关配置键（category=general）。
+// 为什么订阅域名要和网站域名分开（2026-09-23 线上需求）：
+// 官网域名在部分地区会被屏蔽，客户连官网都打不开 —— 把订阅链接放在独立域名上，
+// 客户端只要有一个域名能通就能继续更新订阅。老域名一直可用（订阅 token 与域名无关，
+// 服务端不校验 Host），所以换域名不会让已发出的订阅地址失效。
+const (
+	SubscriptionDomainKey        = "subscription_domain"
+	SubscriptionBackupDomainsKey = "subscription_backup_domains"
+)
+
+// normalizeBaseURLValue 把配置值规整成 "scheme://host"（缺 scheme 时默认 https）。
+func normalizeBaseURLValue(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+	}
+	if !strings.Contains(v, "://") {
+		v = "https://" + v
+	}
+	return strings.TrimSuffix(v, "/")
+}
+
+// configValueOf 读取 system_configs 中某个 key 的值（先 general 后 system 分类）。
+func configValueOf(db *gorm.DB, key string) string {
+	if db == nil {
+		return ""
+	}
+	var cfg models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", key, "general").First(&cfg).Error; err == nil {
+		return cfg.Value
+	} else if err := db.Where("key = ? AND category = ?", key, "system").First(&cfg).Error; err == nil {
+		return cfg.Value
+	}
+	return ""
+}
+
+// SubscriptionBaseURL 返回订阅链接使用的主域名（不含结尾斜杠）。
+// 未配置 subscription_domain 时回退到网站域名（GetBuildBaseURL），保持旧行为。
+// c 允许为 nil（异步任务/邮件场景）：此时只用配置值，取不到则返回空串，由调用方兜底。
+func SubscriptionBaseURL(c *http.Request, db *gorm.DB) string {
+	if v := normalizeBaseURLValue(configValueOf(db, SubscriptionDomainKey)); v != "" {
+		return v
+	}
+	if c == nil {
+		return normalizeBaseURLValue(configValueOf(db, "domain_name"))
+	}
+	return GetBuildBaseURL(c, db)
+}
+
+// SubscriptionBaseURLs 返回订阅地址可用的全部域名：主域名在前，其后是备用域名（去重、封顶 5 个）。
+// 备用域名由 subscription_backup_domains 配置（逗号/换行/分号分隔），客户端可逐个尝试。
+func SubscriptionBaseURLs(c *http.Request, db *gorm.DB) []string {
+	primary := SubscriptionBaseURL(c, db)
+	out := make([]string, 0, 5)
+	seen := make(map[string]bool, 5)
+	add := func(v string) {
+		v = normalizeBaseURLValue(v)
+		if v == "" || seen[v] || len(out) >= 5 {
+			return
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+
+	add(primary)
+	raw := configValueOf(db, SubscriptionBackupDomainsKey)
+	for _, part := range strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == '\n' || r == ';' || r == ' ' || r == '\t' || r == '\r'
+	}) {
+		add(part)
+	}
+	// 主域名永远可用的兜底：网站域名也在列表里（同一个后端，token 通用）
+	if c != nil {
+		add(GetBuildBaseURL(c, db))
+	} else {
+		add(configValueOf(db, "domain_name"))
+	}
+	return out
+}
+
 func GetDomainFromDB(db *gorm.DB) string {
 	if db == nil {
 		return ""
