@@ -29,7 +29,7 @@ const CLIENT_LIST = [
     name: 'MoneyFly',
     official: true, // 自研官方客户端（用户端置顶推荐）
     recommended: true,
-    description: '本站自研官方客户端，专为本站线路优化，导入订阅即用',
+    description: '本站自研官方客户端：登录账号后点「连接」即用，无需导入订阅',
     icon: 'desktop',
     platforms: ['windows', 'macos', 'android'],
     links: {
@@ -76,7 +76,8 @@ const CLIENT_LIST = [
     id: 'clash-windows',
     name: 'Clash for Windows',
     aliases: ['clash_windows', 'clash-for-windows'],
-    description: '经典的 Windows 平台 Clash 客户端',
+    // Windows 7 专用：本站分发的是压缩包版（Win10/11 请引导用 Clash Verge / Clash Part）
+    description: 'Windows 7 专用客户端（压缩包版）：先解压，运行「一键配置.bat」，再以管理员身份运行',
     icon: 'desktop',
     githubKey: null,
     platforms: ['windows'],
