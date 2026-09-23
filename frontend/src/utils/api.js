@@ -724,6 +724,11 @@ export const paymentAPI = {
 export const settingsAPI = {
   getPublicSettings: () => api.get('/settings/public-settings'),
   getSystemSettings: () => api.get('/admin/settings'),
+  // 订阅域名池（系统设置 → 订阅域名池）：一键建站点/签证书/重载 nginx/写配置 + 实时体检
+  getDomainPool: () => api.get('/admin/domains/pool'),
+  configureDomainPool: (data) => api.post('/admin/domains/pool/configure', data),
+  setDomainPoolPrimary: (domain) => api.post('/admin/domains/pool/primary', { domain }),
+  removeDomainFromPool: (domain) => api.post('/admin/domains/pool/remove', { domain }),
   updateGeneralSettings: (data) => api.put('/admin/settings/general', data),
   updateRegistrationSettings: (data) => api.put('/admin/settings/registration', data),
   updateNotificationSettings: (data) => api.put('/admin/settings/notification', data),
