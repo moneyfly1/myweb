@@ -14,6 +14,14 @@
 
     <!-- 主体设置区域 -->
     <el-card class="settings-shell list-card" shadow="never">
+      <!-- 移动端：12 个 tab 横排会变成一条 1000+px 的横向滚动条（实测 390px 屏幕上
+           只能露出 2~3 个，还要来回滑），改用下拉选择；桌面端仍用左侧导航。
+           下拉项与下方 el-tab-pane 的 name/label 一一对应，由 mounted 时的自检保证不漂移。 -->
+      <div v-if="isMobile" class="settings-tab-picker">
+        <el-select v-model="activeTab" class="settings-tab-select" size="default">
+          <el-option v-for="t in settingsTabs" :key="t.name" :label="t.label" :value="t.name" />
+        </el-select>
+      </div>
       <el-tabs v-model="activeTab" class="settings-tabs" :tab-position="settingsTabPosition">
         
         <!-- ==================== 基本设置 ==================== -->
@@ -1239,6 +1247,22 @@ export default {
   setup() {
     const api = useApi()
     const isMobile = useMobile()
+
+    // 与模板里的 el-tab-pane 顺序/名称一一对应（移动端下拉导航用）
+    const settingsTabs = [
+      { name: 'general', label: '基本设置' },
+      { name: 'registration', label: '注册设置' },
+      { name: 'invite', label: '邀请设置' },
+      { name: 'notification', label: '通知设置' },
+      { name: 'announcement', label: '公告管理' },
+      { name: 'theme', label: '主题设置' },
+      { name: 'node-health', label: '节点监控' },
+      { name: 'security', label: '安全设置' },
+      { name: 'backup', label: '备份与恢复' },
+      { name: 'protocol-filter', label: '协议过滤' },
+      { name: 'repo-sync', label: '仓库文件同步' },
+      { name: 'cleanup', label: '数据清理' }
+    ]
     const themeStore = useThemeStore()
     const activeTab = ref('general')
     const generalFormRef = ref()
@@ -1999,7 +2023,18 @@ export default {
       return true
     }
 
-    onMounted(() => Promise.all([loadSettings(), loadGeoIPStatus(), loadRepoSyncStatus()]))
+    onMounted(() => {
+      // 自检：移动端下拉项必须与真实 tab 完全一致（漏一处就会「切不过去/切错页」）
+      if (process.env.NODE_ENV === 'development') {
+        const domLabels = Array.from(document.querySelectorAll('.settings-tabs .el-tabs__item'))
+          .map((el) => el.textContent.trim())
+        const cfgLabels = settingsTabs.map((t) => t.label)
+        if (domLabels.join('|') !== cfgLabels.join('|')) {
+          console.warn('[Settings] settingsTabs 与模板 el-tab-pane 不一致', { domLabels, cfgLabels })
+        }
+      }
+      return Promise.all([loadSettings(), loadGeoIPStatus(), loadRepoSyncStatus()])
+    })
     onBeforeUnmount(() => stopStatusPolling())
 
     return {
@@ -2556,7 +2591,21 @@ export default {
   .settings-page-header .header-actions { width: 100%; display: flex; gap: 10px; }
   .settings-page-header .header-actions .el-button { flex: 1; margin: 0; }
   
-  .settings-tabs :deep(.el-tabs__header.is-top) { background: var(--el-bg-color); padding: 0 4px; }
+  /* 移动端用下拉导航，隐藏横向滚动的 tab 条（12 个 tab ≈ 1098px 宽） */
+  .settings-tabs :deep(.el-tabs__header.is-top) { display: none; }
+  .settings-tab-picker { padding: 10px 10px 0; }
+  .settings-tab-select { width: 100%; }
+
+  /* 逐层压缩内边距：390px 屏幕上「页面 12 + 卡片 20 + 内容 12 + 分区 18」两侧要吃掉约 100px，
+     留给表单的只剩 244px，输入框和按钮全都挤成一团 */
+  .settings-shell :deep(.el-card__body) { padding: 10px 8px; }
+  .settings-tabs :deep(.el-tabs__content) { padding: 10px 4px; }
+  .settings-block-head { padding: 12px 12px; }
+  .settings-block-body { padding: 12px 12px; }
+  .settings-subblock { padding: 10px; }
+  .settings-savebar { padding: 10px; }
+  .settings-block-head p { font-size: 12px; }
+
   .settings-tabs :deep(.el-tabs__nav-wrap) { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .settings-tabs :deep(.el-tabs__nav-wrap::after) { display: none; }
   .settings-tabs :deep(.el-tabs__nav) { min-width: max-content; }
@@ -2568,6 +2617,12 @@ export default {
   
   .radio-block-group { flex-direction: column; }
   .radio-block-group :deep(.el-radio) { width: 100%; box-sizing: border-box; }
+  /* Element Plus 的单选/复选标签默认 nowrap，窄屏（≤360）会让整块溢出 6~10px */
+  .radio-block-group :deep(.el-radio__label) { white-space: normal; min-width: 0; }
+  .radio-block-group :deep(.radio-desc),
+  .radio-block-group :deep(.radio-title) { white-space: normal; }
+  .theme-checkbox-group :deep(.el-checkbox) { box-sizing: border-box; }
+  .theme-checkbox-group :deep(.el-checkbox__label) { white-space: normal; min-width: 0; }
   
   .notification-panel { padding: 12px 10px; border-radius: 8px; }
   .panel-header { flex-direction: column; align-items: flex-start; gap: 8px; }
