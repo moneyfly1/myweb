@@ -99,6 +99,14 @@ func GetUserSubscriptionXBoardCompat(c *gin.Context) {
 		"status":          subscription.Status,
 		"is_active":       subscription.IsActive,
 	}
+	// 备用订阅地址（主域名之外的其它域名，同一 token、同一份配置）：
+	// 官网/主域名在某些地区被墙时，客户端可逐个尝试，不必换 token、不必找客服。
+	if list, ok := urls["subscribe_urls"].([]string); ok && len(list) > 1 {
+		responseData["subscribe_urls"] = list
+	}
+	if list, ok := urls["universal_urls"].([]string); ok && len(list) > 1 {
+		responseData["universal_urls"] = list
+	}
 
 	// 账号被禁用（管理员封禁 users.is_active=false）→ 订阅信息按「已停用」
 	// 返回，客户端据此判定受限并给出「联系客服」提示，而不是误判为可用；

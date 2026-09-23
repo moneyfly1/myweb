@@ -734,16 +734,20 @@ func GetUserSubscription(c *gin.Context) {
 	db.Model(&models.UserCustomNode{}).Where("user_id = ?", user.ID).Count(&specialNodeCount)
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"id":                             subscription.ID,
-		"subscription_url":               subscription.SubscriptionURL,
-		"clash_url":                      clashURL,
-		"universal_url":                  universalURL,
-		"stash_url":                      multiURLs["stash_url"],
-		"surge_url":                      multiURLs["surge_url"],
-		"quantumultx_url":                multiURLs["quantumultx_url"],
-		"loon_url":                       multiURLs["loon_url"],
-		"singbox_url":                    multiURLs["singbox_url"],
-		"shadowrocket_url":               multiURLs["shadowrocket_url"],
+		"id":               subscription.ID,
+		"subscription_url": subscription.SubscriptionURL,
+		"clash_url":        clashURL,
+		"universal_url":    universalURL,
+		"stash_url":        multiURLs["stash_url"],
+		"surge_url":        multiURLs["surge_url"],
+		"quantumultx_url":  multiURLs["quantumultx_url"],
+		"loon_url":         multiURLs["loon_url"],
+		"singbox_url":      multiURLs["singbox_url"],
+		"shadowrocket_url": multiURLs["shadowrocket_url"],
+		// 备用订阅地址（主域名之外的其它域名，同一 token、同一份配置）：
+		// 某个域名在用户所在地区被墙时，前端展示给用户、客户端也可逐个尝试。
+		"subscribe_urls":                 multiURLs["subscribe_urls"],
+		"universal_urls":                 multiURLs["universal_urls"],
 		"qrcode_url":                     qrcodeURL,
 		"device_limit":                   subscription.DeviceLimit,
 		"current_devices":                onlineDevices,
