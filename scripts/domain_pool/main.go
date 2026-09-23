@@ -51,6 +51,17 @@ func main() {
 	siteDomain := utils.GetDomainFromDB(db)
 	m := domainpool.New("", siteDomain)
 
+	// 防呆：必须在面板项目根目录执行（否则会连到 ./cboard.db，可能是空库/别的库，
+	// 把域名池配置写错地方）。这里比对数据库里有没有面板配置来判定。
+	if siteDomain == "" && utils.SubscriptionBaseURL(nil, db) == "" {
+		wd, _ := os.Getwd()
+		fmt.Printf("⚠️ 当前数据库里没有任何面板配置（域名等），很可能连错了库：\n")
+		fmt.Printf("   工作目录: %s\n", wd)
+		fmt.Printf("   请 cd 到面板项目根目录（含 .env 与 cboard.db 的那一层）再执行本工具。\n")
+		fmt.Printf("   本次不做任何写入。\n")
+		os.Exit(2)
+	}
+
 	primary, backups := domainpool.PoolFromConfig(db)
 
 	if *listFlag || (*domainFlag == "" && *removeFlag == "") {
