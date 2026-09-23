@@ -7,7 +7,9 @@
       <p>管理软件下载配置、软件库自动同步和邮件配置</p>
     </div>
   </template>
-  <el-tabs v-model="activeTab" type="border-card">
+  <!-- 移动端：3 个较长的 tab 在 390px 下也放不下（实测溢出 54px）→ 下拉导航 -->
+  <MobileTabSelect v-model="activeTab" :tabs="configTabs" />
+  <el-tabs v-model="activeTab" type="border-card" class="hide-tabs-mobile">
     <el-tab-pane label="软件下载配置" name="software">
       <div class="config-section">
         <el-divider content-position="left">MoneyFly 自研客户端（用户端置顶推荐）</el-divider>
@@ -267,6 +269,16 @@
             </el-form>
 
             <h4 class="pan-mapping-title">版本对照（GitHub 最新版 ↔ 已检出版本）</h4>
+            <!-- 7 列合计约 820px，390px 屏幕上只能横向滑动（实测内容超出视口 478px）→
+                 窄屏改用卡片（ResponsiveDataView），宽屏保持表格。 -->
+            <ResponsiveDataView
+              :data="panVersions"
+              :fields="panVersionMobileFields"
+              id-field="name"
+              title-field="name"
+              empty-title="暂无版本记录"
+            >
+              <template #table>
             <el-table :data="panVersions" size="small" border max-height="420">
               <el-table-column prop="name" label="软件" width="130" />
               <el-table-column prop="label" label="平台/架构" width="160" />
@@ -292,6 +304,27 @@
               </el-table-column>
               <el-table-column prop="file_name" label="安装包文件" min-width="200" show-overflow-tooltip />
             </el-table>
+              </template>
+              <template #header="{ item }">
+                <div class="pan-version-mobile-head">
+                  <span class="pan-version-name">{{ item.name }}</span>
+                  <el-tag v-if="item.custom" type="warning" size="small">自定义链接</el-tag>
+                  <el-tag v-else-if="item.synced" type="success" size="small">已同步</el-tag>
+                  <el-tag v-else-if="item.cloud_version" type="warning" size="small">待更新</el-tag>
+                  <el-tag v-else type="info" size="small">待上传</el-tag>
+                </div>
+              </template>
+              <template #field-label="{ item }">{{ item.label }}</template>
+              <template #field-github_version="{ item }">
+                <span v-if="item.github_version">v{{ item.github_version }}</span>
+                <el-tag v-else type="danger" size="small">获取失败</el-tag>
+              </template>
+              <template #field-cloud_version="{ item }">
+                <span v-if="item.cloud_version">v{{ item.cloud_version }}</span>
+                <span v-else class="pan-soft-key">未上传</span>
+              </template>
+              <template #field-file_name="{ item }">{{ item.file_name || '-' }}</template>
+            </ResponsiveDataView>
           </div>
         </el-tab-pane>
         <el-tab-pane label="邮件配置" name="email">
@@ -414,10 +447,26 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { unwrapList } from '@/utils/format'
 import { configAPI, softwareConfigAPI, cloudAPI } from '@/utils/api'
+import MobileTabSelect from '@/components/MobileTabSelect.vue'
+import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 export default {
   name: 'AdminConfig',
+  components: { MobileTabSelect, ResponsiveDataView },
   setup() {
     const activeTab = ref('software')
+    // 与下方 el-tab-pane 的 name/label 一一对应（新增 tab 时两处都要加）
+    const configTabs = [
+      { name: 'software', label: '软件下载配置' },
+      { name: 'email', label: '邮件配置' },
+      { name: 'subscriptionAccess', label: '订阅访问控制' }
+    ]
+    // 窄屏卡片字段（宽屏表格不受影响）
+    const panVersionMobileFields = [
+      { key: 'label', label: '平台/架构' },
+      { key: 'github_version', label: 'GitHub 版本' },
+      { key: 'cloud_version', label: '已检出版本' },
+      { key: 'file_name', label: '安装包文件' }
+    ]
     const emailLoading = ref(false)
     const softwareLoading = ref(false)
     const subscriptionAccessLoading = ref(false)
@@ -704,6 +753,8 @@ export default {
     })
     return {
       activeTab,
+      configTabs,
+      panVersionMobileFields,
       emailLoading,
       softwareLoading,
       subscriptionAccessLoading,
@@ -732,6 +783,18 @@ export default {
 }
 </script>
 <style scoped>
+.pan-version-mobile-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.pan-version-name {
+  font-weight: 600;
+  word-break: break-all;
+}
+
 .config-admin-container {
   padding: 20px;
 }
