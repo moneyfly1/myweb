@@ -4,7 +4,6 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
-	"database/sql"
 	"fmt"
 	"net/http"
 
@@ -188,7 +187,7 @@ func CreateKnowledgeArticle(c *gin.Context) {
 		IsActive:   req.IsActive,
 	}
 	if req.Summary != "" {
-		article.Summary = sql.NullString{String: req.Summary, Valid: true}
+		article.Summary = models.NewJSONString(req.Summary)
 	}
 	db := database.GetDB()
 	if err := db.Create(&article).Error; err != nil {
@@ -219,9 +218,9 @@ func UpdateKnowledgeArticle(c *gin.Context) {
 	article.SortOrder = req.SortOrder
 	article.IsActive = req.IsActive
 	if req.Summary != "" {
-		article.Summary = sql.NullString{String: req.Summary, Valid: true}
+		article.Summary = models.NewJSONString(req.Summary)
 	} else {
-		article.Summary = sql.NullString{}
+		article.Summary = models.JSONString{}
 	}
 	db.Save(&article)
 	utils.CreateAuditLogSimple(c, "update_knowledge_article", "knowledge_article", article.ID, fmt.Sprintf("更新知识库文章: %s", article.Title))

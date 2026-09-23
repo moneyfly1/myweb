@@ -59,6 +59,21 @@ async function findCategoryIdByName(name) {
   return hit ? hit.id : null
 }
 
+// asPlainText 把后端可能返回的「可空字符串」统一成字符串。
+// 后端曾把 Go 的 sql.NullString 直接序列化，前端拿到的是
+// {"String":"界面简洁的 Clash 客户端…","Valid":true} —— 页面就会整串花括号显示出来。
+// 根因已在后端修（models.JSONString），这里再做一层防御：任何形状都降级成文本。
+function asPlainText(value) {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'object') {
+    if (typeof value.String === 'string') return value.String
+    if (typeof value.string === 'string') return value.string
+    if (typeof value.value === 'string') return value.value
+  }
+  return String(value)
+}
+
 // normalizeTitle 标题归一化（去空格、去全半角差异、统一小写）用于松散匹配
 function normalizeTitle(title) {
   return String(title || '')
@@ -126,7 +141,7 @@ export async function loadTutorialContent(client, { force = false } = {}) {
 
     // 列表接口已带 content（后端返回完整模型），有则直接用，省一次请求
     if (article.content) {
-      return { id: article.id, title: article.title, summary: article.summary || '', content: article.content }
+      return { id: article.id, title: article.title, summary: asPlainText(article.summary), content: article.content }
     }
 
     try {
@@ -134,7 +149,7 @@ export async function loadTutorialContent(client, { force = false } = {}) {
       return {
         id: article.id,
         title: detail?.title || article.title,
-        summary: detail?.summary || article.summary || '',
+        summary: asPlainText(detail?.summary ?? article.summary),
         content: detail?.content || '',
       }
     } catch {
