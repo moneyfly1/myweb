@@ -49,7 +49,11 @@
                   <div class="form-tip">
                     备用订阅域名，会随订阅接口一起下发给客户端（subscribe_urls 字段）供其逐一尝试；
                     用户面板也会展示。建议至少配 1 个与主域名不同线路/不同服务商的域名。
+                    嫌麻烦可以直接用下面的「订阅域名池」一键配置。
                   </div>
+                </el-form-item>
+                <el-form-item label="订阅域名池">
+                  <DomainPoolPanel />
                 </el-form-item>
                 <el-form-item label="网站Logo">
                   <el-upload
@@ -1081,6 +1085,8 @@ import { useMobile } from '@/composables/useMobile'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
 import { confirmClear, confirmWarning } from '@/utils/confirmAction'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+// 订阅域名池：一键建站点/签证书/重载 nginx/写配置（系统设置 → 站点设置）
+import DomainPoolPanel from '@/components/admin/DomainPoolPanel.vue'
 
 const ALL_PROTOCOLS = [
   'vmess', 'vless', 'trojan', 'ss', 'ssr', 'hysteria', 'hysteria2',
@@ -1176,7 +1182,7 @@ const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key
 
 export default {
   name: 'AdminSettings',
-  components: { Check, Plus, Refresh, Message, Bell, ResponsiveDataView },
+  components: { Check, Plus, Refresh, Message, Bell, ResponsiveDataView, DomainPoolPanel },
   setup() {
     const api = useApi()
     const isMobile = useMobile()

@@ -452,6 +452,11 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/custom-nodes/disable-timeout", handlers.DisableTimeoutCustomNodes)
 			admin.POST("/custom-nodes/enable-all", handlers.EnableAllCustomNodes)
 			admin.POST("/custom-nodes/selfhost/deploy", handlers.DeploySelfHostVPS)
+			// 订阅域名池（系统设置 → 订阅域名池）：一键建站点 + 签证书 + 重载 nginx + 写配置
+			admin.GET("/domains/pool", handlers.GetDomainPool)
+			admin.POST("/domains/pool/configure", handlers.ConfigureDomainPool)
+			admin.POST("/domains/pool/primary", handlers.SetDomainPoolPrimary)
+			admin.POST("/domains/pool/remove", handlers.RemoveDomainFromPool)
 			admin.POST("/custom-nodes/selfhost/deploy-domain", handlers.DeploySelfHostVPSDomain)
 			admin.GET("/custom-nodes/selfhost/saved-vps", handlers.GetSavedSelfHostVPS)
 			admin.POST("/custom-nodes/selfhost/:id/manage", handlers.SelfHostBatchManage)
