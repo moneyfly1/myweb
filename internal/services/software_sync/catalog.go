@@ -27,6 +27,10 @@ type Software struct {
 	Name string
 	// Repo GitHub 仓库，如 clash-verge-rev/clash-verge-rev
 	Repo string
+	// VersionKey 可选：该软件对外展示版本号的配置键（如 moneyfly_version）。
+	// 同步检出新版本时一并写入，保证「下载链接指向的版本」与「页面展示的版本号」不脱节；
+	// 留空表示该软件不展示版本号（多数第三方客户端如此）。
+	VersionKey string
 	// Targets 各平台下载目标
 	Targets []Target
 }
@@ -56,6 +60,7 @@ var Catalog = []Software{
 		// 注意：通用 dmgIntel/dmgApple 规则匹配不了 "macos-x64-2.2.18.dmg"（x64 后面还有版本号），
 		// 故此处不复用，改用专属规则。
 		Key: "moneyfly", Name: "MoneyFly", Repo: "moneyfly004/moneyfly",
+		VersionKey: "moneyfly_version",
 		Targets: []Target{
 			{ConfigKey: "moneyfly_windows_url", OS: "windows", Arch: "x64", Label: "Windows x64", Patterns: rx(`(?i)^MoneyFly-setup-.*\.exe$`)},
 			{ConfigKey: "moneyfly_macos_arm_url", OS: "macos", Arch: "apple", Label: "macOS Apple 芯片", Patterns: rx(`(?i)^MoneyFly-macos-arm64-.*\.dmg$`)},
