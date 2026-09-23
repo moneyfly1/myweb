@@ -62,16 +62,31 @@ func fetchSubscriptionAdmin(c *gin.Context, db *gorm.DB, subID string) (*models.
 	return sub, true
 }
 
+// backupClashURLs 返回所有可用域名的 Clash 订阅地址（第一个是主订阅域名）。
+// 域名池 = subscription_domain + subscription_backup_domains + 网站域名；
+// token 相同、同一后端，某个域名被墙时前端/客户端可以换下一个。
+func backupClashURLs(c *gin.Context, subURL string) []string {
+	bases := utils.SubscriptionBaseURLs(c.Request, database.GetDB())
+	out := make([]string, 0, len(bases))
+	for _, b := range bases {
+		out = append(out, fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=clash", b, subURL))
+	}
+	return out
+}
+
+// getSubscriptionURLs 返回通用/Clash 两个主订阅地址。
+// 用订阅域名（subscription_domain）而不是网站域名：官网域名在部分地区被屏蔽时，
+// 客户仍能用订阅域名更新节点；两者指向同一后端、token 通用，老地址继续有效。
 func getSubscriptionURLs(c *gin.Context, subURL string) (string, string) {
-	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
+	baseURL := utils.SubscriptionBaseURL(c.Request, database.GetDB())
 	return fmt.Sprintf("%s/api/v1/client/subscribe?token=%s", baseURL, subURL),
 		fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=clash", baseURL, subURL)
 }
 
 // getMultiClientSubscriptionURLs 返回所有支持的客户端订阅地址
 func getMultiClientSubscriptionURLs(c *gin.Context, subURL string) gin.H {
-	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
-	return gin.H{
+	baseURL := utils.SubscriptionBaseURL(c.Request, database.GetDB())
+	h := gin.H{
 		"universal_url":    fmt.Sprintf("%s/api/v1/client/subscribe?token=%s", baseURL, subURL),
 		"clash_url":        fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=clash", baseURL, subURL),
 		"stash_url":        fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=stash", baseURL, subURL),
@@ -81,6 +96,21 @@ func getMultiClientSubscriptionURLs(c *gin.Context, subURL string) gin.H {
 		"singbox_url":      fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=singbox", baseURL, subURL),
 		"shadowrocket_url": fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=shadowrocket", baseURL, subURL),
 	}
+
+	// 备用域名（同一 token、同一后端）：主地址打不开的地区，客户端可逐个尝试备用地址，
+	// 不必换 token、不必找客服。列表由 subscription_domain + subscription_backup_domains 决定。
+	bases := utils.SubscriptionBaseURLs(c.Request, database.GetDB())
+	if len(bases) > 1 {
+		clashURLs := make([]string, 0, len(bases))
+		universalURLs := make([]string, 0, len(bases))
+		for _, b := range bases {
+			clashURLs = append(clashURLs, fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=clash", b, subURL))
+			universalURLs = append(universalURLs, fmt.Sprintf("%s/api/v1/client/subscribe?token=%s", b, subURL))
+		}
+		h["subscribe_urls"] = clashURLs
+		h["universal_urls"] = universalURLs
+	}
+	return h
 }
 
 // toString 安全地把 interface{} 转成字符串（gin.H 取出的值可能是 string）
@@ -656,14 +686,16 @@ func buildSubscriptionListData(db *gorm.DB, subscriptions []models.Subscription,
 		}
 
 		list = append(list, gin.H{
-			"id":                sub.ID,
-			"user_id":           sub.UserID,
-			"user":              userInfo,
-			"username":          userInfo["username"],
-			"email":             userInfo["email"],
-			"subscription_url":  sub.SubscriptionURL,
-			"universal_url":     universal,
-			"clash_url":         clash,
+			"id":               sub.ID,
+			"user_id":          sub.UserID,
+			"user":             userInfo,
+			"username":         userInfo["username"],
+			"email":            userInfo["email"],
+			"subscription_url": sub.SubscriptionURL,
+			"universal_url":    universal,
+			"clash_url":        clash,
+			// 备用订阅域名（主地址打不开的地区可用）：前端展示、客户端可逐一尝试
+			"subscribe_urls":    backupClashURLs(c, sub.SubscriptionURL),
 			"status":            sub.Status,
 			"is_active":         sub.IsActive,
 			"device_limit":      sub.DeviceLimit,

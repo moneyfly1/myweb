@@ -707,7 +707,9 @@ func GetUserSubscription(c *gin.Context) {
 		return
 	}
 
-	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
+	// 订阅链接用「订阅域名」（subscription_domain）：官网域名被墙的地区客户也能订阅；
+	// 老域名继续可用（同一后端、token 通用），所以这里换域名不会让已发出的地址失效。
+	baseURL := utils.SubscriptionBaseURL(c.Request, database.GetDB())
 	clashURL := fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=clash", baseURL, subscription.SubscriptionURL)
 	universalURL := fmt.Sprintf("%s/api/v1/client/subscribe?token=%s", baseURL, subscription.SubscriptionURL)
 	multiURLs := getMultiClientSubscriptionURLs(c, subscription.SubscriptionURL)

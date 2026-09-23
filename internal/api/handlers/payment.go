@@ -1170,6 +1170,10 @@ func sendPaymentNotifications(db *gorm.DB, orderNo string) {
 			var subscriptionInfo models.Subscription
 			if err := db.Where("user_id = ?", latestUser.ID).First(&subscriptionInfo).Error; err == nil {
 				baseURL := templateBuilder.GetBaseURL()
+				// 邮件里的订阅链接用订阅域名（subscription_domain）；未配置时回退到网站域名。
+				if subBase := utils.SubscriptionBaseURL(nil, database.GetDB()); subBase != "" {
+					baseURL = subBase
+				}
 				universalURL := fmt.Sprintf("%s/api/v1/subscriptions/universal/%s", baseURL, subscriptionInfo.SubscriptionURL)
 				clashURL := fmt.Sprintf("%s/api/v1/subscriptions/clash/%s", baseURL, subscriptionInfo.SubscriptionURL)
 				multi := map[string]string{
