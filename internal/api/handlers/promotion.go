@@ -5,7 +5,6 @@ import (
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
-	"database/sql"
 	"fmt"
 	"net/http"
 	"strings"
@@ -89,9 +88,9 @@ func applyPromotionRequest(promo *models.Promotion, req *promotionRequest) error
 	promo.MinAmount = req.MinAmount
 	promo.MaxDiscount = req.MaxDiscount
 	if req.PackageIDs != "" {
-		promo.PackageIDs = sql.NullString{String: req.PackageIDs, Valid: true}
+		promo.PackageIDs = models.NewJSONString(req.PackageIDs)
 	} else {
-		promo.PackageIDs = sql.NullString{}
+		promo.PackageIDs = models.JSONString{}
 	}
 	if req.StartTime != "" {
 		t, err := parsePromotionTime(req.StartTime)
@@ -109,9 +108,9 @@ func applyPromotionRequest(promo *models.Promotion, req *promotionRequest) error
 	}
 	promo.IsActive = req.IsActive
 	if req.Description != "" {
-		promo.Description = sql.NullString{String: req.Description, Valid: true}
+		promo.Description = models.NewJSONString(req.Description)
 	} else {
-		promo.Description = sql.NullString{}
+		promo.Description = models.JSONString{}
 	}
 	return nil
 }

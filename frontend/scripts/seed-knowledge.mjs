@@ -102,7 +102,7 @@ const SUPPLEMENTARY = [
     title: '支持哪些客户端？怎么选？',
     summary: '自研客户端与第三方客户端的区别，以及按系统选择建议',
     content: `<h2>优先推荐</h2>
-<p>优先使用本站自研的 <strong>MoneyFly</strong> 客户端：针对本站线路优化，复制订阅地址即可使用，无需繁琐配置。可在「客户端中心」下载。</p>
+<p>优先使用本站自研的 <strong>MoneyFly</strong> 客户端：针对本站线路优化，<strong>登录本站账号后点「连接」即可</strong>，不需要导入订阅或填写服务器。可在「客户端中心」下载。</p>
 <h2>第三方客户端</h2>
 <ul>
 <li><strong>Windows：</strong>Clash Verge、Clash Part、V2rayN、Hiddify、FlClash</li>
@@ -131,7 +131,7 @@ const PLATFORM_GUIDES = [
     content: `<p>本页帮你挑选适合的 Windows 客户端；每个客户端的安装与导入订阅步骤，请到「客户端中心」查看对应教程。</p>
 <h2>推荐顺序</h2>
 <ol>
-<li><strong>MoneyFly（本站自研）</strong>：省心首选，复制订阅地址即可使用。</li>
+<li><strong>MoneyFly（本站自研）</strong>：省心首选，登录账号点「连接」即用，无需导入订阅。</li>
 <li><strong>Clash Verge / Clash Part</strong>：需要自定义分流规则时选择。</li>
 <li><strong>V2rayN</strong>：轻量、资源占用低，适合老机器。</li>
 <li><strong>Hiddify / FlClash</strong>：跨平台，多设备统一体验。</li>
