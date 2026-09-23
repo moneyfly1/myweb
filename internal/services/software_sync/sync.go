@@ -385,6 +385,7 @@ func run(only []string) ([]ReportItem, int) {
 			releaseCache[sw.Repo] = release
 		}
 		version := release.Version()
+		versionWritten := false
 
 		for _, t := range sw.Targets {
 			if len(onlySet) > 0 && !onlySet[t.ConfigKey] {
@@ -435,6 +436,14 @@ func run(only []string) ([]ReportItem, int) {
 			} else {
 				item.Message = "已检出最新版 v" + version + "，下载链接将指向该版本（国内镜像直链）"
 			}
+			// 该软件声明了展示版本号 → 与下载链接同源更新（每个软件只写一次）
+			if !versionWritten {
+				if err := writeVersionKeyIfNeeded(&sw, version); err != nil {
+					item.Message += "；展示版本号写入失败: " + err.Error()
+				} else {
+					versionWritten = true
+				}
+			}
 			newVersions++
 			item.Status = "ok"
 			item.FileName = asset.Name
@@ -466,6 +475,20 @@ func ensurePanManagedURL(configKey string) error {
 		return nil // 管理员手填的外部链接，不覆盖
 	}
 	return saveSoftwareValue(configKey, "pan://"+configKey)
+}
+
+// writeVersionKeyIfNeeded 把本次检出的版本号写入该软件的展示配置键（仅当目录里声明了 VersionKey）。
+// 目的：下载链接虽是 pan:// 自动跟版，但页面展示的版本号若需人工同步，就会出现
+// 「按钮下载 2.2.19、页面却写着 v2.2.18」的错位；此处统一由同步结果驱动。
+// 未声明 VersionKey 的软件（多数第三方客户端）不做任何写入。
+func writeVersionKeyIfNeeded(sw *Software, version string) error {
+	if sw == nil || sw.VersionKey == "" || version == "" {
+		return nil
+	}
+	if loadSoftwareValue(sw.VersionKey) == version {
+		return nil
+	}
+	return saveSoftwareValue(sw.VersionKey, version)
 }
 
 func findAsset(release *ghrelease.Release, t *Target) (*ghrelease.Asset, error) {
