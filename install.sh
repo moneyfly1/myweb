@@ -760,20 +760,96 @@ deep_clean() {
     log "✅ 缓存清理完毕"
 }
 
+# 探测「真正在跑」的 Nginx 重载方式。
+#
+# 为什么必须探测：宝塔装的 Nginx 跑在 /www/server/nginx/sbin/nginx，而 apt 版 nginx 的
+# systemd 单元在宝塔机器上往往是坏的（起不来，也不是对外服务的那个进程）。续期钩子若
+# 写死 `systemctl reload nginx`，自动续期成功后新证书不会被加载 —— 客户在证书到期后
+# 就会看到「证书无效」，而服务器上一切看起来都正常。线上就是这么踩过一次。
+detect_nginx_reload_cmd() {
+    if [[ -x /www/server/nginx/sbin/nginx ]]; then
+        echo "/www/server/nginx/sbin/nginx -s reload"
+    elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files 2>/dev/null | grep -q '^nginx\.service'; then
+        echo "systemctl reload nginx"
+    elif [[ -x /etc/init.d/nginx ]]; then
+        echo "/etc/init.d/nginx reload"
+    else
+        echo "nginx -s reload"
+    fi
+}
+
 # 配置证书续期后自动重载 Nginx（供 certbot 自动续期时调用）
+#
+# 与旧实现的两点区别：
+#   1) 重载方式按环境探测，并在运行时依次兜底（宝塔 / systemd / init.d / PATH）；
+#   2) 内容不同就替换 —— 旧版只在「文件不存在」时创建，写错过一次之后重跑安装脚本
+#      也修不回来（历史钩子里写死的 systemctl reload nginx 会一直生效，新证书永不加载）。
 setup_cert_auto_renew_hook() {
     local hook_dir="/etc/letsencrypt/renewal-hooks/deploy"
     local hook_file="$hook_dir/reload-nginx.sh"
+    local reload_cmd tmp
+    reload_cmd="$(detect_nginx_reload_cmd)"
     mkdir -p "$hook_dir"
-    if [[ ! -x "$hook_file" ]]; then
-        cat > "$hook_file" <<'HOOK'
+    tmp="$(mktemp)"
+    cat > "$tmp" <<HOOK
 #!/bin/bash
-# certbot 续期成功后自动执行，重载 Nginx 以加载新证书
-systemctl reload nginx 2>/dev/null || /etc/init.d/nginx reload 2>/dev/null || true
-HOOK
-        chmod +x "$hook_file"
-        log "已配置证书自动续期钩子: 续期后将自动重载 Nginx"
+# certbot 续期成功后重载 Nginx 以加载新证书（由 CBoard 安装脚本生成，可重复生成）
+for c in \\
+  "${reload_cmd}" \\
+  "/www/server/nginx/sbin/nginx -s reload" \\
+  "systemctl reload nginx" \\
+  "/etc/init.d/nginx reload" \\
+  "nginx -s reload"; do
+    if \$c >/dev/null 2>&1; then
+        logger -t cboard-certbot "nginx reloaded via: \$c"
+        exit 0
     fi
+done
+logger -t cboard-certbot "WARN: nginx reload 全部失败，新证书可能未生效"
+exit 0
+HOOK
+    chmod +x "$tmp"
+    if [[ ! -f "$hook_file" ]] || ! cmp -s "$tmp" "$hook_file"; then
+        mv "$tmp" "$hook_file"
+        chmod +x "$hook_file"
+        log "已配置证书自动续期钩子（重载方式: $reload_cmd）"
+    else
+        rm -f "$tmp"
+        log "证书自动续期钩子已是最新，跳过"
+    fi
+}
+
+# 确保 certbot 已安装且「定时自动续期」处于开启状态
+ensure_certbot_autorenew() {
+    if ! command -v certbot >/dev/null 2>&1; then
+        log "未检测到 certbot，尝试安装..."
+        if command -v apt-get >/dev/null 2>&1; then
+            apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y certbot
+        elif command -v yum >/dev/null 2>&1; then
+            yum install -y certbot
+        fi
+    fi
+    if ! command -v certbot >/dev/null 2>&1; then
+        warn "certbot 未安装成功，请手动安装后再续期（apt install certbot）"
+        return 1
+    fi
+    # 定时续期：优先用发行版自带的 systemd timer，否则退回 cron
+    if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files 2>/dev/null | grep -q '^certbot\.timer'; then
+        systemctl enable certbot.timer >/dev/null 2>&1 || true
+        systemctl start certbot.timer >/dev/null 2>&1 || true
+        log "证书自动续期: certbot.timer 已启用"
+    elif [[ -d /etc/cron.d ]]; then
+        cat > /etc/cron.d/certbot-renew <<'CRON'
+# CBoard: 每 12 小时检查一次证书续期（与官方 certbot 包的做法一致）
+0 */12 * * * root certbot -q renew
+CRON
+        chmod 644 /etc/cron.d/certbot-renew
+        log "证书自动续期: 已写入 /etc/cron.d/certbot-renew"
+    else
+        warn "未找到可用的定时机制，请自行配置 certbot 定时续期"
+    fi
+    setup_cert_auto_renew_hook
+    return 0
 }
 
 # 确保 Nginx 站点配置包含 /repo-sync/ 文件转发（幂等；选项11升级不会重写站点配置，需要此函数修复）
@@ -891,8 +967,11 @@ PY
         fi
     fi
 
-    setup_cert_auto_renew_hook
-    if certbot renew --quiet --deploy-hook "systemctl reload nginx 2>/dev/null || /etc/init.d/nginx reload 2>/dev/null"; then
+    # 确保 certbot 已安装、定时续期已开启、续期钩子指向真正在跑的 Nginx
+    ensure_certbot_autorenew
+    local reload_cmd
+    reload_cmd="$(detect_nginx_reload_cmd)"
+    if certbot renew --quiet --deploy-hook "$reload_cmd"; then
         log "证书续期检查完成（未到期则不会更新）；若已续期，Nginx 已重载"
     else
         warn "certbot renew 执行异常，请检查: certbot certificates"

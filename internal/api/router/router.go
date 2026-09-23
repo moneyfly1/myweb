@@ -459,6 +459,7 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/domains/pool/configure", handlers.ConfigureDomainPool)
 			admin.POST("/domains/pool/primary", handlers.SetDomainPoolPrimary)
 			admin.POST("/domains/pool/remove", handlers.RemoveDomainFromPool)
+			admin.POST("/domains/pool/renew", handlers.RenewDomainPool)
 			admin.POST("/custom-nodes/selfhost/deploy-domain", handlers.DeploySelfHostVPSDomain)
 			admin.GET("/custom-nodes/selfhost/saved-vps", handlers.GetSavedSelfHostVPS)
 			admin.POST("/custom-nodes/selfhost/:id/manage", handlers.SelfHostBatchManage)
