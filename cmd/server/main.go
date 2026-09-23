@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -9,8 +10,10 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"cboard-go/internal/api/router"
@@ -178,10 +181,40 @@ func main() {
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	log.Printf("服务器启动在 %s", addr)
 
-	if err := r.Run(addr); err != nil {
-		log.Fatalf("服务器启动失败: %v", err)
+	// 优雅退出：此前未注册信号处理，systemd 发 SIGTERM 后进程不退出，
+	// 每次都等满 stop-sigterm 超时（90s）被 SIGKILL —— 等于每次重启/部署都有 90 秒中断，
+	// 且正在处理的请求被硬切断。这里显式接管 SIGTERM/SIGINT：先停收新连接、排空在途请求，再退出。
+	srv := &http.Server{Addr: addr, Handler: r}
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- srv.ListenAndServe()
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(quit)
+
+	select {
+	case err := <-serveErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("服务器启动失败: %v", err)
+		}
+	case sig := <-quit:
+		log.Printf("收到退出信号 %s，开始优雅关闭（最长 %s）", sig, gracefulShutdownTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), gracefulShutdownTimeout)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("优雅关闭未在超时内完成，强制退出: %v", err)
+		} else {
+			log.Println("在途请求已排空，服务已优雅关闭")
+		}
 	}
 }
+
+// gracefulShutdownTimeout 优雅关闭的最长等待时间。
+// 取 8s：足够排空常规 HTTP 请求，又明显短于 systemd 的 90s stop-sigterm 超时，
+// 避免再次出现「等满超时被 SIGKILL」的长中断。
+const gracefulShutdownTimeout = 8 * time.Second
 
 func downloadGeoIPDatabase(filePath string) error {
 	// 验证文件路径安全性
