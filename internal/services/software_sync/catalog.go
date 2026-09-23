@@ -45,8 +45,25 @@ var apkPreferredArm = rx(`(?i)(arm64|arm64[-_]?v8a)[^.]*\.apk$`)
 var dmgIntel = rx(`(?i)^.*(intel|x64|amd64|_x64|-64)\.(dmg|pkg)$`)
 var dmgApple = rx(`(?i)^.*(apple|silicon|m[0-9]+|arm64|aarch64|_aarch64).*\.(dmg|pkg)$`)
 
-// Catalog 同步目录：7 款软件 × 平台/架构（2026-08 已逐一核对 GitHub 最新 Release 资产名）
+// Catalog 同步目录：8 款软件 × 平台/架构（2026-08 已逐一核对 GitHub 最新 Release 资产名）
 var Catalog = []Software{
+	{
+		// MoneyFly 为本站自研官方客户端，资产命名固定为 MoneyFly-<平台>-<版本>.<扩展名>
+		// （见仓库 release.yml 的产物名），因此用精确前缀匹配，避免 macos 三件套互相误配：
+		//   MoneyFly-macos-arm64-<V>.dmg       → Apple 芯片
+		//   MoneyFly-macos-x64-<V>.dmg         → Intel
+		//   MoneyFly-macos-universal-<V>.dmg   → 通用包（不映射到任何入口，避免抢占 arm/intel）
+		// 注意：通用 dmgIntel/dmgApple 规则匹配不了 "macos-x64-2.2.18.dmg"（x64 后面还有版本号），
+		// 故此处不复用，改用专属规则。
+		Key: "moneyfly", Name: "MoneyFly", Repo: "moneyfly004/moneyfly",
+		Targets: []Target{
+			{ConfigKey: "moneyfly_windows_url", OS: "windows", Arch: "x64", Label: "Windows x64", Patterns: rx(`(?i)^MoneyFly-setup-.*\.exe$`)},
+			{ConfigKey: "moneyfly_macos_arm_url", OS: "macos", Arch: "apple", Label: "macOS Apple 芯片", Patterns: rx(`(?i)^MoneyFly-macos-arm64-.*\.dmg$`)},
+			{ConfigKey: "moneyfly_macos_url", OS: "macos", Arch: "intel", Label: "macOS Intel", Patterns: rx(`(?i)^MoneyFly-macos-x64-.*\.dmg$`)},
+			// Android 只发 apk（同 Release 另有 .aab 上架包，被 \.apk$ 排除）
+			{ConfigKey: "moneyfly_android_url", OS: "android", Arch: "universal", Label: "Android APK", Preferred: rx(`(?i)^MoneyFly-android-arm64-v8a-.*\.apk$`), Patterns: rx(`(?i)^MoneyFly-android-.*\.apk$`)},
+		},
+	},
 	{
 		Key: "v2rayn", Name: "V2rayN", Repo: "2dust/v2rayN",
 		Targets: []Target{

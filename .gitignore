@@ -102,6 +102,9 @@ cboard
 # linux 交叉编译产物（部署用，不入库）
 server-linux
 
+# 运维 CLI 产物（按约定构建到项目根目录，便于就近解析相对 DB 路径，不入库）
+domain_pool
+
 
 # 数据库损坏备份（含敏感数据，不入库）
 *.db.corrupt.*
