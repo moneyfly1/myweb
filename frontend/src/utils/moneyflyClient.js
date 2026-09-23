@@ -13,12 +13,12 @@ import { detectSystem, resolvePanDownloadUrl } from '@/utils/githubDownload'
 export const MONEYFLY_BRAND = {
   name: 'MoneyFly',
   badge: '官方自研',
-  tagline: '官方自研客户端 · 一键导入订阅 · 开箱即用',
-  intro: 'MoneyFly 是本站自主研发的官方客户端，专为本站线路优化，界面简洁、连接稳定。相比第三方客户端，MoneyFly 免去繁琐的配置步骤，复制订阅地址即可使用，推荐优先选择。',
+  tagline: '官方自研客户端 · 登录即用 · 一键连接',
+  intro: 'MoneyFly 是本站自主研发的官方客户端，专为本站线路优化，界面简洁、连接稳定。用本站账号登录后点一下「连接」就能用 —— 不需要导入订阅、不需要复制任何链接，推荐优先选择。',
   // 用户端展示的亮点（帮助中心 / 客户端中心共用）
   highlights: [
     { title: '官方自研', desc: '与本站线路深度适配，节点延迟与稳定性表现更好' },
-    { title: '一键导入', desc: '复制订阅地址粘贴即用，无需手动填写服务器与密钥' },
+    { title: '登录即用', desc: '用本站账号登录后点「连接」即可，无需导入订阅或填写服务器' },
     { title: '自动同步', desc: '节点增删、套餐变更自动同步，无需反复手动更新' },
     { title: '多端支持', desc: '支持 Windows、macOS（Apple 芯片 / Intel）与 Android' },
   ],

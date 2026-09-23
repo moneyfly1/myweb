@@ -11,6 +11,8 @@
  * 用法：
  *   node scripts/seed-knowledge.mjs --base https://dy.moneyfly.top \
  *        --user admin --pass '密码' [--dry-run]
+ *   # 也可用管理员令牌（无需密码）：
+ *   node scripts/seed-knowledge.mjs --base https://dy.moneyfly.top --token '<管理员 JWT>'
  */
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -27,10 +29,13 @@ const getArg = (name, fallback = '') => {
 const BASE = (getArg('base', process.env.MFY_BASE || 'https://dy.moneyfly.top')).replace(/\/$/, '')
 const USER = getArg('user', process.env.MFY_USER || 'admin')
 const PASS = getArg('pass', process.env.MFY_PASS || '')
+// 也可直接用管理员 JWT 执行（便于运维/无密码场景）：--token <jwt>
+const PROVIDED_TOKEN = getArg('token', process.env.MFY_TOKEN || '')
 const DRY_RUN = args.includes('--dry-run')
 
-if (!PASS) {
-  console.error('缺少管理员密码：--pass <password> 或环境变量 MFY_PASS')
+// 有 --token 时不需要密码（运维/无密码场景）
+if (!PASS && !PROVIDED_TOKEN) {
+  console.error('缺少管理员凭据：--pass <password>（或 MFY_PASS），也可用 --token <管理员 JWT>')
   process.exit(1)
 }
 
@@ -452,6 +457,11 @@ async function request(method, path, body) {
 }
 
 async function login() {
+  if (PROVIDED_TOKEN) {
+    token = PROVIDED_TOKEN
+    console.log('✅ 使用提供的管理员令牌（--token）')
+    return
+  }
   const data = await request('POST', '/auth/login-json', { username: USER, password: PASS })
   token = data?.access_token || data?.token || ''
   if (!token) throw new Error('登录未返回 access_token')
