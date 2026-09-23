@@ -294,6 +294,36 @@
             </div>
           </div>
         </div>
+        <div
+          v-if="moneyflyVisible"
+          class="card tutorial-card dashboard-section-card moneyfly-card"
+        >
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">
+                <el-icon class="title-icon"><StarFilled /></el-icon>
+                {{ moneyflyBrand.name }} 客户端
+                <el-tag type="success" effect="dark" size="small" class="moneyfly-badge">
+                  {{ moneyflyBrand.badge }}
+                </el-tag>
+                <el-tag type="danger" effect="plain" size="small" class="moneyfly-badge">
+                  推荐优先使用
+                </el-tag>
+              </h3>
+            </div>
+            <span v-if="moneyflyConfig.version" class="moneyfly-version">
+              v{{ moneyflyConfig.version }}
+            </span>
+          </div>
+          <div class="card-body">
+            <p class="moneyfly-tagline">{{ moneyflyBrand.tagline }}</p>
+            <MoneyFlyDownloadPanel
+              :software-config="softwareConfig"
+              plain
+              hide-head
+            />
+          </div>
+        </div>
         <div class="card recent-order-card dashboard-section-card">
           <div class="card-header">
             <div>
@@ -397,35 +427,6 @@
             </div>
           </div>
         </div>
-        <div
-          v-if="moneyflyVisible"
-          class="card tutorial-card dashboard-section-card moneyfly-card"
-        >
-          <div class="card-header">
-            <div>
-              <h3 class="card-title">
-                <el-icon class="title-icon"><StarFilled /></el-icon>
-                {{ moneyflyBrand.name }} 客户端
-                <el-tag type="success" effect="dark" size="small" class="moneyfly-badge">
-                  {{ moneyflyBrand.badge }}
-                </el-tag>
-                <el-tag type="danger" effect="plain" size="small" class="moneyfly-badge">
-                  推荐优先使用
-                </el-tag>
-              </h3>
-            </div>
-            <span v-if="moneyflyConfig.version" class="moneyfly-version">
-              v{{ moneyflyConfig.version }}
-            </span>
-          </div>
-          <div class="card-body">
-            <MoneyFlyDownloadPanel
-              :software-config="softwareConfig"
-              plain
-              hide-head
-            />
-          </div>
-        </div>
         <div class="card tutorial-card dashboard-section-card">
           <div class="card-header">
             <div>
@@ -445,7 +446,6 @@
             <ClientPlatformList
               :software-config="softwareConfig"
               :default-platform="currentPlatformKey"
-              :include-official="false"
               class="dashboard-client-list"
             />
             <div class="button-row dashboard-client-links">
@@ -1166,6 +1166,11 @@ const currentPlatformKey = computed(() => {
   if (ua.includes('mac os') || ua.includes('macintosh')) return 'macos'
   return 'windows'
 })
+// 自研客户端展示模型（模板里的 moneyflyVisible / moneyflyConfig / moneyflyBrand）
+const moneyflyConfig = computed(() => readMoneyflyConfig(softwareConfig.value || {}))
+const moneyflyVisible = computed(() => isMoneyflyVisible(moneyflyConfig.value))
+const moneyflyBrand = MONEYFLY_BRAND
+
 const goClientCenter = () => router.push('/tutorials')
 const goKnowledge = () => router.push('/knowledge')
 const goToPackages = () => {
@@ -3541,8 +3546,27 @@ onUnmounted(() => {
 /* ===== MoneyFly 自研客户端推荐卡片（置顶）===== */
 /* 平台网格样式由 MoneyFlyDownloadPanel 自带，这里只做外层卡片与标题装饰 */
 .moneyfly-card {
-  border: 1px solid var(--el-color-primary-light-5);
-  background: linear-gradient(180deg, var(--el-color-primary-light-9), transparent 60%);
+  position: relative;
+  border: 1px solid var(--el-color-primary-light-3);
+  box-shadow: 0 2px 12px rgba(64, 158, 255, 0.08);
+  background: linear-gradient(180deg, var(--el-color-primary-light-9), transparent 65%);
+}
+/* 左侧主色强调条：在卡片列表里一眼看出这是官方推荐位 */
+.moneyfly-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 4px;
+  border-radius: 4px;
+  background: var(--el-color-primary);
+}
+.moneyfly-tagline {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--el-color-primary);
+  font-weight: 500;
 }
 .moneyfly-card .card-title {
   display: flex;

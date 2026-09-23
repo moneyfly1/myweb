@@ -32,12 +32,20 @@
     </div>
 
     <div v-if="clients.length" class="cpl-rows">
-      <div v-for="client in clients" :key="client.id" class="cpl-row">
+      <div
+        v-for="client in clients"
+        :key="client.id"
+        class="cpl-row"
+        :class="{ 'is-official': client.official }"
+      >
         <div class="cpl-info">
           <div class="cpl-name">
+            <el-icon v-if="client.official" class="cpl-star"><StarFilled /></el-icon>
             {{ client.name }}
             <el-tag v-if="client.official" type="success" size="small" effect="dark">官方自研</el-tag>
+            <el-tag v-if="client.official" type="danger" size="small" effect="plain">推荐优先使用</el-tag>
             <el-tag v-else-if="client.recommended" type="danger" size="small" effect="plain">推荐</el-tag>
+            <span v-if="client.official && versionOf(client)" class="cpl-version">v{{ versionOf(client) }}</span>
           </div>
           <div class="cpl-desc">{{ client.description }}</div>
         </div>
@@ -65,6 +73,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { StarFilled } from '@element-plus/icons-vue'
 import {
   CLIENT_PLATFORMS,
   clientsForPlatform,
@@ -96,7 +105,15 @@ const activePlatform = ref(pickDefault())
 const platformLabel = computed(
   () => platforms.find((p) => p.key === activePlatform.value)?.label || '该平台'
 )
-const clients = computed(() => clientsOf(activePlatform.value))
+// 自研客户端永远排在本平台第一位（列表已按注册表顺序，这里再显式保证一次）
+const clients = computed(() => {
+  const list = clientsOf(activePlatform.value)
+  return [...list].sort((a, b) => Number(!!b.official) - Number(!!a.official))
+})
+
+// 官方客户端展示版本号（后台「软件下载配置」里维护的 moneyfly_version）
+const versionOf = (client) =>
+  client.official ? String(props.softwareConfig?.moneyfly_version || '').trim() : ''
 
 // macOS 双架构：Apple 芯片与 Intel 是两个不同的安装包，必须分别给按钮
 const archSplit = (client) => clientSupportsArchSplit(client, activePlatform.value)
@@ -152,6 +169,32 @@ const openTutorial = (client) => {
 .cpl-platform.is-active .cpl-count { color: var(--el-color-primary); }
 
 .cpl-rows { display: flex; flex-direction: column; gap: 10px; }
+
+/* 自研客户端（MoneyFly）置顶高亮：浅色底 + 主色描边 + 左侧强调条，一眼看到是官方的 */
+.cpl-row.is-official {
+  position: relative;
+  border-color: var(--el-color-primary-light-5);
+  background: linear-gradient(90deg, var(--el-color-primary-light-9), var(--el-bg-color) 70%);
+}
+.cpl-row.is-official::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--el-color-primary);
+}
+.cpl-row.is-official .cpl-name { font-size: 15px; }
+.cpl-star { color: var(--el-color-warning); }
+.cpl-version {
+  font-size: 12px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--el-fill-color);
+  color: var(--el-text-color-secondary);
+}
 .cpl-row {
   display: flex;
   align-items: center;
