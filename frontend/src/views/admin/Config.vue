@@ -8,8 +8,7 @@
     </div>
   </template>
   <!-- 移动端：3 个较长的 tab 在 390px 下也放不下（实测溢出 54px）→ 下拉导航 -->
-  <MobileTabSelect v-model="activeTab" :tabs="configTabs" />
-  <el-tabs v-model="activeTab" type="border-card" class="hide-tabs-mobile">
+  <el-tabs v-model="activeTab" type="border-card" class="tabs-wrap-mobile">
     <el-tab-pane label="软件下载配置" name="software">
       <div class="config-section">
         <el-divider content-position="left">MoneyFly 自研客户端（用户端置顶推荐）</el-divider>
@@ -376,41 +375,6 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
-        <el-tab-pane label="订阅访问控制" name="subscriptionAccess">
-          <el-form
-            :model="subscriptionAccessForm"
-            label-width="180px"
-            class="subscription-access-form"
-          >
-            <el-alert
-              class="subscription-access-alert"
-              title="开启后，浏览器直接打开订阅地址会返回空内容；代理客户端仍可正常订阅。该判断基于 User-Agent，主要用于防止普通浏览器查看内容。"
-              type="info"
-              show-icon
-              :closable="false"
-            />
-            <el-form-item label="浏览器访问返回空">
-              <el-switch
-                v-model="subscriptionAccessForm.block_browser_subscription_access"
-                active-text="开启"
-                inactive-text="关闭"
-              />
-            </el-form-item>
-            <el-form-item class="config-buttons-group">
-              <el-button
-                type="primary"
-                @click="saveSubscriptionAccessConfig"
-                :loading="subscriptionAccessLoading"
-                class="config-action-btn"
-              >
-                保存访问控制
-              </el-button>
-              <el-button @click="loadSubscriptionAccessConfig" class="config-action-btn">
-                重新加载
-              </el-button>
-            </el-form-item>
-          </el-form>
-        </el-tab-pane>
       </el-tabs>
 
       <el-dialog v-model="syncReport.visible" title="上次同步报告" width="820px">
@@ -447,20 +411,14 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { unwrapList } from '@/utils/format'
 import { configAPI, softwareConfigAPI, cloudAPI } from '@/utils/api'
-import MobileTabSelect from '@/components/MobileTabSelect.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 export default {
   name: 'AdminConfig',
-  components: { MobileTabSelect, ResponsiveDataView },
+  components: { ResponsiveDataView },
   setup() {
     const activeTab = ref('software')
     // 与下方 el-tab-pane 的 name/label 一一对应（新增 tab 时两处都要加）
-    const configTabs = [
-      { name: 'software', label: '软件下载配置' },
-      { name: 'email', label: '邮件配置' },
-      { name: 'subscriptionAccess', label: '订阅访问控制' }
-    ]
-    // 窄屏卡片字段（宽屏表格不受影响）
+        // 窄屏卡片字段（宽屏表格不受影响）
     const panVersionMobileFields = [
       { key: 'label', label: '平台/架构' },
       { key: 'github_version', label: 'GitHub 版本' },
@@ -469,7 +427,6 @@ export default {
     ]
     const emailLoading = ref(false)
     const softwareLoading = ref(false)
-    const subscriptionAccessLoading = ref(false)
     const emailForm = reactive({
       smtp_host: '',
       smtp_port: 587,
@@ -509,9 +466,6 @@ export default {
       hiddify_macos_url: '',
       hiddify_macos_arm_url: '',
       shadowrocket_url: ''
-    })
-    const subscriptionAccessForm = reactive({
-      block_browser_subscription_access: false
     })
     const panForm = reactive({
       sync_enabled: true,
@@ -600,42 +554,6 @@ export default {
         }
       } catch (error) {
         ElMessage.error('加载邮件配置失败')
-      }
-    }
-    const loadSubscriptionAccessConfig = async () => {
-      try {
-        const response = await configAPI.getSystemConfigs({ category: 'subscription_access' })
-        if (response.data && response.data.success) {
-          const configList = response.data.data || []
-          const configMap = {}
-          configList.forEach(item => {
-            configMap[item.key] = item.value
-          })
-          subscriptionAccessForm.block_browser_subscription_access = configMap.block_browser_subscription_access === 'true'
-        }
-      } catch (error) {
-        ElMessage.error('加载订阅访问控制失败')
-      }
-    }
-    const saveSubscriptionAccessConfig = async () => {
-      subscriptionAccessLoading.value = true
-      try {
-        const response = await configAPI.updateSystemConfig('block_browser_subscription_access', {
-          key: 'block_browser_subscription_access',
-          value: subscriptionAccessForm.block_browser_subscription_access.toString(),
-          category: 'subscription_access',
-          type: 'boolean',
-          display_name: '浏览器访问订阅返回空'
-        })
-        if (response.data && response.data.success) {
-          ElMessage.success('订阅访问控制保存成功')
-        } else {
-          ElMessage.error(response.data?.message || '保存失败')
-        }
-      } catch (error) {
-        ElMessage.error(error.response?.data?.message || '保存失败')
-      } finally {
-        subscriptionAccessLoading.value = false
       }
     }
     const loadPanConfig = async () => {
@@ -747,26 +665,20 @@ export default {
     onMounted(() => {
       loadEmailConfig()
       loadSoftwareConfig()
-      loadSubscriptionAccessConfig()
       loadPanConfig()
       loadPanSyncStatus()
     })
     return {
       activeTab,
-      configTabs,
       panVersionMobileFields,
       emailLoading,
       softwareLoading,
-      subscriptionAccessLoading,
       emailForm,
       softwareForm,
-      subscriptionAccessForm,
       saveSoftwareConfig,
       loadSoftwareConfig,
       saveEmailConfig,
       loadEmailConfig,
-      loadSubscriptionAccessConfig,
-      saveSubscriptionAccessConfig,
       panForm,
       panSaving,
       loadPanConfig,

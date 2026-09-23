@@ -298,33 +298,42 @@ const loadUnreadTicketCount = async () => {
   }
 }
 const menuSections = computed(() => {
+  // 菜单按「功能」分组：同类功能放同一列表，避免把工单/知识库混在用户管理或业务管理里。
+  // 说明：系统设置（/admin/settings）此前没有菜单入口，只能靠地址栏进 —— 这里补上，
+  // 并与配置管理、支付配置、邮件队列放在同一组（都是「改系统怎么跑」的配置类入口）。
   const baseSections = [
     { title: '概览', collapsible: false, items: [{ path: '/admin/dashboard', title: '仪表盘', icon: 'dashboard' }] },
     {
-      title: '用户管理',
+      title: '用户运营',
       collapsible: true,
       items: [
         { path: '/admin/users', title: '用户列表', icon: 'users' },
         { path: '/admin/abnormal-users', title: '异常用户', icon: 'abnormalUsers' },
         { path: '/admin/user-levels', title: '用户等级', icon: 'userLevels' },
-        { path: '/admin/invites', title: '邀请管理', icon: 'invites' },
-        {
-          path: '/admin/tickets',
-          title: '工单管理',
-          icon: 'tickets',
-          badge: unreadTicketCount.value > 0 ? unreadTicketCount.value : null
-        }
+        { path: '/admin/invites', title: '邀请管理', icon: 'invites' }
       ]
     },
     {
-      title: '业务管理',
+      title: '交易与营销',
       collapsible: true,
       items: [
         { path: '/admin/subscriptions', title: '订阅管理', icon: 'subscriptions' },
         { path: '/admin/orders', title: '订单列表', icon: 'orders' },
         { path: '/admin/packages', title: '套餐管理', icon: 'packages' },
         { path: '/admin/coupons', title: '优惠券管理', icon: 'coupons' },
-        { path: '/admin/promotions', title: '营销活动', icon: 'promotions' },
+        { path: '/admin/promotions', title: '营销活动', icon: 'promotions' }
+      ]
+    },
+    {
+      title: '客服与内容',
+      collapsible: true,
+      items: [
+        {
+          path: '/admin/tickets',
+          title: '工单管理',
+          icon: 'tickets',
+          badge: unreadTicketCount.value > 0 ? unreadTicketCount.value : null
+        },
         { path: '/admin/knowledge', title: '知识库管理', icon: 'knowledge' }
       ]
     },
@@ -339,9 +348,10 @@ const menuSections = computed(() => {
       ]
     },
     {
-      title: '系统配置',
+      title: '系统与配置',
       collapsible: true,
       items: [
+        { path: '/admin/settings', title: '系统设置', icon: 'settings' },
         { path: '/admin/config', title: '配置管理', icon: 'config' },
         { path: '/admin/payment-config', title: '支付配置', icon: 'paymentConfig' },
         { path: '/admin/email-queue', title: '邮件队列', icon: 'emailQueue' }

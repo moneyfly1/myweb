@@ -780,6 +780,41 @@ export default {
   display: inline-block;
   margin-right: 10px;
 }
+
+/* 窄屏（≤480px）：个人信息表改为上下堆叠，避免在 320px 手机上必须横滑才能看全
+   （此前 .table-wrap 虽是 overflow-x:auto 不会裁切，但一行要左右拖动，体验差） */
+@media (max-width: 480px) {
+  .profile-info-table,
+  .profile-info-table tbody,
+  .profile-info-table tr,
+  .profile-info-table th,
+  .profile-info-table td {
+    display: block;
+    width: 100%;
+  }
+  .profile-info-table tr {
+    padding: 10px 0;
+    border-bottom: 1px solid #ebeef5;
+  }
+  .profile-info-table tr:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+  .profile-info-table th {
+    padding: 0 0 4px;
+    border-bottom: 0;
+    font-size: 12px;
+    color: var(--el-text-color-secondary, #909399);
+  }
+  .profile-info-table td {
+    padding: 0;
+    border-bottom: 0;
+    word-break: break-all;
+  }
+  .profile-info-table td > span {
+    margin-right: 0;
+  }
+}
 .form-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

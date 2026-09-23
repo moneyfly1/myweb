@@ -14,17 +14,24 @@
 
     <!-- 主体设置区域 -->
     <el-card class="settings-shell list-card" shadow="never">
-      <!-- 桌面端：左侧导航；移动端：12 个 tab 横排会变成 1000+px 的横向滚动条
-           （实测 390px 只露 2~3 个），改用下拉选择（MobileTabSelect + hide-tabs-mobile）。
-           下拉项与下方 el-tab-pane 的 name/label 一一对应，由 mounted 时的自检保证不漂移。 -->
-      <MobileTabSelect v-model="activeTab" :tabs="settingsTabs" />
-      <el-tabs v-model="activeTab" class="settings-tabs hide-tabs-mobile" :tab-position="settingsTabPosition">
-        
-        <!-- ==================== 基本设置 ==================== -->
-        <!-- 版面约定：单列分区卡片（站点信息 / 订阅域名 / 客服与界面 / 系统工具）。
-             此前是「左列一大串表单 + 右列 GeoIP」的双列，域名池还被塞在 el-form-item 里
-             压成窄条，字段归属不清、说明文字散落 —— 改成按主题分区的单列卡片。 -->
-        <el-tab-pane label="基本设置" name="general">
+      <!-- 设置导航：桌面端左侧分组列表；移动端换行胶囊（全部分类一眼可见、不用横滑、也不依赖下拉组件）。
+           分类按「站点 / 用户 / 内容与通知 / 节点 / 安全 / 运维」六组，见 settingsNav。
+           每个分区是 <section v-show>（不是 el-tab-pane），导航即唯一真相源。 -->
+      <div class="settings-layout">
+        <!-- 分类项由脚本里的 settingsNav 渲染（单一真相源）：
+             此前这段是硬编码按钮，改了 settingsNav 也不会反映到界面，导致分类调整看起来没生效。 -->
+        <nav class="settings-nav" aria-label="设置分类">
+          <button
+            v-for="item in settingsNav"
+            :key="item.name"
+            type="button"
+            class="settings-nav-item"
+            :class="{ 'is-active': activeTab === item.name }"
+            @click="activeTab = item.name"
+          >{{ item.label }}</button>
+        </nav>
+        <div class="settings-panes">
+        <section v-show="activeTab === 'general'" class="settings-pane" data-tab="general">
           <div class="settings-general">
             <el-form :model="generalSettings" :rules="generalRules" ref="generalFormRef" label-position="top" class="compact-form">
 
@@ -40,10 +47,6 @@
                   </el-form-item>
                   <el-form-item label="网站描述" prop="site_description">
                     <el-input v-model="generalSettings.site_description" type="textarea" :rows="2" class="input-large" />
-                  </el-form-item>
-                  <el-form-item label="网站域名" prop="domain_name">
-                    <el-input v-model="generalSettings.domain_name" class="input-medium" placeholder="例如: example.com（不要带 http://）" />
-                    <div class="form-tip">用于官网、登录、支付回调与邮件里的官网链接；留空则自动使用请求域名。</div>
                   </el-form-item>
                   <el-form-item label="网站 Logo">
                     <div class="settings-logo-row">
@@ -65,56 +68,13 @@
                   <el-form-item label="默认主题">
                     <div class="settings-inline-hint">
                       <span class="form-tip">默认主题（含可选主题范围、跟随系统）统一在「主题设置」里维护，避免两处各存一份、互不生效。</span>
-                      <el-button link type="primary" @click="activeTab = 'theme'">去主题设置 →</el-button>
+                      <el-button link type="primary" @click="activeTab = 'content'">去主题设置 →</el-button>
                     </div>
                   </el-form-item>
                 </div>
               </section>
 
               <!-- ② 订阅域名（主 / 备用 / 域名池 放一起，关系才看得懂） -->
-              <section class="settings-block">
-                <div class="settings-block-head">
-                  <h3>订阅域名</h3>
-                  <p>客户端「更新订阅」时访问的地址。主域名用于生成订阅链接，备用域名随订阅接口一起下发，供客户端逐个尝试。</p>
-                </div>
-                <div class="settings-block-body">
-                  <el-form-item label="订阅域名（主）">
-                    <el-input v-model="generalSettings.subscription_domain" class="input-medium" placeholder="例如: https://sub.example.com（留空则跟随「网站域名」）" />
-                    <div class="form-tip">
-                      与官网分开配置：官网在某些地区被访问不了时，客户仍能用订阅域名更新节点。
-                    </div>
-                  </el-form-item>
-                  <el-form-item label="订阅域名（备用）">
-                    <el-input
-                      v-model="generalSettings.subscription_backup_domains"
-                      type="textarea"
-                      :rows="3"
-                      class="input-large"
-                      placeholder="每行一个，或用逗号分隔，例如：&#10;https://moneyfly.dpdns.org&#10;https://dy.moneyfly.top"
-                    />
-                    <div class="form-tip">
-                      会随订阅接口下发给客户端（subscribe_urls），客户端按顺序尝试；用户面板也会展示。
-                      建议至少配 1 个与主域名不同线路或不同服务商的域名。
-                    </div>
-                  </el-form-item>
-
-                  <el-alert
-                    type="success"
-                    :closable="false"
-                    show-icon
-                    class="settings-alert"
-                    title="换域名不会让已发出的订阅地址失效"
-                  >
-                    <template #default>
-                      这些都是同一套后端、token 通用，老域名会一直可用；换域名只是给客户端多一个更稳的入口，不必通知客户改订阅。
-                    </template>
-                  </el-alert>
-
-                  <div class="settings-subblock">
-                    <DomainPoolPanel />
-                  </div>
-                </div>
-              </section>
 
               <!-- ③ 客服与界面 -->
               <section class="settings-block">
@@ -148,122 +108,85 @@
               <div class="settings-savebar">
                 <el-button type="primary" :icon="Check" @click="saveGeneralSettings" :class="{ 'full-width': isMobile }">保存基本设置</el-button>
                 <el-button :icon="Refresh" :loading="pageLoading" @click="loadSettings" :class="{ 'full-width': isMobile }">放弃修改并重新加载</el-button>
-                <span class="settings-savebar-tip">站点信息、订阅域名与客服信息都在此保存。</span>
+                <span class="settings-savebar-tip">站点信息与客服信息在此保存；域名相关设置见「域名与订阅」。</span>
               </div>
             </el-form>
 
-            <!-- ④ 系统工具（与站点配置无关，独立成块，不再和表单挤成两列） -->
-            <section class="settings-block">
-              <div class="settings-block-head">
-                <h3>GeoIP 数据库</h3>
-                <p>用于用户地区统计与风控；不更新也能用，但数据会逐渐过期。</p>
-              </div>
-              <div class="settings-block-body">
-                <div class="status-box" v-if="geoipStatus">
-                  <el-tag :type="geoipStatus.enabled ? 'success' : 'warning'">
-                    {{ geoipStatus.enabled ? '已启用' : '未启用' }}
-                  </el-tag>
-                  <span class="status-text" :class="geoipStatus.active_database ? 'text-success' : 'text-danger'">
-                    {{ geoipStatus.active_database ? `当前: ${geoipStatus.active_database}` : '未找到数据库文件' }}
-                  </span>
-                </div>
-
-                <div v-if="geoipStatus && geoipStatus.databases && geoipStatus.databases.length > 0" class="settings-subsection">
-                  <div class="settings-section-title text-sm">已安装数据库</div>
-                  <ResponsiveDataView
-                    :data="geoipStatus.databases"
-                    :fields="geoipDatabaseMobileFields"
-                    :loading="false"
-                    id-field="path"
-                    title-field="name"
-                    empty-title="暂无数据库"
-                  >
-                    <template #table>
-                      <el-table :data="geoipStatus.databases" border size="small" class="full-width-table settings-table-desktop">
-                        <el-table-column prop="name" label="名称" min-width="120">
-                          <template #default="scope">
-                            <span>{{ scope.row.name }}</span>
-                            <el-tag v-if="scope.row.active" type="success" size="small" class="inline-status-tag">使用中</el-tag>
-                          </template>
-                        </el-table-column>
-                        <el-table-column prop="size" label="大小" width="70" />
-                        <el-table-column prop="modified" label="更新" width="110" />
-                        <el-table-column label="操作" width="60" align="center">
-                          <template #default="scope">
-                            <el-button v-if="!scope.row.active" type="primary" link size="small" @click="switchDatabase(scope.row.path)" :loading="switchingDatabase">切换</el-button>
-                          </template>
-                        </el-table-column>
-                      </el-table>
-                    </template>
-                    <template #header="{ item }">
-                      <div class="settings-mobile-card-header">
-                        <div class="mobile-card-title">
-                          <span>{{ item.name }}</span>
-                          <el-tag v-if="item.active" type="success" size="small">使用中</el-tag>
-                        </div>
-                        <el-button
-                          v-if="!item.active"
-                          type="primary"
-                          link
-                          size="small"
-                          @click="switchDatabase(item.path)"
-                          :loading="switchingDatabase"
-                        >
-                          切换
-                        </el-button>
-                      </div>
-                    </template>
-                    <template #field-size="{ item }">
-                      <strong>{{ item.size || '-' }}</strong>
-                    </template>
-                    <template #field-modified="{ item }">
-                      <strong>{{ item.modified || '-' }}</strong>
-                    </template>
-                  </ResponsiveDataView>
-                </div>
-
-                <div class="settings-subsection">
-                  <div class="settings-section-title text-sm">下载 / 更新数据库</div>
-                  <el-radio-group v-model="geoipDatabaseType" class="radio-block-group radio-block-vertical">
-                    <el-radio label="dbip">
-                      <div class="radio-content">
-                        <div class="radio-title">DB-IP City Lite <el-tag size="small" type="success">推荐</el-tag></div>
-                        <div class="radio-desc">中国数据详细，完全免费，约 125MB</div>
-                      </div>
-                    </el-radio>
-                    <el-radio label="geolite2">
-                      <div class="radio-content">
-                        <div class="radio-title">GeoLite2 City (MaxMind)</div>
-                        <div class="radio-desc">广泛使用，部分中国数据欠佳，约 60MB</div>
-                      </div>
-                    </el-radio>
-                  </el-radio-group>
-                  <div class="mt-3">
-                    <el-button type="primary" plain @click="updateGeoIPDatabase" :loading="geoipUpdating" :class="{ 'full-width': isMobile }">
-                      {{ geoipUpdating ? '下载中...' : '下载/更新数据库' }}
-                    </el-button>
-                    <div class="form-tip mt-2">建议每月更新一次以获取最新数据。</div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section class="settings-block">
-              <div class="settings-block-head">
-                <h3>缓存</h3>
-                <p>改动配置后如果前台没立刻生效，清一次缓存即可。</p>
-              </div>
-              <div class="settings-block-body">
-                <el-button type="danger" plain @click="flushCache" :loading="cacheClearing" :class="{ 'full-width': isMobile }">
-                  {{ cacheClearing ? '清除中...' : '清除所有缓存' }}
-                </el-button>
-                <div class="form-tip mt-2">清除后系统会在下次访问时自动重建缓存，不影响用户数据。</div>
-              </div>
-            </section>
           </div>
-        </el-tab-pane>
-        
-        <el-tab-pane label="注册设置" name="registration">
+        </section>
+        <section v-show="activeTab === 'domains'" class="settings-pane" data-tab="domains">
+          <div class="settings-general">
+            <el-form :model="generalSettings" label-position="top" class="compact-form">
+              <!-- 域名相关集中在此：站点入口域名 + 客户端订阅域名 + 域名池。
+                   原先这些都塞在「站点设置」里，一页混了站点信息、客服、域名、证书，
+                   管理员找不到重点，故按「域名」独立成一个分类。 -->
+              <section class="settings-block">
+                  <div class="settings-block-head">
+                    <h3>网站域名</h3>
+                    <p>官网、登录、支付回调与邮件里的官网链接都用它；留空则自动使用请求域名。</p>
+                  </div>
+                  <div class="settings-block-body">
+                    <el-form-item label="网站域名" prop="domain_name">
+                      <el-input v-model="generalSettings.domain_name" class="input-medium" placeholder="例如: example.com（不要带 http://）" />
+                      <div class="form-tip">用于官网、登录、支付回调与邮件里的官网链接；留空则自动使用请求域名。</div>
+                    </el-form-item>
+                  </div>
+              </section>
+
+                <section class="settings-block">
+                  <div class="settings-block-head">
+                    <h3>订阅域名</h3>
+                    <p>客户端「更新订阅」时访问的地址。主域名用于生成订阅链接，备用域名随订阅接口一起下发，供客户端逐个尝试。</p>
+                  </div>
+                  <div class="settings-block-body">
+                    <el-form-item label="订阅域名（主）">
+                      <el-input v-model="generalSettings.subscription_domain" class="input-medium" placeholder="例如: https://sub.example.com（留空则跟随「网站域名」）" />
+                      <div class="form-tip">
+                        与官网分开配置：官网在某些地区被访问不了时，客户仍能用订阅域名更新节点。
+                      </div>
+                    </el-form-item>
+                    <el-form-item label="订阅域名（备用）">
+                      <el-input
+                        v-model="generalSettings.subscription_backup_domains"
+                        type="textarea"
+                        :rows="3"
+                        class="input-large"
+                        placeholder="每行一个，或用逗号分隔，例如：&#10;https://moneyfly.dpdns.org&#10;https://dy.moneyfly.top"
+                      />
+                      <div class="form-tip">
+                        会随订阅接口下发给客户端（subscribe_urls），客户端按顺序尝试；用户面板也会展示。
+                        建议至少配 1 个与主域名不同线路或不同服务商的域名。
+                      </div>
+                    </el-form-item>
+
+                    <el-alert
+                      type="success"
+                      :closable="false"
+                      show-icon
+                      class="settings-alert"
+                      title="换域名不会让已发出的订阅地址失效"
+                    >
+                      <template #default>
+                        这些都是同一套后端、token 通用，老域名会一直可用；换域名只是给客户端多一个更稳的入口，不必通知客户改订阅。
+                      </template>
+                    </el-alert>
+
+                    <div class="settings-subblock">
+                      <DomainPoolPanel />
+                    </div>
+                  </div>
+                </section>
+
+              <div class="settings-savebar">
+                <el-button type="primary" :icon="Check" @click="saveDomainSettings" :class="{ 'full-width': isMobile }">保存域名设置</el-button>
+                <el-button :icon="Refresh" :loading="pageLoading" @click="loadSettings" :class="{ 'full-width': isMobile }">放弃修改并重新加载</el-button>
+                <span class="settings-savebar-tip">网站域名、订阅域名与域名池都在此保存。</span>
+              </div>
+            </el-form>
+          </div>
+        </section>
+
+        <section v-show="activeTab === 'registration'" class="settings-pane" data-tab="registration">
           <div class="notification-layout">
             <div class="notification-panel">
               <div class="panel-header">
@@ -311,10 +234,7 @@
               </el-form>
             </div>
           </div>
-        </el-tab-pane>
 
-        <!-- ==================== 邀请设置 ==================== -->
-        <el-tab-pane label="邀请设置" name="invite">
           <div class="single-panel-wrapper">
             <div class="notification-panel">
               <div class="panel-header">
@@ -349,10 +269,8 @@
               </el-form>
             </div>
           </div>
-        </el-tab-pane>
-
-        <!-- ==================== 通知设置 ==================== -->
-        <el-tab-pane label="通知设置" name="notification">
+        </section>
+        <section v-show="activeTab === 'notification'" class="settings-pane" data-tab="notification">
           <div class="notification-layout">
             
             <!-- 用户通知模块 -->
@@ -594,10 +512,8 @@
               </el-form>
             </div>
           </div>
-        </el-tab-pane>
-
-        <!-- ==================== 公告管理 ==================== -->
-        <el-tab-pane label="公告管理" name="announcement">
+        </section>
+        <section v-show="activeTab === 'content'" class="settings-pane" data-tab="content">
           <div class="single-panel-wrapper">
             <div class="notification-panel">
               <div class="panel-header">
@@ -617,10 +533,7 @@
               </el-form>
             </div>
           </div>
-        </el-tab-pane>
 
-        <!-- ==================== 主题设置 ==================== -->
-        <el-tab-pane label="主题设置" name="theme">
           <div class="single-panel-wrapper">
             <div class="notification-panel">
               <div class="panel-header">
@@ -659,10 +572,8 @@
               </el-form>
             </div>
           </div>
-        </el-tab-pane>
-
-        <!-- ==================== 节点健康检查 ==================== -->
-        <el-tab-pane label="节点监控" name="node-health">
+        </section>
+        <section v-show="activeTab === 'node'" class="settings-pane" data-tab="node">
           <div class="single-panel-wrapper">
             <div class="notification-panel">
               <div class="panel-header">
@@ -704,10 +615,76 @@
               </el-form>
             </div>
           </div>
-        </el-tab-pane>
 
-        <!-- ==================== 安全设置 ==================== -->
-        <el-tab-pane label="安全设置" name="security">
+          <div class="switch-card mb-3">
+            <div class="switch-card-content">
+              <span class="title">客户端版本过滤</span>
+              <span class="desc">开启：遵循客户端能力过滤——按客户端类型与版本自动过滤其不支持的新协议（如老版 Clash 不推送 VLESS/Reality/Hysteria2 等），此模式下方的协议白名单不生效。关闭：使用协议白名单过滤——按下方勾选的协议控制各环境推送范围。</span>
+            </div>
+            <el-switch v-model="protocolFilterSettings.client_capability_filter_enabled" />
+          </div>
+          <div class="notification-layout">
+            <div class="notification-panel">
+              <div class="panel-header">
+                <h3>Clash / Clash Meta</h3>
+                <el-tag type="info" size="small" effect="plain">订阅环境</el-tag>
+              </div>
+              <el-checkbox-group v-model="protocolFilterSettings.clash_protocols" class="protocol-checkbox-group">
+                <el-checkbox v-for="p in allProtocols" :key="'clash-'+p" :label="p" border>{{ p }}</el-checkbox>
+              </el-checkbox-group>
+            </div>
+
+            <div class="notification-panel">
+              <div class="panel-header">
+                <h3>通用 Base64</h3>
+                <el-tag type="info" size="small" effect="plain">Shadowrocket / V2ray</el-tag>
+              </div>
+              <el-checkbox-group v-model="protocolFilterSettings.universal_protocols" class="protocol-checkbox-group">
+                <el-checkbox v-for="p in allProtocols" :key="'uni-'+p" :label="p" border>{{ p }}</el-checkbox>
+              </el-checkbox-group>
+            </div>
+          </div>
+          <div class="mt-3">
+            <el-button type="primary" @click="saveProtocolFilterSettings" :class="{ 'full-width': isMobile }">保存协议过滤规则</el-button>
+          </div>
+        </section>
+        <section v-show="activeTab === 'access'" class="settings-pane" data-tab="access">
+          <div class="settings-general">
+            <section class="settings-block">
+              <div class="settings-block-head">
+                <h3>订阅访问控制</h3>
+                <p>控制订阅地址能不能被浏览器直接打开。代理客户端不受影响。</p>
+              </div>
+              <div class="settings-block-body">
+                <el-alert
+                  class="settings-alert"
+                  type="info"
+                  show-icon
+                  :closable="false"
+                  title="开启后，浏览器直接打开订阅地址会返回空内容；代理客户端仍可正常订阅。"
+                >
+                  <template #default>
+                    判断依据是请求的 User-Agent：主要用来防止普通浏览器/爬虫看到订阅内容，
+                    不影响 Clash、V2rayN、Shadowrocket 等客户端的正常更新。
+                  </template>
+                </el-alert>
+                <div class="switch-card">
+                  <div class="switch-card-content">
+                    <span class="title">浏览器访问返回空</span>
+                    <span class="desc">开启后浏览器直接访问订阅地址将拿不到任何节点内容。</span>
+                  </div>
+                  <el-switch v-model="subscriptionAccessForm.block_browser_subscription_access" />
+                </div>
+                <div class="mt-4 settings-savebar">
+                  <el-button type="primary" :icon="Check" @click="saveSubscriptionAccessConfig" :loading="subscriptionAccessLoading" :class="{ 'full-width': isMobile }">保存订阅访问控制</el-button>
+                  <el-button :icon="Refresh" @click="loadSubscriptionAccessConfig" :class="{ 'full-width': isMobile }">重新加载</el-button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section v-show="activeTab === 'security'" class="settings-pane" data-tab="security">
           <div class="notification-layout">
             <div class="notification-panel">
               <div class="panel-header">
@@ -724,9 +701,12 @@
                   <el-form-item label="会话超时(分钟)">
                     <el-input-number v-model="securitySettings.session_timeout" :min="10" size="small" class="input-full" />
                   </el-form-item>
-                  <el-form-item label="日志保留天数">
+                  <el-form-item label="日志保留天数（安全审计）">
                     <el-input-number v-model="securitySettings.log_retention_days" :min="7" :max="365" size="small" class="input-full" />
-                    <div class="form-tip">超过天数的审计日志将在每日清理任务中自动删除</div>
+                    <div class="form-tip">
+                      安全审计日志（登录失败、越权访问等）保留天数，超期由每日清理任务自动删除。
+                      与「备份与恢复 → 备份前清理」里的同名项是两套设置，互不影响。
+                    </div>
                   </el-form-item>
                 </div>
                 <div class="mt-3">
@@ -750,10 +730,8 @@
               </el-form>
             </div>
           </div>
-        </el-tab-pane>
-
-        <!-- ==================== 备份设置 ==================== -->
-        <el-tab-pane label="备份与恢复" name="backup">
+        </section>
+        <section v-show="activeTab === 'backup'" class="settings-pane" data-tab="backup">
           <div class="notification-layout">
             <!-- 左列：平台配置 -->
             <div class="notification-panel">
@@ -865,7 +843,7 @@
                 </div>
 
                 <el-collapse-transition>
-                  <el-form-item label="日志保留天数" v-show="backupSettings.backup_clean_enabled">
+                  <el-form-item label="备份前清理：日志保留天数" v-show="backupSettings.backup_clean_enabled">
                     <div class="inline-control-row">
                       <el-input-number v-model="backupSettings.backup_log_retention_days" :min="1" :max="365" size="small" class="interval-input" />
                       <span class="unit-text">天</span>
@@ -944,45 +922,107 @@
               </el-form>
             </div>
           </div>
-        </el-tab-pane>
-
-        <!-- ==================== 协议过滤 ==================== -->
-        <el-tab-pane label="协议过滤" name="protocol-filter">
-          <div class="switch-card mb-3">
-            <div class="switch-card-content">
-              <span class="title">客户端版本过滤</span>
-              <span class="desc">开启：遵循客户端能力过滤——按客户端类型与版本自动过滤其不支持的新协议（如老版 Clash 不推送 VLESS/Reality/Hysteria2 等），此模式下方的协议白名单不生效。关闭：使用协议白名单过滤——按下方勾选的协议控制各环境推送范围。</span>
-            </div>
-            <el-switch v-model="protocolFilterSettings.client_capability_filter_enabled" />
-          </div>
-          <div class="notification-layout">
-            <div class="notification-panel">
-              <div class="panel-header">
-                <h3>Clash / Clash Meta</h3>
-                <el-tag type="info" size="small" effect="plain">订阅环境</el-tag>
+        </section>
+        <section v-show="activeTab === 'geoip'" class="settings-pane" data-tab="geoip">
+          <div class="settings-general">
+            <!-- ④ 系统工具（与站点配置无关，独立成块，不再和表单挤成两列） -->
+            <section class="settings-block">
+              <div class="settings-block-head">
+                <h3>GeoIP 数据库</h3>
+                <p>用于用户地区统计与风控；不更新也能用，但数据会逐渐过期。</p>
               </div>
-              <el-checkbox-group v-model="protocolFilterSettings.clash_protocols" class="protocol-checkbox-group">
-                <el-checkbox v-for="p in allProtocols" :key="'clash-'+p" :label="p" border>{{ p }}</el-checkbox>
-              </el-checkbox-group>
-            </div>
+              <div class="settings-block-body">
+                <div class="status-box" v-if="geoipStatus">
+                  <el-tag :type="geoipStatus.enabled ? 'success' : 'warning'">
+                    {{ geoipStatus.enabled ? '已启用' : '未启用' }}
+                  </el-tag>
+                  <span class="status-text" :class="geoipStatus.active_database ? 'text-success' : 'text-danger'">
+                    {{ geoipStatus.active_database ? `当前: ${geoipStatus.active_database}` : '未找到数据库文件' }}
+                  </span>
+                </div>
 
-            <div class="notification-panel">
-              <div class="panel-header">
-                <h3>通用 Base64</h3>
-                <el-tag type="info" size="small" effect="plain">Shadowrocket / V2ray</el-tag>
+                <div v-if="geoipStatus && geoipStatus.databases && geoipStatus.databases.length > 0" class="settings-subsection">
+                  <div class="settings-section-title text-sm">已安装数据库</div>
+                  <ResponsiveDataView
+                    :data="geoipStatus.databases"
+                    :fields="geoipDatabaseMobileFields"
+                    :loading="false"
+                    id-field="path"
+                    title-field="name"
+                    empty-title="暂无数据库"
+                  >
+                    <template #table>
+                      <el-table :data="geoipStatus.databases" border size="small" class="full-width-table settings-table-desktop">
+                        <el-table-column prop="name" label="名称" min-width="120">
+                          <template #default="scope">
+                            <span>{{ scope.row.name }}</span>
+                            <el-tag v-if="scope.row.active" type="success" size="small" class="inline-status-tag">使用中</el-tag>
+                          </template>
+                        </el-table-column>
+                        <el-table-column prop="size" label="大小" width="70" />
+                        <el-table-column prop="modified" label="更新" width="110" />
+                        <el-table-column label="操作" width="60" align="center">
+                          <template #default="scope">
+                            <el-button v-if="!scope.row.active" type="primary" link size="small" @click="switchDatabase(scope.row.path)" :loading="switchingDatabase">切换</el-button>
+                          </template>
+                        </el-table-column>
+                      </el-table>
+                    </template>
+                    <template #header="{ item }">
+                      <div class="settings-mobile-card-header">
+                        <div class="mobile-card-title">
+                          <span>{{ item.name }}</span>
+                          <el-tag v-if="item.active" type="success" size="small">使用中</el-tag>
+                        </div>
+                        <el-button
+                          v-if="!item.active"
+                          type="primary"
+                          link
+                          size="small"
+                          @click="switchDatabase(item.path)"
+                          :loading="switchingDatabase"
+                        >
+                          切换
+                        </el-button>
+                      </div>
+                    </template>
+                    <template #field-size="{ item }">
+                      <strong>{{ item.size || '-' }}</strong>
+                    </template>
+                    <template #field-modified="{ item }">
+                      <strong>{{ item.modified || '-' }}</strong>
+                    </template>
+                  </ResponsiveDataView>
+                </div>
+
+                <div class="settings-subsection">
+                  <div class="settings-section-title text-sm">下载 / 更新数据库</div>
+                  <el-radio-group v-model="geoipDatabaseType" class="radio-block-group radio-block-vertical">
+                    <el-radio label="dbip">
+                      <div class="radio-content">
+                        <div class="radio-title">DB-IP City Lite <el-tag size="small" type="success">推荐</el-tag></div>
+                        <div class="radio-desc">中国数据详细，完全免费，约 125MB</div>
+                      </div>
+                    </el-radio>
+                    <el-radio label="geolite2">
+                      <div class="radio-content">
+                        <div class="radio-title">GeoLite2 City (MaxMind)</div>
+                        <div class="radio-desc">广泛使用，部分中国数据欠佳，约 60MB</div>
+                      </div>
+                    </el-radio>
+                  </el-radio-group>
+                  <div class="mt-3">
+                    <el-button type="primary" plain @click="updateGeoIPDatabase" :loading="geoipUpdating" :class="{ 'full-width': isMobile }">
+                      {{ geoipUpdating ? '下载中...' : '下载/更新数据库' }}
+                    </el-button>
+                    <div class="form-tip mt-2">建议每月更新一次以获取最新数据。</div>
+                  </div>
+                </div>
               </div>
-              <el-checkbox-group v-model="protocolFilterSettings.universal_protocols" class="protocol-checkbox-group">
-                <el-checkbox v-for="p in allProtocols" :key="'uni-'+p" :label="p" border>{{ p }}</el-checkbox>
-              </el-checkbox-group>
-            </div>
+            </section>
           </div>
-          <div class="mt-3">
-            <el-button type="primary" @click="saveProtocolFilterSettings" :class="{ 'full-width': isMobile }">保存协议过滤规则</el-button>
-          </div>
-        </el-tab-pane>
-
-        <!-- ==================== 仓库文件同步 ==================== -->
-        <el-tab-pane label="仓库文件同步" name="repo-sync">
+        </section>
+        <section v-show="activeTab === 'repo-sync'" class="settings-pane" data-tab="repo-sync">
           <div class="notification-layout">
             <!-- 左列：GitHub 仓库配置 -->
             <div class="notification-panel">
@@ -1082,10 +1122,8 @@
               </template>
             </div>
           </div>
-        </el-tab-pane>
-
-        <!-- ==================== 数据清理 ==================== -->
-        <el-tab-pane label="数据清理" name="cleanup">
+        </section>
+        <section v-show="activeTab === 'cleanup'" class="settings-pane" data-tab="cleanup">
           <div class="notification-layout">
             <div class="notification-panel">
               <div class="panel-header">
@@ -1124,8 +1162,22 @@
               </div>
             </div>
           </div>
-        </el-tab-pane>
-      </el-tabs>
+
+            <section class="settings-block">
+              <div class="settings-block-head">
+                <h3>缓存</h3>
+                <p>改动配置后如果前台没立刻生效，清一次缓存即可。</p>
+              </div>
+              <div class="settings-block-body">
+                <el-button type="danger" plain @click="flushCache" :loading="cacheClearing" :class="{ 'full-width': isMobile }">
+                  {{ cacheClearing ? '清除中...' : '清除所有缓存' }}
+                </el-button>
+                <div class="form-tip mt-2">清除后系统会在下次访问时自动重建缓存，不影响用户数据。</div>
+              </div>
+            </section>
+        </section>
+        </div>
+      </div>
     </el-card>
   </div>
 </template>
@@ -1135,7 +1187,6 @@ import { ref, reactive, onMounted, onBeforeUnmount, computed } from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Check, Plus, Refresh, Message, Bell } from '@element-plus/icons-vue'
 import { useApi, adminAPI, secureStorage } from '@/utils/api'
-import MobileTabSelect from '@/components/MobileTabSelect.vue'
 import { formatFileSize as formatFileSizeUtil } from '@/utils/format'
 import { copyToClipboard } from '@/utils/textSelection'
 import { useThemeStore } from '@/store/theme'
@@ -1245,23 +1296,32 @@ export default {
     const api = useApi()
     const isMobile = useMobile()
 
-    // 与模板里的 el-tab-pane 顺序/名称一一对应（移动端下拉导航用）
-    const settingsTabs = [
-      { name: 'general', label: '基本设置' },
-      { name: 'registration', label: '注册设置' },
-      { name: 'invite', label: '邀请设置' },
+    // 设置分类（唯一真相源）：模板里每个 <section> 的 data-tab 与 name 一一对应。
+    // 分六组是为了让「站点配置 / 用户增长 / 内容与通知 / 节点输出 / 安全 / 运维工具」各归其位，
+    // 原先 12 个平铺 tab 里 GeoIP、缓存 混在「基本设置」、公告与主题分家、注册与邀请分家，
+    // 管理员很难判断某个开关该去哪找。
+    // 设置分类（唯一真相源）：顺序按功能聚拢（站点 → 域名 → 用户 → 内容与通知 → 节点与订阅
+    // → 安全 → 运维），但**不再渲染分组标题** —— 导航没有折叠功能，标题只是多占地方。
+    const settingsNav = [
+      { name: 'general', label: '站点设置' },
+      { name: 'domains', label: '域名与订阅' },
+      { name: 'registration', label: '用户与注册' },
       { name: 'notification', label: '通知设置' },
-      { name: 'announcement', label: '公告管理' },
-      { name: 'theme', label: '主题设置' },
-      { name: 'node-health', label: '节点监控' },
+      { name: 'content', label: '内容与展示' },
+      { name: 'node', label: '节点与协议' },
+      { name: 'access', label: '订阅访问控制' },
       { name: 'security', label: '安全设置' },
       { name: 'backup', label: '备份与恢复' },
-      { name: 'protocol-filter', label: '协议过滤' },
+      { name: 'geoip', label: 'GeoIP 数据库' },
       { name: 'repo-sync', label: '仓库文件同步' },
       { name: 'cleanup', label: '数据清理' }
     ]
     const themeStore = useThemeStore()
     const activeTab = ref('general')
+    // 订阅访问控制（原在「配置管理 → 订阅访问控制」，2026-09-23 并入系统设置：
+    // 它和「节点与协议」一样，管的是「客户端能拿到什么」，不属于软件下载配置）
+    const subscriptionAccessLoading = ref(false)
+    const subscriptionAccessForm = reactive({ block_browser_subscription_access: false })
     const generalFormRef = ref()
     const uploadUrl = '/api/v1/admin/upload'
     const pageLoading = ref(false)
@@ -1306,7 +1366,6 @@ export default {
       labelWidth: isMobile.value ? 'auto' : '150px',
       labelPosition: isMobile.value ? 'top' : 'right'
     }))
-    const settingsTabPosition = computed(() => (isMobile.value ? 'top' : 'left'))
     const themeColorStyle = (theme) => ({
       '--theme-preview-color': theme?.color || '#409eff'
     })
@@ -1631,6 +1690,13 @@ export default {
       const success = await handleSave(() => api.put('/admin/settings/general', data), '基本设置保存成功', generalFormRef.value)
       if (success) await loadSettings()
     }
+    // 「域名与订阅」与「站点设置」共用同一份 generalSettings / 同一个接口，
+    // 但不在隐藏的站点表单上跑校验（否则校验提示出现在看不见的分区里）
+    const saveDomainSettings = async () => {
+      const data = { ...generalSettings }
+      const success = await handleSave(() => api.put('/admin/settings/general', data), '域名设置保存成功')
+      if (success) await loadSettings()
+    }
     const saveRegistrationSettings = () => handleSave(() => api.put('/admin/settings/registration', registrationSettings), '注册设置保存成功')
     const saveInviteSettings = () => handleSave(() => api.put('/admin/settings/invite', inviteSettings), '邀请设置保存成功')
     const saveNotificationSettings = () => {
@@ -1680,12 +1746,50 @@ export default {
       return handleSave(() => adminAPI.updateAdminNotificationSettings(data), '管理员告警设置保存成功')
     }
 
+    const loadSubscriptionAccessConfig = async () => {
+      try {
+        const res = await api.get('/admin/configs', { params: { category: 'subscription_access' } })
+        const list = res.data?.data || []
+        const map = {}
+        list.forEach((item) => { map[item.key] = item.value })
+        subscriptionAccessForm.block_browser_subscription_access = map.block_browser_subscription_access === 'true'
+      } catch (e) {
+        console.error('加载订阅访问控制失败', e)
+      }
+    }
+    const saveSubscriptionAccessConfig = async () => {
+      subscriptionAccessLoading.value = true
+      try {
+        const ok = await handleSave(
+          () => api.put('/admin/configs/block_browser_subscription_access', {
+            key: 'block_browser_subscription_access',
+            value: subscriptionAccessForm.block_browser_subscription_access.toString(),
+            category: 'subscription_access',
+            type: 'boolean',
+            display_name: '浏览器访问订阅返回空'
+          }),
+          '订阅访问控制保存成功'
+        )
+        return ok
+      } finally {
+        subscriptionAccessLoading.value = false
+      }
+    }
+
+    // 「保存当前页」按分区分派；合并过的分区依次保存其包含的每一块
     const currentTabSaveMap = {
-      general: saveGeneralSettings, registration: saveRegistrationSettings, invite: saveInviteSettings,
-      notification: async () => (await saveNotificationSettings() && await saveAdminNotificationSettings()),
-      announcement: saveAnnouncementSettings, theme: saveThemeSettings, 'node-health': saveNodeHealthSettings,
-      security: saveSecuritySettings, backup: saveBackupSettings, 'protocol-filter': saveProtocolFilterSettings,
-      'repo-sync': saveRepoSyncSettings, cleanup: saveCleanupSettings
+      general: saveGeneralSettings,
+      domains: saveDomainSettings,
+      registration: async () => (await saveRegistrationSettings()) && (await saveInviteSettings()),
+      notification: async () => (await saveNotificationSettings()) && (await saveAdminNotificationSettings()),
+      content: async () => (await saveAnnouncementSettings()) && (await saveThemeSettings()),
+      node: async () => (await saveNodeHealthSettings()) && (await saveProtocolFilterSettings()),
+      access: saveSubscriptionAccessConfig,
+      security: saveSecuritySettings,
+      backup: saveBackupSettings,
+      geoip: null, // 该分区没有表单，操作即时生效（切换/更新数据库按钮各自保存）
+      'repo-sync': saveRepoSyncSettings,
+      cleanup: saveCleanupSettings
     }
 
     const saveCurrentTab = async () => {
@@ -2021,21 +2125,24 @@ export default {
     }
 
     onMounted(() => {
-      // 自检：移动端下拉项必须与真实 tab 完全一致（漏一处就会「切不过去/切错页」）
+      // 自检：导航项必须都有对应分区，否则会出现「点了没反应 / 空白页」
       if (process.env.NODE_ENV === 'development') {
-        const domLabels = Array.from(document.querySelectorAll('.settings-tabs .el-tabs__item'))
-          .map((el) => el.textContent.trim())
-        const cfgLabels = settingsTabs.map((t) => t.label)
-        if (domLabels.join('|') !== cfgLabels.join('|')) {
-          console.warn('[Settings] settingsTabs 与模板 el-tab-pane 不一致', { domLabels, cfgLabels })
+        const navNames = settingsNav.map((i) => i.name)
+        const domNames = Array.from(document.querySelectorAll('.settings-pane')).map((el) => el.dataset.tab)
+        const missing = navNames.filter((n) => !domNames.includes(n))
+        const orphan = domNames.filter((n) => !navNames.includes(n))
+        if (missing.length || orphan.length) {
+          console.warn('[Settings] 导航与分区不一致', { missing, orphan })
         }
       }
-      return Promise.all([loadSettings(), loadGeoIPStatus(), loadRepoSyncStatus()])
+      return Promise.all([loadSettings(), loadGeoIPStatus(), loadRepoSyncStatus(), loadSubscriptionAccessConfig()])
     })
     onBeforeUnmount(() => stopStatusPolling())
 
     return {
-      activeTab, isMobile, formLayout, settingsTabPosition, pageLoading, savingCurrent, Refresh, Check,
+      activeTab, isMobile, formLayout, settingsNav, pageLoading, savingCurrent, Refresh, Check,
+      subscriptionAccessForm, subscriptionAccessLoading, saveSubscriptionAccessConfig, loadSubscriptionAccessConfig,
+      saveDomainSettings,
       generalSettings, generalRules, generalFormRef, registrationSettings, inviteSettings, notificationSettings, securitySettings,
       themeSettings, adminNotificationSettings, announcementSettings, nodeHealthSettings, backupSettings,
       uploadUrl, themeOptions: THEME_OPTIONS, themeColorStyle, geoipDatabaseMobileFields, customerEventMobileFields, adminEventMobileFields,
@@ -2089,144 +2196,53 @@ export default {
   border: 1px solid var(--el-border-color-light);
 }
 
-.settings-tabs :deep(.el-tabs__header.is-left) {
-  width: 200px;
-  /* 禁止 flex 收缩：内容区内容较宽时若 header 被压缩，左侧导航宽窄不一，
-     导致内容区左边缘（页边距）在各 tab 间跳动 */
-  flex-shrink: 0;
+/* ========== 设置导航（左列分组 / 移动端胶囊） ==========
+   旧版用 el-tabs 的左侧导航：移动端 tab 条会变成 1000+px 的横向滚动条，一屏只露 2~3 个，
+   管理员常反馈「只看到基本设置，其它设置找不到」。现在导航自己渲染：
+   桌面左列分组列表，移动端换行胶囊（全部可见、可点、不用横滑）。 */
+.settings-layout {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.settings-nav {
+  position: sticky;
+  top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px;
   background: var(--el-fill-color-light);
-  margin-right: 0;
-  border-right: 1px solid var(--el-border-color-light);
-  padding: 12px 0;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 10px;
+  max-height: calc(100vh - 90px);
+  overflow-y: auto;
 }
-
-.settings-tabs :deep(.el-tabs__item) {
-  font-size: 14px;
-  font-weight: 500;
-  height: 48px;
-  line-height: 48px;
-  padding: 0 24px;
-  text-align: left;
-  justify-content: flex-start;
+.settings-nav-item {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   color: var(--el-text-color-regular);
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease;
 }
-.settings-tabs :deep(.el-tabs__item.is-active) {
+.settings-nav-item:hover { background: var(--el-fill-color); color: var(--el-text-color-primary); }
+.settings-nav-item.is-active {
   background: var(--el-bg-color);
   color: var(--el-color-primary);
-}
-.settings-tabs :deep(.el-tabs__active-bar.is-left) { left: 0; right: auto; width: 3px; }
-.settings-tabs :deep(.el-tabs__content) { padding: 20px; min-height: 600px; min-width: 0; }
-/* 修复移动端单面板 tab 内容区被压缩：tab-pane 必须占满内容区宽度 */
-.settings-tabs :deep(.el-tab-pane) { width: 100%; min-width: 0; }
-
-/* ========== 基本设置：分区卡片版面 ==========
-   为什么这么排：原先「站点信息 + 客服」挤左列、GeoIP 挤右列，域名池又被塞进
-   el-form-item 压成窄条，字段归属与阅读顺序都乱。改成单列分区卡片后，
-   每块只讲一件事（站点信息 / 订阅域名 / 客服与界面 / 系统工具）。 */
-.settings-general { display: flex; flex-direction: column; gap: 16px; max-width: 1080px; }
-
-.settings-block {
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 10px;
-  background: var(--el-bg-color);
-  overflow: hidden;
-}
-.settings-block-head {
-  padding: 14px 18px;
-  background: var(--el-fill-color-light);
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-.settings-block-head h3 {
-  margin: 0;
-  font-size: 15px;
   font-weight: 600;
-  color: var(--el-text-color-primary);
-  line-height: 1.4;
+  box-shadow: inset 3px 0 0 var(--el-color-primary);
 }
-.settings-block-head p {
-  margin: 4px 0 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--el-text-color-secondary);
-}
-.settings-block-body { padding: 16px 18px; }
-.settings-block-body :deep(.el-form-item:last-child) { margin-bottom: 0; }
-
-/* 区块内的小节（GeoIP 数据库 / 更新等） */
-.settings-subsection + .settings-subsection { margin-top: 16px; }
-
-/* 域名池子块：整宽展示，不再被表单标签挤窄 */
-.settings-subblock {
-  margin-top: 8px;
-  padding: 14px;
-  border: 1px dashed var(--el-border-color);
-  border-radius: 10px;
-  background: var(--el-fill-color-blank);
-}
-.settings-subblock-head { margin-bottom: 12px; }
-.settings-subblock-head h4 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-.settings-subblock-head p {
-  margin: 4px 0 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--el-text-color-secondary);
-}
-
-/* 说明 + 跳转按钮同一行 */
-.settings-inline-hint {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  width: 100%;
-}
-.settings-inline-hint .form-tip { margin-top: 0; }
-
-/* 两列字段（窄屏自动堆叠） */
-.settings-fields-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 16px;
-}
-@media (max-width: 768px) {
-  .settings-fields-row { grid-template-columns: minmax(0, 1fr); }
-}
-
-.settings-logo-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.settings-logo-row .form-tip { margin-top: 0; }
-
-.settings-alert { margin: 4px 0 12px; }
-.settings-alert :deep(.el-alert__content) { font-size: 12px; line-height: 1.6; }
-
-/* 保存栏：贴在内容底部，滚到哪都能按 */
-.settings-savebar {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 12px 16px;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 10px;
-  background: var(--el-bg-color);
-  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06);
-}
-.settings-savebar-tip {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-@media (max-width: 768px) {
-  .settings-savebar { flex-direction: column; align-items: stretch; }
-  .settings-savebar-tip { text-align: center; }
-}
+.settings-panes { min-width: 0; }
+.settings-pane { width: 100%; min-width: 0; }
+.settings-pane + .settings-pane { margin-top: 0; }
 
 /* ========== 表单元素标准规范 ========== */
 .settings-form { max-width: 900px; }
@@ -2592,18 +2608,34 @@ export default {
   /* 逐层压缩内边距：390px 屏幕上「页面 12 + 卡片 20 + 内容 12 + 分区 18」两侧要吃掉约 100px，
      留给表单的只剩 244px，输入框和按钮全都挤成一团 */
   .settings-shell :deep(.el-card__body) { padding: 10px 8px; }
-  .settings-tabs :deep(.el-tabs__content) { padding: 10px 4px; }
+  /* 移动端：导航变换行胶囊，全部分类一眼可见（不再依赖横滑或下拉组件） */
+  .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .settings-nav {
+    position: static;
+    max-height: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px;
+  }
+  .settings-nav-item {
+    width: auto;
+    padding: 7px 10px;
+    border: 1px solid var(--el-border-color);
+    background: var(--el-bg-color);
+    font-size: 13px;
+  }
+  .settings-nav-item.is-active {
+    border-color: var(--el-color-primary);
+    background: var(--el-color-primary-light-9);
+    box-shadow: none;
+  }
   .settings-block-head { padding: 12px 12px; }
   .settings-block-body { padding: 12px 12px; }
   .settings-subblock { padding: 10px; }
   .settings-savebar { padding: 10px; }
   .settings-block-head p { font-size: 12px; }
 
-  .settings-tabs :deep(.el-tabs__nav-wrap) { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .settings-tabs :deep(.el-tabs__nav-wrap::after) { display: none; }
-  .settings-tabs :deep(.el-tabs__nav) { min-width: max-content; }
-  .settings-tabs :deep(.el-tabs__item.is-top) { font-size: 14px; padding: 0 16px; }
-  .settings-tabs :deep(.el-tabs__content) { padding: 16px 12px; min-height: auto; }
   
   .input-short, .input-medium, .input-large, .settings-form :deep(.el-input), .settings-form :deep(.el-select) { max-width: 100%; }
   .switch-group { grid-template-columns: 1fr; }

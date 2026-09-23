@@ -765,7 +765,7 @@ $breakpoints: (
     }
   }
   /* tab 条兜底：内容放不下时让它成为可滑动容器（而不是被 nav-wrap 的 hidden 裁掉，
-     出现「最后一个 tab 点不到」）；更多 tab 的页面已改用 MobileTabSelect 下拉导航。 */
+     出现「最后一个 tab 点不到」）；一屏放不下的页面已改用 .tabs-wrap-mobile 换行胶囊。 */
   .el-tabs .el-tabs__nav-wrap {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -791,11 +791,39 @@ $breakpoints: (
     }
   }
 
-  /* 一屏放不下的 tab 条（设置页 12 个、日志页 7 个）在移动端改为下拉导航，
-     见 components/MobileTabSelect.vue；这里只负责把 tab 条本身藏掉。 */
-  .el-tabs.hide-tabs-mobile > .el-tabs__header {
-    display: none;
+  /* 一屏放不下的 tab 条（日志页 7 个、配置页 3 个）在移动端改为**换行胶囊**：
+     全部分类一眼可见、可点，不用横滑也不依赖下拉组件 —— 旧版把 tab 条隐藏后只留一个
+     下拉，管理员反馈「只看到基本设置，其它设置找不到」。 */
+  .el-tabs.tabs-wrap-mobile > .el-tabs__header {
+    margin-bottom: 10px;
   }
+  .el-tabs.tabs-wrap-mobile .el-tabs__nav-wrap {
+    overflow: visible;
+    &::after { display: none; }
+  }
+  .el-tabs.tabs-wrap-mobile .el-tabs__nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    white-space: normal;
+    min-width: 0;
+  }
+  .el-tabs.tabs-wrap-mobile .el-tabs__item {
+    height: auto;
+    line-height: 1.35;
+    padding: 7px 10px;
+    margin: 0;
+    border: 1px solid var(--el-border-color);
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .el-tabs.tabs-wrap-mobile .el-tabs__item.is-active {
+    background: var(--el-color-primary-light-9);
+    border-color: var(--el-color-primary);
+    color: var(--el-color-primary);
+    font-weight: 600;
+  }
+  .el-tabs.tabs-wrap-mobile .el-tabs__active-bar { display: none; }
 
   /* 分页器：移动端必须**全局**收窄。
      原先这些规则写在 .pagination / .pagination-wrapper / .mobile-pagination 之下，
