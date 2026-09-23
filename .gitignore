@@ -50,10 +50,12 @@ uploads/
 static/uploads/
 
 # Build output
+# 注意：这里必须锚定根目录（/server），裸写 server 会连 cmd/server/ 目录一起忽略，
+# 导致该目录下新增的源文件被静默忽略、仓库与线上构建产物不一致。
 dist/
 build/
 bin/
-server
+/server
 
 # OS
 .DS_Store
@@ -70,8 +72,8 @@ temp/
 *.backup.*
 .playwright-cli/
 output/
-cboard-server
-cboard-go
+/cboard-server
+/cboard-go
 
 # Frontend
 frontend/node_modules/
@@ -100,7 +102,7 @@ cboard
 
 
 # linux 交叉编译产物（部署用，不入库）
-server-linux
+/server-linux
 
 # 运维 CLI 产物（按约定构建到项目根目录，便于就近解析相对 DB 路径，不入库）
 domain_pool
