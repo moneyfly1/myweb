@@ -332,6 +332,101 @@ func truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
+// RenewResult 手动续期结果（后台「立即续期」按钮用）
+type RenewResult struct {
+	Renewed  []string `json:"renewed"`  // 本次真正续期的证书名
+	NotDue   []string `json:"not_due"`  // 未到期、被 certbot 跳过的证书名
+	Failed   []string `json:"failed"`   // 续期失败的证书名
+	Reloaded bool     `json:"reloaded"` // 是否已重载 nginx
+}
+
+// Renew 手动续期池内域名涉及的证书。
+//
+// 为什么按 --cert-name 逐个续而不是直接 `certbot renew`：本机可能有与域名池无关的
+// 站点证书（例如别人的站），逐个点名只动我们管的那几张，避免误伤。
+//
+// force=true 用 --force-renewal（未到期也重签）。注意 Let's Encrypt 对「同一组域名
+// 重复签发」有每周次数限制，仅在证书确实异常时才用。
+//
+// 续期成功后重载**真正在跑的** nginx（宝塔与 apt 版路径不同，见 nginxBin）：
+// certbot 的 --deploy-hook 只在真发生续期时触发，这里再兜一次，保证新证书被加载。
+func (m *Manager) Renew(ctx context.Context, domains []string, force bool) (RenewResult, []Step, error) {
+	var res RenewResult
+	steps := make([]Step, 0, len(domains)+3)
+	addStep := func(name string, ok bool, detail string) {
+		steps = append(steps, Step{Name: name, OK: ok, Detail: detail})
+	}
+
+	bin, err := m.nginxBin()
+	if err != nil {
+		addStep("定位 nginx", false, err.Error())
+		return res, steps, err
+	}
+	if _, err := exec.LookPath("certbot"); err != nil {
+		err := fmt.Errorf("未找到 certbot，无法续期（apt install certbot 或面板一键安装）")
+		addStep("检查 certbot", false, err.Error())
+		return res, steps, err
+	}
+
+	// 收集涉及的证书名（同一张证书可能覆盖多个域名 → 去重，只续一次）
+	nameSet := map[string]bool{}
+	for _, d := range domains {
+		d = strings.TrimSpace(d)
+		if d == "" {
+			continue
+		}
+		info, ok := FindCertCovering(d)
+		if !ok {
+			addStep("查找证书 "+d, false, "未找到覆盖该域名的证书，请先点「一键修复」")
+			continue
+		}
+		nameSet[info.Name] = true
+	}
+	if len(nameSet) == 0 {
+		err := fmt.Errorf("没有找到可续期的证书")
+		return res, steps, err
+	}
+	names := make([]string, 0, len(nameSet))
+	for n := range nameSet {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	addStep("查找证书", true, strings.Join(names, "、"))
+
+	for _, name := range names {
+		args := []string{"renew", "--cert-name", name, "--deploy-hook", bin + " -s reload"}
+		if force {
+			args = append(args, "--force-renewal")
+		}
+		out, rerr := runCmd(ctx, 240*time.Second, "certbot", args...)
+		if rerr != nil {
+			res.Failed = append(res.Failed, name)
+			addStep("续期 "+name, false, truncate(out, 300))
+			continue
+		}
+		if !force && (strings.Contains(out, "not yet due") || strings.Contains(out, "not due for renewal")) {
+			res.NotDue = append(res.NotDue, name)
+			addStep("续期 "+name, true, "未到期，跳过（到期前 30 天自动续期）")
+			continue
+		}
+		res.Renewed = append(res.Renewed, name)
+		addStep("续期 "+name, true, truncate(strings.TrimSpace(out), 200))
+	}
+
+	// 再重载一次：一是 certbot 未真正续期时也确认 nginx 状态正常，二是确保新证书生效
+	if err := m.nginxTestAndReload(ctx); err != nil {
+		addStep("重载 nginx", false, err.Error())
+		return res, steps, err
+	}
+	res.Reloaded = true
+	addStep("重载 nginx", true, bin+" -s reload")
+
+	if len(res.Failed) > 0 {
+		return res, steps, fmt.Errorf("%d 张证书续期失败：%s", len(res.Failed), strings.Join(res.Failed, "、"))
+	}
+	return res, steps, nil
+}
+
 // nginxTestAndReload 配置校验 + 重载；校验失败会把错误原文返回（便于定位哪一行写错）
 func (m *Manager) nginxTestAndReload(ctx context.Context) error {
 	bin, err := m.nginxBin()

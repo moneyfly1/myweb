@@ -17,108 +17,155 @@
       <el-tabs v-model="activeTab" class="settings-tabs" :tab-position="settingsTabPosition">
         
         <!-- ==================== 基本设置 ==================== -->
+        <!-- 版面约定：单列分区卡片（站点信息 / 订阅域名 / 客服与界面 / 系统工具）。
+             此前是「左列一大串表单 + 右列 GeoIP」的双列，域名池还被塞在 el-form-item 里
+             压成窄条，字段归属不清、说明文字散落 —— 改成按主题分区的单列卡片。 -->
         <el-tab-pane label="基本设置" name="general">
-          <div class="notification-layout">
-            <!-- 左列：站点信息 + 客服与界面 -->
-            <div class="notification-panel">
-              <div class="panel-header">
-                <h3>站点信息与客服</h3>
-              </div>
+          <div class="settings-general">
+            <el-form :model="generalSettings" :rules="generalRules" ref="generalFormRef" label-position="top" class="compact-form">
 
-              <el-form :model="generalSettings" :rules="generalRules" ref="generalFormRef" label-position="top" class="compact-form">
-                <el-form-item label="网站名称" prop="site_name">
-                  <el-input v-model="generalSettings.site_name" />
-                </el-form-item>
-                <el-form-item label="网站描述" prop="site_description">
-                  <el-input v-model="generalSettings.site_description" type="textarea" :rows="2" />
-                </el-form-item>
-                <el-form-item label="网站域名" prop="domain_name">
-                  <el-input v-model="generalSettings.domain_name" placeholder="例如: example.com (不需要 http://)" />
-                  <div class="form-tip">用于官网/登录/支付回调/邮件里的官网链接。留空则使用请求域名。</div>
-                </el-form-item>
-                <el-form-item label="订阅域名（主）">
-                  <el-input v-model="generalSettings.subscription_domain" placeholder="例如: https://sub.example.com" />
-                  <div class="form-tip">
-                    订阅链接（客户端拉取节点用）走这个域名，可与官网分开 —— 官网在某些地区被墙时，客户仍能用订阅域名更新节点。
-                    留空则跟随「网站域名」。改这里**不会**让已发出的订阅地址失效：同一后端、token 通用，老域名一直可用。
-                  </div>
-                </el-form-item>
-                <el-form-item label="订阅域名（备用）">
-                  <el-input v-model="generalSettings.subscription_backup_domains" type="textarea" :rows="2"
-                    placeholder="每行一个，或用逗号分隔，例如：&#10;https://moneyfly.dpdns.org&#10;https://dy.moneyfly.top" />
-                  <div class="form-tip">
-                    备用订阅域名，会随订阅接口一起下发给客户端（subscribe_urls 字段）供其逐一尝试；
-                    用户面板也会展示。建议至少配 1 个与主域名不同线路/不同服务商的域名。
-                    嫌麻烦可以直接用下面的「订阅域名池」一键配置。
-                  </div>
-                </el-form-item>
-                <el-form-item label="订阅域名池">
-                  <DomainPoolPanel />
-                </el-form-item>
-                <el-form-item label="网站Logo">
-                  <el-upload
-                    class="avatar-uploader"
-                    :show-file-list="false"
-                    :http-request="handleLogoUpload"
-                    :on-success="handleLogoSuccess"
-                    :before-upload="beforeLogoUpload"
+              <!-- ① 站点信息 -->
+              <section class="settings-block">
+                <div class="settings-block-head">
+                  <h3>站点信息</h3>
+                  <p>官网展示与访问入口，保存后立即影响前台。</p>
+                </div>
+                <div class="settings-block-body">
+                  <el-form-item label="网站名称" prop="site_name">
+                    <el-input v-model="generalSettings.site_name" class="input-medium" />
+                  </el-form-item>
+                  <el-form-item label="网站描述" prop="site_description">
+                    <el-input v-model="generalSettings.site_description" type="textarea" :rows="2" class="input-large" />
+                  </el-form-item>
+                  <el-form-item label="网站域名" prop="domain_name">
+                    <el-input v-model="generalSettings.domain_name" class="input-medium" placeholder="例如: example.com（不要带 http://）" />
+                    <div class="form-tip">用于官网、登录、支付回调与邮件里的官网链接；留空则自动使用请求域名。</div>
+                  </el-form-item>
+                  <el-form-item label="网站 Logo">
+                    <div class="settings-logo-row">
+                      <el-upload
+                        class="avatar-uploader"
+                        :show-file-list="false"
+                        :http-request="handleLogoUpload"
+                        :on-success="handleLogoSuccess"
+                        :before-upload="beforeLogoUpload"
+                      >
+                        <img v-if="generalSettings.site_logo" :src="generalSettings.site_logo" class="avatar" />
+                        <el-icon v-else class="avatar-uploader-icon"><Plus /></el-icon>
+                      </el-upload>
+                      <div class="form-tip">
+                        建议 200×200 的 PNG/JPG，留空则使用站点默认图标。
+                      </div>
+                    </div>
+                  </el-form-item>
+                  <el-form-item label="默认主题">
+                    <div class="settings-inline-hint">
+                      <span class="form-tip">默认主题（含可选主题范围、跟随系统）统一在「主题设置」里维护，避免两处各存一份、互不生效。</span>
+                      <el-button link type="primary" @click="activeTab = 'theme'">去主题设置 →</el-button>
+                    </div>
+                  </el-form-item>
+                </div>
+              </section>
+
+              <!-- ② 订阅域名（主 / 备用 / 域名池 放一起，关系才看得懂） -->
+              <section class="settings-block">
+                <div class="settings-block-head">
+                  <h3>订阅域名</h3>
+                  <p>客户端「更新订阅」时访问的地址。主域名用于生成订阅链接，备用域名随订阅接口一起下发，供客户端逐个尝试。</p>
+                </div>
+                <div class="settings-block-body">
+                  <el-form-item label="订阅域名（主）">
+                    <el-input v-model="generalSettings.subscription_domain" class="input-medium" placeholder="例如: https://sub.example.com（留空则跟随「网站域名」）" />
+                    <div class="form-tip">
+                      与官网分开配置：官网在某些地区被访问不了时，客户仍能用订阅域名更新节点。
+                    </div>
+                  </el-form-item>
+                  <el-form-item label="订阅域名（备用）">
+                    <el-input
+                      v-model="generalSettings.subscription_backup_domains"
+                      type="textarea"
+                      :rows="3"
+                      class="input-large"
+                      placeholder="每行一个，或用逗号分隔，例如：&#10;https://moneyfly.dpdns.org&#10;https://dy.moneyfly.top"
+                    />
+                    <div class="form-tip">
+                      会随订阅接口下发给客户端（subscribe_urls），客户端按顺序尝试；用户面板也会展示。
+                      建议至少配 1 个与主域名不同线路或不同服务商的域名。
+                    </div>
+                  </el-form-item>
+
+                  <el-alert
+                    type="success"
+                    :closable="false"
+                    show-icon
+                    class="settings-alert"
+                    title="换域名不会让已发出的订阅地址失效"
                   >
-                    <img v-if="generalSettings.site_logo" :src="generalSettings.site_logo" class="avatar" />
-                    <el-icon v-else class="avatar-uploader-icon"><Plus /></el-icon>
-                  </el-upload>
-                </el-form-item>
-                <el-form-item label="默认主题" prop="default_theme">
-                  <el-select v-model="generalSettings.default_theme" class="input-full">
-                    <el-option label="浅色主题" value="light" />
-                    <el-option label="深色主题" value="dark" />
-                    <el-option label="跟随系统" value="auto" />
-                  </el-select>
-                </el-form-item>
+                    <template #default>
+                      这些都是同一套后端、token 通用，老域名会一直可用；换域名只是给客户端多一个更稳的入口，不必通知客户改订阅。
+                    </template>
+                  </el-alert>
 
-                <div class="settings-section-title text-sm">客服与界面</div>
-                <el-form-item label="售后QQ" prop="support_qq">
-                  <el-input v-model="generalSettings.support_qq" placeholder="请输入售后QQ号码" />
-                  <div class="form-tip">帮助中心显示，留空不显示。</div>
-                </el-form-item>
-                <el-form-item label="服务时间" prop="support_hours">
-                  <el-input v-model="generalSettings.support_hours" placeholder="例如: 周一至周日 9:00-22:00（留空则不显示该行）" />
-                </el-form-item>
-                <el-form-item label="售后邮箱" prop="support_email">
-                  <el-input v-model="generalSettings.support_email" placeholder="例如: support@example.com" />
-                  <div class="form-tip">帮助中心显示，留空不显示。</div>
-                </el-form-item>
-                <div class="switch-card mb-3">
-                  <div class="switch-card-content">
-                    <span class="title">启用统一登录页</span>
-                    <span class="desc">启用后登录、注册、找回密码使用统一入口。</span>
+                  <div class="settings-subblock">
+                    <DomainPoolPanel />
                   </div>
-                  <el-switch v-model="generalSettings.unified_auth_enabled" />
                 </div>
+              </section>
 
-                <div class="mt-4">
-                  <el-button type="primary" @click="saveGeneralSettings" :class="{ 'full-width': isMobile }">保存基本设置</el-button>
+              <!-- ③ 客服与界面 -->
+              <section class="settings-block">
+                <div class="settings-block-head">
+                  <h3>客服与界面</h3>
+                  <p>帮助中心展示的联系方式，留空的项不会显示。</p>
                 </div>
-              </el-form>
-            </div>
+                <div class="settings-block-body">
+                  <div class="settings-fields-row">
+                    <el-form-item label="售后 QQ" prop="support_qq">
+                      <el-input v-model="generalSettings.support_qq" placeholder="例如: 123456789" />
+                    </el-form-item>
+                    <el-form-item label="售后邮箱" prop="support_email">
+                      <el-input v-model="generalSettings.support_email" placeholder="例如: support@example.com" />
+                    </el-form-item>
+                  </div>
+                  <el-form-item label="服务时间" prop="support_hours">
+                    <el-input v-model="generalSettings.support_hours" class="input-medium" placeholder="例如: 周一至周日 9:00-22:00（留空则不显示该行）" />
+                  </el-form-item>
+                  <div class="switch-card">
+                    <div class="switch-card-content">
+                      <span class="title">启用统一登录页</span>
+                      <span class="desc">启用后登录、注册、找回密码使用统一入口。</span>
+                    </div>
+                    <el-switch v-model="generalSettings.unified_auth_enabled" />
+                  </div>
+                </div>
+              </section>
 
-            <!-- 右列：GeoIP 与缓存管理 -->
-            <div class="notification-panel">
-              <div class="panel-header">
-                <h3>GeoIP 与缓存管理</h3>
+              <!-- 保存栏：跟着分区走，滚到哪都能保存 -->
+              <div class="settings-savebar">
+                <el-button type="primary" :icon="Check" @click="saveGeneralSettings" :class="{ 'full-width': isMobile }">保存基本设置</el-button>
+                <el-button :icon="Refresh" :loading="pageLoading" @click="loadSettings" :class="{ 'full-width': isMobile }">放弃修改并重新加载</el-button>
+                <span class="settings-savebar-tip">站点信息、订阅域名与客服信息都在此保存。</span>
               </div>
+            </el-form>
 
-              <el-form label-position="top" class="compact-form">
-                <el-form-item label="GeoIP 状态">
-                  <div class="status-box" v-if="geoipStatus">
-                    <el-tag :type="geoipStatus.enabled ? 'success' : 'warning'">
-                      {{ geoipStatus.enabled ? '已启用' : '未启用' }}
-                    </el-tag>
-                    <span class="status-text" :class="geoipStatus.active_database ? 'text-success' : 'text-danger'">
-                      {{ geoipStatus.active_database ? `当前: ${geoipStatus.active_database}` : '未找到数据库文件' }}
-                    </span>
-                  </div>
-                </el-form-item>
-                <el-form-item label="已安装数据库" v-if="geoipStatus && geoipStatus.databases && geoipStatus.databases.length > 0">
+            <!-- ④ 系统工具（与站点配置无关，独立成块，不再和表单挤成两列） -->
+            <section class="settings-block">
+              <div class="settings-block-head">
+                <h3>GeoIP 数据库</h3>
+                <p>用于用户地区统计与风控；不更新也能用，但数据会逐渐过期。</p>
+              </div>
+              <div class="settings-block-body">
+                <div class="status-box" v-if="geoipStatus">
+                  <el-tag :type="geoipStatus.enabled ? 'success' : 'warning'">
+                    {{ geoipStatus.enabled ? '已启用' : '未启用' }}
+                  </el-tag>
+                  <span class="status-text" :class="geoipStatus.active_database ? 'text-success' : 'text-danger'">
+                    {{ geoipStatus.active_database ? `当前: ${geoipStatus.active_database}` : '未找到数据库文件' }}
+                  </span>
+                </div>
+
+                <div v-if="geoipStatus && geoipStatus.databases && geoipStatus.databases.length > 0" class="settings-subsection">
+                  <div class="settings-section-title text-sm">已安装数据库</div>
                   <ResponsiveDataView
                     :data="geoipStatus.databases"
                     :fields="geoipDatabaseMobileFields"
@@ -169,8 +216,10 @@
                       <strong>{{ item.modified || '-' }}</strong>
                     </template>
                   </ResponsiveDataView>
-                </el-form-item>
-                <el-form-item label="更新数据库">
+                </div>
+
+                <div class="settings-subsection">
+                  <div class="settings-section-title text-sm">下载 / 更新数据库</div>
                   <el-radio-group v-model="geoipDatabaseType" class="radio-block-group radio-block-vertical">
                     <el-radio label="dbip">
                       <div class="radio-content">
@@ -191,21 +240,25 @@
                     </el-button>
                     <div class="form-tip mt-2">建议每月更新一次以获取最新数据。</div>
                   </div>
-                </el-form-item>
+                </div>
+              </div>
+            </section>
 
-                <div class="settings-section-title text-sm">缓存管理</div>
-                <el-form-item label="Redis 缓存">
-                  <el-button type="danger" plain @click="flushCache" :loading="cacheClearing" :class="{ 'full-width': isMobile }">
-                    {{ cacheClearing ? '清除中...' : '清除所有缓存' }}
-                  </el-button>
-                  <div class="form-tip mt-2">清除后系统会自动重新缓存。</div>
-                </el-form-item>
-              </el-form>
-            </div>
+            <section class="settings-block">
+              <div class="settings-block-head">
+                <h3>缓存</h3>
+                <p>改动配置后如果前台没立刻生效，清一次缓存即可。</p>
+              </div>
+              <div class="settings-block-body">
+                <el-button type="danger" plain @click="flushCache" :loading="cacheClearing" :class="{ 'full-width': isMobile }">
+                  {{ cacheClearing ? '清除中...' : '清除所有缓存' }}
+                </el-button>
+                <div class="form-tip mt-2">清除后系统会在下次访问时自动重建缓存，不影响用户数据。</div>
+              </div>
+            </section>
           </div>
         </el-tab-pane>
         
-        <!-- ==================== 注册设置 ==================== -->
         <el-tab-pane label="注册设置" name="registration">
           <div class="notification-layout">
             <div class="notification-panel">
@@ -2033,6 +2086,115 @@ export default {
 .settings-tabs :deep(.el-tabs__content) { padding: 20px; min-height: 600px; min-width: 0; }
 /* 修复移动端单面板 tab 内容区被压缩：tab-pane 必须占满内容区宽度 */
 .settings-tabs :deep(.el-tab-pane) { width: 100%; min-width: 0; }
+
+/* ========== 基本设置：分区卡片版面 ==========
+   为什么这么排：原先「站点信息 + 客服」挤左列、GeoIP 挤右列，域名池又被塞进
+   el-form-item 压成窄条，字段归属与阅读顺序都乱。改成单列分区卡片后，
+   每块只讲一件事（站点信息 / 订阅域名 / 客服与界面 / 系统工具）。 */
+.settings-general { display: flex; flex-direction: column; gap: 16px; max-width: 1080px; }
+
+.settings-block {
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 10px;
+  background: var(--el-bg-color);
+  overflow: hidden;
+}
+.settings-block-head {
+  padding: 14px 18px;
+  background: var(--el-fill-color-light);
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+.settings-block-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  line-height: 1.4;
+}
+.settings-block-head p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
+}
+.settings-block-body { padding: 16px 18px; }
+.settings-block-body :deep(.el-form-item:last-child) { margin-bottom: 0; }
+
+/* 区块内的小节（GeoIP 数据库 / 更新等） */
+.settings-subsection + .settings-subsection { margin-top: 16px; }
+
+/* 域名池子块：整宽展示，不再被表单标签挤窄 */
+.settings-subblock {
+  margin-top: 8px;
+  padding: 14px;
+  border: 1px dashed var(--el-border-color);
+  border-radius: 10px;
+  background: var(--el-fill-color-blank);
+}
+.settings-subblock-head { margin-bottom: 12px; }
+.settings-subblock-head h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.settings-subblock-head p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
+}
+
+/* 说明 + 跳转按钮同一行 */
+.settings-inline-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.settings-inline-hint .form-tip { margin-top: 0; }
+
+/* 两列字段（窄屏自动堆叠） */
+.settings-fields-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+@media (max-width: 768px) {
+  .settings-fields-row { grid-template-columns: minmax(0, 1fr); }
+}
+
+.settings-logo-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.settings-logo-row .form-tip { margin-top: 0; }
+
+.settings-alert { margin: 4px 0 12px; }
+.settings-alert :deep(.el-alert__content) { font-size: 12px; line-height: 1.6; }
+
+/* 保存栏：贴在内容底部，滚到哪都能按 */
+.settings-savebar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 10px;
+  background: var(--el-bg-color);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06);
+}
+.settings-savebar-tip {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+@media (max-width: 768px) {
+  .settings-savebar { flex-direction: column; align-items: stretch; }
+  .settings-savebar-tip { text-align: center; }
+}
 
 /* ========== 表单元素标准规范 ========== */
 .settings-form { max-width: 900px; }

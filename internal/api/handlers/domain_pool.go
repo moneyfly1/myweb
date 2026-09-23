@@ -215,3 +215,54 @@ func RemoveDomainFromPool(c *gin.Context) {
 		"warn":    warn,
 	})
 }
+
+// RenewDomainPool 手动续期：对域名池涉及的证书跑 certbot renew 并重载 nginx
+// POST /admin/domains/pool/renew {force?}
+//
+// 自动续期本来由 certbot 定时任务负责（面板已展示剩余天数与「自动续期 ✓」）；
+// 这个接口用于两种情况：① 证书临近到期想立刻确认能续；② 自动续期失败需要手动补一次。
+// force=true 表示未到期也重签 —— Let's Encrypt 对同一组域名重复签发有每周次数限制，
+// 界面上只在「证书异常」时才引导使用。
+func RenewDomainPool(c *gin.Context) {
+	var req struct {
+		Force bool `json:"force"`
+	}
+	// 允许空 body（默认不强制）
+	_ = c.ShouldBindJSON(&req)
+
+	m := domainPoolManager()
+	if ok, why := m.Available(); !ok {
+		utils.ErrorResponse(c, http.StatusServiceUnavailable, "本服务器未开启一键配置："+why, nil)
+		return
+	}
+	primary, backups := currentPool()
+	siteDomain := ""
+	if db := database.GetDB(); db != nil {
+		siteDomain = utils.GetDomainFromDB(db)
+	}
+	domains := domainpool.DomainsForInspect(primary, backups, siteDomain)
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 300*time.Second)
+	defer cancel()
+	res, steps, rerr := m.Renew(ctx, domains, req.Force)
+	if rerr != nil {
+		// 失败也要把「已经走了哪几步、哪些证书成功/跳过/失败」带回前端，
+		// 否则管理员只看到一句错误，不知道该点修复还是手工处理
+		utils.ErrorResponseWithData(c, http.StatusInternalServerError,
+			"partial_failure", "续期未全部成功："+rerr.Error(),
+			gin.H{"steps": steps, "result": res})
+		return
+	}
+
+	msg := "证书均未到期，无需续期（到期前 30 天起由 certbot 自动续期）"
+	if len(res.Renewed) > 0 {
+		msg = fmt.Sprintf("已续期 %d 张证书，nginx 已重载", len(res.Renewed))
+		if req.Force {
+			msg += "（强制续期）"
+		}
+	}
+	utils.CreateAuditLogSimple(c, "domain_pool_renew", "system", 0,
+		fmt.Sprintf("管理员操作: 订阅域名证书续期 renewed=%v not_due=%v force=%v",
+			res.Renewed, res.NotDue, req.Force))
+	utils.SuccessResponse(c, http.StatusOK, msg, gin.H{"steps": steps, "result": res})
+}
