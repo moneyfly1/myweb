@@ -174,5 +174,9 @@ func certDesc(st domainpool.Status) string {
 	if st.AutoRenew {
 		renew = "自动续期"
 	}
-	return fmt.Sprintf("证书=%3d天·%s", st.CertDaysLeft, renew)
+	name := st.CertName
+	if name == "" {
+		name = "-"
+	}
+	return fmt.Sprintf("证书=%3d天·%s·%s", st.CertDaysLeft, renew, name)
 }

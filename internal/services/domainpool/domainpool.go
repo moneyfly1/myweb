@@ -72,6 +72,7 @@ type Status struct {
 	HTTPSOK      bool   `json:"https_ok"`
 	HTTPStatus   int    `json:"http_status,omitempty"`
 	CertExists   bool   `json:"cert_exists"`
+	CertName     string `json:"cert_name,omitempty"`
 	CertDaysLeft int    `json:"cert_days_left,omitempty"`
 	CertNotAfter string `json:"cert_not_after,omitempty"`
 	AutoRenew    bool   `json:"auto_renew"`
@@ -406,28 +407,36 @@ func (m *Manager) Configure(ctx context.Context, rawDomain string) (Status, []St
 	}
 	addStep("写入站点配置（ACM 校验用）", true, FindVhostFile(domain))
 
-	// 2) 签证书（webroot 模式：不占用 80 端口，可与 nginx 共存；
-	//    --deploy-hook 保证以后自动续期后重载 nginx，新证书真正生效）
+	// 2) 证书：已有覆盖该域名且剩余 >30 天的证书就直接复用（常见于共享证书/SAN 覆盖），
+	//    避免重复签发 —— Let's Encrypt 有「同域名每周 5 张」的限流，撞上就得等一周。
 	nginxBin, _ := m.nginxBin()
-	certbotOut, certErr := runCmd(ctx, 180*time.Second, "certbot", "certonly",
-		"--webroot", "-w", webroot,
-		"--cert-name", CertNameFor(domain),
-		"-d", domain,
-		"--non-interactive", "--agree-tos", "--no-eff-email",
-		"--deploy-hook", nginxBin+" -s reload",
-	)
-	if certErr != nil {
-		addStep("签发证书", false, certbotOut)
-		return Status{Domain: domain}, steps, certErr
+	full, key := "", ""
+	if info, ok := FindCertCovering(domain); ok && info.DaysLeft > 30 {
+		full, key = info.Fullchain, info.Privkey
+		addStep("复用已有证书", true, fmt.Sprintf("证书 %s 覆盖该域名，剩余 %d 天，无需重新签发", info.Name, info.DaysLeft))
 	}
-	if _, err := os.Stat(filepath.Join(LetsencryptLiveDir, CertNameFor(domain), "fullchain.pem")); err != nil {
-		addStep("签发证书", false, "certbot 未报错但未找到证书文件")
-		return Status{Domain: domain}, steps, fmt.Errorf("证书文件不存在")
-	}
-	addStep("签发证书（含自动续期钩子）", true, fmt.Sprintf("%s（证书名 %s）", domain, CertNameFor(domain)))
+	if full == "" {
+		certbotOut, certErr := runCmd(ctx, 180*time.Second, "certbot", "certonly",
+			"--webroot", "-w", webroot,
+			"--cert-name", CertNameFor(domain),
+			"-d", domain,
+			"--non-interactive", "--agree-tos", "--no-eff-email",
+			"--deploy-hook", nginxBin+" -s reload",
+		)
+		if certErr != nil {
+			addStep("签发证书", false, certbotOut)
+			return Status{Domain: domain}, steps, certErr
+		}
+		certFull, certKey := CertPaths(domain)
+		if _, err := os.Stat(certFull); err != nil {
+			addStep("签发证书", false, "certbot 未报错但未找到证书文件")
+			return Status{Domain: domain}, steps, fmt.Errorf("证书文件不存在")
+		}
+		full, key = certFull, certKey
+		addStep("签发证书（含自动续期钩子）", true, fmt.Sprintf("%s（证书名 %s）", domain, CertNameFor(domain)))
+	} // end if full == ""
 
 	// 3) 完整反代站点
-	full, key := CertPaths(domain)
 	staticRoot := m.staticRootOf()
 	if _, err := writeFileWithBackup(FindVhostFile(domain), fullVhost(domain, webroot, staticRoot, full, key)); err != nil {
 		addStep("写入站点配置（反代）", false, err.Error())
@@ -502,16 +511,12 @@ func (m *Manager) Inspect(ctx context.Context, domain string, inPool, isPrimary 
 		st.DNSResolved = true
 		st.DNSIPs = strings.Join(ips, ", ")
 	}
-	full, _ := CertPaths(d)
-	if data, err := os.ReadFile(full); err == nil {
+	if info, ok := FindCertCovering(d); ok {
 		st.CertExists = true
-		if notAfter, derr := certNotAfter(data); derr == nil {
-			st.CertNotAfter = notAfter.Format("2006-01-02 15:04")
-			st.CertDaysLeft = int(time.Until(notAfter).Hours() / 24)
-		}
-	}
-	if _, err := os.Stat(filepath.Join("/etc/letsencrypt/renewal", CertNameFor(d)+".conf")); err == nil {
-		st.AutoRenew = true
+		st.CertName = info.Name
+		st.CertDaysLeft = info.DaysLeft
+		st.CertNotAfter = time.Now().Add(time.Duration(info.DaysLeft) * 24 * time.Hour).Format("2006-01-02 15:04")
+		st.AutoRenew = info.AutoRenew
 	}
 
 	// HTTPS 自检：直接打 /api/v1/packages（面板公开接口，返回 JSON 即说明反代正确）
@@ -544,6 +549,97 @@ func (m *Manager) InspectMany(ctx context.Context, domains []string, primary, si
 		out = append(out, m.Inspect(ctx, d, true, strings.EqualFold(d, primary)))
 	}
 	return out
+}
+
+// CertInfo 覆盖某域名的证书信息
+type CertInfo struct {
+	Name        string
+	Fullchain   string
+	Privkey     string
+	DaysLeft    int
+	AutoRenew   bool
+	IsExactName bool // 证书名就是按该域名生成的（而非共享证书/SAN 覆盖）
+}
+
+// FindCertCovering 找出覆盖该域名的证书：优先同名证书，否则扫描所有证书看 SAN/CN 是否包含它。
+//
+// 为什么不能只用 CertNameFor(domain) 直接拼路径：线上一张证书常常覆盖多个域名
+// （例如 sub-moneyfly-dpdns-org 同时覆盖 sub.* / moneyfly.dpdns.org / new.*），
+// 而 dy.moneyfly.top 的证书名又带点（dy.moneyfly.top）—— 直接拼路径会误报「无证书」，
+// 一键配置还会重复签发同一域名（浪费 ACME 次数、可能撞 Let's Encrypt 限流）。
+func FindCertCovering(domain string) (CertInfo, bool) {
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	entries, err := os.ReadDir(LetsencryptLiveDir)
+	if err != nil {
+		return CertInfo{}, false
+	}
+	build := func(name string) (CertInfo, bool) {
+		full := filepath.Join(LetsencryptLiveDir, name, "fullchain.pem")
+		data, rerr := os.ReadFile(full)
+		if rerr != nil {
+			return CertInfo{}, false
+		}
+		notAfter, perr := certNotAfter(data)
+		if perr != nil {
+			return CertInfo{}, false
+		}
+		info := CertInfo{
+			Name:        name,
+			Fullchain:   full,
+			Privkey:     filepath.Join(LetsencryptLiveDir, name, "privkey.pem"),
+			DaysLeft:    int(time.Until(notAfter).Hours() / 24),
+			IsExactName: name == CertNameFor(domain),
+		}
+		if _, serr := os.Stat(filepath.Join("/etc/letsencrypt/renewal", name+".conf")); serr == nil {
+			info.AutoRenew = true
+		}
+		return info, true
+	}
+
+	// ① 同名证书
+	if info, ok := build(CertNameFor(domain)); ok {
+		return info, true
+	}
+	// ② 扫描：证书名与目录名都可能是带点的域名形式
+	for _, e := range entries {
+		name := e.Name()
+		if !e.IsDir() || name == "README" {
+			continue
+		}
+		full := filepath.Join(LetsencryptLiveDir, name, "fullchain.pem")
+		data, rerr := os.ReadFile(full)
+		if rerr != nil {
+			continue
+		}
+		if !certCoversDomain(data, domain) {
+			continue
+		}
+		if info, ok := build(name); ok {
+			return info, true
+		}
+	}
+	return CertInfo{}, false
+}
+
+// certCoversDomain 证书 SAN（或 CN）是否包含该域名
+func certCoversDomain(pemData []byte, domain string) bool {
+	block, _ := pem.Decode(pemData)
+	if block == nil {
+		return false
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return false
+	}
+	if strings.EqualFold(cert.Subject.CommonName, domain) {
+		return true
+	}
+	for _, n := range cert.DNSNames {
+		if strings.EqualFold(n, domain) {
+			return true
+		}
+	}
+	return false
 }
 
 // certNotAfter 读取证书到期时间（解析 PEM 里的第一张证书）
