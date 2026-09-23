@@ -218,16 +218,26 @@ function detectPlatformTab() {
   return 'windows'
 }
 
+// ?platform=xxx —— 从仪表盘「教程」按钮跳进来时定位到对应平台；
+// ?client=xxx —— 再打开该客户端的教程。两者可同时出现（仪表盘就是这么传的）。
+function applyPlatformQuery() {
+  const want = String(route.query.platform || '').trim()
+  if (want && platforms.some((p) => p.key === want)) activeTab.value = want
+}
+
 function applyClientQuery() {
   const id = normalizeClientId(route.query.client)
   const client = id ? getClientById(id) : null
   if (!client) return
-  activeTab.value = client.platforms[0]
+  // 客户端支持的平台里，优先用 URL 指定的平台（macOS 才不会默认跳到 windows）
+  const want = String(route.query.platform || '').trim()
+  activeTab.value = client.platforms.includes(want) ? want : client.platforms[0]
   toggleTutorial(client.id)
 }
 
 onMounted(async () => {
   activeTab.value = detectPlatformTab()
+  applyPlatformQuery()
   try {
     const res = await cachedAPI.getSoftwareConfig()
     if (res?.data?.success !== false) softwareConfig.value = res?.data?.data || {}
@@ -238,6 +248,7 @@ onMounted(async () => {
 })
 
 watch(() => route.query.client, () => applyClientQuery())
+watch(() => route.query.platform, () => applyPlatformQuery())
 </script>
 
 <style scoped>

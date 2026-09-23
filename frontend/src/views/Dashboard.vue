@@ -439,49 +439,18 @@
             </router-link>
           </div>
           <div class="card-body">
-            <!-- 只保留"当前系统"的快捷下载，完整客户端清单与教程统一在客户端中心 -->
-            <div class="ticket-item dashboard-client-row">
-              <div>
-                <div class="item-title">
-                  当前系统（{{ currentPlatformLabel }}）推荐：{{ quickClientNames }}
-                </div>
-                <div class="item-meta">
-                  一键下载客户端 · 安装与导入订阅教程在「客户端中心」
-                </div>
-              </div>
-              <div class="button-row">
-                <el-dropdown
-                  v-if="quickDownloadOptions.length > 1"
-                  trigger="click"
-                  @command="downloadQuickClient"
-                >
-                  <el-button type="primary" size="small">
-                    下载
-                    <el-icon><ArrowDown /></el-icon>
-                  </el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item
-                        v-for="option in quickDownloadOptions"
-                        :key="option.client.id"
-                        :command="option.client.id"
-                      >
-                        {{ option.label }}
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
-                <el-button
-                  v-else-if="quickDownloadOptions.length === 1"
-                  type="primary"
-                  size="small"
-                  @click="downloadQuickClient(quickDownloadOptions[0].client.id)"
-                >
-                  下载
-                </el-button>
-                <el-button size="small" @click="goClientCenter">全部客户端</el-button>
-                <el-button size="small" plain @click="goKnowledge">知识库</el-button>
-              </div>
+            <!-- 按用户端（平台）分栏展示，macOS 显式区分 Apple 芯片 / Intel。
+                 此前这里只给「当前系统的快捷下载」，mac 用户还被告知「架构请去客户端中心选」，
+                 既看不出有哪些端，也选不了架构；现在与客户端中心一致（共用 ClientPlatformList）。 -->
+            <ClientPlatformList
+              :software-config="softwareConfig"
+              :default-platform="currentPlatformKey"
+              :include-official="false"
+              class="dashboard-client-list"
+            />
+            <div class="button-row dashboard-client-links">
+              <el-button size="small" @click="goClientCenter">全部客户端与教程</el-button>
+              <el-button size="small" plain @click="goKnowledge">知识库</el-button>
             </div>
           </div>
         </div>
@@ -623,14 +592,9 @@ import { copyToClipboard as copyText } from '@/utils/textSelection'
 import { safeNavigate, safeOpen, safeOpenApp } from '@/utils/safeOpen'
 import { resolvePanDownloadUrl, pickConfiguredUrl } from '@/utils/githubDownload'
 import MoneyFlyDownloadPanel from '@/components/moneyfly/MoneyFlyDownloadPanel.vue'
+import ClientPlatformList from '@/components/clients/ClientPlatformList.vue'
 import { MONEYFLY_BRAND, isMoneyflyVisible, readMoneyflyConfig } from '@/utils/moneyflyClient'
-import { openClientDownload } from '@/utils/clientDownload'
-import {
-  CLIENT_PLATFORMS,
-  clientsForPlatform,
-  clientSupportsArchSplit,
-  getClientById,
-} from '@/data/clientRegistry'
+import { CLIENT_PLATFORMS } from '@/data/clientRegistry'
 import { sanitizeBasicHtml, sanitizePlainText } from '@/utils/sanitizeHtml'
 import { useMobile } from '@/composables/useMobile'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
@@ -1202,31 +1166,6 @@ const currentPlatformKey = computed(() => {
   if (ua.includes('mac os') || ua.includes('macintosh')) return 'macos'
   return 'windows'
 })
-const currentPlatformLabel = computed(
-  () => CLIENT_PLATFORMS.find(p => p.key === currentPlatformKey.value)?.label || '当前系统'
-)
-// 当前平台的推荐客户端（自研优先，其次注册表顺序），最多给 3 个可选
-const quickClients = computed(() =>
-  clientsForPlatform(currentPlatformKey.value).slice(0, 3)
-)
-const quickClientNames = computed(() =>
-  quickClients.value.map(c => c.name).join(' / ') || '暂无'
-)
-const quickDownloadOptions = computed(() =>
-  quickClients.value.map(client => ({
-    client,
-    label: clientSupportsArchSplit(client, currentPlatformKey.value)
-      ? `${client.name}（Apple 芯片 / Intel 由客户端中心选择）`
-      : client.name,
-  }))
-)
-const downloadQuickClient = async (clientId) => {
-  const client = getClientById(clientId)
-  await openClientDownload(client, {
-    softwareConfig: softwareConfig.value,
-    os: currentPlatformKey.value,
-  })
-}
 const goClientCenter = () => router.push('/tutorials')
 const goKnowledge = () => router.push('/knowledge')
 const goToPackages = () => {
