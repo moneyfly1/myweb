@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -69,7 +70,7 @@ func ErrorResponse(c *gin.Context, code int, message string, err error) {
 
 	// 记录详细错误到日志
 	if err != nil {
-		LogError(message, err, map[string]interface{}{
+		LogErrorWithStatus(code, message, err, map[string]interface{}{
 			"path":     c.Request.URL.Path,
 			"method":   c.Request.Method,
 			"code":     code,
@@ -269,6 +270,62 @@ var sensitiveFields = map[string]bool{
 }
 
 func LogError(operation string, err error, context map[string]interface{}) {
+	logErrorAt(logLevelError, operation, err, context)
+}
+
+// 日志级别：ErrorResponse 依据 HTTP 状态码选级，避免 4xx 噪声淹没 5xx 真故障。
+const (
+	logLevelWarn  = 1
+	logLevelError = 2
+)
+
+// 4xx 去重窗口（秒）：同一 (状态码|路径|消息) 在窗口内只记一条。
+// 审计证据：POST /api/v1/agent/heartbeat 曾刷出 58,178 条 404 ERROR，占全部 ERROR 的 79%。
+const logSuppressWindowSec = 60
+
+// 去重表上限，超过则整体清空，保证内存有界（宁可多记几条也不无限增长）。
+const logSuppressMaxEntries = 4096
+
+var (
+	logSuppressMu   sync.Mutex
+	logSuppressLast = make(map[string]int64)
+)
+
+// shouldLogOnce 返回该日志键是否应当写入（窗口内去重）。
+func shouldLogOnce(key string) bool {
+	nowUnix := time.Now().Unix()
+	logSuppressMu.Lock()
+	defer logSuppressMu.Unlock()
+	if last, ok := logSuppressLast[key]; ok && nowUnix-last < logSuppressWindowSec {
+		return false
+	}
+	if len(logSuppressLast) >= logSuppressMaxEntries {
+		logSuppressLast = make(map[string]int64)
+	}
+	logSuppressLast[key] = nowUnix
+	return true
+}
+
+// LogErrorWithStatus 按状态码分级：>=500 → ERROR；其余（4xx，即客户端可预期结果：
+// 令牌过期、资源不存在、参数错误）→ WARN，并对同一 path 做窗口内去重。
+func LogErrorWithStatus(code int, operation string, err error, context map[string]interface{}) {
+	if code >= http.StatusInternalServerError {
+		logErrorAt(logLevelError, operation, err, context)
+		return
+	}
+	path := ""
+	if context != nil {
+		if v, ok := context["path"].(string); ok {
+			path = v
+		}
+	}
+	if !shouldLogOnce(fmt.Sprintf("%d|%s|%s", code, path, operation)) {
+		return
+	}
+	logErrorAt(logLevelWarn, operation, err, context)
+}
+
+func logErrorAt(level int, operation string, err error, context map[string]interface{}) {
 	if err == nil {
 		return
 	}
@@ -301,9 +358,17 @@ func LogError(operation string, err error, context map[string]interface{}) {
 	}
 
 	if AppLogger != nil {
-		AppLogger.Error("%s", msg)
-	} else {
+		if level == logLevelError {
+			AppLogger.Error("%s", msg)
+		} else {
+			AppLogger.Warn("%s", msg)
+		}
+		return
+	}
+	if level == logLevelError {
 		log.Printf("[ERROR] %s", msg)
+	} else {
+		log.Printf("[WARN] %s", msg)
 	}
 }
 
