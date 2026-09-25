@@ -453,6 +453,9 @@ func Logout(c *gin.Context) {
 			refreshTokenHash := utils.HashToken(logoutReq.RefreshToken)
 			_ = models.AddToBlacklist(database.GetDB(), refreshTokenHash, user.ID, refreshClaims.ExpiresAt.Time)
 			middleware.AddTokenToBlacklistCache(refreshTokenHash)
+			// 同时清掉轮换宽限记录：显式登出后，该旧 token 不该还能在 60 秒宽限期内
+			// 换到新令牌（否则「登出」在这段时间里形同虚设）
+			deleteRotatedRefreshResult(refreshTokenHash)
 		}
 	}
 
