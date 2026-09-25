@@ -343,6 +343,19 @@ func RefreshToken(c *gin.Context) {
 	}
 
 	tokenHash := utils.HashToken(refreshToken)
+
+	// 【轮换宽限期】同一旧 token 在轮换后 60 秒内重复提交（客户端把响应丢了、
+	// 或并发/换域名重试）→ 重放上次签发的同一对令牌，而不是 401。
+	// 旧行为会让「响应丢失」直接变成「必须重新登录」（详见 refresh_grace.go）。
+	if cachedAccess, cachedRefresh, ok := lookupRotatedRefreshResult(tokenHash); ok {
+		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+			"access_token":  cachedAccess,
+			"refresh_token": cachedRefresh,
+			"token_type":    "bearer",
+		})
+		return
+	}
+
 	if models.IsTokenBlacklisted(database.GetDB(), tokenHash) {
 		utils.ErrorResponse(c, http.StatusUnauthorized, "刷新令牌已失效，请重新登录", nil)
 		return
@@ -384,6 +397,9 @@ func RefreshToken(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成刷新令牌失败", err)
 		return
 	}
+	// 记录本次轮换结果：旧 token 在宽限期内再次提交时重放这一对（幂等）。
+	storeRotatedRefreshResult(tokenHash, accessToken, newRefreshToken)
+
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"access_token":  accessToken,
 		"refresh_token": newRefreshToken,
