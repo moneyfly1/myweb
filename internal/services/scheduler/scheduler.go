@@ -375,6 +375,19 @@ func (s *Scheduler) cleanupExpiredDataNow() {
 		log.Printf("过期审计日志清理完成，删除 %d 条（保留 %d 天）", result.RowsAffected, auditDays)
 	}
 
+	// 上面刻意豁免了 security_* 记录（取证价值高），但此前等于【永不清理】，会无限增长：
+	// 审计实测 security_auth_token_invalid 约 984 条/天 ≈ 36 万条/年。这里追加一个更长的
+	// 独立上限（默认 365 天），可用 system_configs 里 category=cleanup 的
+	// security_audit_logs_retention_days 覆盖。
+	securityAuditDays := cleanupRetention["security_audit_logs"]
+	if securityAuditDays <= 0 {
+		securityAuditDays = 365
+	}
+	securityRetention := now.Add(-time.Duration(securityAuditDays) * 24 * time.Hour)
+	if result := s.db.Where("created_at < ? AND action_type LIKE ?", securityRetention, "security_%").Delete(&models.AuditLog{}); result.RowsAffected > 0 {
+		log.Printf("过期安全审计日志清理完成，删除 %d 条（保留 %d 天）", result.RowsAffected, securityAuditDays)
+	}
+
 	// 过期邀请码（按有效期过期，非创建时间）
 	if err := s.db.Where("expires_at IS NOT NULL AND expires_at < ?", now).Delete(&models.InviteCode{}).Error; err != nil {
 		log.Printf("过期邀请码清理失败: %v", err)
