@@ -98,13 +98,6 @@ func Checkin(c *gin.Context) {
 			return err
 		}
 
-		// 记录审计日志（使用快速版本，跳过 GeoIP 查询）
-		utils.CreateBusinessLogFast(c, "user_checkin", "用户签到成功", "info", map[string]interface{}{
-			"user_id": userID,
-			"amount":  amount,
-			"balance": user.Balance,
-		})
-
 		// 将用户信息存储到上下文，供响应使用
 		c.Set("checkin_amount", amount)
 		c.Set("checkin_balance", user.Balance)
@@ -123,6 +116,16 @@ func Checkin(c *gin.Context) {
 
 	amount, _ := c.Get("checkin_amount")
 	balance, _ := c.Get("checkin_balance")
+
+	// 审计日志必须在事务提交之后再写：createBusinessLogInternal 走的是连接池里的另一条连接
+	// （database.GetDB()），在事务内调用会撞上本事务尚未释放的 SQLite 写锁，等满
+	// PRAGMA busy_timeout=5000 后以 "database is locked" 失败 —— 这正是签到固定卡 5 秒、
+	// 审计记录 100% 丢失、并让写锁被独占 5 秒拖慢其他写请求的根因。
+	utils.CreateBusinessLogFast(c, "user_checkin", "用户签到成功", "info", map[string]interface{}{
+		"user_id": userID,
+		"amount":  amount,
+		"balance": balance,
+	})
 
 	utils.SuccessResponse(c, http.StatusOK, "签到成功", gin.H{
 		"amount":  amount,
