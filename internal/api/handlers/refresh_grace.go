@@ -64,6 +64,13 @@ func lookupRotatedRefreshResult(oldHash string) (accessToken, refreshToken strin
 	return pair.accessToken, pair.refreshToken, true
 }
 
+// deleteRotatedRefreshResult 主动清除某条宽限记录。
+// 用于**登出**：用户显式登出后，旧 refresh_token 不该还能在宽限期内换到新令牌
+// （否则「登出」在这 60 秒内形同虚设）。
+func deleteRotatedRefreshResult(oldHash string) {
+	rotatedRefreshCache.Delete(oldHash)
+}
+
 func countRotatedRefreshEntries() int {
 	n := 0
 	rotatedRefreshCache.Range(func(_, _ any) bool {

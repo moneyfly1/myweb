@@ -54,3 +54,17 @@ func TestRotatedRefreshGraceWindowIsOneMinute(t *testing.T) {
 		t.Fatalf("宽限期应为 60s，实际 %v", refreshRotateGracePeriod)
 	}
 }
+
+// 登出必须清掉宽限记录：否则用户显式登出后，旧 refresh_token 还能在 60 秒内
+// 换到一对新令牌，「登出」在这段时间里形同虚设。
+func TestLogoutClearsGraceEntry(t *testing.T) {
+	oldHash := "hash-old-logout"
+	storeRotatedRefreshResult(oldHash, "access-C", "refresh-C")
+	if _, _, ok := lookupRotatedRefreshResult(oldHash); !ok {
+		t.Fatal("前置：应命中宽限记录")
+	}
+	deleteRotatedRefreshResult(oldHash)
+	if _, _, ok := lookupRotatedRefreshResult(oldHash); ok {
+		t.Fatal("登出后不应再命中宽限记录（旧 token 必须彻底失效）")
+	}
+}
