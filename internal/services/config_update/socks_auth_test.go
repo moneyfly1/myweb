@@ -12,6 +12,8 @@ import (
 // SOCKS 节点凭据拆分：面板里 socks 节点的凭据有多种存量形态，
 // Clash 需要 username/password 两个独立字段 —— 旧实现把 UUID 整串当 username、
 // password 留空，认证必然失败，线上表现为「节点一直超时」。
+//
+// 夹具全部使用演示值（demo-user / demo-pass），不要写回真实节点凭据。
 func TestSocksAuthFromNode(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -21,9 +23,9 @@ func TestSocksAuthFromNode(t *testing.T) {
 		wantPass string
 	}{
 		{"正常链接形态：UUID=用户名 + Password=密码", "demo-user", "demo-pass", "demo-user", "demo-pass"},
-		{"存量形态：UUID=base64(user:pass)", "demo-secret-285", "", "demo-user", "demo-pass"},
-		{"存量形态：base64(user:pass)", "demo-secret-325", "", "demo-user", "demo-pass"},
-		{"GOST 形态：base64(user:pass@host:port)", "dXNlcjpwYXNzQDEuMi4zLjQ6ODAwMQ==", "", "user", "pass"},
+		{"存量形态：UUID=base64(user:pass)", "ZGVtby11c2VyOmRlbW8tcGFzcw==", "", "demo-user", "demo-pass"},
+		{"存量形态：另一组 base64(user:pass)", "ZGVtby11c2VyMjpkZW1vLXBhc3My", "", "demo-user2", "demo-pass2"},
+		{"GOST 形态：base64(user:pass@host:port)", "ZGVtby11c2VyOmRlbW8tcGFzc0AyMDMuMC4xMTMuNzo4MDAx", "", "demo-user", "demo-pass"},
 		{"UUID 里直接写 user:pass", "user:pass", "", "user", "pass"},
 		{"只有用户名（无密码认证）", "useronly", "", "useronly", ""},
 		{"UUID 空、密码里有值（少见）", "", "onlypass", "", "onlypass"},
@@ -43,9 +45,9 @@ func TestSocksAuthFromNode(t *testing.T) {
 func TestNodeToMapSocksCredentials(t *testing.T) {
 	svc := &ConfigUpdateService{}
 
-	// 线上 id1277 的真实 config（base64 形态）
+	// 存量形态的真实结构（UUID 位存的是 base64(user:pass)），值为演示数据
 	var p ProxyNode
-	raw := `{"Name":"example-node-0004","Type":"socks","Server":"node65.example.com","Port":8001,"UUID":"demo-secret-285","UDP":true}`
+	raw := `{"Name":"example-node-0004","Type":"socks","Server":"socks.example.com","Port":8001,"UUID":"ZGVtby11c2VyOmRlbW8tcGFzcw==","UDP":true}`
 	if err := json.Unmarshal([]byte(raw), &p); err != nil {
 		t.Fatalf("解析配置失败: %v", err)
 	}
@@ -57,7 +59,7 @@ func TestNodeToMapSocksCredentials(t *testing.T) {
 	if m["password"] != "demo-pass" {
 		t.Errorf("password = %v, want demo-pass", m["password"])
 	}
-	if s, _ := m["username"].(string); strings.Contains(s, "Y2Rk") {
+	if s, _ := m["username"].(string); strings.Contains(s, "ZGVtby") {
 		t.Error("username 里不应出现 base64 整串")
 	}
 }
@@ -73,8 +75,8 @@ func TestClashConfigContainsSocksCredentials(t *testing.T) {
 
 	socks := &ProxyNode{
 		Name: "example-node-0004", Type: "socks",
-		Server: "node65.example.com", Port: 8001,
-		UUID: "demo-secret-285", UDP: true,
+		Server: "socks.example.com", Port: 8001,
+		UUID: "ZGVtby11c2VyOmRlbW8tcGFzcw==", UDP: true,
 	}
 	ctx := &SubscriptionContext{
 		Status:       StatusNormal,
