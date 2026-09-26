@@ -57,10 +57,10 @@ func TestGetRealClientIPTrustsCloudflareHeader(t *testing.T) {
 	defer InitTrustedProxies("")
 
 	c := newIPContext("172.64.1.1:443", map[string]string{
-		"CF-Connecting-IP": "203.0.113.200",
-		"X-Forwarded-For":  "203.0.113.200, 172.64.1.1",
+		"CF-Connecting-IP": "8.8.8.8",
+		"X-Forwarded-For":  "8.8.8.8, 172.64.1.1",
 	})
-	if got := GetRealClientIP(c); got != "203.0.113.200" {
+	if got := GetRealClientIP(c); got != "8.8.8.8" {
 		t.Errorf("可信 CF 边缘应采信 CF-Connecting-IP，实际 %q", got)
 	}
 }
@@ -71,15 +71,15 @@ func TestGetRealClientIPTrustsNginxHeaders(t *testing.T) {
 	defer InitTrustedProxies("")
 
 	c := newIPContext("127.0.0.1:40000", map[string]string{
-		"X-Forwarded-For": "203.0.113.200, 127.0.0.1",
+		"X-Forwarded-For": "8.8.8.8, 127.0.0.1",
 	})
-	if got := GetRealClientIP(c); got != "203.0.113.200" {
-		t.Errorf("本机 nginx 场景应返回 203.0.113.200，实际 %q", got)
+	if got := GetRealClientIP(c); got != "8.8.8.8" {
+		t.Errorf("本机 nginx 场景应返回 8.8.8.8，实际 %q", got)
 	}
 
 	// X-Real-IP 兜底（无 XFF 时）
-	c = newIPContext("127.0.0.1:40001", map[string]string{"X-Real-IP": "203.0.113.201"})
-	if got := GetRealClientIP(c); got != "203.0.113.201" {
+	c = newIPContext("127.0.0.1:40001", map[string]string{"X-Real-IP": "8.8.4.4"})
+	if got := GetRealClientIP(c); got != "8.8.4.4" {
 		t.Errorf("无 XFF 时应采信 X-Real-IP，实际 %q", got)
 	}
 }
@@ -105,9 +105,9 @@ func TestGetRealClientIPSkipsPrivateForwardedIP(t *testing.T) {
 	defer InitTrustedProxies("")
 
 	c := newIPContext("127.0.0.1:40003", map[string]string{
-		"X-Forwarded-For": "192.168.1.5, 203.0.113.200, 10.0.0.1",
+		"X-Forwarded-For": "192.168.1.5, 8.8.8.8, 10.0.0.1",
 	})
-	if got := GetRealClientIP(c); got != "203.0.113.200" {
+	if got := GetRealClientIP(c); got != "8.8.8.8" {
 		t.Errorf("应跳过内网地址取公网值，实际 %q", got)
 	}
 
@@ -129,7 +129,7 @@ func TestInitTrustedProxiesParsesSingleIPAndCIDR(t *testing.T) {
 			t.Errorf("%s 应被识别为可信代理", ip)
 		}
 	}
-	for _, ip := range []string{"203.0.113.200", "8.8.8.8"} {
+	for _, ip := range []string{"8.8.8.8", "8.8.8.8"} {
 		if isTrustedProxy(parseIPForTest(ip)) {
 			t.Errorf("%s 不应被识别为可信代理", ip)
 		}
