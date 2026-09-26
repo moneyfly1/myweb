@@ -13,6 +13,14 @@ import (
 const blockBrowserSubscriptionAccessKey = "block_browser_subscription_access"
 
 func shouldBlockBrowserSubscriptionAccess(c *gin.Context) bool {
+	// 自研客户端（MoneyFly）一律放行：App 里允许用户自定义「订阅 UA」
+	// （有些机场按 UA 返回不同格式，用户会粘贴浏览器 UA 自救），
+	// 但同一个 Dio 一定会带上 X-MF-* 设备头 —— 有这些头就说明是本站在客户端，
+	// 此时若还按 UA 判定成浏览器并返回空内容，用户就会看到「拉取订阅失败」。
+	// 线上实例：客户 dos2009 自定义 UA 为 GooBrowser/Chrome，订阅返回 200 + 0 字节。
+	if extractMFHeaders(c) != nil {
+		return false
+	}
 	if !isBrowserUserAgent(c.GetHeader("User-Agent")) {
 		return false
 	}
