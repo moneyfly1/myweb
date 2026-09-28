@@ -58,20 +58,28 @@ func TestRepoSyncConnection(c *gin.Context) {
 	})
 }
 
-// RunRepoSync 立即执行一次同步
+// RunRepoSync 立即执行一次同步（异步）。
+//
+// 同步会下载远程目录下全部文件（当前 70+ 个），耗时 17~60 秒。此前它在请求内同步
+// 执行，这种长请求在丢包/代理/网关链路上极易中途断开，管理页只看到
+// 「同步失败: Network Error」，而服务端其实已经同步完成。现在请求立即返回
+// 「已在后台开始同步」，结果由 GetRepoSyncStatus（is_running / last_status /
+// last_message）轮询呈现。
 func RunRepoSync(c *gin.Context) {
 	svc := repo_sync.NewService()
-	result, err := svc.SyncNow()
+	started, err := svc.StartSyncAsync()
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "同步失败", err)
+		utils.SuccessResponse(c, http.StatusOK, "已有同步任务正在进行，请稍后刷新状态查看结果", gin.H{
+			"started": false,
+			"running": true,
+		})
 		return
 	}
 
-	msg := fmt.Sprintf("同步完成: 下载 %d 个文件, 清理 %d 个文件", result.FilesDownloaded, result.FilesRemoved)
-	if len(result.Errors) > 0 {
-		msg += fmt.Sprintf(", %d 个文件失败", len(result.Errors))
-	}
-	utils.SuccessResponse(c, http.StatusOK, msg, result)
+	utils.SuccessResponse(c, http.StatusAccepted, "已在后台开始同步，稍后点「刷新状态」查看结果", gin.H{
+		"started": started,
+		"running": true,
+	})
 }
 
 // ServeRepoSyncFile 公开访问同步目录（GET /repo-sync/*filepath）
