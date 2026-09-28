@@ -65,10 +65,36 @@ type SyncResult struct {
 	Errors          []string `json:"errors"`
 }
 
+// ErrSyncRunning 已有同步任务在进行中
+var ErrSyncRunning = errors.New("已有同步任务正在进行")
+
+// 进程级同步锁。
+//
+// 为什么不能只用 Service.mu：HTTP 处理器（「立即下载」）与调度器每次都会各自
+// NewService()，实例内的锁无法跨实例互斥 —— 此前两者可能同时同步同一个目录
+// （并发下载 + 并发清理）。这里改成进程级，保证同一时刻只有一次同步。
+var globalSyncMu sync.Mutex
+
+// IsSyncing 是否有同步正在进行（跨 Service 实例，供状态查询与调度跳过使用）
+func IsSyncing() bool {
+	if globalSyncMu.TryLock() {
+		globalSyncMu.Unlock()
+		return false
+	}
+	return true
+}
+
+// tryLockSync 非阻塞抢占同步权；返回释放函数
+func tryLockSync() (func(), bool) {
+	if !globalSyncMu.TryLock() {
+		return nil, false
+	}
+	return globalSyncMu.Unlock, true
+}
+
 // Service 仓库文件同步服务：将 GitHub 私有仓库目录定时下载到本地公开目录
 type Service struct {
 	db *gorm.DB
-	mu sync.Mutex
 }
 
 // NewService 创建同步服务
@@ -118,13 +144,9 @@ func (s *Service) LocalDirPath() string {
 	return filepath.Join(wd, uploadDir, "repo_sync")
 }
 
-// IsRunning 是否正在同步
+// IsRunning 是否正在同步（跨实例判定：实例内的锁无法反映其他实例的同步状态）
 func (s *Service) IsRunning() bool {
-	if s.mu.TryLock() {
-		s.mu.Unlock()
-		return false
-	}
-	return true
+	return IsSyncing()
 }
 
 // ShouldRunNow 根据配置（启用开关 + 间隔 + 上次执行时间）判断是否到了执行时间
@@ -151,6 +173,12 @@ func (s *Service) ShouldRunNow() bool {
 // Tick 定时任务入口：到点则执行一次同步并记录调度日志
 func (s *Service) Tick() {
 	if !s.ShouldRunNow() {
+		return
+	}
+
+	// 手动「立即下载」正在进行时跳过本轮，避免同一目录并发下载/清理
+	if IsSyncing() {
+		utils.LogInfo("已有仓库同步任务在进行，跳过本次定时同步")
 		return
 	}
 
@@ -185,11 +213,78 @@ func (s *Service) Tick() {
 	}
 }
 
-// SyncNow 立即执行一次同步：列出远程目录、逐个下载、清理本地多余文件
+// SyncNow 同步执行一次同步（阻塞直到完成）。已有同步在跑时返回 ErrSyncRunning。
 func (s *Service) SyncNow() (*SyncResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock, ok := tryLockSync()
+	if !ok {
+		return nil, ErrSyncRunning
+	}
+	defer unlock()
+	return s.syncNowLocked()
+}
 
+// StartSyncAsync 非阻塞启动一次同步：立刻返回「是否已启动」，真正的下载在后台进行，
+// 结果写入同步状态（system_configs），前端通过 GetStatus 轮询查看。
+//
+// 背景：此前「立即下载」在 HTTP 请求内同步执行（71 个文件需 17~60 秒）。在丢包/代理
+// 链路上这种长请求极易中途断开，前端只看到「同步失败: Network Error」，而服务端其实
+// 已经同步完成 —— 改成异步后，请求立即返回，结果以状态为准。
+func (s *Service) StartSyncAsync() (bool, error) {
+	unlock, ok := tryLockSync()
+	if !ok {
+		return false, ErrSyncRunning
+	}
+
+	go func() {
+		defer unlock()
+		// goroutine 内 panic 会直接杀掉整个进程，必须兜住并写回失败状态
+		defer func() {
+			if r := recover(); r != nil {
+				utils.LogErrorMsg("GitHub 仓库文件同步 panic: %v", r)
+				func() {
+					defer func() { _ = recover() }()
+					s.saveStatus("failed", fmt.Sprintf("同步异常: %v", r), 0)
+				}()
+			}
+		}()
+
+		start := time.Now()
+		utils.LogInfo("开始执行 GitHub 仓库文件同步任务（手动触发，异步）")
+		if err := utils.CreateSchedulerLog("repo_sync", "started", "手动触发 GitHub 仓库文件同步", nil); err != nil {
+			log.Printf("failed to create scheduler log: %v", err)
+		}
+
+		result, err := s.syncNowLocked()
+		if err != nil {
+			utils.LogErrorMsg("GitHub 仓库文件同步失败: %v", err)
+			if logErr := utils.CreateSchedulerLog("repo_sync", "error", fmt.Sprintf("GitHub 仓库文件同步失败: %v", err), map[string]interface{}{
+				"error": err.Error(),
+			}); logErr != nil {
+				log.Printf("failed to create scheduler log: %v", logErr)
+			}
+			return
+		}
+
+		msg := fmt.Sprintf("同步完成: 下载 %d 个文件, 清理 %d 个文件, 耗时 %.1fs", result.FilesDownloaded, result.FilesRemoved, time.Since(start).Seconds())
+		if len(result.Errors) > 0 {
+			msg += fmt.Sprintf(", %d 个文件失败", len(result.Errors))
+		}
+		utils.LogInfo("%s", msg)
+		if logErr := utils.CreateSchedulerLog("repo_sync", "success", msg, map[string]interface{}{
+			"files_downloaded": result.FilesDownloaded,
+			"files_removed":    result.FilesRemoved,
+			"errors":           result.Errors,
+		}); logErr != nil {
+			log.Printf("failed to create scheduler log: %v", logErr)
+		}
+	}()
+
+	return true, nil
+}
+
+// syncNowLocked 执行一次真正的同步：列出远程目录、逐个下载、清理本地多余文件。
+// 调用方必须已持有进程级同步锁（SyncNow / StartSyncAsync 负责）。
+func (s *Service) syncNowLocked() (*SyncResult, error) {
 	cfg := s.LoadConfig()
 	if cfg.Token == "" || cfg.Owner == "" || cfg.Repo == "" {
 		err := errors.New("请先配置 GitHub Token、仓库所有者和仓库名称")
@@ -293,7 +388,7 @@ func (s *Service) GetStatus() map[string]interface{} {
 	return map[string]interface{}{
 		"enabled":          cfg.Enabled,
 		"interval_minutes": cfg.IntervalMinutes,
-		"is_running":       s.IsRunning(),
+		"is_running":       IsSyncing(),
 		"last_time":        s.getConfigValue(KeyLastTime),
 		"last_status":      s.getConfigValue(KeyLastStatus),
 		"last_message":     s.getConfigValue(KeyLastMessage),

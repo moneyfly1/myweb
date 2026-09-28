@@ -1082,14 +1082,14 @@
                 <div class="sync-status-item">
                   <span class="sync-status-label">上次下载</span>
                   <span class="sync-status-value">{{ repoSyncStatus?.last_time ? repoSyncStatus.last_time.replace('T', ' ') : '从未下载' }}</span>
-                  <el-tag v-if="repoSyncStatus?.last_status" :type="repoSyncStatusType" size="small">{{ repoSyncStatusLabel }}</el-tag>
+                  <el-tag v-if="repoSyncStatus?.is_running || repoSyncStatus?.last_status" :type="repoSyncStatusType" size="small">{{ repoSyncStatusLabel }}</el-tag>
                 </div>
                 <div v-if="repoSyncStatus?.last_message" class="sync-status-message">{{ repoSyncStatus.last_message }}</div>
               </div>
 
               <div class="mt-3">
                 <el-button type="success" plain @click="testRepoSyncConnection" :loading="repoSyncLoading.test" :disabled="!repoSyncSettings.repo_sync_token" size="small">测试连接</el-button>
-                <el-button type="primary" plain @click="runRepoSyncNow" :loading="repoSyncLoading.run" size="small">立即下载</el-button>
+                <el-button type="primary" plain @click="runRepoSyncNow" :loading="repoSyncLoading.run" :disabled="repoSyncStatus?.is_running" size="small">立即下载</el-button>
                 <el-button size="small" @click="loadRepoSyncStatus" :loading="repoSyncLoading.status">刷新状态</el-button>
               </div>
 
@@ -1879,6 +1879,7 @@ export default {
     const repoSyncBaseUrl = computed(() => `${window.location.origin}/repo-sync/`)
     const repoSyncFileUrl = (f) => `${window.location.origin}/repo-sync/${String(f.name || '').split('/').map(encodeURIComponent).join('/')}`
     const repoSyncStatusType = computed(() => {
+      if (repoSyncStatus.value?.is_running) return 'warning'
       const s = repoSyncStatus.value?.last_status
       if (s === 'success') return 'success'
       if (s === 'failed') return 'danger'
@@ -1886,6 +1887,7 @@ export default {
       return 'info'
     })
     const repoSyncStatusLabel = computed(() => {
+      if (repoSyncStatus.value?.is_running) return '同步中…'
       const s = repoSyncStatus.value?.last_status
       return s === 'success' ? '成功' : s === 'failed' ? '失败' : s === 'partial' ? '部分成功' : s || '等待中'
     })
@@ -1921,15 +1923,50 @@ export default {
         repoSyncLoading.test = false
       }
     }
+    // 异步同步：请求立即返回「已开始」，随后每 3 秒刷新状态直到本次同步结束。
+    // 关键：请求因链路中断没收到响应 ≠ 同步没开始，一律以「同步状态」为准。
+    let repoSyncPollTimer = null
+    const stopRepoSyncPoll = () => {
+      if (repoSyncPollTimer) {
+        clearInterval(repoSyncPollTimer)
+        repoSyncPollTimer = null
+      }
+    }
+    onBeforeUnmount(stopRepoSyncPoll)
+    const pollRepoSyncUntilDone = (maxMs = 180000) => {
+      stopRepoSyncPoll()
+      const startedAt = Date.now()
+      repoSyncPollTimer = setInterval(async () => {
+        try {
+          await loadRepoSyncStatus()
+        } catch (_) { /* 单次刷新失败继续轮询 */ }
+        const running = repoSyncStatus.value?.is_running
+        const timedOut = Date.now() - startedAt > maxMs
+        if (!running || timedOut) {
+          stopRepoSyncPoll()
+          if (!running) {
+            const st = repoSyncStatus.value?.last_status
+            const msg = repoSyncStatus.value?.last_message || ''
+            if (st === 'success') ElMessage.success('同步完成：' + msg)
+            else if (st) ElMessage.warning('同步结束：' + (msg || st))
+          }
+        }
+      }, 3000)
+    }
     const runRepoSyncNow = async () => {
       repoSyncLoading.run = true
       try {
-        const res = await api.post('/admin/repo-sync/run', {}, { timeout: 300000 })
-        if (res.data?.success !== false) ElMessage.success(res.data?.message || '同步完成')
-        else ElMessage.error(res.data?.message || '同步失败')
+        const res = await api.post('/admin/repo-sync/run', {}, { timeout: 30000 })
+        const started = res.data?.data?.started
+        if (started === false) ElMessage.info(res.data?.message || '已有同步任务正在进行，请稍后刷新状态')
+        else ElMessage.success(res.data?.message || '已在后台开始同步')
         await loadRepoSyncStatus()
+        pollRepoSyncUntilDone()
       } catch (e) {
-        ElMessage.error('同步失败: ' + (e.response?.data?.message || e.message))
+        // 长请求断开时后台往往已经同步完成：给出提示并以状态为准继续轮询
+        ElMessage.warning('请求未收到响应（' + (e.response?.data?.message || e.message) + '），正在按「同步状态」确认结果…')
+        try { await loadRepoSyncStatus() } catch (_) { /* 忽略 */ }
+        pollRepoSyncUntilDone()
       } finally {
         repoSyncLoading.run = false
       }
