@@ -1678,6 +1678,15 @@ func (s *ConfigUpdateService) updateProxyGroups(groups []interface{}, proxyNames
 			} else {
 				m["proxies"] = realProxyNames
 			}
+			// 内核硬要求：每个代理组必须有 use 或 proxies。成员为空时 mihomo 直接报
+			//   proxy group[0]: 🔮 负载均衡: `use` or `proxies` missing
+			// 并让**整份配置** -t 失败 → 客户端起不来（不是"少个分组"）。
+			// 这在真实场景会触发：采集节点被清空（订阅源配置变更后等待下一次同步）、
+			// special_only 用户没有任何自定义节点、订阅刚过期等。
+			// 兜底一个内核内置、永远合法的成员 DIRECT，保证配置总能被客户端加载。
+			if list, ok := m["proxies"].([]string); !ok || len(list) == 0 {
+				m["proxies"] = []string{"DIRECT"}
+			}
 		}
 	}
 }

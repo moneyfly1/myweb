@@ -164,8 +164,10 @@ func TestValidateSS2022KeyLength(t *testing.T) {
 				t.Fatalf("%s pw=%q 应被丢弃", tc.cipher, tc.pw)
 			}
 			ve, _ := err.(*NodeValidationError)
-			if ve.Code != ReasonCipherKeyMismatch {
-				t.Fatalf("%s pw=%q 原因码应为 %s，实际 %s", tc.cipher, tc.pw, ReasonCipherKeyMismatch, ve.Code)
+			// 原因码已细分为两类：非合法 base64 与 长度不符
+			if ve.Code != ReasonCipherKeyMismatch && ve.Code != ReasonCipherKeyNotB64 {
+				t.Fatalf("%s pw=%q 原因码应为 %s 或 %s，实际 %s",
+					tc.cipher, tc.pw, ReasonCipherKeyMismatch, ReasonCipherKeyNotB64, ve.Code)
 			}
 		}
 	}

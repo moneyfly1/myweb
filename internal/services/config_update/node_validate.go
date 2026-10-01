@@ -33,7 +33,8 @@ const (
 	ReasonInvalidPort         = "invalid-port"               // port 不在 1..65535
 	ReasonMissingField        = "missing-field"              // 必填字段缺失（detail 里带字段名）
 	ReasonUnsupportedCipher   = "cipher-unsupported"         // ss/ssr cipher 不在内核白名单
-	ReasonCipherKeyMismatch   = "cipher-key-length-mismatch" // ss 2022-blake3 密钥非合法 base64 或长度不符
+	ReasonCipherKeyNotB64     = "cipher-key-not-base64"      // ss 2022-blake3 密钥不是合法 base64
+	ReasonCipherKeyMismatch   = "cipher-key-length-mismatch" // ss 2022-blake3 密钥长度不等于内核要求
 	ReasonPluginInvalid       = "plugin-invalid"             // ss plugin 名未知或必需参数缺失
 	ReasonUnsupportedProtocol = "ssr-protocol-unsupported"   // ssr protocol 不在内核枚举内
 	ReasonUnsupportedObfs     = "ssr-obfs-unsupported"       // ssr obfs 不在内核枚举内
@@ -332,16 +333,39 @@ func decodeSS2022KeyPart(part string, wantLen int) (int, error) {
 
 // ssKeyValid 判断 2022-blake3 密钥是否完全合法
 func ssKeyValid(password string, wantLen int) bool {
+	code, _ := ssKeyCheck(password, wantLen)
+	return code == ""
+}
+
+// ssKeyCheck 校验 2022-blake3 密钥，返回精确原因码与说明（"" 表示合法）。
+//
+// 形态以真内核实测为准（mihomo Meta v1.19.32）：
+//   - 单段：password 为一段 base64，解码长度必须精确等于 wantLen
+//   - 两段（多用户）：password 形如 "serverKey:userKey[:userKey2...]"，**每一段**都必须
+//     合法 base64 且解码长度精确等于 wantLen
+//
+// 实测矩阵（cipher=2022-blake3-aes-128-gcm，wantLen=16）：
+//
+//	"k16"            PASS
+//	"k16:k16"        PASS   ← 两段式内核接受
+//	"k32"            FAIL   bad key length, required 16
+//	"k32:k16"        FAIL   bad key length
+//	非 base64        FAIL   decode key: illegal base64 data at input byte N
+func ssKeyCheck(password string, wantLen int) (code, detail string) {
 	parts := strings.Split(password, ":")
-	if len(parts) == 0 {
-		return false
+	if len(parts) == 0 || strings.TrimSpace(password) == "" {
+		return ReasonCipherKeyNotB64, "密钥为空"
 	}
-	for _, p := range parts {
-		if _, err := decodeSS2022KeyPart(p, wantLen); err != nil {
-			return false
+	for i, p := range parts {
+		decoded, err := base64.StdEncoding.DecodeString(p)
+		if err != nil {
+			return ReasonCipherKeyNotB64, fmt.Sprintf("第 %d 段不是合法 base64（内核报 decode key: illegal base64 data）", i+1)
+		}
+		if len(decoded) != wantLen {
+			return ReasonCipherKeyMismatch, fmt.Sprintf("第 %d 段解码后 %d 字节，内核要求 %d 字节（bad key length）", i+1, len(decoded), wantLen)
 		}
 	}
-	return true
+	return "", ""
 }
 
 // NormalizeSS2022Key 修正 2022-blake3 密钥的 URL 编码污染。
@@ -399,10 +423,17 @@ func validateSSNode(n *ProxyNode) error {
 	if strings.TrimSpace(n.Password) == "" {
 		return newValidationError(ReasonMissingField, "ss 缺少 password（内核报 missing password）")
 	}
+	// 密钥形态校验只对 2022-blake3-* 生效。
+	// 依据（内核实测）：其它 cipher 的 password 是任意字符串——例如
+	//   {type: ss, cipher: aes-128-gcm, password: "pw"} → mihomo -t PASS
+	// 若对所有 ss 密码都强制 base64，会把现网绝大多数正常节点（如
+	// chacha20-ietf-poly1305 + "panel-pass-example!"）全部误杀。
+	// 只有 2022-blake3-* 把 password 当"密钥"用，内核才会做 base64 + 长度校验，
+	// 不合法时直接让**整份配置**失效（不是少一个节点），所以必须在这里拦死。
 	if wantLen, is2022 := ss2022RequiredKeyLen[cipher]; is2022 {
-		if !ssKeyValid(n.Password, wantLen) {
-			return newValidationError(ReasonCipherKeyMismatch,
-				"%s 的 password 必须是合法 base64 且每段解码后为 %d 字节（内核报 bad key length / decode key，整份配置失效）", cipher, wantLen)
+		if code, detail := ssKeyCheck(n.Password, wantLen); code != "" {
+			return newValidationError(code,
+				"%s 的 password 非法：%s（内核报 decode key / bad key length，会让整份配置 -t 失败、客户端起不来）", cipher, detail)
 		}
 	}
 	return validateSSPlugin(n)

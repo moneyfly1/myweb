@@ -1,6 +1,7 @@
 package config_update
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"cboard-go/internal/models"
 
+	"gopkg.in/yaml.v3"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -404,4 +406,123 @@ func TestSanitizeProxiesForOutput(t *testing.T) {
 	if src[1].Password != polluted {
 		t.Fatalf("不得修改入参节点（共享缓存），实际被改成 %q", src[1].Password)
 	}
+}
+
+// setupAuditTestDB 体检测试用的内存库（只建 nodes 表）
+func setupAuditTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	dsn := "file:" + t.Name() + "?mode=memory&cache=shared"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatalf("打开内存库失败: %v", err)
+	}
+	if err := db.AutoMigrate(&models.Node{}); err != nil {
+		t.Fatalf("迁移失败: %v", err)
+	}
+	t.Cleanup(func() {
+		if sqlDB, err := db.DB(); err == nil {
+			sqlDB.Close()
+		}
+	})
+	return db
+}
+
+// seedAuditNode 插入一个活跃节点（config 为 ProxyNode JSON）
+func seedAuditNode(t *testing.T, db *gorm.DB, id uint, name, typ string, p *ProxyNode) {
+	t.Helper()
+	b, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("序列化节点失败: %v", err)
+	}
+	cfg := string(b)
+	n := models.Node{ID: id, Name: name, Region: "test", Type: typ, Status: "online",
+		IsActive: true, IsManual: false, Config: &cfg, SourceIndex: 13}
+	if err := db.Create(&n).Error; err != nil {
+		t.Fatalf("插入节点失败: %v", err)
+	}
+}
+
+// 内核硬要求：每个代理组必须有 use 或 proxies，否则
+//
+//	proxy group[0]: 🔮 负载均衡: `use` or `proxies` missing
+//
+// → 整份配置 -t 失败、客户端起不来。这在"采集节点被清空 / 专线用户无自定义节点"
+// 等真实场景会发生（本次上线期间现场就撞到了：管理员改订阅源配置后 nodes 被清空）。
+func TestProxyGroupsNeverEmptyRealKernel(t *testing.T) {
+	bin := kernelBinForAcceptance(t)
+	svc, _ := setupSelfCheckTest(t, nil)
+	ctx := &SubscriptionContext{Status: StatusNormal}
+
+	// 只有提示节点、没有任何真实节点
+	infoOnly := svc.addInfoNodes(nil, ctx)
+	yaml := svc.generateClashYAML(infoOnly, ctx)
+
+	groups := parseYAMLProxyGroups(t, yaml)
+	if len(groups) == 0 {
+		t.Fatal("应生成代理组")
+	}
+	for _, g := range groups {
+		members, _ := g["proxies"].([]interface{})
+		if len(members) == 0 {
+			t.Fatalf("分组 %v(type=%v) 成员为空 → 内核会拒绝整份配置", g["name"], g["type"])
+		}
+	}
+	if ok, errLine := runKernelOnYAML(t, bin, yaml); !ok {
+		t.Fatalf("零真实节点时生成的配置仍必须能被内核接受，实际失败: %s", errLine)
+	}
+	t.Logf("零真实节点场景：%d 个分组全部非空，真内核 -t 通过", len(groups))
+}
+
+// 回归保护：有真实节点时，聚合类分组必须填真实节点名，不能被 DIRECT 兜底顶掉
+func TestProxyGroupsUseRealNodesWhenPresent(t *testing.T) {
+	svc, _ := setupSelfCheckTest(t, nil)
+	ctx := &SubscriptionContext{Status: StatusNormal}
+	nodes := svc.addInfoNodes(mkNodes(3, nil), ctx)
+	yaml := svc.generateClashYAML(nodes, ctx)
+
+	groups := parseYAMLProxyGroups(t, yaml)
+	var auto *map[string]interface{}
+	for i := range groups {
+		if groups[i]["name"] == "♻️ 自动选择" {
+			auto = &groups[i]
+			break
+		}
+	}
+	if auto == nil {
+		t.Fatal("模板应包含 ♻️ 自动选择 分组")
+	}
+	members, _ := (*auto)["proxies"].([]interface{})
+	if len(members) == 0 {
+		t.Fatal("有真实节点时自动选择不应为空")
+	}
+	// 有真实节点时必须优先使用真实节点；DIRECT 只允许作为"同时存在的兜底项"，
+	// 不允许出现"只剩 DIRECT"（那说明真实节点没被填进去）
+	real, onlyDirect := 0, true
+	for _, m := range members {
+		name, _ := m.(string)
+		if strings.HasPrefix(name, "n0") {
+			real++
+		}
+		if name != "DIRECT" {
+			onlyDirect = false
+		}
+	}
+	if real != 3 {
+		t.Fatalf("自动选择应包含 3 个真实节点，实际 %d: %v", real, members)
+	}
+	if onlyDirect {
+		t.Fatal("有真实节点时不应只剩 DIRECT 兜底")
+	}
+}
+
+// parseYAMLProxyGroups 解析生成配置里的 proxy-groups
+func parseYAMLProxyGroups(t *testing.T, yamlText string) []map[string]interface{} {
+	t.Helper()
+	var doc struct {
+		ProxyGroups []map[string]interface{} `yaml:"proxy-groups"`
+	}
+	if err := yaml.Unmarshal([]byte(yamlText), &doc); err != nil {
+		t.Fatalf("生成的配置不是合法 YAML: %v", err)
+	}
+	return doc.ProxyGroups
 }
