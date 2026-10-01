@@ -70,16 +70,35 @@ var formatRenderTypes = map[OutputFormat]map[string]bool{
 	FmtLinksBase64: linkRenderTypes,
 	FmtLinksPlain:  linkRenderTypes,
 	FmtSurge:       {"http": true, "hysteria2": true, "socks": true, "socks5": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
-	// SingBox：为什么**不含** wireguard / ssh / ssr（用真实内核 sing-box 1.11.15 实测得出，不是凭记忆）：
-	//   · wireguard：sing-box 的 legacy wireguard **outbound** 自 1.11 起废弃、1.13 将移除
-	//     （内核原话："legacy wireguard outbound is deprecated in sing-box 1.11.0 and will be removed
-	//     in sing-box 1.13.0"），且缺少 private_key 时直接 FATAL "missing private key"。
-	//     现网 wg:// 节点数为 0；渲染一个即将被移除的写法属于给未来埋雷，故不渲染（丢弃会记
-	//     format-unsupported-type，管理员可见）。如将来要支持，应改用 1.11+ 的 endpoints 模型。
-	//   · ssh：本项目**没有 ssh:// 解析器**（见 node_parser.go 的 protocolParsers），
-	//     即永远不会有 ssh 类型节点进入节点池，渲染它属于死代码。
-	//   · ssr：sing-box 已移除 shadowsocksr 支持。
-	FmtSingBox: {"hysteria": true, "hysteria2": true, "anytls": true, "socks": true, "socks5": true, "http": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
+	// SingBox：本表只收"任何 sing-box 版本都能解析"的 outbound 类型。
+	// 判定依据 = 真实内核 sing-box 1.11.15 的 `sing-box check` 退出码（逐个类型实测），
+	// 不以文档的 Required 标记为准——实测二者有实质差异。
+	//
+	// ⚠️ 致命语义：**未知的 outbound type 会让整份配置解码失败**（不是"该节点不可用"）。
+	//    内核原话：`FATAL decode config: outbounds[0]: unknown outbound type: anytls`。
+	//    因此"没把握的类型一律不进本表"是这层的核心原则。
+	//
+	//   · anytls：sing-box **1.12.0 才加入**；实测 1.11.15 → `unknown outbound type: anytls`（exit=1）。
+	//     本表曾含 anytls（先于 2026-10-01 的修复就存在）——**只要源里出现 1 个 anytls 节点，
+	//     所有 sing-box 1.11 客户端拿到的整份订阅都会解析失败**（现网 anytls 节点 0 个，属未爆的雷）。
+	//     订阅端点识别不出客户端内核版本（Hiddify 等 UA 不带 sing-box 版本），无法按版本放行，
+	//     故按失败安全原则剔除：节点记为 format-unsupported-type（管理员可见），
+	//     同时仍经 clash / links / Loon / QuantumultX 正常下发。
+	//     恢复条件：能拿到 sing-box 内核版本并按 ≥1.12 放行时，可把 anytls 加回本表。
+	//   · wireguard：legacy wireguard **outbound** 自 1.11 起废弃。**实际移除版本是 1.14**——
+	//     官方文档、废弃页、连内核自己的告警文案都写 1.13，但直读源码 v1.13.0 仍真注册
+	//     registerWireGuardOutbound、v1.14.0 才换成报错桩（v1.13 的 stub 里只有 SSR）。
+	//     且缺 private_key 时内核 FATAL "missing private key"（整份配置级失败）。
+	//     现网 wg:// 节点 0 个；将来要支持应改用 1.11+ 的 endpoints 模型，并补
+	//     server / peer_public_key / local_address 的**自校验**（内核 check 对这三项不报错，
+	//     但缺了节点根本跑不通）。
+	//   · ssh：sing-box 确实有 ssh outbound（1.11/1.14 实测 exit=0；user+password 即可，
+	//     无私钥也能渲染）。本项目不渲染它的原因是**没有 ssh:// 解析器**（见 node_parser.go 的
+	//     protocolParsers），即永远不会有 ssh 类型节点进池，渲染属死代码。
+	//     将来若加 ssh:// 解析器：user+password 就够；host_key 要么写完整真实值要么不写
+	//     （官方文档示例里的 host_key 是截断占位串，照抄会 FATAL parse host key nil）。
+	//   · ssr：sing-box 自 1.6.0 起彻底移除，with_shadowsocksr 构建标签也救不活（实现体是 os.ErrInvalid）。
+	FmtSingBox: {"hysteria": true, "hysteria2": true, "socks": true, "socks5": true, "http": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
 	// QuantumultX：官方 sample.conf 支持 shadowsocks/vmess/vless/trojan/http/socks5/anytls；
 	// 明确不支持 hysteria/hysteria2/tuic（不渲染比渲染坏行更安全——QX 遇到不支持的类型有整份失败风险）。
 	FmtQuantumultX: {"ss": true, "trojan": true, "vmess": true, "vless": true, "socks": true, "socks5": true, "http": true, "anytls": true},

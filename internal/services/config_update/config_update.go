@@ -3004,9 +3004,6 @@ func (s *ConfigUpdateService) generateSingBoxConfig(proxies []*ProxyNode) string
 					Password string `json:"password,omitempty"`
 				}{Type: ot, Password: optVal[string](m, "obfs-password")}
 			}
-		case "anytls":
-			ob.Type = "anytls"
-			ob.Password = optVal[string](m, "password")
 		case "socks", "socks5":
 			ob.Type = "socks"
 			ob.Version = "5"
@@ -3025,7 +3022,7 @@ func (s *ConfigUpdateService) generateSingBoxConfig(proxies []*ProxyNode) string
 		}
 
 		// TLS
-		if optVal[bool](m, "tls") || n.Type == "trojan" || n.Type == "tuic" || n.Type == "anytls" || n.Type == "hysteria" {
+		if optVal[bool](m, "tls") || n.Type == "trojan" || n.Type == "tuic" || n.Type == "hysteria" {
 			sni := sniFromMap(m, ob.Server)
 			ob.TLS = &struct {
 				Enabled    bool     `json:"enabled"`
