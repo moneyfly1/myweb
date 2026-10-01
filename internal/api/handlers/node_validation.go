@@ -6,6 +6,7 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/config_update"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -72,10 +73,13 @@ func GetNodeValidationLogs(c *gin.Context) {
 		totalAll += r.Total
 	}
 
+	// 第二层（内核自检）的运行期状态：让后台一眼看出"内核是否在工作"，
+	// 避免 mihomo 缺失/开关关闭导致静默降级却无人察觉。
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"list":    logs,
 		"total":   len(logs),
 		"all":     totalAll,
 		"summary": summary,
+		"kernel":  config_update.GetKernelSelfCheckStats(),
 	})
 }
