@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"cboard-go/internal/models"
@@ -49,6 +50,9 @@ const (
 )
 
 var errKernelUnavailable = errors.New("mihomo 内核不可用")
+
+// noKernelLogAt 降级日志节流时间戳
+var noKernelLogAt atomic.Int64
 
 // kernelSelfCheckDisabled 是否关闭内核自检（运维兜底开关；关闭后退化为纯静态校验）
 func kernelSelfCheckDisabled() bool {
@@ -416,7 +420,11 @@ func (s *ConfigUpdateService) buildSelfCheckedClashConfig(proxies []*ProxyNode, 
 	if mihomoBinaryPath() == "" {
 		kept, events := StaticValidateNodes(proxies, "generate(no-kernel)")
 		s.recordNodeValidationEvents(events)
-		logf("未找到 mihomo 内核二进制，本次仅做静态校验（降级模式）")
+		// 节流：同一分钟内只提示一次，避免每个订阅请求都刷屏
+		if t := noKernelLogAt.Load(); time.Since(time.Unix(0, t)) > time.Minute {
+			noKernelLogAt.Store(time.Now().UnixNano())
+			logf("未找到 mihomo 内核二进制，本次仅做静态校验（降级模式）")
+		}
 		cfg := s.generateClashYAML(kept, ctx)
 		s.selfCheckCache().setLastGood(cacheToken, cfg)
 		return cfg
@@ -604,7 +612,15 @@ func (s *ConfigUpdateService) recordNodeValidationEvents(events []NodeValidation
 // PrewarmKernelSelfCheck 在采集同步结束后于后台预热内核自检缓存，
 // 让「节点变化后的第一次订阅请求」也能命中缓存，不被自检拖慢。
 func (s *ConfigUpdateService) PrewarmKernelSelfCheck() {
-	if kernelSelfCheckDisabled() || mihomoBinaryPath() == "" {
+	if kernelSelfCheckDisabled() {
+		logf("⚠️ 内核自检已被开关 MF_KERNEL_SELFCHECK 关闭，第二层降级为纯静态校验")
+		return
+	}
+	if mihomoBinaryPath() == "" {
+		// 换机部署/误删内核时最容易踩到：必须大声说出来，不能静默降级
+		logf("⚠️ 未找到 mihomo 内核二进制（期望 ./bin/mihomo 或 $MF_MIHOMO_BIN）：" +
+			"第二层内核自检已降级为纯静态校验。放置内核后无需重启即可生效。" +
+			"（admin 接口 /api/v1/admin/nodes/validation-logs 的 kernel.available 也会显示 false）")
 		return
 	}
 	go func() {

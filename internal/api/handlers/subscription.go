@@ -2401,7 +2401,45 @@ func UpdateConfigUpdateConfig(c *gin.Context) {
 	}
 
 	utils.CreateAuditLogSimple(c, "update_config_update_config", "config_update", 0, "管理员操作: 更新配置更新设置")
+
+	// 订阅源 URL 体检：非 http(s) 的条目（例如把「节点名」误填成订阅源）每次采集都会白跑一轮重试
+	// 并刷一条 ERROR 日志。这里在保存时就把问题点名报出来（不阻断保存），避免长期无人察觉。
+	warnings := validateSubscriptionSourceURLs(req["urls"])
+	if len(warnings) > 0 {
+		for _, w := range warnings {
+			log.Printf("[config-update] 订阅源配置告警: %s", w)
+		}
+		utils.SuccessResponse(c, http.StatusOK, "配置保存成功（有订阅源格式告警，见 warnings）", gin.H{
+			"warnings": warnings,
+		})
+		return
+	}
 	utils.SuccessResponse(c, http.StatusOK, "配置保存成功", nil)
+}
+
+// validateSubscriptionSourceURLs 校验订阅源列表里的每一条是否像 http(s) URL。
+// 只告警不阻断：历史配置里可能已有脏数据，不该因此让管理员保存不了别的设置。
+func validateSubscriptionSourceURLs(raw interface{}) []string {
+	str, _ := raw.(string)
+	if strings.TrimSpace(str) == "" {
+		return nil
+	}
+	var warnings []string
+	for i, line := range strings.Split(str, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "http://") && !strings.HasPrefix(line, "https://") {
+			shown := line
+			if len(shown) > 60 {
+				shown = shown[:60] + "…"
+			}
+			warnings = append(warnings, fmt.Sprintf(
+				"第 %d 条订阅源不是 http/https 链接：%q（该条目每次采集都会失败并刷 ERROR 日志，建议删除）", i+1, shown))
+		}
+	}
+	return warnings
 }
 
 func StartConfigUpdate(c *gin.Context) {

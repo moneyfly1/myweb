@@ -554,3 +554,25 @@ func AuditOutputFormats(db *gorm.DB) (*FormatAuditReport, error) {
 	}
 	return rep, nil
 }
+
+// TypeFormatMatrix 协议 × 输出格式 支持矩阵（✓=该格式会下发，空=该客户端确实不支持）。
+// 用途：任何"某格式漏了某协议"都能一眼看出来，不再靠人记得去查。
+func TypeFormatMatrix() ([]string, map[OutputFormat]map[string]bool) {
+	formats := []OutputFormat{FmtClash, FmtLinksBase64, FmtSurge, FmtSingBox, FmtQuantumultX, FmtLoon}
+	types := make([]string, 0, len(mihomoSupportedNodeTypes))
+	for t := range mihomoSupportedNodeTypes {
+		types = append(types, t)
+	}
+	sort.Strings(types)
+	out := make(map[OutputFormat]map[string]bool, len(formats))
+	for _, f := range formats {
+		m := map[string]bool{}
+		for _, t := range types {
+			if formatRenderTypes[f][t] {
+				m[t] = true
+			}
+		}
+		out[f] = m
+	}
+	return types, out
+}

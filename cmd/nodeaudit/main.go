@@ -129,6 +129,23 @@ func main() {
 		fmt.Printf("\n--- 全格式结构校验: 执行失败 %v\n", err)
 	}
 
+	types, matrix := config_update.TypeFormatMatrix()
+	fmt.Printf("\n--- 协议 × 输出格式 支持矩阵（✓=会下发；空=该客户端不支持该协议）---\n")
+	fmt.Printf("  %-12s %-8s %-8s %-8s %-9s %-6s %s\n", "type", "clash", "links", "surge", "singbox", "qx", "loon")
+	order := []config_update.OutputFormat{config_update.FmtClash, config_update.FmtLinksBase64, config_update.FmtSurge,
+		config_update.FmtSingBox, config_update.FmtQuantumultX, config_update.FmtLoon}
+	for _, t := range types {
+		fmt.Printf("  %-12s", t)
+		for _, f := range order {
+			mark := "·"
+			if matrix[f][t] {
+				mark = "✓"
+			}
+			fmt.Printf(" %-8s", mark)
+		}
+		fmt.Println()
+	}
+
 	if report.LinkRoundTripTotal > 0 {
 		n := len(report.LinkRoundTripMismatches)
 		fmt.Printf("\n--- 通用订阅链接往返体检（%d 个节点）---\n", report.LinkRoundTripTotal)

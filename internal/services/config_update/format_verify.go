@@ -69,10 +69,10 @@ var formatRenderTypes = map[OutputFormat]map[string]bool{
 	FmtClash:       supportedClashTypes,
 	FmtLinksBase64: linkRenderTypes,
 	FmtLinksPlain:  linkRenderTypes,
-	FmtSurge:       {"http": true, "hysteria": true, "hysteria2": true, "socks": true, "socks5": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
-	FmtSingBox:     {"hysteria": true, "hysteria2": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
+	FmtSurge:       {"http": true, "hysteria2": true, "socks": true, "socks5": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
+	FmtSingBox:     {"hysteria": true, "hysteria2": true, "anytls": true, "socks": true, "socks5": true, "http": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
 	FmtQuantumultX: {"ss": true, "trojan": true, "vmess": true},
-	FmtLoon:        {"ss": true, "trojan": true, "vmess": true},
+	FmtLoon:        {"ss": true, "trojan": true, "vmess": true, "hysteria2": true, "tuic": true},
 }
 
 // clashBuiltinNames Clash 里无需定义即可被分组引用的内置名
@@ -230,6 +230,21 @@ func (s *ConfigUpdateService) buildVerifiedPayload(
 
 	fp := formatFingerprint(candidates)
 	cacheKey := string(f) + "|" + fp
+	// 只在这一指纹首次计算时打印一次（缓存命中不会重复），让"哪些类型被跳过、各多少个"可见，
+	// 避免节点被静默遗漏（历史上 sing-box/Surge 的 hysteria2 就是这样被漏掉的）。
+	if !fmtCache.isVerified(cacheKey) && len(res.Dropped) > 0 {
+		counts := map[string]int{}
+		for _, d := range res.Dropped {
+			counts[d.Type]++
+		}
+		parts := make([]string, 0, len(counts))
+		for t, n := range counts {
+			parts = append(parts, fmt.Sprintf("%s×%d", t, n))
+		}
+		sort.Strings(parts)
+		logf("格式 %s: 本次下发 %d 个节点；因该格式不支持而跳过 %d 个（%s）。若其中含客户端其实支持的协议，说明生成器或能力表有遗漏。",
+			f, len(candidates)-len(res.Dropped), len(res.Dropped), strings.Join(parts, ", "))
+	}
 	if fmtCache.isVerified(cacheKey) {
 		res.Payload = render(candidates)
 		res.Verified, res.CacheHit, res.NodeCount = true, true, len(candidates)
@@ -577,13 +592,22 @@ func validateSingBoxJSON(payload string) error {
 		switch t {
 		case "direct", "block", "dns":
 			continue
-		case "shadowsocks", "trojan", "vmess", "vless", "hysteria", "tuic", "hysteria2":
+		case "shadowsocks", "trojan", "vmess", "vless", "hysteria", "tuic", "hysteria2", "anytls", "socks", "http":
 			proxies++
 			if s2, _ := m["server"].(string); strings.TrimSpace(s2) == "" {
 				return fmt.Errorf("outbounds[%d](%s) 缺少 server", i, tag)
 			}
 			if p, okc := m["server_port"].(float64); !okc || p < 1 || p > 65535 {
 				return fmt.Errorf("outbounds[%d](%s) server_port 非法", i, tag)
+			}
+			// sing-box 的 hysteria v1 出站**必填** up_mbps/down_mbps，缺了内核会拒绝该出站
+			if t == "hysteria" {
+				if up, okc := m["up_mbps"].(float64); !okc || up <= 0 {
+					return fmt.Errorf("outbounds[%d](%s) hysteria v1 缺少 up_mbps", i, tag)
+				}
+				if dn, okc := m["down_mbps"].(float64); !okc || dn <= 0 {
+					return fmt.Errorf("outbounds[%d](%s) hysteria v1 缺少 down_mbps", i, tag)
+				}
 			}
 		default:
 			return fmt.Errorf("outbounds[%d] 未知 type %q", i, t)
