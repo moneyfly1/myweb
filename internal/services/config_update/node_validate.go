@@ -406,7 +406,7 @@ func NormalizeSS2022Key(n *ProxyNode) (bool, string) { return NormalizeCredentia
 // normalizeSS2022Key 修正 2022-blake3 密钥的 URL 编码污染。
 //
 // 现网真实故障：订阅里的 ss 节点 password 被 URL 编码成
-// "XD8...%2FQ=%3Alll..."（'/'→%2F，':'→%3A），内核报
+// 形如 "<base64>%2F<base64>%3A<base64>"（'/'→%2F，':'→%3A），内核报
 // "decode key: illegal base64 data at input byte 41" 并让**整份 583 节点的配置失效**。
 // 实测 URL 解码后密钥合法、`mihomo -t` 通过，所以这里做「修正」而不是「丢弃」。
 //

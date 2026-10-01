@@ -130,3 +130,10 @@ frontend/auto-imports.d.ts
 # Python 字节码（脚本目录下运行会生成，不入库）
 __pycache__/
 *.pyc
+
+# 敏感/体积文件：备份与环境变量副本绝不能被提交
+.env.bak*
+.env.backup*
+server.bak-*
+server.log.*
+server.new
