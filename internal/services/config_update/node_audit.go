@@ -3,8 +3,10 @@ package config_update
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"cboard-go/internal/models"
@@ -68,6 +70,9 @@ type NodeAuditReport struct {
 	DroppedByTypeCipher []TypeCipherCount `json:"dropped_by_type_cipher"`
 	DroppedBySource     []SourceCount     `json:"dropped_by_source"`
 	CorrectedByReason   []ReasonCount     `json:"corrected_by_reason"`
+
+	// 要求 4：凭据形态单列体检（URL 编码 / 两段式 / 长度不符 各有多少、能否修正）
+	Credentials CredentialAudit `json:"credentials"`
 }
 
 // AuditActiveNodes 全库活跃节点体检（只读）：
@@ -105,11 +110,13 @@ func AuditActiveNodes(db *gorm.DB, kernelBin string) (*NodeAuditReport, error) {
 		}
 		p.Name = n.Name
 
+		report.Credentials.accumulate(classifyCredential(&p))
+
 		if corrected, detail := NormalizeSS2022Key(&p); corrected {
 			report.Corrected++
 			report.Entries = append(report.Entries, NodeAuditEntry{ID: n.ID, Name: n.Name, Type: p.Type,
 				Cipher: p.Cipher, Server: p.Server, Port: p.Port, SourceIndex: n.SourceIndex, Action: "corrected",
-				ReasonCode: ReasonKeyURLDecoded, Reason: ReasonKeyURLDecoded + ": " + detail})
+				ReasonCode: ReasonCredentialURLDecoded, Reason: ReasonCredentialURLDecoded + ": " + detail})
 		}
 		if err := ValidateProxyNode(&p); err != nil {
 			ve, ok := err.(*NodeValidationError)
@@ -251,4 +258,101 @@ func (r *NodeAuditReport) buildAggregates() {
 	sort.Slice(r.CorrectedByReason, func(i, j int) bool {
 		return r.CorrectedByReason[i].Count > r.CorrectedByReason[j].Count
 	})
+}
+
+// 凭据形态分类（要求 4：单列"URL 编码 / 两段式 / 长度不符"各类数量与处置结论）
+const (
+	credNonKey         = "non-key-password"        // 非 2022-blake3 cipher：password 是任意字符串，不适用密钥校验
+	credSingleOK       = "single-segment-ok"       // 单段合法密钥 → 可用
+	credTwoSegmentOK   = "two-segment-ok"          // 两段式 serverKey:userKey 合法 → 可用（内核实测接受）
+	credURLCorrectable = "url-encoded-correctable" // 含 %XX 且解码一次后合法 → **自动修正，保留节点**
+	credURLNotCorrect  = "url-encoded-unfixable"   // 含 %XX 但解码后仍不合法 → 必须丢弃
+	credLengthMismatch = "length-mismatch"         // 解码合法但字节数不符内核要求 → 必须丢弃
+	credNotBase64      = "not-base64"              // 不是合法 base64 → 必须丢弃
+)
+
+// CredentialAudit 全库凭据形态体检结果
+type CredentialAudit struct {
+	Scanned           int `json:"scanned"`
+	NonKeyPassword    int `json:"non_key_password"`
+	SingleSegmentOK   int `json:"single_segment_ok"`
+	TwoSegmentOK      int `json:"two_segment_ok"`
+	URLCorrectable    int `json:"url_encoded_correctable"`
+	URLNotCorrectable int `json:"url_encoded_unfixable"`
+	LengthMismatch    int `json:"length_mismatch"`
+	NotBase64         int `json:"not_base64"`
+}
+
+// 处置结论：这些类别是"可自动修正、保留节点"，不需要人工删节点
+func (c CredentialAudit) Correctable() int {
+	return c.URLCorrectable
+}
+
+// NeedDrop 这些类别必须丢弃（无法修正）
+func (c CredentialAudit) NeedDrop() int { return c.URLNotCorrectable + c.LengthMismatch + c.NotBase64 }
+
+// classifyCredential 对单个节点做凭据形态分类（只读，不修改节点）
+func classifyCredential(n *ProxyNode) string {
+	if n == nil {
+		return ""
+	}
+	nt := NormalizeNodeType(n.Type)
+	if nt != "ss" && nt != "ssr" {
+		return ""
+	}
+	cipher := strings.ToLower(strings.TrimSpace(n.Cipher))
+	wantLen, is2022 := ss2022RequiredKeyLen[cipher]
+	if !is2022 {
+		return credNonKey // 内核把这类 password 当任意字符串，无可校验形态
+	}
+	if code, _ := ssKeyCheck(n.Password, wantLen); code == "" {
+		if strings.Contains(n.Password, ":") {
+			return credTwoSegmentOK
+		}
+		return credSingleOK
+	}
+	if strings.Contains(n.Password, "%") {
+		// 与 NormalizeCredentials 同口径：先 PathUnescape，再回退 QueryUnescape
+		cands := []string{}
+		if d, err := url.PathUnescape(n.Password); err == nil && d != n.Password {
+			cands = append(cands, d)
+		}
+		if d, err := url.QueryUnescape(n.Password); err == nil && d != n.Password {
+			cands = append(cands, d)
+		}
+		for _, d := range cands {
+			if code, _ := ssKeyCheck(d, wantLen); code == "" {
+				return credURLCorrectable
+			}
+		}
+		return credURLNotCorrect
+	}
+	if code, _ := ssKeyCheck(n.Password, wantLen); code == ReasonCipherKeyNotB64 {
+		return credNotBase64
+	}
+	return credLengthMismatch
+}
+
+// accumulate 累计分类计数
+func (c *CredentialAudit) accumulate(category string) {
+	if category == "" {
+		return
+	}
+	c.Scanned++
+	switch category {
+	case credNonKey:
+		c.NonKeyPassword++
+	case credSingleOK:
+		c.SingleSegmentOK++
+	case credTwoSegmentOK:
+		c.TwoSegmentOK++
+	case credURLCorrectable:
+		c.URLCorrectable++
+	case credURLNotCorrect:
+		c.URLNotCorrectable++
+	case credLengthMismatch:
+		c.LengthMismatch++
+	case credNotBase64:
+		c.NotBase64++
+	}
 }

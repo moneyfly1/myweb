@@ -107,6 +107,22 @@ func main() {
 			fmt.Printf("  source_index=%-12s %4d 个\n", src, sc.Count)
 		}
 	}
+	c := report.Credentials
+	if c.Scanned > 0 {
+		fmt.Printf("\n--- 凭据形态体检（ss/ssr 共 %d 个）---\n", c.Scanned)
+		row := func(label, disposition string, n int) {
+			fmt.Printf("  %-42s %4d 个   %s\n", label, n, disposition)
+		}
+		row("单段合法密钥 (base64 16/32B)", "可用", c.SingleSegmentOK)
+		row("两段式 serverKey:userKey 合法", "可用（内核接受）", c.TwoSegmentOK)
+		row("URL 编码（%XX）但解码后合法", "**自动修正并保留**", c.URLCorrectable)
+		row("非 2022 cipher（口令为任意串）", "不适用校验", c.NonKeyPassword)
+		row("URL 编码但解码后仍不合法", "必须丢弃 cipher-key-invalid", c.URLNotCorrectable)
+		row("密钥长度不符", "必须丢弃 cipher-key-invalid", c.LengthMismatch)
+		row("非合法 base64", "必须丢弃 cipher-key-invalid", c.NotBase64)
+		fmt.Printf("  → 可自动修正: %d 个 | 必须丢弃: %d 个\n", c.Correctable(), c.NeedDrop())
+	}
+
 	if len(report.CorrectedByReason) > 0 {
 		fmt.Printf("\n--- 自动修正（已修复并保留，未丢弃）---\n")
 		for _, r := range report.CorrectedByReason {

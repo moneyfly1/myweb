@@ -2,6 +2,7 @@ package config_update
 
 import (
 	"encoding/base64"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -218,8 +219,8 @@ func TestAcceptanceRealCase_GeneratedConfigPassesRealKernel(t *testing.T) {
 		}
 		if e.Event == models.NodeValidationCorrectedAtIngest {
 			sawCorrect = true
-			if !strings.Contains(e.Reason, ReasonKeyURLDecoded) {
-				t.Errorf("修正事件 reason 应含 %s，实际 %q", ReasonKeyURLDecoded, e.Reason)
+			if !strings.Contains(e.Reason, ReasonCredentialURLDecoded) {
+				t.Errorf("修正事件 reason 应含 %s，实际 %q", ReasonCredentialURLDecoded, e.Reason)
 			}
 		}
 		if e.Event == models.NodeValidationDroppedAtIngest {
@@ -345,4 +346,143 @@ func TestAcceptanceRealCase_AuditAggregatesInvalidCipherKeyNodes(t *testing.T) {
 			t.Fatal("体检结果泄露了密钥材料")
 		}
 	}
+}
+
+// 要求 2 验收：旧库里存着**未解码**凭据时，出配置路径必须自己兜底修好，无需回填迁移。
+//
+// 场景：DB 里是修复前落库的 93 字符污染值（本用例用等长同结构夹具模拟）。
+// 断言：整条链路（buildSelfCheckedClashConfig → generateClashYAML）产出的配置
+//
+//	① password 已被规范化；② 真内核 -t 通过。
+func TestAcceptanceRealCase_GenerationPathNormalizesLegacyStoredCredential(t *testing.T) {
+	bin := kernelBinForAcceptance(t)
+	t.Setenv("MF_MIHOMO_BIN", bin) // 让第二层走真内核
+	polluted, decoded := realCasePasswordFixture(t)
+
+	svc, _ := setupSelfCheckTest(t, nil)
+	kernelTestHook = nil // 用真内核，不注入假 hook
+
+	// 直接模拟"旧库里读出来的节点"：password 仍是未解码形态
+	legacy := append([]*ProxyNode{realCaseNode(polluted)}, mkNodes(6, nil)...)
+	ctx := &SubscriptionContext{Status: StatusNormal}
+
+	yamlOut := svc.buildSelfCheckedClashConfig(legacy, ctx, "token-legacy")
+
+	// ① 输出的 password 必须已规范化
+	if strings.Contains(yamlOut, "%2F") || strings.Contains(yamlOut, "%3A") {
+		t.Fatalf("出配置路径没有兜底规范化，仍残留 %%XX 转义")
+	}
+	if !strings.Contains(yamlOut, decoded) {
+		t.Fatal("输出配置里的 password 应等于规范化后的值")
+	}
+	// ② 真内核必须通过
+	if ok, errLine := runKernelOnYAML(t, bin, yamlOut); !ok {
+		t.Fatalf("旧库未解码数据经出配置兜底后，真内核 -t 仍失败: %s", errLine)
+	}
+	// ③ 入参不能被就地污染（共享缓存安全）
+	if legacy[0].Password != polluted {
+		t.Fatal("不得修改入参节点（可能来自共享缓存）")
+	}
+	t.Logf("旧库未解码凭据 → 出配置自动规范化 → 真内核 -t 通过（%d 个节点）", len(legacy))
+}
+
+// 要求 1 的反向保护：字面 % 号的口令不得被盲解码改坏
+func TestCredentialsAreNotBlindlyDecoded(t *testing.T) {
+	// 非 2022 cipher：password 是任意字符串，含字面 % 也不能动
+	for _, pw := range []string{"a%20b", "p%2Fss", "100%safe"} {
+		n := ssNode("lit", "chacha20-ietf-poly1305", pw)
+		if changed, _ := NormalizeCredentials(n); changed {
+			t.Fatalf("非 2022 cipher 的口令不得被盲解码: %q", pw)
+		}
+		if n.Password != pw {
+			t.Fatalf("口令被改坏: %q → %q", pw, n.Password)
+		}
+	}
+	// ssr 密码同样不做盲解码
+	ssrN := &ProxyNode{Name: "r", Type: "ssr", Server: "1.2.3.4", Port: 8388,
+		Cipher: "aes-256-cfb", Password: "p%2Fss", Options: map[string]any{"protocol": "origin", "obfs": "plain"}}
+	if changed, _ := NormalizeCredentials(ssrN); changed || ssrN.Password != "p%2Fss" {
+		t.Fatal("ssr 密码不得被盲解码")
+	}
+}
+
+// 要求 4 验收：体检必须单列「URL 编码 / 两段式 / 单段 / 长度不符」各类数量与处置结论
+func TestAcceptanceRealCase_CredentialFormAudit(t *testing.T) {
+	bin := kernelBinForAcceptance(t)
+	polluted, decoded := realCasePasswordFixture(t)
+	db := setupAuditTestDB(t)
+
+	k32 := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("b", 32)))
+	k16 := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("a", 16)))
+	// 真正的"不可修正"：解码一次后第 2 段依旧不是合法 base64
+	// （注意 polluted 本体属于"可修正"——去掉 %%2F 后解码仍然合法，别拿它当反例）
+	seg1 := "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBA/A="
+	unfixable := strings.ReplaceAll(seg1, "/", "%2F") + "%3A" + "!!NOT-BASE64!!"
+	if code, _ := ssKeyCheck(unfixable, 32); code == "" {
+		t.Fatal("夹具本身就不非法，无法作为反例")
+	}
+	if d, err := url.PathUnescape(unfixable); err == nil {
+		if code, _ := ssKeyCheck(d, 32); code == "" {
+			t.Fatal("夹具解码后竟然合法，无法作为反例")
+		}
+	}
+
+	seedAuditNode(t, db, 1, "两段式合法", "ss", realCaseNode(decoded))
+	seedAuditNode(t, db, 2, "单段合法", "ss", realCaseNode(k32))
+	seedAuditNode(t, db, 3, "URL编码可修正", "ss", realCaseNode(polluted))
+	seedAuditNode(t, db, 4, "URL编码不可修", "ss", realCaseNode(unfixable))
+	seedAuditNode(t, db, 5, "长度不符", "ss", realCaseNode(k32+":"+k16))
+	seedAuditNode(t, db, 6, "非base64", "ss", realCaseNode("not-base64!!"+k32))
+	seedAuditNode(t, db, 7, "非2022口令", "ss", ssNode("非2022口令", "chacha20-ietf-poly1305", "panel-pass-example!"))
+	seedAuditNode(t, db, 8, "两段长度不符", "ss", realCaseNode(k16+":"+k16)) // aes-256 要求 32
+
+	report, err := AuditActiveNodes(db, bin)
+	if err != nil {
+		t.Fatalf("体检失败: %v", err)
+	}
+	c := report.Credentials
+	if c.Scanned != 8 {
+		t.Fatalf("应扫描 8 个 ss 节点，实际 %d", c.Scanned)
+	}
+	checks := []struct {
+		name string
+		got  int
+		want int
+	}{
+		{"两段式合法", c.TwoSegmentOK, 1},
+		{"单段合法", c.SingleSegmentOK, 1},
+		{"URL编码可修正", c.URLCorrectable, 1},
+		{"URL编码不可修", c.URLNotCorrectable, 1},
+		{"长度不符", c.LengthMismatch, 2}, // #5 长度不符 + #8 两段中一段 16 字节
+		{"非base64", c.NotBase64, 1},
+		{"非2022口令", c.NonKeyPassword, 1},
+	}
+	for _, ck := range checks {
+		if ck.got != ck.want {
+			t.Errorf("%s: 期望 %d 实际 %d（完整: %+v）", ck.name, ck.want, ck.got, c)
+		}
+	}
+	if c.Correctable() != 1 {
+		t.Errorf("可自动修正应为 1（URL 编码那份），实际 %d", c.Correctable())
+	}
+	if c.NeedDrop() != 4 {
+		t.Errorf("必须丢弃应为 4（不可修 1 + 长度不符 2 + 非 base64 1），实际 %d", c.NeedDrop())
+	}
+	// 丢弃项的原因必须能被 cipher-key-invalid 检索到
+	var sawUmbrella bool
+	for _, e := range report.Entries {
+		if e.Action == "dropped" && strings.Contains(e.Reason, ReasonCipherKeyInvalid) {
+			sawUmbrella = true
+		}
+	}
+	if !sawUmbrella {
+		t.Error("密钥类丢弃的原因文本里应包含总类码 cipher-key-invalid，便于按总类检索")
+	}
+	// 仍未通过内核的必须被内核层剔除（这里第 4/5/6/8 号非法项已被静态层丢弃）
+	if !report.KernelOK {
+		t.Errorf("静态层丢弃后配置应通过内核，实际: %s", report.KernelError)
+	}
+	t.Logf("凭据体检: 两段式%d 单段%d URL可修%d URL不可修%d 长度不符%d 非base64%d 非2022口令%d | 可修正%d 必须丢弃%d",
+		c.TwoSegmentOK, c.SingleSegmentOK, c.URLCorrectable, c.URLNotCorrectable,
+		c.LengthMismatch, c.NotBase64, c.NonKeyPassword, c.Correctable(), c.NeedDrop())
 }

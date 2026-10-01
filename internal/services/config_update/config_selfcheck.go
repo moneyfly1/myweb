@@ -422,6 +422,17 @@ func (s *ConfigUpdateService) buildSelfCheckedClashConfig(proxies []*ProxyNode, 
 		return cfg
 	}
 
+	// ⓪ 凭据规范化（出配置兜底）：库里可能还留着未做 URL 解码的历史凭据
+	// （现网事故：ss 2022 密钥存成 "…%2FQ=%3A…" 形态 → 内核 decode key 失败 → 整份配置失效）。
+	// 在副本上先做一次规范化，使下游的指纹、缓存、生成全部基于"已解码"的值，
+	// 因此**旧数据不需要回填迁移**也能立刻恢复可用。不修改共享缓存节点。
+	if normalized, corrected := normalizeCredentialsForOutput(proxies); corrected > 0 {
+		logf("出配置前规范化了 %d 个节点的凭据（含 URL 编码，已还原）", corrected)
+		proxies = normalized
+	} else {
+		proxies = normalized
+	}
+
 	real, info := splitInfoNodes(proxies)
 
 	// ① 剔除缓存中的已知坏节点
@@ -509,6 +520,28 @@ func (s *ConfigUpdateService) buildSelfCheckedClashConfig(proxies []*ProxyNode, 
 	cfg := s.generateClashYAML(final, ctx)
 	kernelCache.setLastGood(cacheToken, cfg)
 	return cfg
+}
+
+// normalizeCredentialsForOutput 在副本上对每个节点做凭据规范化（NormalizeCredentials），
+// 返回新列表与"发生修正的节点数"。绝不修改入参节点（它们可能来自 GetSystemNodesCache /
+// ParseCache 等共享缓存，就地改会有数据竞争与串号风险）。
+func normalizeCredentialsForOutput(nodes []*ProxyNode) ([]*ProxyNode, int) {
+	out := make([]*ProxyNode, 0, len(nodes))
+	corrected := 0
+	for _, src := range nodes {
+		if src == nil {
+			continue
+		}
+		p := *src
+		if src.Options != nil {
+			p.Options = deepCopyOptions(src.Options)
+		}
+		if changed, _ := NormalizeCredentials(&p); changed {
+			corrected++
+		}
+		out = append(out, &p)
+	}
+	return out, corrected
 }
 
 // sanitizeProxiesForOutput 非 Clash 输出路径（Surge / sing-box / QuantumultX / Loon / 通用链接）
@@ -638,7 +671,7 @@ func (s *ConfigUpdateService) loadActiveSystemNodes() []*ProxyNode {
 		p.Name = n.Name
 		if corrected, detail := NormalizeSS2022Key(&p); corrected {
 			s.recordNodeValidationEvents([]NodeValidationEvent{
-				NewNodeValidationEvent(models.NodeValidationCorrectedAtIngest, "prewarm", &p, ReasonKeyURLDecoded, detail),
+				NewNodeValidationEvent(models.NodeValidationCorrectedAtIngest, "prewarm", &p, ReasonCredentialURLDecoded, detail),
 			})
 		}
 		if err := ValidateProxyNode(&p); err != nil {

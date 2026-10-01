@@ -623,7 +623,7 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 			// 其余不合法节点在「入库之前」丢弃并落库原因，绝不进入配置生成。
 			if corrected, detail := NormalizeSS2022Key(result.Node); corrected {
 				s.recordNodeValidationEvents([]NodeValidationEvent{
-					NewNodeValidationEvent(models.NodeValidationCorrectedAtIngest, url, result.Node, ReasonKeyURLDecoded, detail),
+					NewNodeValidationEvent(models.NodeValidationCorrectedAtIngest, url, result.Node, ReasonCredentialURLDecoded, detail),
 				})
 				s.warnf("🔧 已修正节点密钥编码: %s (%s)", result.Node.Name, detail)
 			}
