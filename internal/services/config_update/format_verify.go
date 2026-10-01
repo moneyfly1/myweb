@@ -62,17 +62,30 @@ var linkRenderTypes = map[string]bool{
 // 必须与各生成器里的 `switch n.Type` 逐一对照，否则会出现"格式放行但生成器静默跳过"的黑洞。
 //
 //	Surge        : proxyNodeToSurgeLine 的 case（http/hysteria/socks/ss/trojan/tuic/vless/vmess）
-//	Loon         : generateLoonConfig 的 case（ss/trojan/vmess）
-//	QuantumultX  : generateQuantumultXConfig 的 case（ss/trojan/vmess）
+//	Loon         : generateLoonConfig 的 case（ss/trojan/vmess/vless/hysteria2/socks/socks5/http/anytls）
+//	QuantumultX  : generateQuantumultXConfig 的 case（ss/trojan/vmess/vless/socks/socks5/http/anytls）
 //	SingBox      : generateSingBoxConfig 的 case（hysteria/ss/trojan/tuic/vless/vmess）+ direct
 var formatRenderTypes = map[OutputFormat]map[string]bool{
 	FmtClash:       supportedClashTypes,
 	FmtLinksBase64: linkRenderTypes,
 	FmtLinksPlain:  linkRenderTypes,
 	FmtSurge:       {"http": true, "hysteria2": true, "socks": true, "socks5": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
-	FmtSingBox:     {"hysteria": true, "hysteria2": true, "anytls": true, "socks": true, "socks5": true, "http": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
-	FmtQuantumultX: {"ss": true, "trojan": true, "vmess": true},
-	FmtLoon:        {"ss": true, "trojan": true, "vmess": true, "hysteria2": true, "tuic": true},
+	// SingBox：为什么**不含** wireguard / ssh / ssr（用真实内核 sing-box 1.11.15 实测得出，不是凭记忆）：
+	//   · wireguard：sing-box 的 legacy wireguard **outbound** 自 1.11 起废弃、1.13 将移除
+	//     （内核原话："legacy wireguard outbound is deprecated in sing-box 1.11.0 and will be removed
+	//     in sing-box 1.13.0"），且缺少 private_key 时直接 FATAL "missing private key"。
+	//     现网 wg:// 节点数为 0；渲染一个即将被移除的写法属于给未来埋雷，故不渲染（丢弃会记
+	//     format-unsupported-type，管理员可见）。如将来要支持，应改用 1.11+ 的 endpoints 模型。
+	//   · ssh：本项目**没有 ssh:// 解析器**（见 node_parser.go 的 protocolParsers），
+	//     即永远不会有 ssh 类型节点进入节点池，渲染它属于死代码。
+	//   · ssr：sing-box 已移除 shadowsocksr 支持。
+	FmtSingBox: {"hysteria": true, "hysteria2": true, "anytls": true, "socks": true, "socks5": true, "http": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
+	// QuantumultX：官方 sample.conf 支持 shadowsocks/vmess/vless/trojan/http/socks5/anytls；
+	// 明确不支持 hysteria/hysteria2/tuic（不渲染比渲染坏行更安全——QX 遇到不支持的类型有整份失败风险）。
+	FmtQuantumultX: {"ss": true, "trojan": true, "vmess": true, "vless": true, "socks": true, "socks5": true, "http": true, "anytls": true},
+	// Loon：官方文档支持 ss/vmess/vless/trojan/http|https/socks5/hysteria2/anytls 等；
+	// tuic 已从本表移除（官方 36 页文档零命中 + URI scheme 清单 + Sub-Store 三方一致判定不支持）。
+	FmtLoon: {"ss": true, "trojan": true, "vmess": true, "vless": true, "hysteria2": true, "socks": true, "socks5": true, "http": true, "anytls": true},
 }
 
 // clashBuiltinNames Clash 里无需定义即可被分组引用的内置名
@@ -825,7 +838,7 @@ func validateQuantumultX(payload string) error {
 		}
 		typ := strings.TrimSpace(strings.ToLower(l[:eq]))
 		switch typ {
-		case "shadowsocks", "trojan", "vmess", "vless", "http", "socks5":
+		case "shadowsocks", "trojan", "vmess", "vless", "http", "socks5", "anytls":
 		default:
 			return fmt.Errorf("[server_local] 第 %d 行类型 %q 不被 QX 支持", i+1, typ)
 		}
