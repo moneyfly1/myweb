@@ -88,3 +88,67 @@ func TestSingBoxPayloadJSONShape(t *testing.T) {
 		t.Error("产物缺少 outbounds 键")
 	}
 }
+
+// anytls 在 sing-box 1.12.0 才加入；真内核 1.11.15 实测：
+//
+//	FATAL decode config at ...: outbounds[0]: unknown outbound type: anytls （exit=1）
+//
+// 致命点在于这是**解码期失败 = 整份订阅起不来**，不是"该节点不可用"。
+// 本表曾含 anytls（先于 2026-10-01 修复就存在）：只要源里出现 1 个 anytls 节点，
+// 所有 sing-box 1.11 客户端都会拿不到可用订阅。现网 anytls 节点为 0，属未爆的雷。
+func TestSingBoxDoesNotRenderAnyTLS(t *testing.T) {
+	if formatRenderTypes[FmtSingBox]["anytls"] {
+		t.Fatal("formatRenderTypes[FmtSingBox] 不应包含 anytls（sing-box 1.11 会整份配置 FATAL）")
+	}
+	node := &ProxyNode{
+		Type: "anytls", Name: "anytls-1", Server: "1.2.3.4", Port: 443, Password: "pw", TLS: true,
+	}
+	svc := &ConfigUpdateService{}
+	out := svc.generateSingBoxConfig([]*ProxyNode{node})
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(out), &cfg); err != nil {
+		t.Fatalf("sing-box 产物不是合法 JSON: %v", err)
+	}
+	if obs, _ := cfg["outbounds"].([]any); len(obs) != 1 { // 只剩 DIRECT
+		t.Errorf("anytls 节点不应被渲染进 sing-box，实际 outbounds=%d", len(obs))
+	}
+	if strings.Contains(out, `"anytls"`) {
+		t.Errorf("产物中出现 anytls outbound（会导致 sing-box 1.11 整份配置解码失败）:\n%s", out)
+	}
+}
+
+// anytls 只是"对 sing-box 不安全"，对其他格式仍应正常可用——避免这次修复误伤。
+func TestAnyTLSStillAvailableInOtherFormats(t *testing.T) {
+	for _, f := range []OutputFormat{FmtClash, FmtLinksBase64, FmtLinksPlain, FmtLoon, FmtQuantumultX} {
+		if !formatRenderTypes[f]["anytls"] {
+			t.Errorf("格式 %s 丢失了 anytls 支持（本次只应移出 SingBox）", f)
+		}
+	}
+}
+
+// 白名单锁定：本表内容 = sing-box 1.11.15 真内核 `check` 实测可通过的类型集合。
+// 任何人想把新类型加进来，必须先拿真实内核跑出 exit=0（见 format_verify.go 里的注释）。
+func TestSingBoxTypeAllowlistMatchesKernelEvidence(t *testing.T) {
+	// 内核实测 exit=0：shadowsocks / vmess / vless / trojan / hysteria / hysteria2 /
+	// socks / http / direct / ssh。
+	//   · "socks5" 是**节点类型别名**（socks5:// 链接解析出的 Type），生成器把它渲染成
+	//     内核里的 "socks"，因此两者都要在表里（否则 socks5 节点会被 format 层误剔）。
+	//   · ssh 不在表内：项目没有 ssh:// 解析器（死代码），不是 sing-box 不支持。
+	//   · direct 由生成器固定追加，不来自节点，故不在表内。
+	want := map[string]bool{
+		"ss": true, "vmess": true, "vless": true, "trojan": true,
+		"hysteria": true, "hysteria2": true, "tuic": true,
+		"socks": true, "socks5": true, "http": true,
+	}
+	got := formatRenderTypes[FmtSingBox]
+	for k := range want {
+		if !got[k] {
+			t.Errorf("表缺少内核实测可用的类型 %q", k)
+		}
+	}
+	for k := range got {
+		if !want[k] {
+			t.Errorf("表含有未经内核实证的类型 %q —— 未知 outbound type 会让整份配置 FATAL", k)
+		}
+	}
+}
