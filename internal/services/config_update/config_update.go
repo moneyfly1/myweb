@@ -1451,16 +1451,9 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent
 
 	nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("universal_protocols"))
 
-	// v2rayN 不支持 socks 节点，自动过滤
-	if isV2rayN {
-		filtered := nodes[:0]
-		for _, n := range nodes {
-			if n.Type != "socks" && n.Type != "socks5" {
-				filtered = append(filtered, n)
-			}
-		}
-		nodes = filtered
-	}
+	// 【已删除】"v2rayN 不支持 socks 节点，自动过滤" 是错误假设：v2rayN 支持 socks/socks5
+	// （Xray/v2ray-core 的 socks outbound 是标准协议，v2rayN 也支持导入 socks:// 分享链接）。
+	// 原先这段过滤会让 v2rayN 用户平白少掉 socks 节点，已按运维确认移除。
 
 	useSSRFormat := format == "ssr"
 	rv := s.buildVerifiedPayload(FmtLinksBase64, nodes, func(ns []*ProxyNode) string {
@@ -2657,18 +2650,10 @@ func (s *ConfigUpdateService) generateClientConfig(token, clientIP, userAgent, s
 
 	default:
 		// universal / shadowrocket / v2ray — 所有类型的 base64 链接
-		uaLower := strings.ToLower(userAgent)
-		isV2rayN := strings.Contains(uaLower, "v2rayn")
+		// 注意：这里**不再**按 v2rayN UA 过滤 socks —— v2rayN 支持 socks/socks5
+		// （Xray/v2ray-core 的 socks outbound 是标准协议，也支持 socks:// 分享链接）。
+		// 旧实现会依据 UA 里的 "v2rayn" 丢掉 socks 节点，属错误假设，已移除。
 		nodes = s.applySubscriptionFilters(nodes, "universal_protocols", userAgent, excludedProtocols)
-		if isV2rayN {
-			filtered := nodes[:0]
-			for _, n := range nodes {
-				if n.Type != "socks" && n.Type != "socks5" {
-					filtered = append(filtered, n)
-				}
-			}
-			nodes = filtered
-		}
 		r := s.buildVerifiedPayload(FmtLinksBase64, nodes, func(ns []*ProxyNode) string {
 			var links []string
 			for _, n := range ns {
