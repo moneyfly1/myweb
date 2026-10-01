@@ -62,10 +62,14 @@ var subscriptionRequestProfiles = []subscriptionRequestProfile{
 // 将15个单独的正则合并为一个，极大提高匹配性能
 var nodeLinkPattern = regexp.MustCompile(`(?i)(?:^|\s)((?:vmess|vless|trojan|ssr?|hysteria2?|hy2|tuic|naive(?:\+https)?|anytls|socks5?|https?|wg)://[^\s]+)`)
 
+// supportedClashTypes 生成 Clash 配置时允许输出的协议类型。
+// 必须与 node_validate.go 的 mihomoSupportedNodeTypes 白名单保持一致：
+// 两侧不一致会导致"解析层放行、生成层静默丢弃"的黑洞。
 var supportedClashTypes = map[string]bool{
 	"vmess": true, "vless": true, "trojan": true, "ss": true, "ssr": true,
 	"hysteria": true, "hysteria2": true, "tuic": true, "anytls": true,
 	"socks": true, "socks5": true, "http": true, "wireguard": true, "direct": true,
+	"snell": true, "ssh": true, "mieru": true,
 }
 
 type SubscriptionContext struct {
@@ -116,6 +120,9 @@ type updateStats struct {
 	invalidLinks  int
 	missingSource int
 	filtered      int
+	// invalidNodes 解析成功但不通过第一层校验（白名单/必填字段/cipher 等）而丢弃的节点数。
+	// 与 parseFailed（采集/解析失败，按原重试逻辑）严格区分。
+	invalidNodes int
 }
 
 // 【核心修复】：使用单例模式，保障轮询、SSE流、后台任务使用的是同一个内存实例
@@ -452,6 +459,10 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 
 		s.clearAllCaches()
 
+		// 节点集合已变化：后台预热内核自检缓存，让后续订阅请求直接命中缓存，
+		// 不会因为内核自检而变慢（详见 config_selfcheck.go）。
+		s.PrewarmKernelSelfCheck()
+
 		time.Sleep(200 * time.Millisecond)
 		s.logSeparator()
 		s.successf("🎉 配置更新任务已圆满完成！")
@@ -520,6 +531,9 @@ func (s *ConfigUpdateService) logUpdateStats(stats updateStats, success int) {
 	if stats.duplicates > 0 {
 		s.infof("♻️ 自动去重跳过: %d 个", stats.duplicates)
 	}
+	if stats.invalidNodes > 0 {
+		s.warnf("🚫 校验不合法已丢弃: %d 个（详情见 node_validation_logs 表 / 后台接口）", stats.invalidNodes)
+	}
 	s.successf("✨ 最终成功解析并等待入库节点数: %d 个", success)
 }
 
@@ -565,7 +579,7 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 		}
 
 		results := s.parserPool.ParseLinks(links)
-		counts := struct{ Processed, Failed, Filtered, Duplicate int }{}
+		counts := struct{ Processed, Failed, Filtered, Duplicate, Invalid int }{}
 
 		for idx, result := range results {
 			if seenKeys[result.Link] {
@@ -576,6 +590,20 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 			seenKeys[result.Link] = true
 
 			if result.Err != nil || result.Node == nil {
+				// 「采集失败」与「节点不合法」严格分开：
+				// 已知内核不支持的协议（naive 等）单独记录并丢弃，不计入解析失败口径。
+				if scheme := knownUnsupportedScheme(result.Link); scheme != "" {
+					stats.invalidNodes++
+					counts.Invalid++
+					s.recordNodeValidationEvents([]NodeValidationEvent{{
+						Event:    models.NodeValidationDroppedAtIngest,
+						Source:   url,
+						NodeName: linkDisplayName(result.Link),
+						NodeType: scheme,
+						Reason:   ReasonUnsupportedType + ": mihomo 不支持 " + scheme + " 协议，保留它会让整份配置失效",
+					}})
+					continue
+				}
 				stats.parseFailed++
 				counts.Failed++
 				continue
@@ -588,6 +616,28 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 					counts.Filtered++
 					continue
 				}
+			}
+
+			// ===== 第一层防御：协议白名单 + 必填字段 + 取值白名单校验 =====
+			// 可安全修正的问题（如 ss 2022 密钥被 URL 编码污染）先就地修正；
+			// 其余不合法节点在「入库之前」丢弃并落库原因，绝不进入配置生成。
+			if corrected, detail := NormalizeSS2022Key(result.Node); corrected {
+				s.recordNodeValidationEvents([]NodeValidationEvent{
+					NewNodeValidationEvent(models.NodeValidationCorrectedAtIngest, url, result.Node, ReasonKeyURLDecoded, detail),
+				})
+				s.warnf("🔧 已修正节点密钥编码: %s (%s)", result.Node.Name, detail)
+			}
+			if verr := ValidateProxyNode(result.Node); verr != nil {
+				stats.invalidNodes++
+				counts.Invalid++
+				ve, ok := verr.(*NodeValidationError)
+				if !ok {
+					ve = &NodeValidationError{Code: ReasonKernelInvalid, Detail: verr.Error()}
+				}
+				s.recordNodeValidationEvents([]NodeValidationEvent{
+					NewNodeValidationEvent(models.NodeValidationDroppedAtIngest, url, result.Node, ve.Code, ve.Detail),
+				})
+				continue
 			}
 
 			counts.Processed++
@@ -603,7 +653,7 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 		}
 
 		time.Sleep(200 * time.Millisecond)
-		s.successf("✔️ 订阅源 [%d/%d] 校验完成 -> 成功: %d, 过滤: %d, 重复/失败: %d", urlIndex+1, len(urls), counts.Processed, counts.Filtered, counts.Duplicate+counts.Failed)
+		s.successf("✔️ 订阅源 [%d/%d] 校验完成 -> 成功: %d, 过滤: %d, 非法丢弃: %d, 重复/失败: %d", urlIndex+1, len(urls), counts.Processed, counts.Filtered, counts.Invalid, counts.Duplicate+counts.Failed)
 	}
 	return nodesWithOrder, stats
 }
@@ -1357,7 +1407,15 @@ func (s *ConfigUpdateService) GenerateClashConfig(token, clientIP, userAgent str
 		nodes = s.addInfoNodes(ctx.Proxies, ctx)
 	}
 
-	config := s.generateClashYAML(s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols")), ctx)
+	filtered := s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
+	var config string
+	if ctx.Status == StatusNormal {
+		// 第二层防御：生成后用真内核(mihomo -t)自检 + 折半剔除坏节点 + 回退
+		config = s.buildSelfCheckedClashConfig(filtered, ctx, token)
+	} else {
+		// 异常状态（过期/失效/超设备）下发的是提示配置，无需内核自检
+		config = s.generateClashYAML(filtered, ctx)
+	}
 	if ctx.Status == StatusNormal {
 		if ttl := s.calculateCacheTTL(&ctx.Subscription); ttl > 0 {
 			go cache.SetSubscriptionConfigCache(token, "clash", config, ttl)
@@ -1391,6 +1449,8 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent
 	}
 
 	nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("universal_protocols"))
+	// 第一层静态净化：修正密钥编码 + 丢弃不合法节点
+	nodes = sanitizeProxiesForOutput(nodes)
 
 	// v2rayN 不支持 socks 节点，自动过滤
 	if isV2rayN {
@@ -2536,10 +2596,25 @@ func (s *ConfigUpdateService) generateClientConfig(token, clientIP, userAgent, s
 	subName := s.GenerateSubscriptionName(ctx)
 	siteURL := s.siteURL
 
+	// 非 Clash 输出（Surge / sing-box / QuantumultX / Loon / 通用链接）也走第一层静态净化：
+	// 坏节点同样会让这些格式的整份配置失效，必须在生成前拦掉。
+	// Clash 分支由 buildSelfCheckedClashConfig 内部完成（静态 + 内核两层），此处不重复。
+	switch subType {
+	case "clash", "clashmeta", "stash":
+	default:
+		nodes = sanitizeProxiesForOutput(nodes)
+	}
+
 	switch subType {
 	case "clash", "clashmeta", "stash":
 		nodes = s.applySubscriptionFilters(nodes, "clash_protocols", userAgent, excludedProtocols)
-		config := s.generateClashYAML(nodes, ctx)
+		var config string
+		if ctx.Status == StatusNormal {
+			// 第二层防御：生成后用真内核(mihomo -t)自检 + 折半剔除坏节点 + 回退
+			config = s.buildSelfCheckedClashConfig(nodes, ctx, token)
+		} else {
+			config = s.generateClashYAML(nodes, ctx)
+		}
 		return config, "text/yaml; charset=utf-8", subName + ".yaml"
 
 	case "surge":

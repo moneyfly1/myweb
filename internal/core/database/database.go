@@ -288,6 +288,7 @@ func AutoMigrate() error {
 		&models.BalanceLog{},
 		&models.CommissionLog{},
 		&models.Node{},
+		&models.NodeValidationLog{},
 		&models.SystemConfig{},
 		&models.CustomNode{},
 		&models.UserCustomNode{},
