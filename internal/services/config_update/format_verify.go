@@ -242,8 +242,9 @@ func (s *ConfigUpdateService) buildVerifiedPayload(
 			parts = append(parts, fmt.Sprintf("%s×%d", t, n))
 		}
 		sort.Strings(parts)
+		// 注意：candidates 已经排除了被跳过的节点，这里不能再减一次 res.Dropped
 		logf("格式 %s: 本次下发 %d 个节点；因该格式不支持而跳过 %d 个（%s）。若其中含客户端其实支持的协议，说明生成器或能力表有遗漏。",
-			f, len(candidates)-len(res.Dropped), len(res.Dropped), strings.Join(parts, ", "))
+			f, len(candidates), len(res.Dropped), strings.Join(parts, ", "))
 	}
 	if fmtCache.isVerified(cacheKey) {
 		res.Payload = render(candidates)
