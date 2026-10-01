@@ -1,6 +1,7 @@
 package config_update
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -463,4 +464,93 @@ func maskLink(link string) string {
 		head = head[:i+3] + fmt.Sprintf("<redacted len=%d pct=%d>", len(body), pct)
 	}
 	return head + tail
+}
+
+// FormatAuditRow 单个输出格式的体检结果
+type FormatAuditRow struct {
+	Format      string   `json:"format"`
+	ContentType string   `json:"content_type"`
+	Nodes       int      `json:"nodes"`
+	Bytes       int      `json:"bytes"`
+	Validated   bool     `json:"validated"`
+	Error       string   `json:"error,omitempty"`
+	NodeDropped []string `json:"node_dropped,omitempty"` // 脱敏：name(type): reason
+}
+
+// FormatAuditReport 全格式体检结果
+type FormatAuditReport struct {
+	Total   int              `json:"total_nodes"`
+	Formats []FormatAuditRow `json:"formats"`
+	AllOK   bool             `json:"all_ok"`
+}
+
+// AuditOutputFormats 对**每一种实际下发的输出格式**做结构与语法校验（不依赖客户端内核）。
+// 只读：不写库、不改节点。
+func AuditOutputFormats(db *gorm.DB) (*FormatAuditReport, error) {
+	svc := &ConfigUpdateService{db: db}
+	var nodes []models.Node
+	if err := db.Where("is_active = ?", true).Order("order_index ASC, created_at ASC").Find(&nodes).Error; err != nil {
+		return nil, fmt.Errorf("读取活跃节点失败: %w", err)
+	}
+	real := make([]*ProxyNode, 0, len(nodes))
+	seen := map[string]bool{}
+	for _, n := range nodes {
+		if n.Config == nil || *n.Config == "" {
+			continue
+		}
+		var p ProxyNode
+		if json.Unmarshal([]byte(*n.Config), &p) != nil {
+			continue
+		}
+		p.Name = n.Name
+		key := fmt.Sprintf("%s:%s:%d:%s", p.Type, p.Server, p.Port, p.Name)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		real = append(real, &p)
+	}
+	ctx := &SubscriptionContext{Status: StatusNormal}
+	all := svc.addInfoNodes(real, ctx)
+
+	rep := &FormatAuditReport{Total: len(real), AllOK: true}
+	type spec struct {
+		f      OutputFormat
+		ct     string
+		render func([]*ProxyNode) string
+	}
+	specs := []spec{
+		{FmtClash, "text/yaml", func(ns []*ProxyNode) string { return svc.generateClashYAML(ns, ctx) }},
+		{FmtLinksBase64, "text/plain", func(ns []*ProxyNode) string {
+			var ls []string
+			for _, n := range ns {
+				if isPlaceholderInfoNode(n) {
+					continue
+				}
+				if l := svc.NodeToLink(n); l != "" {
+					ls = append(ls, l)
+				}
+			}
+			return base64.StdEncoding.EncodeToString([]byte(strings.Join(ls, "\n")))
+		}},
+		{FmtSurge, "text/plain", func(ns []*ProxyNode) string { return svc.generateSurgeConfig(ns, "") }},
+		{FmtSingBox, "application/json", func(ns []*ProxyNode) string { return svc.generateSingBoxConfig(ns) }},
+		{FmtQuantumultX, "text/plain", func(ns []*ProxyNode) string { return svc.generateQuantumultXConfig(ns, "") }},
+		{FmtLoon, "text/plain", func(ns []*ProxyNode) string { return svc.generateLoonConfig(ns, "") }},
+	}
+	for _, sp := range specs {
+		r := svc.buildVerifiedPayload(sp.f, all, sp.render, "")
+		row := FormatAuditRow{Format: string(sp.f), ContentType: sp.ct,
+			Nodes: r.NodeCount, Bytes: len(r.Payload)}
+		for _, d := range r.Dropped {
+			row.NodeDropped = append(row.NodeDropped, fmt.Sprintf("%s(%s): %s", d.Name, d.Type, d.Reason))
+		}
+		if err := validateFormatPayload(sp.f, r.Payload); err != nil {
+			row.Validated, row.Error, rep.AllOK = false, err.Error(), false
+		} else {
+			row.Validated = true
+		}
+		rep.Formats = append(rep.Formats, row)
+	}
+	return rep, nil
 }

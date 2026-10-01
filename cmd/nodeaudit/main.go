@@ -107,6 +107,28 @@ func main() {
 			fmt.Printf("  source_index=%-12s %4d 个\n", src, sc.Count)
 		}
 	}
+	if fr, err := config_update.AuditOutputFormats(mustDB(*dbPath)); err == nil {
+		fmt.Printf("\n--- 全格式结构校验（不依赖客户端内核；共 %d 个活跃节点）---\n", fr.Total)
+		for _, r := range fr.Formats {
+			mark := "✓"
+			if !r.Validated {
+				mark = "✗"
+			}
+			fmt.Printf("  %-14s %-16s 节点=%-4d %6d bytes  校验=%s %s\n",
+				r.Format, r.ContentType, r.Nodes, r.Bytes, mark, r.Error)
+			for i, d := range r.NodeDropped {
+				if i >= 4 {
+					fmt.Printf("        剔除: ... 其余 %d 条省略\n", len(r.NodeDropped)-4)
+					break
+				}
+				fmt.Printf("        剔除: %s\n", d)
+			}
+		}
+		fmt.Printf("  → 全部格式结构校验: %s\n", map[bool]string{true: "通过", false: "存在失败"}[fr.AllOK])
+	} else if err != nil {
+		fmt.Printf("\n--- 全格式结构校验: 执行失败 %v\n", err)
+	}
+
 	if report.LinkRoundTripTotal > 0 {
 		n := len(report.LinkRoundTripMismatches)
 		fmt.Printf("\n--- 通用订阅链接往返体检（%d 个节点）---\n", report.LinkRoundTripTotal)
@@ -147,4 +169,15 @@ func main() {
 			fmt.Printf("  %-34s %4d 个   样例: %s\n", r.ReasonCode, r.Count, r.Sample)
 		}
 	}
+}
+
+// mustDB 只读打开数据库（供全格式结构校验复用）
+func mustDB(path string) *gorm.DB {
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=ro", path)), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		return nil
+	}
+	return db
 }

@@ -1408,14 +1408,15 @@ func (s *ConfigUpdateService) GenerateClashConfig(token, clientIP, userAgent str
 	}
 
 	filtered := s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
-	var config string
-	if ctx.Status == StatusNormal {
-		// 第二层防御：生成后用真内核(mihomo -t)自检 + 折半剔除坏节点 + 回退
-		config = s.buildSelfCheckedClashConfig(filtered, ctx, token)
-	} else {
-		// 异常状态（过期/失效/超设备）下发的是提示配置，无需内核自检
-		config = s.generateClashYAML(filtered, ctx)
+	// 内核自检（第二层）+ 纯结构校验（悬空引用/空分组/字段缺失），两者都不依赖客户端
+	renderClash := func(ns []*ProxyNode) string {
+		if ctx.Status == StatusNormal {
+			return s.buildSelfCheckedClashConfig(ns, ctx, token)
+		}
+		return s.generateClashYAML(ns, ctx)
 	}
+	rc := s.buildVerifiedPayload(FmtClash, filtered, renderClash, token)
+	config := rc.Payload
 	if ctx.Status == StatusNormal {
 		if ttl := s.calculateCacheTTL(&ctx.Subscription); ttl > 0 {
 			go cache.SetSubscriptionConfigCache(token, "clash", config, ttl)
@@ -1449,8 +1450,6 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent
 	}
 
 	nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("universal_protocols"))
-	// 第一层静态净化：修正密钥编码 + 丢弃不合法节点
-	nodes = sanitizeProxiesForOutput(nodes)
 
 	// v2rayN 不支持 socks 节点，自动过滤
 	if isV2rayN {
@@ -1463,18 +1462,24 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent
 		nodes = filtered
 	}
 
-	var links []string
-	for _, n := range nodes {
-		link := s.nodeToLink(n)
-		if format == "ssr" && n.Type == "ssr" {
-			link = s.nodeToSSRLink(n)
+	useSSRFormat := format == "ssr"
+	rv := s.buildVerifiedPayload(FmtLinksBase64, nodes, func(ns []*ProxyNode) string {
+		var links []string
+		for _, n := range ns {
+			if isPlaceholderInfoNode(n) {
+				continue
+			}
+			link := s.nodeToLink(n)
+			if useSSRFormat && n.Type == "ssr" {
+				link = s.nodeToSSRLink(n)
+			}
+			if link != "" {
+				links = append(links, link)
+			}
 		}
-		if link != "" {
-			links = append(links, link)
-		}
-	}
-
-	config := base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n")))
+		return base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n")))
+	}, token)
+	config := rv.Payload
 	if ctx.Status == StatusNormal {
 		if ttl := s.calculateCacheTTL(&ctx.Subscription); ttl > 0 {
 			go cache.SetSubscriptionConfigCache(token, cacheFormat, config, ttl)
@@ -2268,16 +2273,16 @@ func (s *ConfigUpdateService) nodeToLink(n *ProxyNode) string {
 		return s.shadowsocksToLink(n)
 	case "ssr":
 		return s.nodeToSSRLink(n)
-	case "vless", "trojan", "hysteria", "hysteria2", "tuic", "naive", "anytls":
+	case "vless", "trojan", "hysteria", "hysteria2", "tuic", "anytls":
 		scheme, user, pwd := n.Type, n.UUID, n.Password
 		if n.Type == "trojan" || n.Type == "hysteria2" || n.Type == "anytls" {
 			user, pwd = pwd, ""
-		} else if n.Type == "naive" {
-			scheme = "naive+https"
 		} else if n.Type == "hysteria" {
 			user = ""
 		}
 		return s.buildStandardNodeURL(scheme, user, pwd, n.Server, n.Port, n.Name, s.getQueryFromOptions(n))
+	// naive / naive+https 已刻意不在此处：该协议不在任何输出格式的渲染白名单内，
+	// 保留分支只会让链路层生成一个连自己都解析不回来的链接。
 	case "socks", "socks5":
 		sc := "socks5"
 		if n.Type == "socks" {
@@ -2605,46 +2610,50 @@ func (s *ConfigUpdateService) generateClientConfig(token, clientIP, userAgent, s
 	subName := s.GenerateSubscriptionName(ctx)
 	siteURL := s.siteURL
 
-	// 非 Clash 输出（Surge / sing-box / QuantumultX / Loon / 通用链接）也走第一层静态净化：
-	// 坏节点同样会让这些格式的整份配置失效，必须在生成前拦掉。
-	// Clash 分支由 buildSelfCheckedClashConfig 内部完成（静态 + 内核两层），此处不重复。
-	switch subType {
-	case "clash", "clashmeta", "stash":
-	default:
-		nodes = sanitizeProxiesForOutput(nodes)
-	}
-
+	// 每个输出格式都统一走 buildVerifiedPayload：
+	//   凭据规范化（全部格式受益）→ 按格式能力剔除 → 渲染 → **结构/语法整体校验**
+	//   → 失败则折半定位只丢该节点 → 复检 → 按(格式+指纹)缓存 / 回退上一份已验证产物。
+	// 目标是"任何格式都不会因为一个坏节点而整份失效"，且不依赖任何客户端内核。
 	switch subType {
 	case "clash", "clashmeta", "stash":
 		nodes = s.applySubscriptionFilters(nodes, "clash_protocols", userAgent, excludedProtocols)
-		var config string
-		if ctx.Status == StatusNormal {
-			// 第二层防御：生成后用真内核(mihomo -t)自检 + 折半剔除坏节点 + 回退
-			config = s.buildSelfCheckedClashConfig(nodes, ctx, token)
-		} else {
-			config = s.generateClashYAML(nodes, ctx)
+		// Clash：先内核自检（静态+内核两层），再套一层纯结构校验（悬空引用/空分组/字段缺失）
+		renderClash := func(ns []*ProxyNode) string {
+			if ctx.Status == StatusNormal {
+				return s.buildSelfCheckedClashConfig(ns, ctx, token)
+			}
+			return s.generateClashYAML(ns, ctx)
 		}
-		return config, "text/yaml; charset=utf-8", subName + ".yaml"
+		rc := s.buildVerifiedPayload(FmtClash, nodes, renderClash, token)
+		return rc.Payload, "text/yaml; charset=utf-8", subName + ".yaml"
 
 	case "surge":
 		nodes = s.applySubscriptionFilters(nodes, "clash_protocols", userAgent, excludedProtocols)
-		config := s.generateSurgeConfig(nodes, siteURL)
-		return config, "text/plain; charset=utf-8", subName + ".conf"
+		r := s.buildVerifiedPayload(FmtSurge, nodes, func(ns []*ProxyNode) string {
+			return s.generateSurgeConfig(ns, siteURL)
+		}, token)
+		return r.Payload, "text/plain; charset=utf-8", subName + ".conf"
 
 	case "singbox", "sing-box":
 		nodes = s.applySubscriptionFilters(nodes, "clash_protocols", userAgent, excludedProtocols)
-		config := s.generateSingBoxConfig(nodes)
-		return config, "application/json; charset=utf-8", subName + ".json"
+		r := s.buildVerifiedPayload(FmtSingBox, nodes, func(ns []*ProxyNode) string {
+			return s.generateSingBoxConfig(ns)
+		}, token)
+		return r.Payload, "application/json; charset=utf-8", subName + ".json"
 
 	case "quantumult", "quantumultx":
 		nodes = s.applySubscriptionFilters(nodes, "clash_protocols", userAgent, excludedProtocols)
-		config := s.generateQuantumultXConfig(nodes, siteURL)
-		return config, "text/plain; charset=utf-8", subName + ".conf"
+		r := s.buildVerifiedPayload(FmtQuantumultX, nodes, func(ns []*ProxyNode) string {
+			return s.generateQuantumultXConfig(ns, siteURL)
+		}, token)
+		return r.Payload, "text/plain; charset=utf-8", subName + ".conf"
 
 	case "loon":
 		nodes = s.applySubscriptionFilters(nodes, "clash_protocols", userAgent, excludedProtocols)
-		config := s.generateLoonConfig(nodes, siteURL)
-		return config, "text/plain; charset=utf-8", subName + ".conf"
+		r := s.buildVerifiedPayload(FmtLoon, nodes, func(ns []*ProxyNode) string {
+			return s.generateLoonConfig(ns, siteURL)
+		}, token)
+		return r.Payload, "text/plain; charset=utf-8", subName + ".conf"
 
 	default:
 		// universal / shadowrocket / v2ray — 所有类型的 base64 链接
@@ -2660,14 +2669,19 @@ func (s *ConfigUpdateService) generateClientConfig(token, clientIP, userAgent, s
 			}
 			nodes = filtered
 		}
-		var links []string
-		for _, n := range nodes {
-			if link := s.nodeToLink(n); link != "" {
-				links = append(links, link)
+		r := s.buildVerifiedPayload(FmtLinksBase64, nodes, func(ns []*ProxyNode) string {
+			var links []string
+			for _, n := range ns {
+				if isPlaceholderInfoNode(n) {
+					continue
+				}
+				if link := s.nodeToLink(n); link != "" {
+					links = append(links, link)
+				}
 			}
-		}
-		config := base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n")))
-		return config, "text/plain; charset=utf-8", subName
+			return base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n")))
+		}, token)
+		return r.Payload, "text/plain; charset=utf-8", subName
 	}
 }
 
@@ -2804,6 +2818,10 @@ func (s *ConfigUpdateService) proxyNodeToSurgeLine(n *ProxyNode) string {
 
 // safeSurgeName 清理名称中的逗号，防止破坏 Surge 配置格式
 func (s *ConfigUpdateService) safeSurgeName(name string) string {
+	name = strings.ReplaceAll(name, ",", " ")
+	// 逗号必须替换掉：Surge 的 [Proxy Group] 成员列表是按逗号切分的，
+	// 名字里带逗号会被切成两个成员 → 一个节点就制造出"成员悬空"，整份配置失效。
+	// QuantumultX / Loon 早就把逗号替换了，Surge 之前漏了。
 	name = strings.ReplaceAll(name, ",", " ")
 	name = strings.ReplaceAll(name, "=", ":")
 	return strings.TrimSpace(name)

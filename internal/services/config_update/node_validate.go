@@ -627,8 +627,10 @@ func nodeIdentity(n *ProxyNode) string {
 
 // NodeValidationEvent 一条待落库的校验事件
 type NodeValidationEvent struct {
-	Event    string
-	Source   string
+	Event  string
+	Source string
+	// Format 输出格式（仅"生成期按格式剔除"类事件使用，如 base64-links / surge）
+	Format   string
 	NodeName string
 	NodeType string
 	Server   string
@@ -666,7 +668,7 @@ func RecordNodeValidationEvents(db *gorm.DB, events []NodeValidationEvent) {
 			e.Server = e.Server[:200]
 		}
 		rows = append(rows, models.NodeValidationLog{
-			Event: e.Event, Source: e.Source, NodeName: e.NodeName,
+			Event: e.Event, Source: e.Source, Format: e.Format, NodeName: e.NodeName,
 			NodeType: e.NodeType, Server: e.Server, Port: e.Port, Reason: e.Reason,
 		})
 	}
