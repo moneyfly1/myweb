@@ -87,6 +87,16 @@ func TestGetNodeValidationLogsReadOnly(t *testing.T) {
 	if summary["dropped_at_ingest"].(float64) != 2 || summary["pruned_at_generate"].(float64) != 1 {
 		t.Fatalf("汇总数量不对: %v", summary)
 	}
+	// 后台必须能看到「内核自检是否在工作」，避免静默降级
+	kernelInfo, ok := data["kernel"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("响应缺少 kernel 状态字段（后台无法判断第二层是否生效）: %v", data)
+	}
+	for _, field := range []string{"binary", "available", "disabled", "verified_sets", "known_bad", "last_good"} {
+		if _, exists := kernelInfo[field]; !exists {
+			t.Fatalf("kernel 状态缺少字段 %s: %v", field, kernelInfo)
+		}
+	}
 
 	// 按 event 过滤
 	if _, body := call("?event=pruned_at_generate"); func() bool {

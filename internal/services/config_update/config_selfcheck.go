@@ -663,3 +663,46 @@ func (s *ConfigUpdateService) loadActiveSystemNodes() []*ProxyNode {
 
 // selfCheckCache 暴露缓存（便于测试与后续扩展）
 func (s *ConfigUpdateService) selfCheckCache() *kernelSelfCheckCache { return kernelCache }
+
+// ---------------------------------------------------------------- 后台可见性
+
+// MihomoBinaryPath 返回当前生效的内核二进制路径（空串 = 不可用，第二层会降级）
+func MihomoBinaryPath() string { return mihomoBinaryPath() }
+
+// KernelSelfCheckDisabled 内核自检是否被运维开关（MF_KERNEL_SELFCHECK=0）关闭
+func KernelSelfCheckDisabled() bool { return kernelSelfCheckDisabled() }
+
+// KernelSelfCheckStats 内核自检缓存的运行期状态，供后台一眼看出第二层是否在工作
+type KernelSelfCheckStats struct {
+	Binary       string `json:"binary"`
+	Available    bool   `json:"available"`
+	Disabled     bool   `json:"disabled"`
+	VerifiedSets int    `json:"verified_sets"` // 已被内核确认可用的「节点集合指纹」数量
+	KnownBad     int    `json:"known_bad"`     // 已定位的坏节点数量
+	LastGood     int    `json:"last_good"`     // 已记住的「上一份良好配置」订阅数
+}
+
+// GetKernelSelfCheckStats 返回内核自检状态（只读）
+func GetKernelSelfCheckStats() KernelSelfCheckStats {
+	bin := mihomoBinaryPath()
+	s := KernelSelfCheckStats{Binary: bin, Available: bin != "", Disabled: kernelSelfCheckDisabled()}
+	now := time.Now()
+	kernelCache.mu.RLock()
+	defer kernelCache.mu.RUnlock()
+	for _, at := range kernelCache.verified {
+		if now.Sub(at) < kernelVerifiedTTL {
+			s.VerifiedSets++
+		}
+	}
+	for _, e := range kernelCache.bad {
+		if now.Sub(e.At) < kernelBadNodeTTL {
+			s.KnownBad++
+		}
+	}
+	for _, e := range kernelCache.lastGood {
+		if now.Sub(e.At) < kernelLastGoodTTL {
+			s.LastGood++
+		}
+	}
+	return s
+}
