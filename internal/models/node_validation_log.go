@@ -22,9 +22,11 @@ const (
 //
 // 只记录判定结论，不记录节点凭据（password/uuid 不入库），便于脱敏展示。
 type NodeValidationLog struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	Event     string    `gorm:"type:varchar(32);not null;index:idx_nvl_event_created,priority:1" json:"event"`
-	Source    string    `gorm:"type:varchar(255);not null;default:''" json:"source"`
+	ID     uint   `gorm:"primaryKey" json:"id"`
+	Event  string `gorm:"type:varchar(32);not null;index:idx_nvl_event_created,priority:1" json:"event"`
+	Source string `gorm:"type:varchar(255);not null;default:''" json:"source"`
+	// Format 输出格式（clash-yaml / base64-links / surge / singbox-json / quantumultx / loon）
+	Format    string    `gorm:"type:varchar(32);not null;default:'';index" json:"format"`
 	NodeName  string    `gorm:"type:varchar(255);not null;default:''" json:"node_name"`
 	NodeType  string    `gorm:"type:varchar(32);not null;default:''" json:"node_type"`
 	Server    string    `gorm:"type:varchar(255);not null;default:''" json:"server"`
