@@ -107,6 +107,24 @@ func main() {
 			fmt.Printf("  source_index=%-12s %4d 个\n", src, sc.Count)
 		}
 	}
+	if report.LinkRoundTripTotal > 0 {
+		n := len(report.LinkRoundTripMismatches)
+		fmt.Printf("\n--- 通用订阅链接往返体检（%d 个节点）---\n", report.LinkRoundTripTotal)
+		if n == 0 {
+			fmt.Printf("  全部往返一致 ✓（nodeToLink → ParseNodeLink 逐字段相等）\n")
+		} else {
+			fmt.Printf("  !! %d 个节点往返不一致（通用/Shadowrocket/v2rayN 客户会拿到坏节点）\n", n)
+			for i, m := range report.LinkRoundTripMismatches {
+				if i >= 10 {
+					fmt.Printf("  ... 其余 %d 条省略\n", n-10)
+					break
+				}
+				fmt.Printf("  [%s] %s | type=%s 字段=%s\n     %s\n     链接(脱敏): %s\n",
+					"mismatch", m.NodeName, m.Type, m.Field, m.Detail, m.LinkSafe)
+			}
+		}
+	}
+
 	c := report.Credentials
 	if c.Scanned > 0 {
 		fmt.Printf("\n--- 凭据形态体检（ss/ssr 共 %d 个）---\n", c.Scanned)

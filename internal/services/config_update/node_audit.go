@@ -73,6 +73,10 @@ type NodeAuditReport struct {
 
 	// 要求 4：凭据形态单列体检（URL 编码 / 两段式 / 长度不符 各有多少、能否修正）
 	Credentials CredentialAudit `json:"credentials"`
+
+	// 链路往返体检：通用订阅（Shadowrocket/v2rayN）下发的链接能否被自己解析回同一节点
+	LinkRoundTripTotal      int                     `json:"link_roundtrip_total"`
+	LinkRoundTripMismatches []LinkRoundTripMismatch `json:"link_roundtrip_mismatches"`
 }
 
 // AuditActiveNodes 全库活跃节点体检（只读）：
@@ -146,6 +150,7 @@ func AuditActiveNodes(db *gorm.DB, kernelBin string) (*NodeAuditReport, error) {
 
 	if kernelBin == "" {
 		report.buildAggregates()
+		report.auditLinkRoundTripInto(db)
 		return report, nil
 	}
 	if err := os.Setenv("MF_MIHOMO_BIN", kernelBin); err != nil {
@@ -169,6 +174,7 @@ func AuditActiveNodes(db *gorm.DB, kernelBin string) (*NodeAuditReport, error) {
 	if ok {
 		report.KernelOK = true
 		report.buildAggregates()
+		report.auditLinkRoundTripInto(db)
 		return report, nil
 	}
 	report.KernelError = fmt.Sprint(err)
@@ -189,7 +195,22 @@ func AuditActiveNodes(db *gorm.DB, kernelBin string) (*NodeAuditReport, error) {
 	}
 	report.KernelDurationMS = time.Since(start).Milliseconds()
 	report.buildAggregates()
+	report.auditLinkRoundTripInto(db)
 	return report, nil
+}
+
+// auditLinkRoundTripInto 把链接往返体检结果填进报告（失败不影响主流程）
+func (r *NodeAuditReport) auditLinkRoundTripInto(db *gorm.DB) {
+	mm, err := AuditLinkRoundTrip(db)
+	if err != nil {
+		return
+	}
+	r.LinkRoundTripMismatches = mm
+	if db != nil {
+		var total int64
+		db.Model(&models.Node{}).Where("is_active = ?", true).Count(&total)
+		r.LinkRoundTripTotal = int(total)
+	}
 }
 
 // buildAggregates 生成聚合视图（按原因 / 按 type+cipher / 按来源），供后台与报告直接引用。
@@ -355,4 +376,91 @@ func (c *CredentialAudit) accumulate(category string) {
 	case credNotBase64:
 		c.NotBase64++
 	}
+}
+
+// LinkRoundTripMismatch 单条「链接往返失败」记录（脱敏：不输出凭据）
+type LinkRoundTripMismatch struct {
+	NodeName string `json:"node_name"`
+	Type     string `json:"type"`
+	Field    string `json:"field"`
+	Detail   string `json:"detail"`
+	LinkSafe string `json:"link_safe"` // 结构脱敏后的链接（base64 主体用长度占位）
+}
+
+// AuditLinkRoundTrip 校验「我们下发给非 Clash 客户端的链接能否被自己正确解析回同一个节点」。
+//
+// 为什么要查：通用订阅（Shadowrocket / v2rayN / 通用 base64）走的是 nodeToLink，
+// 而不是 Clash YAML。如果链接里的凭据没有按 URL 规范正确转义（例如多用户
+// 2022 密钥里的 ':'、base64 里的 '/'），客户端就会解析出错误的密码 —— 这正是
+// 现网事故的镜像形态（源端转义了、解析端没解码）。这里逐节点做往返比对。
+//
+// 只读：不写库、不改节点。
+func AuditLinkRoundTrip(db *gorm.DB) ([]LinkRoundTripMismatch, error) {
+	svc := &ConfigUpdateService{db: db}
+	var nodes []models.Node
+	if err := db.Where("is_active = ?", true).Order("order_index ASC, created_at ASC").Find(&nodes).Error; err != nil {
+		return nil, fmt.Errorf("读取活跃节点失败: %w", err)
+	}
+
+	var out []LinkRoundTripMismatch
+	for _, n := range nodes {
+		if n.Config == nil || *n.Config == "" {
+			continue
+		}
+		var p ProxyNode
+		if json.Unmarshal([]byte(*n.Config), &p) != nil {
+			continue
+		}
+		p.Name = n.Name
+
+		link := svc.NodeToLink(&p)
+		if link == "" {
+			continue
+		}
+		back, err := ParseNodeLink(link)
+		if err != nil {
+			out = append(out, LinkRoundTripMismatch{NodeName: n.Name, Type: p.Type, Field: "parse",
+				Detail: "生成的链接无法被自己解析: " + err.Error(), LinkSafe: maskLink(link)})
+			continue
+		}
+		cmp := []struct {
+			field     string
+			got, want string
+		}{
+			{"type", back.Type, p.Type},
+			{"server", back.Server, p.Server},
+			{"password", back.Password, p.Password},
+			{"cipher", back.Cipher, p.Cipher},
+			{"uuid", back.UUID, p.UUID},
+		}
+		for _, c := range cmp {
+			if c.got != c.want {
+				out = append(out, LinkRoundTripMismatch{NodeName: n.Name, Type: p.Type, Field: c.field,
+					Detail:   fmt.Sprintf("往返后不一致: 生成配置值长度=%d，重新解析后长度=%d", len(c.want), len(c.got)),
+					LinkSafe: maskLink(link)})
+				break
+			}
+		}
+		if back.Port != p.Port {
+			out = append(out, LinkRoundTripMismatch{NodeName: n.Name, Type: p.Type, Field: "port",
+				Detail: fmt.Sprintf("往返后不一致: %d → %d", p.Port, back.Port), LinkSafe: maskLink(link)})
+		}
+	}
+	return out, nil
+}
+
+// maskLink 结构化脱敏：保留 scheme/host/port/转义结构，把长 base64 主体折叠为长度占位
+func maskLink(link string) string {
+	at := strings.Index(link, "@")
+	if at < 0 {
+		return "(无 userinfo)"
+	}
+	head, tail := link[:at], link[at:]
+	// head 形如 ss://BASE64 或 ss://base64userinfo
+	if i := strings.Index(head, "://"); i >= 0 {
+		body := head[i+3:]
+		pct := strings.Count(body, "%")
+		head = head[:i+3] + fmt.Sprintf("<redacted len=%d pct=%d>", len(body), pct)
+	}
+	return head + tail
 }

@@ -729,6 +729,10 @@ var knownUnsupportedSchemes = []string{
 	"juicity://", "brook://", "h2://", "http2://", "kcp://", "quic://", "mtproto://",
 }
 
+// KnownUnsupportedScheme 返回该链接的已知不支持 scheme（不含 "://"，无则返回空串）。
+// 导出给管理端手工导入路径复用，保证"采集"与"手工导入"给出一致的原因。
+func KnownUnsupportedScheme(link string) string { return knownUnsupportedScheme(link) }
+
 // knownUnsupportedScheme 返回该链接的已知不支持 scheme（不含 "://"，无则返回空串）
 func knownUnsupportedScheme(link string) string {
 	l := strings.ToLower(strings.TrimSpace(link))
