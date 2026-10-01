@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"cboard-go/internal/core/database"
@@ -462,6 +463,10 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		// 节点集合已变化：后台预热内核自检缓存，让后续订阅请求直接命中缓存，
 		// 不会因为内核自检而变慢（详见 config_selfcheck.go）。
 		s.PrewarmKernelSelfCheck()
+
+		// 校验日志表保留期：只增不减会无限膨胀（每次同步/每个格式都可能写入），
+		// 保留最近 maxNodeValidationLogs 条，其余按 id 删除。
+		s.pruneNodeValidationLogs(maxNodeValidationLogs)
 
 		time.Sleep(200 * time.Millisecond)
 		s.logSeparator()
@@ -2117,14 +2122,53 @@ func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
 		}
 	}
 
-	if shouldClashSkipCertVerify(n) {
+	// skip-cert-verify：**尊重节点自己的设置**。
+	// 旧实现这里调 shouldClashSkipCertVerify()，而那个函数判断的其实是"是否启用 TLS"，
+	// 于是所有开了 TLS 的 vless/vmess/trojan/hysteria/hysteria2 节点都被强制
+	// skip-cert-verify=true —— 现网 390 个节点被改，其中 358 个节点自己明确要求校验证书，
+	// 等于我们替客户关掉了 TLS 证书校验（可被中间人）。
+	// 现在只在"运维兜底开关"打开时才恢复旧的强制行为（一键回滚，无需重新构建）。
+	if s.forceSkipCertVerifyEnabled() && nodeUsesTLS(n) {
 		res["skip-cert-verify"] = true
 	}
 
 	return res
 }
 
-func shouldClashSkipCertVerify(n *ProxyNode) bool {
+// forceSkipCertVerifyEnabled 运维兜底：强制所有 TLS 节点跳过证书校验（即旧行为）。
+// 用途：万一有节点的证书是自签的、尊重节点设置后连不上，可一键恢复，不必重新发版。
+// 优先级：环境变量 MF_FORCE_SKIP_CERT_VERIFY=1 > system_configs(node_output/force_skip_cert_verify)。
+// 结果缓存 30s，避免逐节点查库（一次订阅要处理数百个节点）。
+func (s *ConfigUpdateService) forceSkipCertVerifyEnabled() bool {
+	if v := strings.ToLower(strings.TrimSpace(os.Getenv("MF_FORCE_SKIP_CERT_VERIFY"))); v == "1" || v == "true" || v == "yes" || v == "on" {
+		return true
+	}
+	if t := forceSCVCacheAt.Load(); t > 0 && time.Since(time.Unix(0, t)) < 30*time.Second {
+		return forceSCVCacheVal.Load() == 1
+	}
+	on := int64(0)
+	if s.db != nil {
+		var cfg models.SystemConfig
+		if err := s.db.Where("category = ? AND key = ?", "node_output", "force_skip_cert_verify").First(&cfg).Error; err == nil {
+			switch strings.ToLower(strings.TrimSpace(cfg.Value)) {
+			case "1", "true", "yes", "on":
+				on = 1
+			}
+		}
+	}
+	forceSCVCacheVal.Store(on)
+	forceSCVCacheAt.Store(time.Now().UnixNano())
+	return on == 1
+}
+
+var (
+	forceSCVCacheVal atomic.Int64
+	forceSCVCacheAt  atomic.Int64
+)
+
+// nodeUsesTLS 该节点是否走 TLS 连接（原名 shouldClashSkipCertVerify，
+// 名字误导：它判断的是"是否用 TLS"，不是"是否该跳过证书校验"，曾被当成后者误用）。
+func nodeUsesTLS(n *ProxyNode) bool {
 	switch n.Type {
 	case "vless", "vmess", "trojan", "hysteria", "hysteria2":
 		return n.TLS
@@ -2776,7 +2820,7 @@ func (s *ConfigUpdateService) proxyNodeToSurgeLine(n *ProxyNode) string {
 		}
 		return fmt.Sprintf("%s = http, %s, %s, username=%s, password=%s", name, host, port, user, pass)
 
-	case "hysteria", "hysteria2":
+	case "hysteria2":
 		password := optVal[string](m, "password")
 		sni := optVal[string](m, "sni")
 		if sni == "" {
@@ -2784,6 +2828,9 @@ func (s *ConfigUpdateService) proxyNodeToSurgeLine(n *ProxyNode) string {
 		}
 		return fmt.Sprintf("%s = hysteria2, %s, %s, password=%s, sni=%s, skip-cert-verify=%v",
 			name, host, port, password, sni, optVal[bool](m, "skip-cert-verify"))
+	// hysteria v1：Surge **不支持** v1（只有 hysteria2），旧实现把它错标成 hysteria2
+	// 会让客户拿到一个协议不匹配、必然连不上的节点。这里明确不渲染，
+	// 由 formatRenderTypes[FmtSurge] 记为"格式能力差异"（可在体检报告里看到，不再静默）。
 
 	case "tuic":
 		uuid := optVal[string](m, "uuid")
@@ -2821,7 +2868,18 @@ func (s *ConfigUpdateService) generateSingBoxConfig(proxies []*ProxyNode) string
 		Method   string `json:"method,omitempty"`
 		Security string `json:"security,omitempty"`
 		Flow     string `json:"flow,omitempty"`
-		TLS      *struct {
+		// socks / http 出站
+		Version  string `json:"version,omitempty"`
+		Username string `json:"username,omitempty"`
+		// hysteria v1 出站必填（sing-box 要求 up_mbps/down_mbps）
+		UpMbps   int `json:"up_mbps,omitempty"`
+		DownMbps int `json:"down_mbps,omitempty"`
+		// hysteria2 混淆
+		Obfs *struct {
+			Type     string `json:"type,omitempty"`
+			Password string `json:"password,omitempty"`
+		} `json:"obfs,omitempty"`
+		TLS *struct {
 			Enabled    bool     `json:"enabled"`
 			ServerName string   `json:"server_name,omitempty"`
 			Insecure   bool     `json:"insecure,omitempty"`
@@ -2884,8 +2942,33 @@ func (s *ConfigUpdateService) generateSingBoxConfig(proxies []*ProxyNode) string
 			ob.Type = "vless"
 			ob.UUID = optVal[string](m, "uuid")
 			ob.Flow = optVal[string](m, "flow")
-		case "hysteria", "hysteria2":
+		case "hysteria":
+			// hysteria v1：sing-box 有独立的 "hysteria" 出站，**不能**当成 hysteria2
+			// （旧实现把 v1 错标成 hysteria2 → 客户拿到一个协议不匹配的节点）。
+			ob.Type = "hysteria"
+			ob.Password = optVal[string](m, "password") // 脚本里 auth → password
+			ob.UpMbps = optVal[int](m, "up")
+			ob.DownMbps = optVal[int](m, "down")
+		case "hysteria2":
 			ob.Type = "hysteria2"
+			ob.Password = optVal[string](m, "password")
+			if ot := optVal[string](m, "obfs"); ot != "" {
+				ob.Obfs = &struct {
+					Type     string `json:"type,omitempty"`
+					Password string `json:"password,omitempty"`
+				}{Type: ot, Password: optVal[string](m, "obfs-password")}
+			}
+		case "anytls":
+			ob.Type = "anytls"
+			ob.Password = optVal[string](m, "password")
+		case "socks", "socks5":
+			ob.Type = "socks"
+			ob.Version = "5"
+			ob.Username = optVal[string](m, "uuid")
+			ob.Password = optVal[string](m, "password")
+		case "http":
+			ob.Type = "http"
+			ob.Username = optVal[string](m, "uuid")
 			ob.Password = optVal[string](m, "password")
 		case "tuic":
 			ob.Type = "tuic"
@@ -2896,7 +2979,7 @@ func (s *ConfigUpdateService) generateSingBoxConfig(proxies []*ProxyNode) string
 		}
 
 		// TLS
-		if optVal[bool](m, "tls") || n.Type == "trojan" || n.Type == "tuic" {
+		if optVal[bool](m, "tls") || n.Type == "trojan" || n.Type == "tuic" || n.Type == "anytls" || n.Type == "hysteria" {
 			sni := sniFromMap(m, ob.Server)
 			ob.TLS = &struct {
 				Enabled    bool     `json:"enabled"`
@@ -3090,6 +3173,17 @@ func (s *ConfigUpdateService) generateLoonConfig(proxies []*ProxyNode, siteURL s
 				parts = append(parts, "transport=tcp")
 			}
 			sb.WriteString(strings.Join(parts, ",") + "\n")
+		case "hysteria2":
+			password := optVal[string](m, "password")
+			sni := sniFromMap(m, host)
+			sb.WriteString(fmt.Sprintf("%s = hysteria2,%s,%d,password=%s,sni=%s,skip-cert-verify=%t\n",
+				name, host, n.Port, password, sni, optVal[bool](m, "skip-cert-verify")))
+		case "tuic":
+			uuid := optVal[string](m, "uuid")
+			password := optVal[string](m, "password")
+			sni := sniFromMap(m, host)
+			sb.WriteString(fmt.Sprintf("%s = tuic,%s,%d,token=%s:%s,sni=%s,skip-cert-verify=%t\n",
+				name, host, n.Port, uuid, password, sni, optVal[bool](m, "skip-cert-verify")))
 		}
 	}
 
@@ -3111,4 +3205,28 @@ func unescapeUnicode(s string) string {
 
 func (s *ConfigUpdateService) logSeparator() {
 	s.log("INFO", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+}
+
+// maxNodeValidationLogs node_validation_logs 保留的最大条数
+const maxNodeValidationLogs = 20000
+
+// pruneNodeValidationLogs 只保留最近 keep 条校验日志（按 id 倒序），避免表无限增长。
+// 只删日志，绝不触碰节点数据。
+func (s *ConfigUpdateService) pruneNodeValidationLogs(keep int) {
+	if s.db == nil || keep <= 0 {
+		return
+	}
+	var total int64
+	if err := s.db.Model(&models.NodeValidationLog{}).Count(&total).Error; err != nil || total <= int64(keep) {
+		return
+	}
+	var cutoff struct{ ID uint }
+	if err := s.db.Model(&models.NodeValidationLog{}).
+		Select("id").Order("id DESC").Offset(keep - 1).Limit(1).Scan(&cutoff).Error; err != nil || cutoff.ID == 0 {
+		return
+	}
+	res := s.db.Where("id < ?", cutoff.ID).Delete(&models.NodeValidationLog{})
+	if res.Error == nil && res.RowsAffected > 0 {
+		logf("已清理 %d 条历史节点校验日志（保留最近 %d 条）", res.RowsAffected, keep)
+	}
 }
