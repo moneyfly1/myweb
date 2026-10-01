@@ -27,26 +27,31 @@ import (
 
 // 校验原因码（后台可按 reason 一眼看出根因）
 const (
-	ReasonUnsupportedType     = "unsupported-type"           // 内核不支持的协议类型（如 naive/naive+https）
-	ReasonEmptyName           = "empty-name"                 // 节点名为空
-	ReasonInvalidServer       = "invalid-server"             // server 非空但非合法域名/IP
-	ReasonInvalidPort         = "invalid-port"               // port 不在 1..65535
-	ReasonMissingField        = "missing-field"              // 必填字段缺失（detail 里带字段名）
-	ReasonUnsupportedCipher   = "cipher-unsupported"         // ss/ssr cipher 不在内核白名单
-	ReasonCipherKeyNotB64     = "cipher-key-not-base64"      // ss 2022-blake3 密钥不是合法 base64
-	ReasonCipherKeyMismatch   = "cipher-key-length-mismatch" // ss 2022-blake3 密钥长度不等于内核要求
-	ReasonPluginInvalid       = "plugin-invalid"             // ss plugin 名未知或必需参数缺失
-	ReasonUnsupportedProtocol = "ssr-protocol-unsupported"   // ssr protocol 不在内核枚举内
-	ReasonUnsupportedObfs     = "ssr-obfs-unsupported"       // ssr obfs 不在内核枚举内
-	ReasonVMessCipher         = "vmess-cipher-unsupported"   // vmess cipher 不在内核白名单
-	ReasonVLESSFlow           = "vless-flow-unsupported"     // vless flow 被内核拒绝
-	ReasonVLESSEncryption     = "vless-encryption-unsupported"
-	ReasonKernelInvalid       = "kernel-config-invalid"   // 第二层：内核 -t 判定该节点使配置失效
-	ReasonWireGuardKey        = "wireguard-key-invalid"   // wireguard 密钥非法 base64
-	ReasonObfsInvalid         = "obfs-unsupported"        // hysteria2 等 obfs 取值不被内核支持
-	ReasonRealityInvalid      = "reality-opts-incomplete" // reality-opts 缺 public-key
-	ReasonReservedName        = "reserved-name"           // 节点名与内核内置代理名冲突（DIRECT 等）
-	ReasonKeyURLDecoded       = "cipher-key-url-decoded"  // 修正：2022 密钥被 URL 编码污染，已还原
+	ReasonUnsupportedType      = "unsupported-type"           // 内核不支持的协议类型（如 naive/naive+https）
+	ReasonEmptyName            = "empty-name"                 // 节点名为空
+	ReasonInvalidServer        = "invalid-server"             // server 非空但非合法域名/IP
+	ReasonInvalidPort          = "invalid-port"               // port 不在 1..65535
+	ReasonMissingField         = "missing-field"              // 必填字段缺失（detail 里带字段名）
+	ReasonUnsupportedCipher    = "cipher-unsupported"         // ss/ssr cipher 不在内核白名单
+	ReasonCipherKeyNotB64      = "cipher-key-not-base64"      // ss 2022-blake3 密钥不是合法 base64
+	ReasonCipherKeyMismatch    = "cipher-key-length-mismatch" // ss 2022-blake3 密钥长度不等于内核要求
+	ReasonPluginInvalid        = "plugin-invalid"             // ss plugin 名未知或必需参数缺失
+	ReasonUnsupportedProtocol  = "ssr-protocol-unsupported"   // ssr protocol 不在内核枚举内
+	ReasonUnsupportedObfs      = "ssr-obfs-unsupported"       // ssr obfs 不在内核枚举内
+	ReasonVMessCipher          = "vmess-cipher-unsupported"   // vmess cipher 不在内核白名单
+	ReasonVLESSFlow            = "vless-flow-unsupported"     // vless flow 被内核拒绝
+	ReasonVLESSEncryption      = "vless-encryption-unsupported"
+	ReasonKernelInvalid        = "kernel-config-invalid"   // 第二层：内核 -t 判定该节点使配置失效
+	ReasonWireGuardKey         = "wireguard-key-invalid"   // wireguard 密钥非法 base64
+	ReasonObfsInvalid          = "obfs-unsupported"        // hysteria2 等 obfs 取值不被内核支持
+	ReasonRealityInvalid       = "reality-opts-incomplete" // reality-opts 缺 public-key
+	ReasonReservedName         = "reserved-name"           // 节点名与内核内置代理名冲突（DIRECT 等）
+	ReasonCredentialURLDecoded = "credential-url-decoded"  // 修正：凭据含 %XX 转义，已做一次 URL 解码还原
+	// ReasonCipherKeyInvalid 是"密钥类校验不通过"的总类码：node_validation_logs.reason 以精确
+	// 子类开头并在正文带上本总类码，因此
+	//   WHERE reason LIKE '%cipher-key-invalid%'  → 命中全部密钥类丢弃
+	// 既能按总类检索，也保留 not-base64 / length-mismatch 的精确聚合。
+	ReasonCipherKeyInvalid = "cipher-key-invalid"
 )
 
 // mihomoSupportedNodeTypes mihomo 实际支持的代理协议白名单。
@@ -368,7 +373,37 @@ func ssKeyCheck(password string, wantLen int) (code, detail string) {
 	return "", ""
 }
 
-// NormalizeSS2022Key 修正 2022-blake3 密钥的 URL 编码污染。
+// NormalizeCredentials 凭据规范化统一入口：在【写库前】与【出配置前】各跑一次，
+// 因此旧库里未解码的历史数据无需回填迁移，出配置时即可自动恢复可用。
+//
+// 覆盖范围与"为什么只对这些字段做"：
+//   - ss 且 cipher 为 2022-blake3-*：password 被内核当"密钥"用，有明确合法性判据
+//     （base64 + 精确长度），因此可以**证明**解码后更优 → 安全地自动修正。
+//   - ss / ssr 其它 cipher：password 在内核眼里是**任意字符串**（实测
+//     aes-128-gcm + "pw" PASS、chacha20-ietf-poly1305 + 面板口令 PASS），既不会让配置失效，
+//     也没有任何判据能区分"字面 % 号"与"被 URL 编码的 %"——盲解码会把本可用的口令改坏
+//     （例如 password 本身就是 "a%20b"）。这类凭据只在**解析阶段**（值确凿来自 URL userinfo）
+//     做一次百分号解码，见 node_parser.go 的 extractSSAuth / parseSSR。
+//
+// 返回是否发生了修正。
+func NormalizeCredentials(n *ProxyNode) (bool, string) {
+	if n == nil {
+		return false, ""
+	}
+	switch NormalizeNodeType(n.Type) {
+	case "ss":
+		return normalizeSS2022Key(n)
+	case "ssr":
+		// ssr 密码没有长度判据，不做盲解码；其 base64 主体已在解析阶段处理
+		return false, ""
+	}
+	return false, ""
+}
+
+// NormalizeSS2022Key 兼容入口：等价于对单节点的凭据规范化
+func NormalizeSS2022Key(n *ProxyNode) (bool, string) { return NormalizeCredentials(n) }
+
+// normalizeSS2022Key 修正 2022-blake3 密钥的 URL 编码污染。
 //
 // 现网真实故障：订阅里的 ss 节点 password 被 URL 编码成
 // "XD8...%2FQ=%3Alll..."（'/'→%2F，':'→%3A），内核报
@@ -376,7 +411,7 @@ func ssKeyCheck(password string, wantLen int) (code, detail string) {
 // 实测 URL 解码后密钥合法、`mihomo -t` 通过，所以这里做「修正」而不是「丢弃」。
 //
 // 返回 (是否修正, 说明)。
-func NormalizeSS2022Key(n *ProxyNode) (bool, string) {
+func normalizeSS2022Key(n *ProxyNode) (bool, string) {
 	if n == nil {
 		return false, ""
 	}
@@ -433,7 +468,8 @@ func validateSSNode(n *ProxyNode) error {
 	if wantLen, is2022 := ss2022RequiredKeyLen[cipher]; is2022 {
 		if code, detail := ssKeyCheck(n.Password, wantLen); code != "" {
 			return newValidationError(code,
-				"%s 的 password 非法：%s（内核报 decode key / bad key length，会让整份配置 -t 失败、客户端起不来）", cipher, detail)
+				"%s password 非法（%s）：%s —— 内核报 decode key / bad key length，会让整份配置 -t 失败、客户端起不来",
+				cipher, ReasonCipherKeyInvalid, detail)
 		}
 	}
 	return validateSSPlugin(n)
@@ -651,8 +687,8 @@ func StaticValidateNodes(nodes []*ProxyNode, source string) (kept []*ProxyNode, 
 		if n == nil {
 			continue
 		}
-		if corrected, detail := NormalizeSS2022Key(n); corrected {
-			events = append(events, NewNodeValidationEvent(models.NodeValidationCorrectedAtIngest, source, n, ReasonKeyURLDecoded, detail))
+		if corrected, detail := NormalizeCredentials(n); corrected {
+			events = append(events, NewNodeValidationEvent(models.NodeValidationCorrectedAtIngest, source, n, ReasonCredentialURLDecoded, detail))
 		}
 		if err := ValidateProxyNode(n); err != nil {
 			ve, ok := err.(*NodeValidationError)

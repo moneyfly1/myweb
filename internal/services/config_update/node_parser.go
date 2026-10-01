@@ -274,7 +274,17 @@ func parseShadowsocks(link string) (*ProxyNode, error) {
 }
 
 func parseSSR(link string) (*ProxyNode, error) {
-	decoded, err := DecodeBase64(strings.TrimPrefix(link, "ssr://"))
+	payload := strings.TrimPrefix(link, "ssr://")
+	decoded, err := DecodeBase64(payload)
+	if err != nil {
+		// 主体被 URL 编码污染时（%XX）先做一次百分号解码再试。
+		// 只有主路径已失败才走这里 —— 是有判据的回退，不会改坏本来能解析的链接。
+		if unescaped, uerr := url.PathUnescape(payload); uerr == nil && unescaped != payload {
+			if d2, err2 := DecodeBase64(unescaped); err2 == nil {
+				decoded, err = d2, nil
+			}
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
