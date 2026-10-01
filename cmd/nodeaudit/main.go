@@ -83,4 +83,34 @@ func main() {
 	}
 	printEntries("静态校验丢弃 / 修正", report.Entries)
 	printEntries("内核自检剔除", report.KernelPruned)
+
+	// 聚合结论：回答"这类坏节点现网还有多少个、集中在哪"
+	if len(report.DroppedByReason) > 0 {
+		fmt.Printf("\n--- 按原因聚合（丢弃 %d 个）---\n", report.Dropped)
+		for _, r := range report.DroppedByReason {
+			fmt.Printf("  %-34s %4d 个   样例: %s\n", r.ReasonCode, r.Count, r.Sample)
+		}
+	}
+	if len(report.DroppedByTypeCipher) > 0 {
+		fmt.Printf("\n--- 按 协议类型 + cipher 聚合 ---\n")
+		for _, t := range report.DroppedByTypeCipher {
+			fmt.Printf("  type=%-10s cipher=%-32s %4d 个\n", t.Type, t.Cipher, t.Count)
+		}
+	}
+	if len(report.DroppedBySource) > 0 {
+		fmt.Printf("\n--- 按来源订阅编号聚合 ---\n")
+		for _, sc := range report.DroppedBySource {
+			src := fmt.Sprintf("%d", sc.SourceIndex)
+			if sc.SourceIndex == 0 {
+				src = "0(手动/未知)"
+			}
+			fmt.Printf("  source_index=%-12s %4d 个\n", src, sc.Count)
+		}
+	}
+	if len(report.CorrectedByReason) > 0 {
+		fmt.Printf("\n--- 自动修正（已修复并保留，未丢弃）---\n")
+		for _, r := range report.CorrectedByReason {
+			fmt.Printf("  %-34s %4d 个   样例: %s\n", r.ReasonCode, r.Count, r.Sample)
+		}
+	}
 }
