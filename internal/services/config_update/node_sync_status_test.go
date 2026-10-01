@@ -68,9 +68,10 @@ func TestImportNodesPreservesHealthStatus(t *testing.T) {
 
 	// 订阅采集到同一个节点（配置一致、名称一致 → 命中更新分支）
 	incoming := oldNode
+	// 源 1 本轮有产出（aliveSources），因此可正常按上游对账；见 staleDeletionPlan。
 	stats := svc.importNodesToDatabaseWithOrderTx(db, []nodeWithOrder{
 		{node: &incoming, orderIndex: 7, sourceIndex: 1},
-	})
+	}, map[int]bool{1: true}, 1)
 
 	if stats.Updated != 1 {
 		t.Fatalf("stats.Updated = %d, want 1（应命中更新分支）", stats.Updated)
@@ -107,7 +108,7 @@ func TestImportNewNodeDefaultsUnchanged(t *testing.T) {
 	incoming := ProxyNode{Name: "东京-02", Type: "vmess", Server: "5.6.7.8", Port: 8443, UUID: "uuid-2"}
 	stats := svc.importNodesToDatabaseWithOrderTx(db, []nodeWithOrder{
 		{node: &incoming, orderIndex: 1, sourceIndex: 0},
-	})
+	}, map[int]bool{1: true}, 1)
 	if stats.Created != 1 {
 		t.Fatalf("stats.Created = %d, want 1", stats.Created)
 	}
@@ -147,7 +148,9 @@ func TestImportNodesPreservesIDAndRemovesStale(t *testing.T) {
 
 	// 上游只剩 keep 一个节点
 	incoming := keep
-	stats := svc.importNodesToDatabaseWithOrderTx(db, []nodeWithOrder{{node: &incoming, orderIndex: 1}})
+	// 种子节点未设置 source_index（=0），把它对应的源标为"本轮有产出"，
+	// 以保持本用例原意：源存活时上游消失的节点必须清理。
+	stats := svc.importNodesToDatabaseWithOrderTx(db, []nodeWithOrder{{node: &incoming, orderIndex: 1}}, map[int]bool{0: true}, 1)
 
 	if stats.Updated != 1 {
 		t.Errorf("stats.Updated = %d, want 1（同 key 应更新而不是重建）", stats.Updated)
@@ -191,7 +194,7 @@ func TestImportNeverRemovesManualNodes(t *testing.T) {
 		t.Fatalf("设置 is_manual=true 失败: %v", err)
 	}
 
-	stats := svc.importNodesToDatabaseWithOrderTx(db, nil)
+	stats := svc.importNodesToDatabaseWithOrderTx(db, nil, nil, 0)
 
 	if stats.Removed != 0 {
 		t.Errorf("stats.Removed = %d, want 0（手动节点不能被采集同步删除）", stats.Removed)

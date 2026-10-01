@@ -1,9 +1,11 @@
 package config_update
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"cboard-go/internal/models"
 )
@@ -40,7 +42,31 @@ func detectClientVersion(ua string) (string, float64, bool) {
 		return "clash-meta", parseVersionFromUA(ua), true
 	}
 
-	// 老版 Clash（premium / open source，不含 Meta）
+	// 已知基于 mihomo / Clash.Meta 内核的客户端：一律按"支持全部新协议"处理。
+	// 必须排在下面的 clash-legacy 分支之前：ClashX Meta 的 UA 含 "clashx" 子串、
+	// clash-verge 也是 mihomo 内核，若被误判为老版 Clash，会把 vless/hysteria2
+	// （现网各 279/93 个）当成"客户端不支持"整批剔除。
+	// 现网实测 UA：mihomo.party/v2.0.0 (clash.meta)、ClashMetaForAndroid/2.11.31.Meta、
+	// clash-verge/v2.5.2、ClashX Meta/1.4.x、FlClash、Clash Nyanpasu、ClashMi 等。
+	// 片段表（小写匹配）：客户端命名有连字符/空格/驼峰多种写法，逐个 Contains 易漏
+	// （实测漏过 "Clash Nyanpasu"，它含空格因此命中了 legacy 分支的 "clash "）。
+	metaClientHints := []string{
+		"meta", "mihomo",
+		"clash-verge", "clashverge", "clash verge",
+		"nyanpasu", "flclash", "clashmi", "clash mi",
+		"clash-rs", "clashrs", "clashx meta",
+	}
+	for _, kw := range metaClientHints {
+		if strings.Contains(uaLower, kw) {
+			return "clash-meta", parseVersionFromUA(ua), true
+		}
+	}
+
+	// 真正的老版 Clash（内置 Clash Premium/开源内核，不含 Meta）：
+	// ClashforWindows/0.19.23、ClashforWindows/0.20.39、ClashforAndroid/2.5.12、ClashX/1.118.0。
+	// 注意：CFW 0.20.x 默认内核仍是 Clash Premium（不含 vless/hysteria2），
+	// 但如果用户自行替换为 Meta 内核，UA 无法体现——这类情况由管理员在
+	// 「协议过滤」页关闭 client_capability_filter_enabled 开关来放行全量节点。
 	// ClashforWindows/0.19.23 / ClashforAndroid/2.5.12 / ClashX/1.118.0
 	if strings.Contains(uaLower, "clashforwindows") || strings.Contains(uaLower, "clashforandroid") ||
 		strings.Contains(uaLower, "clashx") || strings.Contains(uaLower, "clash/") ||
@@ -164,16 +190,107 @@ func getClientCapabilities(clientType string) *clientCapabilities {
 				"reality": 5.0, "hysteria2": 5.0, "tuic": 5.0,
 			},
 		}
-	case "loon", "quantumult":
+	case "loon":
 		return &clientCapabilities{
 			unsupportedBefore: map[string]float64{
 				"reality": 3.0, "hysteria2": 3.0, "tuic": 3.0,
 			},
 		}
+	case "quantumult":
+		// QuantumultX 走**独立版本号体系（1.x）**，与 Loon 的 3.x 不可共用阈值：
+		// 现网实测 UA "Quantumult%20X/1.4.0" 会被解析成 1.4，若沿用 3.0 阈值，
+		// 会把 QX **支持**的 reality/hysteria2/tuic 当成"客户端不支持"整批剔除
+		// （1.4 < 3.0 恒成立，等于对所有 QX 用户永久生效）。
+		// QX 不该支持的类型（hysteria/hysteria2/tuic）已由**格式层**拦截：
+		// generateQuantumultXConfig 只渲染官方 sample.conf 列明的类型，
+		// formatRenderTypes[FmtQuantumultX] 与此逐字一致（有 go/ast 机械校验）。
+		// 因此这里不做版本门控，避免用错误的版本阈值误砍节点。
+		return &clientCapabilities{}
 	default:
 		return nil
 	}
 }
+
+// nodeHasReality 判断节点是否启用 Reality。
+// vless 链接里 sec=reality 或带 pbk 时，解析器会写入 Options["reality-opts"]，
+// 其中 public-key 是 Reality 可用性的关键字段（缺 pbk 的 reality-opts 无意义）。
+func nodeHasReality(n *ProxyNode) bool {
+	if n == nil || len(n.Options) == 0 {
+		return false
+	}
+	raw, ok := n.Options["reality-opts"]
+	if !ok || raw == nil {
+		return false
+	}
+	switch v := raw.(type) {
+	case map[string]any:
+		pk, _ := v["public-key"].(string)
+		return strings.TrimSpace(pk) != ""
+	case map[string]string:
+		return strings.TrimSpace(v["public-key"]) != ""
+	}
+	return false
+}
+
+// nodeCapabilityKeys 返回节点在"客户端能力"语义下涉及的全部协议键。
+//
+// 除 n.Type 本身外，还包含由节点选项隐含的能力键：
+//   - "reality"：启用 Reality 的节点要求客户端支持 Reality，否则在客户端侧就是
+//     无法解析的非法配置。
+//
+// 这正是历史缺陷所在：unsupportedProtocols/unsupportedBefore 里写了 "reality"，
+// 但判定只比较 p.Type，而 ProxyNode.Type 只可能是 vless/vmess/...，永远不等于
+// "reality"——于是老版 Shadowrocket(<1744)/Surge(<5.0)/Loon(<3.0) 照样会收到
+// Reality 节点，本该被防住的"客户端整份订阅解析失败"并没有被防住。
+func nodeCapabilityKeys(n *ProxyNode) []string {
+	if n == nil {
+		return nil
+	}
+	keys := []string{strings.ToLower(strings.TrimSpace(n.Type))}
+	if nodeHasReality(n) {
+		keys = append(keys, "reality")
+	}
+	return keys
+}
+
+// nodeUnsupported 判断该客户端（能力表 + 版本）是否不支持此节点。
+// 判定遍历节点的全部能力键，任一键命中不支持即判定不支持。
+func (c *clientCapabilities) nodeUnsupported(p *ProxyNode, version float64) bool {
+	if c == nil || p == nil {
+		return false
+	}
+	for _, key := range nodeCapabilityKeys(p) {
+		if c.unsupportedProtocols[key] {
+			return true
+		}
+		if minVersion, exists := c.unsupportedBefore[key]; exists && version > 0 && version < minVersion {
+			return true
+		}
+	}
+	return false
+}
+
+// filterByCapabilities 客户端能力过滤的纯函数实现（不依赖 DB/日志，便于表驱动测试）。
+// 返回保留的节点与被剔除的节点数。
+func filterByCapabilities(proxies []*ProxyNode, version float64, caps *clientCapabilities) ([]*ProxyNode, int) {
+	if caps == nil {
+		return proxies, 0
+	}
+	kept := make([]*ProxyNode, 0, len(proxies))
+	dropped := 0
+	for _, p := range proxies {
+		if caps.nodeUnsupported(p, version) {
+			dropped++
+			continue
+		}
+		kept = append(kept, p)
+	}
+	return kept, dropped
+}
+
+// capabilityFilterLogSeen 记录已输出过能力过滤摘要日志的（UA, 客户端, 版本, 规模）组合，
+// 避免每次订阅拉取都写一行日志（现网 Clash for Windows 客户端数占比很高）。
+var capabilityFilterLogSeen sync.Map
 
 // filterProxiesByClientCapability 按客户端能力过滤协议。
 // 受系统设置「协议过滤」页的客户端版本过滤开关控制：
@@ -194,19 +311,34 @@ func (s *ConfigUpdateService) filterProxiesByClientCapability(proxies []*ProxyNo
 		return proxies
 	}
 
-	var result []*ProxyNode
-	for _, p := range proxies {
-		if caps.unsupportedProtocols[p.Type] {
-			continue
-		}
-		if minVersion, exists := caps.unsupportedBefore[p.Type]; exists {
-			if version > 0 && version < minVersion {
-				continue
-			}
-		}
-		result = append(result, p)
-	}
+	result, dropped := filterByCapabilities(proxies, version, caps)
+	s.logCapabilityFilterOnce(userAgent, clientType, version, len(proxies), len(result), dropped)
 	return result
+}
+
+// logCapabilityFilterOnce 每个（UA, 客户端类型, 版本, 规模）组合只记一次过滤摘要。
+// 能力过滤会让某些老客户端只拿到部分节点（如老 Clash 只支持 ss/vmess/trojan），
+// 没有这行日志时管理员只看到"节点变少"却查不到原因，容易误判为节点丢失事故。
+func (s *ConfigUpdateService) logCapabilityFilterOnce(userAgent, clientType string, version float64, total, kept, dropped int) {
+	if s == nil || dropped <= 0 {
+		return
+	}
+	key := fmt.Sprintf("%s|%s|%.2f|%d|%d", userAgent, clientType, version, total, kept)
+	if _, loaded := capabilityFilterLogSeen.LoadOrStore(key, true); loaded {
+		return
+	}
+	s.infof("🧭 客户端能力过滤: UA=%q 识别为 %s(v%.2f) → 下发 %d/%d 个节点（按该客户端不支持的协议剔除 %d 个）",
+		truncateUA(userAgent, 64), clientType, version, kept, total, dropped)
+}
+
+// truncateUA 按 rune 截断 UA 用于日志，避免超长 UA 污染日志行。
+func truncateUA(ua string, maxRunes int) string {
+	ua = strings.TrimSpace(ua)
+	r := []rune(ua)
+	if len(r) <= maxRunes {
+		return ua
+	}
+	return string(r[:maxRunes]) + "…"
 }
 
 // isClientCapabilityFilterEnabled 读取客户端版本过滤总开关。

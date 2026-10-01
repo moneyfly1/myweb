@@ -113,6 +113,9 @@ type importStats struct {
 	Updated int
 	Removed int
 	Skipped int
+	// Preserved 因"所属采集源本轮无产出"而保守保留、未按上游消失清理的节点数。
+	// 见 staleDeletionPlan：源下载失败不能等价于它的节点被上游删除。
+	Preserved int
 }
 
 type updateStats struct {
@@ -124,6 +127,10 @@ type updateStats struct {
 	// invalidNodes 解析成功但不通过第一层校验（白名单/必填字段/cipher 等）而丢弃的节点数。
 	// 与 parseFailed（采集/解析失败，按原重试逻辑）严格区分。
 	invalidNodes int
+	// aliveSources 本轮**确有产出**（下载成功且拿到链接）的采集源 index 集合，
+	// 1-based，与 nodeWithOrder.sourceIndex 同域。只有这类源才允许在入库阶段
+	// 判定"其节点已从上游消失"并删除（见 staleDeletionPlan）。
+	aliveSources map[int]bool
 }
 
 // 【核心修复】：使用单例模式，保障轮询、SSE流、后台任务使用的是同一个内存实例
@@ -429,7 +436,7 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		// 健康检查的结果会全部落到已删除的行上（详见 importNodesToDatabaseWithOrderTx 内注释）。
 		var importResult importStats
 		txErr := s.db.Transaction(func(tx *gorm.DB) error {
-			importResult = s.importNodesToDatabaseWithOrderTx(tx, nodesWithOrder)
+			importResult = s.importNodesToDatabaseWithOrderTx(tx, nodesWithOrder, stats.aliveSources, len(urls))
 			return nil
 		})
 		if txErr != nil {
@@ -456,7 +463,7 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		}
 
 		time.Sleep(300 * time.Millisecond)
-		s.successf("📊 入库完成 => 新增: %d | 更新: %d | 移除: %d | 手动跳过: %d", importResult.Created, importResult.Updated, importResult.Removed, importResult.Skipped)
+		s.successf("📊 入库完成 => 新增: %d | 更新: %d | 移除: %d | 手动跳过: %d | 保守保留: %d", importResult.Created, importResult.Updated, importResult.Removed, importResult.Skipped, importResult.Preserved)
 
 		s.clearAllCaches()
 
@@ -466,7 +473,7 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 
 		// 校验日志表保留期：只增不减会无限膨胀（每次同步/每个格式都可能写入），
 		// 保留最近 maxNodeValidationLogs 条，其余按 id 删除。
-		s.pruneNodeValidationLogs(maxNodeValidationLogs)
+		s.pruneNodeValidationLogs(s.nodeValidationLogKeep())
 
 		time.Sleep(200 * time.Millisecond)
 		s.logSeparator()
@@ -545,6 +552,7 @@ func (s *ConfigUpdateService) logUpdateStats(stats updateStats, success int) {
 func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[string]interface{}, filterKeywords []string, urlFilterFlags []bool) ([]nodeWithOrder, updateStats) {
 	var nodesWithOrder []nodeWithOrder
 	stats := updateStats{}
+	stats.aliveSources = make(map[int]bool)
 	seenKeys, usedNames := make(map[string]bool), make(map[string]bool)
 	nodesByURL := make(map[string][]map[string]interface{})
 
@@ -559,8 +567,11 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 	for urlIndex, url := range urls {
 		urlNodes := nodesByURL[url]
 		if len(urlNodes) == 0 {
+			// 该源本轮零产出（下载失败/404/限流等）。记入 aliveSources 之外的源，
+			// 其原有节点在入库阶段会被保守保留，不会被误判为"上游已消失"。
 			continue
 		}
+		stats.aliveSources[urlIndex+1] = true
 
 		// 该订阅源是否启用关键词过滤（勾选=启用；不勾选=不过滤，保留全部节点）
 		urlFilter := len(filterKeywords) > 0
@@ -1115,7 +1126,32 @@ func truncateProxyNodeName(name string) string {
 	return string(runes[:maxLen])
 }
 
-func (s *ConfigUpdateService) importNodesToDatabaseWithOrderTx(db *gorm.DB, nodes []nodeWithOrder) importStats {
+// staleDeletionPlan 计算"上游已消失"清理计划：返回可安全删除的节点 id 与保守保留的节点数。
+//
+// 关键语义（防误删）：只有当节点所属的采集源**本轮确有产出**（下载成功并拿到链接）时，
+// 才能认定该节点"已从上游消失"。源本轮零产出（404/超时/限流等下载失败）时一律保守保留，
+// 否则一次源故障就等价于把该源的全部节点当"上游已删除"整批删掉——
+// 这不是"上游删了节点"，而是"我们没拿到数据"。
+// 现网源 14（repo-sync/zibvpn_nodes.txt）长期返回 404，旧逻辑下它的节点每轮都被删除。
+//
+// 例外：SourceIndex 超出当前源列表长度（源已被管理员从配置中移除）的节点允许删除。
+func staleDeletionPlan(existing map[string]*models.Node, seen map[string]bool, aliveSources map[int]bool, totalSources int) ([]uint, int) {
+	var del []uint
+	preserved := 0
+	for key, exist := range existing {
+		if exist == nil || seen[key] {
+			continue
+		}
+		if !aliveSources[exist.SourceIndex] && exist.SourceIndex <= totalSources {
+			preserved++
+			continue
+		}
+		del = append(del, exist.ID)
+	}
+	return del, preserved
+}
+
+func (s *ConfigUpdateService) importNodesToDatabaseWithOrderTx(db *gorm.DB, nodes []nodeWithOrder, aliveSources map[int]bool, totalSources int) importStats {
 	var stats importStats
 	seenKeys := make(map[string]bool)
 
@@ -1205,11 +1241,10 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrderTx(db *gorm.DB, node
 	// 健康检查刚写入的 status/latency/last_test 落在被删掉的行上，
 	// 于是节点列表长期显示"在线 0ms"、auto_disable_timeout 形同虚设；
 	// 同时节点 ID 每小时变化，任何按 ID 记录的数据都会变成孤儿。
-	var staleIDs []uint
-	for key, exist := range existingMap {
-		if !seenKeys[key] {
-			staleIDs = append(staleIDs, exist.ID)
-		}
+	staleIDs, preserved := staleDeletionPlan(existingMap, seenKeys, aliveSources, totalSources)
+	stats.Preserved = preserved
+	if preserved > 0 {
+		s.warnf("⚠️ %d 个采集节点所属的采集源本轮无产出（下载失败或该源已不可用），已保守保留不删除，避免把『没拿到数据』误判成『上游删了节点』", preserved)
 	}
 	if len(staleIDs) > 0 {
 		if err := db.Where("id IN ?", staleIDs).Delete(&models.Node{}).Error; err != nil {
@@ -1856,6 +1891,17 @@ func nestedString(opts map[string]interface{}, key, subkey string) string {
 		}
 	}
 	return ""
+}
+
+// realityFromMap 从 nodeToMap 的结果中读取 Reality 参数。
+// nodeToMap 会把 ProxyNode.Options["reality-opts"] 原样带出（键名与解析层一致：
+// public-key / short-id），各客户端生成器都要读它，故统一在此。
+func realityFromMap(m map[string]interface{}) (publicKey, shortID string) {
+	if ro, ok := m["reality-opts"].(map[string]interface{}); ok {
+		publicKey, _ = ro["public-key"].(string)
+		shortID, _ = ro["short-id"].(string)
+	}
+	return strings.TrimSpace(publicKey), strings.TrimSpace(shortID)
 }
 
 func wsPathAndHost(opts map[string]interface{}) (path, host string) {
@@ -3109,6 +3155,81 @@ func (s *ConfigUpdateService) generateQuantumultXConfig(proxies []*ProxyNode, si
 			parts = append(parts, "fast-open=false", "udp-relay=false", fmt.Sprintf("tag=%s", name))
 			sb.WriteString(strings.Join(parts, ", ") + "\n")
 			allNames = append(allNames, name)
+		case "vless":
+			// 官方 sample.conf：vless 的 method 必须是 none，UUID 放在 password 字段（不是 uuid=）。
+			// Reality 键名是 QX 专有的 reality-base64-pubkey / reality-hex-shortid，与 Loon/Clash
+			// 的 public-key / short-id 不可互换；且官方要求 Reality 必须同时带 obfs=over-tls
+			// （Reality 是替换标准 TLS，不是独立传输）。
+			uuid := optVal[string](m, "uuid")
+			sni := sniFromMap(m, host)
+			parts := []string{fmt.Sprintf("vless = %s:%d, method=none, password=%s", host, n.Port, uuid)}
+			pubKey, shortID := realityFromMap(m)
+			switch {
+			case pubKey != "":
+				parts = append(parts, "obfs=over-tls", fmt.Sprintf("obfs-host=%s", sni),
+					fmt.Sprintf("reality-base64-pubkey=%s", pubKey))
+				if shortID != "" {
+					parts = append(parts, fmt.Sprintf("reality-hex-shortid=%s", shortID))
+				}
+			case optVal[string](m, "network") == "ws":
+				path, wsHost := wsPathAndHost(m)
+				if optVal[bool](m, "tls") {
+					parts = append(parts, "obfs=wss")
+				} else {
+					parts = append(parts, "obfs=ws")
+				}
+				if wsHost != "" {
+					parts = append(parts, fmt.Sprintf("obfs-host=%s", wsHost))
+				}
+				if path != "" {
+					parts = append(parts, fmt.Sprintf("obfs-uri=%s", path))
+				}
+			case optVal[bool](m, "tls"):
+				parts = append(parts, "obfs=over-tls", fmt.Sprintf("obfs-host=%s", sni))
+			}
+			if flow := optVal[string](m, "flow"); flow != "" {
+				parts = append(parts, fmt.Sprintf("vless-flow=%s", flow))
+			}
+			parts = append(parts, "udp-relay=false", fmt.Sprintf("tag=%s", name))
+			sb.WriteString(strings.Join(parts, ", ") + "\n")
+			allNames = append(allNames, name)
+		case "socks5", "socks":
+			// QX 的 socks5 用 username=/password= 键；TLS 走 over-tls=true + tls-host（与
+			// vless/shadowsocks 的 obfs=over-tls + obfs-host 是两套风格，不可混用）。
+			parts := []string{fmt.Sprintf("socks5 = %s:%d", host, n.Port)}
+			if user := optVal[string](m, "username"); user != "" {
+				parts = append(parts, fmt.Sprintf("username=%s", user))
+			}
+			if pass := optVal[string](m, "password"); pass != "" {
+				parts = append(parts, fmt.Sprintf("password=%s", pass))
+			}
+			if optVal[bool](m, "tls") {
+				parts = append(parts, "over-tls=true", fmt.Sprintf("tls-host=%s", sniFromMap(m, host)))
+			}
+			parts = append(parts, "udp-relay=false", fmt.Sprintf("tag=%s", name))
+			sb.WriteString(strings.Join(parts, ", ") + "\n")
+			allNames = append(allNames, name)
+		case "http":
+			parts := []string{fmt.Sprintf("http = %s:%d", host, n.Port)}
+			if user := optVal[string](m, "username"); user != "" {
+				parts = append(parts, fmt.Sprintf("username=%s", user))
+			}
+			if pass := optVal[string](m, "password"); pass != "" {
+				parts = append(parts, fmt.Sprintf("password=%s", pass))
+			}
+			if optVal[bool](m, "tls") {
+				parts = append(parts, "over-tls=true", fmt.Sprintf("tls-host=%s", sniFromMap(m, host)))
+			}
+			parts = append(parts, "udp-relay=false", fmt.Sprintf("tag=%s", name))
+			sb.WriteString(strings.Join(parts, ", ") + "\n")
+			allNames = append(allNames, name)
+		case "anytls":
+			// QX 于官方 sample.conf 新增 anytls，TLS 用 over-tls/tls-host 风格。
+			parts := []string{fmt.Sprintf("anytls = %s:%d, password=%s", host, n.Port, optVal[string](m, "password"))}
+			parts = append(parts, "over-tls=true", fmt.Sprintf("tls-host=%s", sniFromMap(m, host)), "udp-relay=true")
+			parts = append(parts, fmt.Sprintf("tag=%s", name))
+			sb.WriteString(strings.Join(parts, ", ") + "\n")
+			allNames = append(allNames, name)
 		}
 	}
 
@@ -3174,16 +3295,92 @@ func (s *ConfigUpdateService) generateLoonConfig(proxies []*ProxyNode, siteURL s
 			}
 			sb.WriteString(strings.Join(parts, ",") + "\n")
 		case "hysteria2":
-			password := optVal[string](m, "password")
-			sni := sniFromMap(m, host)
-			sb.WriteString(fmt.Sprintf("%s = hysteria2,%s,%d,password=%s,sni=%s,skip-cert-verify=%t\n",
-				name, host, n.Port, password, sni, optVal[bool](m, "skip-cert-verify")))
-		case "tuic":
+			// Loon 官方定义：Hysteria2,host,port,"password",sni=...（密码是位置参数且必须加引号，
+			// 不是 password= 键值对）。
+			sb.WriteString(fmt.Sprintf("%s = hysteria2,%s,%d,\"%s\",sni=%s,skip-cert-verify=%t\n",
+				name, host, n.Port, optVal[string](m, "password"), sniFromMap(m, host), optVal[bool](m, "skip-cert-verify")))
+		case "vless":
+			// Loon 的 VLESS **没有加密方式字段**（那是 VMess 的），照抄 VMess 会多一个字段导致解析失败。
+			// Reality 键名是 public-key（带引号）/ short-id（不带引号）。
 			uuid := optVal[string](m, "uuid")
-			password := optVal[string](m, "password")
-			sni := sniFromMap(m, host)
-			sb.WriteString(fmt.Sprintf("%s = tuic,%s,%d,token=%s:%s,sni=%s,skip-cert-verify=%t\n",
-				name, host, n.Port, uuid, password, sni, optVal[bool](m, "skip-cert-verify")))
+			parts := []string{fmt.Sprintf("%s = vless,%s,%d,\"%s\"", name, host, n.Port, uuid)}
+			network := optVal[string](m, "network")
+			if network == "ws" {
+				path, wsHost := wsPathAndHost(m)
+				parts = append(parts, "transport=ws")
+				if path != "" {
+					parts = append(parts, fmt.Sprintf("path=%s", path))
+				}
+				if wsHost != "" {
+					parts = append(parts, fmt.Sprintf("host=%s", wsHost))
+				}
+			} else {
+				parts = append(parts, "transport=tcp")
+			}
+			pubKey, shortID := realityFromMap(m)
+			if flow := optVal[string](m, "flow"); flow != "" {
+				parts = append(parts, fmt.Sprintf("flow=%s", flow))
+			}
+			if pubKey != "" {
+				parts = append(parts, fmt.Sprintf("public-key=\"%s\"", pubKey))
+				if shortID != "" {
+					parts = append(parts, fmt.Sprintf("short-id=%s", shortID))
+				}
+			}
+			if optVal[bool](m, "tls") || pubKey != "" {
+				parts = append(parts, "over-tls=true")
+			}
+			if sni := sniFromMap(m, ""); sni != "" {
+				parts = append(parts, fmt.Sprintf("sni=%s", sni))
+			}
+			parts = append(parts, fmt.Sprintf("skip-cert-verify=%t", optVal[bool](m, "skip-cert-verify")))
+			sb.WriteString(strings.Join(parts, ",") + "\n")
+		case "socks5", "socks":
+			// Loon 的 socks5：用户名/密码是位置参数（第 4、5 位），不是 key=value。
+			parts := []string{fmt.Sprintf("%s = socks5,%s,%d", name, host, n.Port)}
+			user, pass := optVal[string](m, "username"), optVal[string](m, "password")
+			if user != "" || pass != "" {
+				parts = append(parts, user, fmt.Sprintf("\"%s\"", pass))
+			}
+			if optVal[bool](m, "tls") {
+				parts = append(parts, "over-tls=true")
+			}
+			if sni := sniFromMap(m, ""); sni != "" {
+				parts = append(parts, fmt.Sprintf("sni=%s", sni))
+			}
+			parts = append(parts, fmt.Sprintf("skip-cert-verify=%t", optVal[bool](m, "skip-cert-verify")))
+			sb.WriteString(strings.Join(parts, ",") + "\n")
+		case "http":
+			// Loon：http 的 TLS 是把类型关键字换成 https（不是 over-tls=true），官方与 Sub-Store 双印证。
+			typ := "http"
+			if optVal[bool](m, "tls") {
+				typ = "https"
+			}
+			parts := []string{fmt.Sprintf("%s = %s,%s,%d", name, typ, host, n.Port)}
+			user, pass := optVal[string](m, "username"), optVal[string](m, "password")
+			if user != "" || pass != "" {
+				parts = append(parts, user, fmt.Sprintf("\"%s\"", pass))
+			}
+			if sni := sniFromMap(m, ""); sni != "" {
+				parts = append(parts, fmt.Sprintf("sni=%s", sni))
+			}
+			parts = append(parts, fmt.Sprintf("skip-cert-verify=%t", optVal[bool](m, "skip-cert-verify")))
+			sb.WriteString(strings.Join(parts, ",") + "\n")
+		case "anytls":
+			// Loon 官方定义：AnyTLS,host,port,"password",sni=...（Reality 用 public-key/short-id 开启）。
+			parts := []string{fmt.Sprintf("%s = anytls,%s,%d,\"%s\"", name, host, n.Port, optVal[string](m, "password"))}
+			if sni := sniFromMap(m, ""); sni != "" {
+				parts = append(parts, fmt.Sprintf("sni=%s", sni))
+			}
+			pubKey, shortID := realityFromMap(m)
+			if pubKey != "" {
+				parts = append(parts, fmt.Sprintf("public-key=\"%s\"", pubKey))
+				if shortID != "" {
+					parts = append(parts, fmt.Sprintf("short-id=%s", shortID))
+				}
+			}
+			parts = append(parts, fmt.Sprintf("skip-cert-verify=%t", optVal[bool](m, "skip-cert-verify")))
+			sb.WriteString(strings.Join(parts, ",") + "\n")
 		}
 	}
 
@@ -3207,8 +3404,34 @@ func (s *ConfigUpdateService) logSeparator() {
 	s.log("INFO", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 }
 
-// maxNodeValidationLogs node_validation_logs 保留的最大条数
+// maxNodeValidationLogs node_validation_logs 保留的最大条数（默认值）。
+// 可用环境变量 MF_NODE_VALIDATION_LOG_KEEP 或 system_configs
+// (category=config_update, key=node_validation_log_keep) 覆盖，见 nodeValidationLogKeep。
 const maxNodeValidationLogs = 20000
+
+// nodeValidationLogKeep 返回校验日志保留条数，优先级：
+//  1. 环境变量 MF_NODE_VALIDATION_LOG_KEEP（正整数）
+//  2. system_configs: category=config_update, key=node_validation_log_keep
+//  3. 默认 maxNodeValidationLogs
+//
+// 可配置化是为了让"为排查事故临时调大保留量"不必改代码重新发版。
+func (s *ConfigUpdateService) nodeValidationLogKeep() int {
+	if v := strings.TrimSpace(os.Getenv("MF_NODE_VALIDATION_LOG_KEEP")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+		s.warnf("MF_NODE_VALIDATION_LOG_KEEP=%q 不是正整数，回退默认 %d", v, maxNodeValidationLogs)
+	}
+	if s != nil && s.db != nil {
+		var cfg models.SystemConfig
+		if err := s.db.Where("category = ? AND key = ?", configCategory, "node_validation_log_keep").First(&cfg).Error; err == nil {
+			if n, err := strconv.Atoi(strings.TrimSpace(cfg.Value)); err == nil && n > 0 {
+				return n
+			}
+		}
+	}
+	return maxNodeValidationLogs
+}
 
 // pruneNodeValidationLogs 只保留最近 keep 条校验日志（按 id 倒序），避免表无限增长。
 // 只删日志，绝不触碰节点数据。
