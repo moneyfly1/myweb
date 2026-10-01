@@ -52,6 +52,13 @@ var linkRenderTypes = map[string]bool{
 }
 
 // formatRenderTypes 每种格式**实际能渲染**的协议。
+//
+// ⚠️ 这张表必须与各生成器的 `switch n.Type` 逐字一致。曾经的教训：手工抄写时把
+// `case "hysteria", "hysteria2":` 这类**多值 case** 只抄了第一个值，导致
+// sing-box 与 Surge 的 93 个 hysteria2 节点被本层静默过滤掉（生成器本来是支持的）。
+// 现在由 TestFormatRenderTypesMatchGeneratorCases 用 go/ast 解析生成器源码做机械比对，
+// 任何一侧改动而另一侧没跟上都会直接测试失败。
+//
 // 必须与各生成器里的 `switch n.Type` 逐一对照，否则会出现"格式放行但生成器静默跳过"的黑洞。
 //
 //	Surge        : proxyNodeToSurgeLine 的 case（http/hysteria/socks/ss/trojan/tuic/vless/vmess）
@@ -62,8 +69,8 @@ var formatRenderTypes = map[OutputFormat]map[string]bool{
 	FmtClash:       supportedClashTypes,
 	FmtLinksBase64: linkRenderTypes,
 	FmtLinksPlain:  linkRenderTypes,
-	FmtSurge:       {"http": true, "hysteria": true, "socks": true, "socks5": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
-	FmtSingBox:     {"hysteria": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
+	FmtSurge:       {"http": true, "hysteria": true, "hysteria2": true, "socks": true, "socks5": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
+	FmtSingBox:     {"hysteria": true, "hysteria2": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
 	FmtQuantumultX: {"ss": true, "trojan": true, "vmess": true},
 	FmtLoon:        {"ss": true, "trojan": true, "vmess": true},
 }
@@ -708,9 +715,17 @@ func validateSurge(payload string) error {
 	return nil
 }
 
+// surgeTypeOK Surge 允许的代理类型记号。
+// 先看 formatRenderTypes[FmtSurge]（由生成器的 case 机械比对保证），再补 Surge 的别名写法。
+// 这样**校验器不可能拒绝生成器会产出的类型**——否则就会出现"生成器写得出来、校验器判它非法"
+// 的自相矛盾（曾因白名单漏 hysteria2 把 93 个节点判成 format-invalid-line 剔除）。
 func surgeTypeOK(t string) bool {
-	switch strings.ToLower(t) {
-	case "ss", "shadowsocks", "vmess", "vless", "trojan", "http", "https", "socks5", "socks5-tls", "tuic", "hysteria", "snell", "direct":
+	t = strings.ToLower(strings.TrimSpace(t))
+	if formatRenderTypes[FmtSurge][t] {
+		return true
+	}
+	switch t {
+	case "shadowsocks", "https", "socks5-tls", "snell", "direct":
 		return true
 	}
 	return false
