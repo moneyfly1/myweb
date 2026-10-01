@@ -1430,12 +1430,9 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent
 	if format == "ssr" {
 		cacheFormat = "ssr"
 	}
-	// v2rayN 需要过滤 socks，使用独立缓存 key
-	uaLower := strings.ToLower(userAgent)
-	isV2rayN := strings.Contains(uaLower, "v2rayn")
-	if isV2rayN {
-		cacheFormat = cacheFormat + "_v2rayn"
-	}
+	// 这里曾按 UA 里的 "v2rayn" 使用独立缓存 key（`_v2rayn`），因为旧实现会为 v2rayN
+	// 过滤掉 socks 节点。该前提已证实为**错误**（v2rayN 支持 socks/socks5），过滤已移除，
+	// 两个 UA 的产物完全相同，因此独立缓存 key 也一并去掉，避免留下"v2rayN 内容特殊"的误导。
 	if cached, ok := cache.GetSubscriptionConfigCache(token, cacheFormat); ok {
 		return cached, nil
 	}
