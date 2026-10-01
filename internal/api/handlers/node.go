@@ -185,7 +185,7 @@ func collectEquivalentNodeIDs(db *gorm.DB, selectedIDs []uint) ([]uint, error) {
 	return ids, nil
 }
 
-func processAndImportLinks(db *gorm.DB, links []string) int {
+func processAndImportLinks(db *gorm.DB, links []string) (int, []importedNodeReject) {
 	// 预加载所有活跃节点到 map，避免循环内 N+1 查询
 	var allActive []models.Node
 	db.Where("is_active = ?", true).Find(&allActive)
@@ -199,9 +199,20 @@ func processAndImportLinks(db *gorm.DB, links []string) int {
 	seenKeys := make(map[string]bool)
 	var newNodes []models.Node
 
+	var rejects []importedNodeReject
 	for _, link := range links {
 		parsed, err := config_update.ParseNodeLink(link)
 		if err != nil {
+			// 已知内核不支持的协议（naive 等）单独给出可读原因，其余按解析失败归类
+			if scheme := config_update.KnownUnsupportedScheme(link); scheme != "" {
+				rejects = append(rejects, importedNodeReject{Type: scheme, Reason: config_update.ReasonUnsupportedType +
+					": mihomo 不支持 " + scheme + " 协议，整份配置会因此失效"})
+			}
+			continue
+		}
+		// 第一层防御：白名单 + 必填字段 + 凭据规范化（与采集链路同一套判定）
+		if code, detail := validateAndNormalizeImportedNode(parsed, "manual-import-clash", true); code != "" {
+			rejects = append(rejects, rejectFromNode(parsed, code, detail))
 			continue
 		}
 		newNode := buildNodeModel(parsed, false)
@@ -228,7 +239,7 @@ func processAndImportLinks(db *gorm.DB, links []string) int {
 			importedCount = len(newNodes)
 		}
 	}
-	return importedCount
+	return importedCount, rejects
 }
 
 func GetNodes(c *gin.Context) {
@@ -547,6 +558,18 @@ func CreateNode(c *gin.Context) {
 			utils.ErrorResponse(c, http.StatusBadRequest, "解析失败", err)
 			return
 		}
+		// 第一层防御：白名单 + 必填字段 + 凭据规范化（与采集链路同一套判定）
+		if code, detail := validateAndNormalizeImportedNode(parsed, "manual-create-link", false); code != "" {
+			// preview 场景只做提示、不落库；直接创建则拒绝并回明原因
+			if req.Preview {
+				utils.SuccessResponse(c, http.StatusOK, "该链接未通过校验（保存后会被拒绝）", gin.H{
+					"valid": false, "reason_code": code, "reason": detail,
+				})
+				return
+			}
+			utils.ErrorResponse(c, http.StatusBadRequest, "节点未通过校验: "+code+": "+detail, nil)
+			return
+		}
 		newNode := buildNodeModel(parsed, true)
 		if req.Preview {
 			utils.SuccessResponse(c, http.StatusOK, "", newNode)
@@ -575,6 +598,24 @@ func CreateNode(c *gin.Context) {
 	}
 	req.Node.Name = truncateNodeName(req.Node.Name)
 	req.Node.Status, req.Node.IsManual, req.Node.IsActive = "offline", true, true
+
+	// 第一层防御：Config 里是 ProxyNode JSON，先做凭据规范化 + 白名单/必填字段校验，
+	// 通过后写回规范化后的 JSON，避免"手工新建的坏节点静默进库、只在生成时被内核剔除"。
+	if req.Node.Config != nil && strings.TrimSpace(*req.Node.Config) != "" {
+		var pn config_update.ProxyNode
+		if err := json.Unmarshal([]byte(*req.Node.Config), &pn); err == nil {
+			pn.Name = req.Node.Name
+			if code, detail := validateAndNormalizeImportedNode(&pn, "manual-create-node", false); code != "" {
+				utils.ErrorResponse(c, http.StatusBadRequest, "节点未通过校验: "+code+": "+detail, nil)
+				return
+			}
+			if b, err := json.Marshal(pn); err == nil {
+				cfg := string(b)
+				req.Node.Config = &cfg
+			}
+			req.Node.Type = pn.Type
+		}
+	}
 
 	// 读取 manual_node_position 配置，设置手动节点的 order_index
 	var posConfig models.SystemConfig
@@ -609,7 +650,7 @@ func ImportNodeLinks(c *gin.Context) {
 		return
 	}
 	db := database.GetDB()
-	imp, skp, fail, failReasons := importNodeLinks(db, req.Links)
+	imp, skp, fail, failReasons, rejects := importNodeLinks(db, req.Links)
 	utils.CreateAuditLogSimple(c, "import_node_links", "node", 0, fmt.Sprintf("管理员操作: 导入节点链接 成功 %d 跳过 %d 失败 %d", imp, skp, fail))
 
 	// 清除节点相关缓存
@@ -620,18 +661,38 @@ func ImportNodeLinks(c *gin.Context) {
 		"skipped":  skp,
 		"failed":   fail,
 		"errors":   failReasons,
+		"details":  rejects,
 	})
 }
 
 // importNodeLinks 批量解析并创建普通节点，返回成功/跳过/失败数与失败原因。
-func importNodeLinks(db *gorm.DB, links []string) (imp, skp, fail int, failReasons []string) {
+func importNodeLinks(db *gorm.DB, links []string) (imp, skp, fail int, failReasons []string, rejects []importedNodeReject) {
 	for _, link := range links {
 		parsed, err := config_update.ParseNodeLink(strings.TrimSpace(link))
 		if err != nil {
 			// 解析失败单独统计并返回原因，避免静默失败让用户以为导入成功
 			fail++
+			// 已知内核不支持的协议（naive 等）给出明确原因，而不是笼统的"解析失败"
+			if scheme := config_update.KnownUnsupportedScheme(link); scheme != "" {
+				rej := importedNodeReject{Type: scheme, Reason: config_update.ReasonUnsupportedType +
+					": mihomo 不支持 " + scheme + " 协议，整份配置会因此失效"}
+				rejects = append(rejects, rej)
+				if len(failReasons) < 3 {
+					failReasons = append(failReasons, formatReject(rej))
+				}
+				continue
+			}
 			if len(failReasons) < 3 {
 				failReasons = append(failReasons, fmt.Sprintf("解析失败: %v", err))
+			}
+			continue
+		}
+		// 第一层防御：白名单 + 必填字段 + 凭据规范化
+		if code, detail := validateAndNormalizeImportedNode(parsed, "manual-import-links", true); code != "" {
+			fail++
+			rejects = append(rejects, rejectFromNode(parsed, code, detail))
+			if len(failReasons) < 3 {
+				failReasons = append(failReasons, formatReject(rejectFromNode(parsed, code, detail)))
 			}
 			continue
 		}
@@ -701,7 +762,7 @@ func ImportNodeSubscription(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	imp, skp, fail, failReasons := importNodeLinks(db, links)
+	imp, skp, fail, failReasons, rejects := importNodeLinks(db, links)
 	utils.CreateAuditLogSimple(c, "import_node_subscription", "node", 0,
 		fmt.Sprintf("管理员操作: 导入节点订阅 %s 解析 %d 个 成功 %d 跳过 %d 失败 %d", urlStr, len(links), imp, skp, fail))
 	if imp > 0 {
@@ -709,6 +770,7 @@ func ImportNodeSubscription(c *gin.Context) {
 	}
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("订阅解析出 %d 个节点，成功导入 %d 个", len(links), imp), gin.H{
 		"imported": imp, "skipped": skp, "failed": fail, "errors": failReasons, "total": len(links),
+		"rejected": len(rejects), "details": rejects,
 		"message": fmt.Sprintf("订阅解析出 %d 个节点，成功导入 %d 个", len(links), imp),
 	})
 }
@@ -1258,16 +1320,26 @@ func ImportFromClash(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
 		return
 	}
-	count, _ := importNodesFromClashConfig(req.ClashConfig)
+	count, rejects := importNodesFromClashConfig(req.ClashConfig)
 
 	// 清理所有节点和订阅缓存
 	clearNodeCaches()
 
-	utils.CreateAuditLogSimple(c, "import_from_clash", "node", 0, fmt.Sprintf("管理员操作: 从 Clash 配置导入节点 %d 个", count))
-	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("导入 %d 个", count), gin.H{"count": count})
+	utils.CreateAuditLogSimple(c, "import_from_clash", "node", 0,
+		fmt.Sprintf("管理员操作: 从 Clash 配置导入节点 %d 个，校验拒绝 %d 个", count, len(rejects)))
+	msg := fmt.Sprintf("导入 %d 个", count)
+	if len(rejects) > 0 {
+		msg = fmt.Sprintf("导入 %d 个，%d 个未通过校验被拒绝（原因见 errors）", count, len(rejects))
+	}
+	utils.SuccessResponse(c, http.StatusOK, msg, gin.H{
+		"count":    count,
+		"rejected": len(rejects),
+		"errors":   rejectTexts(rejects),
+		"details":  rejects,
+	})
 }
 
-func importNodesFromClashConfig(configStr string) (int, error) {
+func importNodesFromClashConfig(configStr string) (int, []importedNodeReject) {
 	db := database.GetDB()
 	var sysConfig models.SystemConfig
 	if db.Where("key = ? AND category = ?", "urls", "config_update").First(&sysConfig).Error == nil {
@@ -1279,9 +1351,9 @@ func importNodesFromClashConfig(configStr string) (int, error) {
 					links = append(links, l)
 				}
 			}
-			return processAndImportLinks(db, links), nil
+			return processAndImportLinks(db, links)
 		}
 	}
 	linkPattern := regexp.MustCompile(`(vmess|vless|trojan|ss|ssr|hysteria2?|hy2)://[^\s\n]+`)
-	return processAndImportLinks(db, linkPattern.FindAllString(configStr, -1)), nil
+	return processAndImportLinks(db, linkPattern.FindAllString(configStr, -1))
 }
