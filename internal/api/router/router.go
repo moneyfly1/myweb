@@ -422,6 +422,8 @@ func SetupRouter() *gin.Engine {
 
 			admin.GET("/nodes", handlers.GetAdminNodes)
 			admin.GET("/nodes/stats", handlers.GetNodeStats)
+			// 节点校验日志（两层防御的可观测面）：只读，最近 N 条已丢弃/已剔除节点
+			admin.GET("/nodes/validation-logs", handlers.GetNodeValidationLogs)
 			admin.POST("/nodes", handlers.CreateNode)
 			admin.POST("/nodes/import-links", handlers.ImportNodeLinks)
 			admin.GET("/nodes/:id/link", handlers.GetNodeLink)

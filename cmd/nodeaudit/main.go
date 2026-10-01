@@ -1,0 +1,86 @@
+// nodeaudit 全库节点体检工具（只读）
+//
+// 用途：上线前/日常排查"当前库里是否存在会让整份订阅失效的坏节点"。
+// 做法：逐节点跑第一层静态校验 → 用存活节点生成 Clash 配置 → 真内核 mihomo -t →
+// 若失败则折半二分定位到具体坏节点。
+//
+// 只读：仅 SELECT，不写库、不删数据、不改任何节点。
+//
+// 用法：
+//
+//	go run ./cmd/nodeaudit -db ./cboard.db -kernel ./bin/mihomo
+//	go run ./cmd/nodeaudit -db ./cboard.db -kernel ./bin/mihomo -json
+package main
+
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+
+	"cboard-go/internal/services/config_update"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+)
+
+func main() {
+	dbPath := flag.String("db", "cboard.db", "SQLite 数据库路径")
+	kernel := flag.String("kernel", "bin/mihomo", "mihomo 内核二进制路径（传空串则只做静态校验）")
+	asJSON := flag.Bool("json", false, "以 JSON 输出")
+	flag.Parse()
+
+	// 只读打开，物理上杜绝误写
+	dsn := fmt.Sprintf("file:%s?mode=ro", *dbPath)
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "打开数据库失败(%s): %v\n", dsn, err)
+		os.Exit(1)
+	}
+
+	report, err := config_update.AuditActiveNodes(db, *kernel)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "体检失败: %v\n", err)
+		os.Exit(1)
+	}
+
+	if *asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(report)
+		return
+	}
+
+	fmt.Printf("=== MoneyFly 节点体检报告 ===\n")
+	fmt.Printf("活跃节点总数        : %d\n", report.Total)
+	fmt.Printf("静态校验保留        : %d\n", report.Kept)
+	fmt.Printf("静态校验丢弃        : %d\n", report.Dropped)
+	fmt.Printf("自动修正（密钥编码）: %d\n", report.Corrected)
+	fmt.Printf("生成配置大小        : %d 字节\n", report.ConfigBytes)
+	if !report.KernelRan {
+		fmt.Printf("内核自检            : 未执行（未提供内核）\n")
+	} else {
+		fmt.Printf("内核自检            : %s（%.2fs，内核调用 %d 次）\n",
+			map[bool]string{true: "通过", false: "失败"}[report.KernelOK],
+			float64(report.KernelDurationMS)/1000, report.KernelCalls)
+		if report.KernelError != "" {
+			fmt.Printf("内核自检详情        : %s\n", report.KernelError)
+		}
+	}
+
+	printEntries := func(title string, list []config_update.NodeAuditEntry) {
+		if len(list) == 0 {
+			return
+		}
+		fmt.Printf("\n--- %s（%d 条）---\n", title, len(list))
+		for _, e := range list {
+			fmt.Printf("  [%s] %s | type=%s cipher=%s %s:%d\n     原因: %s\n",
+				e.Action, e.Name, e.Type, e.Cipher, e.Server, e.Port, e.Reason)
+		}
+	}
+	printEntries("静态校验丢弃 / 修正", report.Entries)
+	printEntries("内核自检剔除", report.KernelPruned)
+}

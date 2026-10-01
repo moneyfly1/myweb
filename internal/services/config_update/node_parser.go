@@ -30,23 +30,24 @@ type ProxyNode struct {
 type nodeParser func(string) (*ProxyNode, error)
 
 var protocolParsers = map[string]nodeParser{
-	"vmess://":       parseVMess,
-	"vless://":       parseVLESS,
-	"trojan://":      parseTrojan,
-	"ss://":          parseShadowsocks,
-	"ssr://":         parseSSR,
-	"hysteria://":    parseHysteria,
-	"hysteria2://":   parseHysteria2,
-	"hy2://":         parseHysteria2, // hy2:// 是 Hysteria2 的通用简写，订阅源广泛使用
-	"tuic://":        parseTUIC,
-	"naive+https://": parseNaive,
-	"naive://":       parseNaive,
-	"anytls://":      parseAnytls,
-	"socks5://":      parseSOCKS,
-	"socks://":       parseSOCKS,
-	"http://":        parseHTTP,
-	"https://":       parseHTTP,
-	"wg://":          parseWireGuard,
+	"vmess://":     parseVMess,
+	"vless://":     parseVLESS,
+	"trojan://":    parseTrojan,
+	"ss://":        parseShadowsocks,
+	"ssr://":       parseSSR,
+	"hysteria://":  parseHysteria,
+	"hysteria2://": parseHysteria2,
+	"hy2://":       parseHysteria2, // hy2:// 是 Hysteria2 的通用简写，订阅源广泛使用
+	"tuic://":      parseTUIC,
+	// naive / naive+https 已移除：mihomo 实测报 "unsupport proxy type: naive"
+	// 并让整份订阅配置失效（典型的"全量故障"隐患）。这类链接现在会在解析阶段被丢弃，
+	// 并由 processFetchedNodes 记录 dropped_at_ingest 事件。
+	"anytls://": parseAnytls,
+	"socks5://": parseSOCKS,
+	"socks://":  parseSOCKS,
+	"http://":   parseHTTP,
+	"https://":  parseHTTP,
+	"wg://":     parseWireGuard,
 }
 
 // ParseNodeLink 解析任意支持的代理链接
@@ -194,7 +195,10 @@ func parseVLESS(link string) (*ProxyNode, error) {
 				if q.Get("xtls") == "2" {
 					flow = "xtls-rprx-vision"
 				} else if q.Get("xtls") == "1" {
-					flow = "xtls-rprx-direct"
+					// 旧实现生成 xtls-rprx-direct；内核实测
+					// "unsupported xtls flow type: xtls-rprx-direct" → 整份配置失效。
+					// 故不再生成该 flow，留空由内核按默认处理。
+					flow = ""
 				}
 			}
 			if flow != "" {
@@ -236,7 +240,10 @@ func parseTrojan(link string) (*ProxyNode, error) {
 				if q.Get("xtls") == "2" {
 					flow = "xtls-rprx-vision"
 				} else if q.Get("xtls") == "1" {
-					flow = "xtls-rprx-direct"
+					// 旧实现生成 xtls-rprx-direct；内核实测
+					// "unsupported xtls flow type: xtls-rprx-direct" → 整份配置失效。
+					// 故不再生成该 flow，留空由内核按默认处理。
+					flow = ""
 				}
 			}
 			if flow != "" {
@@ -379,17 +386,12 @@ func parseTUIC(link string) (*ProxyNode, error) {
 	})
 }
 
-func parseNaive(link string) (*ProxyNode, error) {
-	link = "https://" + strings.TrimPrefix(strings.TrimPrefix(link, "naive+https://"), "naive://")
-	return parseGenericNode(link, "naive", func(n *ProxyNode, q url.Values, p *url.URL) {
-		extractAuthToNode(n, p, false)
-		n.TLS = true
-		applyTLSOptions(n, q, n.Server)
-		if pad := q.Get("padding"); pad != "" {
-			n.Options["padding"] = isTrue(pad)
-		}
-	})
-}
+// parseNaive 已删除。
+// naive / naive+https 不在 mihomo 支持的协议白名单内：内核实测
+//   mihomo -t → "proxy 0: unsupport proxy type: naive"（整份配置失效）。
+// 因此这类链接不再解析成节点，而是在解析阶段直接丢弃并记录原因，
+// 从根上避免"一个坏节点让客户整份订阅失效"。
+// 协议白名单与逐条校验见 node_validate.go。
 
 func parseAnytls(link string) (*ProxyNode, error) {
 	return parseGenericNode(link, "anytls", func(n *ProxyNode, q url.Values, p *url.URL) {
@@ -512,8 +514,20 @@ func extractSSAuth(parsed *url.URL) (string, string) {
 	if parsed.User == nil {
 		return "", ""
 	}
+	// parsed.User.String() 返回的是**百分号编码后**的 userinfo，直接当密码用会把
+	// "%2F"/"%3A" 残留进密钥（现网事故：ss 2022 密钥因此非法，整份订阅被内核拒绝）。
+	// 这里统一做一次百分号解码（PathUnescape，不动 base64 里合法的 '+'）。
+	unescape := func(s string) string {
+		if !strings.Contains(s, "%") {
+			return s
+		}
+		if dec, err := url.PathUnescape(s); err == nil {
+			return dec
+		}
+		return s
+	}
 	if parts := strings.SplitN(parsed.User.String(), ":", 2); len(parts) == 2 {
-		return parts[0], parts[1]
+		return unescape(parts[0]), unescape(parts[1])
 	}
 	if decoded, err := DecodeBase64(parsed.User.String()); err == nil {
 		if dParts := strings.SplitN(decoded, ":", 2); len(dParts) == 2 {
