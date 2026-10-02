@@ -639,7 +639,14 @@ func validateVLESSNode(n *ProxyNode) error {
 // 现网实测来源：某上游 tuic 节点 uuid 形如 65F7C474-BE1-BA2-983-D40071464C1（段长 8-3-3-3-11）。
 var uuidRE = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
-func isValidUUID(s string) bool { return uuidRE.MatchString(strings.TrimSpace(s)) }
+// 无连字符的 32 位十六进制是 UUID 的**合法**等价写法（sing-box 的 uuid.FromString 与
+// mihomo 都接受），必须一并放行，否则会把合法节点误杀。
+var uuidRawRE = regexp.MustCompile(`^[0-9a-fA-F]{32}$`)
+
+func isValidUUID(s string) bool {
+	s = strings.TrimSpace(s)
+	return uuidRE.MatchString(s) || uuidRawRE.MatchString(s)
+}
 
 // realityKeyBytes 返回 reality public-key 的 base64 解码字节数；解码失败返回 -1。
 //
