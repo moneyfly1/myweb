@@ -59,10 +59,10 @@ func TestProcessFetchedNodes_PerSourceFilter(t *testing.T) {
 	// 源 A：两个节点（广告节点A + 正常节点A）
 	// 源 B：两个节点（广告节点B + 正常节点B）
 	nodes := []map[string]interface{}{
-		{"url": "vmess://eyJ2IjoiMiIsInBzIjoi5bm/5ZGK6IqC54K5QSIsImFkZCI6IjEuMi4zLjQiLCJwb3J0IjoiNDQzIiwiaWQiOiJhYWEtYmJiLWNjYyIsImFpZCI6IjAiLCJuZXQiOiJ3cyIsInR5cGUiOiJub25lIiwiaG9zdCI6IiIsInBhdGgiOiIvIiwidGxzIjoiIn0=", "source_url": urls[0]},
-		{"url": "vmess://eyJ2IjoiMiIsInBzIjoi5q2j5bi46IqC54K5QSIsImFkZCI6IjEuMi4zLjUiLCJwb3J0IjoiNDQzIiwiaWQiOiJhYWEtYmJiLWNjYyIsImFpZCI6IjAiLCJuZXQiOiJ3cyIsInR5cGUiOiJub25lIiwiaG9zdCI6IiIsInBhdGgiOiIvIiwidGxzIjoiIn0=", "source_url": urls[0]},
-		{"url": "vmess://eyJ2IjoiMiIsInBzIjoi5bm/5ZGK6IqC54K5QiIsImFkZCI6IjUuNi43LjgiLCJwb3J0IjoiNDQzIiwiaWQiOiJhYWEtYmJiLWNjYyIsImFpZCI6IjAiLCJuZXQiOiJ3cyIsInR5cGUiOiJub25lIiwiaG9zdCI6IiIsInBhdGgiOiIvIiwidGxzIjoiIn0=", "source_url": urls[1]},
-		{"url": "vmess://eyJ2IjoiMiIsInBzIjoi5q2j5bi46IqC54K5QiIsImFkZCI6IjUuNi43LjkiLCJwb3J0IjoiNDQzIiwiaWQiOiJhYWEtYmJiLWNjYyIsImFpZCI6IjAiLCJuZXQiOiJ3cyIsInR5cGUiOiJub25lIiwiaG9zdCI6IiIsInBhdGgiOiIvIiwidGxzIjoiIn0=", "source_url": urls[1]},
+		{"url": "vmess://eyJ2IjoiMiIsInBzIjoi5bm/5ZGK6IqC54K5QSIsImFkZCI6IjEuMi4zLjQiLCJwb3J0IjoiNDQzIiwiaWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJhaWQiOiIwIiwibmV0Ijoid3MiLCJ0eXBlIjoibm9uZSIsImhvc3QiOiIiLCJwYXRoIjoiLyIsInRscyI6IiJ9", "source_url": urls[0]},
+		{"url": "vmess://eyJ2IjoiMiIsInBzIjoi5q2j5bi46IqC54K5QSIsImFkZCI6IjEuMi4zLjUiLCJwb3J0IjoiNDQzIiwiaWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJhaWQiOiIwIiwibmV0Ijoid3MiLCJ0eXBlIjoibm9uZSIsImhvc3QiOiIiLCJwYXRoIjoiLyIsInRscyI6IiJ9", "source_url": urls[0]},
+		{"url": "vmess://eyJ2IjoiMiIsInBzIjoi5bm/5ZGK6IqC54K5QiIsImFkZCI6IjUuNi43LjgiLCJwb3J0IjoiNDQzIiwiaWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJhaWQiOiIwIiwibmV0Ijoid3MiLCJ0eXBlIjoibm9uZSIsImhvc3QiOiIiLCJwYXRoIjoiLyIsInRscyI6IiJ9", "source_url": urls[1]},
+		{"url": "vmess://eyJ2IjoiMiIsInBzIjoi5q2j5bi46IqC54K5QiIsImFkZCI6IjUuNi43LjkiLCJwb3J0IjoiNDQzIiwiaWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJhaWQiOiIwIiwibmV0Ijoid3MiLCJ0eXBlIjoibm9uZSIsImhvc3QiOiIiLCJwYXRoIjoiLyIsInRscyI6IiJ9", "source_url": urls[1]},
 	}
 
 	// 关键词"广告"：源 A 启用过滤，源 B 不启用
@@ -101,8 +101,8 @@ func TestProcessFetchedNodes_AllFilter(t *testing.T) {
 
 	urls := []string{"https://src-a.example.com/sub"}
 	nodes := []map[string]interface{}{
-		{"url": "vmess://eyJ2IjoiMiIsInBzIjoi5bm/5ZGK6IqC54K5QSIsImFkZCI6IjEuMi4zLjQiLCJwb3J0IjoiNDQzIiwiaWQiOiJhYWEtYmJiLWNjYyIsImFpZCI6IjAiLCJuZXQiOiJ3cyIsInR5cGUiOiJub25lIiwiaG9zdCI6IiIsInBhdGgiOiIvIiwidGxzIjoiIn0=", "source_url": urls[0]},
-		{"url": "vmess://eyJ2IjoiMiIsInBzIjoi5q2j5bi46IqC54K5QSIsImFkZCI6IjEuMi4zLjUiLCJwb3J0IjoiNDQzIiwiaWQiOiJhYWEtYmJiLWNjYyIsImFpZCI6IjAiLCJuZXQiOiJ3cyIsInR5cGUiOiJub25lIiwiaG9zdCI6IiIsInBhdGgiOiIvIiwidGxzIjoiIn0=", "source_url": urls[0]},
+		{"url": "vmess://eyJ2IjoiMiIsInBzIjoi5bm/5ZGK6IqC54K5QSIsImFkZCI6IjEuMi4zLjQiLCJwb3J0IjoiNDQzIiwiaWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJhaWQiOiIwIiwibmV0Ijoid3MiLCJ0eXBlIjoibm9uZSIsImhvc3QiOiIiLCJwYXRoIjoiLyIsInRscyI6IiJ9", "source_url": urls[0]},
+		{"url": "vmess://eyJ2IjoiMiIsInBzIjoi5q2j5bi46IqC54K5QSIsImFkZCI6IjEuMi4zLjUiLCJwb3J0IjoiNDQzIiwiaWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJhaWQiOiIwIiwibmV0Ijoid3MiLCJ0eXBlIjoibm9uZSIsImhvc3QiOiIiLCJwYXRoIjoiLyIsInRscyI6IiJ9", "source_url": urls[0]},
 	}
 	// 默认 flags（全启用）→ 广告节点被过滤
 	result, stats := s.processFetchedNodes(urls, nodes, []string{"广告"}, nil)
