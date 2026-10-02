@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"cboard-go/internal/models"
 	"gorm.io/gorm"
@@ -47,6 +48,7 @@ const (
 	ReasonRealityInvalid       = "reality-opts-incomplete" // reality-opts 缺 public-key
 	ReasonReservedName         = "reserved-name"           // 节点名与内核内置代理名冲突（DIRECT 等）
 	ReasonCredentialURLDecoded = "credential-url-decoded"  // 修正：凭据含 %XX 转义，已做一次 URL 解码还原
+	ReasonNameSanitized        = "name-sanitized"          // 修正：节点名含非法 UTF-8，已净化
 	// ReasonCipherKeyInvalid 是"密钥类校验不通过"的总类码：node_validation_logs.reason 以精确
 	// 子类开头并在正文带上本总类码，因此
 	//   WHERE reason LIKE '%cipher-key-invalid%'  → 命中全部密钥类丢弃
@@ -672,6 +674,37 @@ func realityKeyBytes(pk string) int {
 		}
 	}
 	return -1
+}
+
+// NormalizeNodeName 净化节点名里的非法 UTF-8 字节。
+//
+// 为什么必须做：节点名最终要写进 YAML/JSON 文档，而 YAML 是 UTF-8 文档——
+// 名称里只要有 1 个非法字节，**客户端整份配置解析失败**（实测：
+// `yaml: invalid leading UTF-8 octet`，随后 nodeToYAMLFlowNode 失败、该节点被跳过，
+// 而它仍留在 proxy-groups 的成员表里 → 变成悬空引用）。
+//
+// 现网真实来源：某 ssr 链接的 remarks 字段经 base64 解码后含 0xFD 字节
+// （上游用非 UTF-8 编码写入备注），入库后 name 列存下 b"$\xfd5"。
+// 名称是展示性字段，净化比丢弃更合理：节点本身可用，不该因为名字里的一个坏字节消失。
+func NormalizeNodeName(n *ProxyNode) (bool, string) {
+	if n == nil {
+		return false, ""
+	}
+	fixed := strings.ToValidUTF8(n.Name, "\uFFFD")
+	if fixed == n.Name {
+		return false, ""
+	}
+	orig := []byte(n.Name)
+	pos := 0
+	for pos < len(orig) {
+		r, size := utf8.DecodeRune(orig[pos:])
+		if r == utf8.RuneError && size == 1 {
+			break
+		}
+		pos += size
+	}
+	n.Name = fixed
+	return true, fmt.Sprintf("节点名含非法 UTF-8 字节（首个非法字节位于偏移 %d），已替换为 U+FFFD", pos)
 }
 
 // optString 安全读取 Options 里的字符串值

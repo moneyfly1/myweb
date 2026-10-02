@@ -637,6 +637,12 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 			// ===== 第一层防御：协议白名单 + 必填字段 + 取值白名单校验 =====
 			// 可安全修正的问题（如 ss 2022 密钥被 URL 编码污染）先就地修正；
 			// 其余不合法节点在「入库之前」丢弃并落库原因，绝不进入配置生成。
+			if corrected, detail := NormalizeNodeName(result.Node); corrected {
+				s.recordNodeValidationEvents([]NodeValidationEvent{
+					NewNodeValidationEvent(models.NodeValidationCorrectedAtIngest, url, result.Node, ReasonNameSanitized, detail),
+				})
+				s.warnf("🔧 已净化节点名: %s", detail)
+			}
 			if corrected, detail := NormalizeSS2022Key(result.Node); corrected {
 				s.recordNodeValidationEvents([]NodeValidationEvent{
 					NewNodeValidationEvent(models.NodeValidationCorrectedAtIngest, url, result.Node, ReasonCredentialURLDecoded, detail),
@@ -2257,6 +2263,14 @@ func yaml11NumericLike(str string) bool {
 }
 
 func (s *ConfigUpdateService) escapeYAMLString(str string) string {
+	// 非法 UTF-8 必须先净化：YAML 是 UTF-8 文档，任何非法字节都会让**整份配置解析失败**
+	// （客户端内核原话：`Parse config error: yaml: line N: did not find expected ',' or '}'`
+	//  或 `yaml: invalid leading UTF-8 octet`）。
+	// 现网真实来源：某 ssr 节点的 remarks 经 base64 解码后含非法字节（\xfd），
+	// 入库后渲染期被 yaml 解析器拒绝（server.log 实测 104 次 nodeToYAMLFlowNode failed）。
+	// 这里是**所有标量输出的唯一漏斗**（节点名/自定义节点/信息节点/订阅名都走它），
+	// 因此在这一层净化即可保证产物永远是合法 UTF-8——不论数据从哪条路径进来。
+	str = strings.ToValidUTF8(str, "\uFFFD")
 	if str == "" {
 		return `""`
 	}
@@ -2280,6 +2294,7 @@ func (s *ConfigUpdateService) escapeYAMLString(str string) string {
 
 // escapeYAMLKey 对 flow-style YAML 的 key 做引号处理
 func (s *ConfigUpdateService) escapeYAMLKey(key string) string {
+	key = strings.ToValidUTF8(key, "\uFFFD") // 同上：非法 UTF-8 会让整份 YAML 解析失败
 	if strings.ContainsAny(key, ":{}\"'[]#,>&*?|!%@`\t\x00") ||
 		strings.HasPrefix(key, " ") || strings.HasSuffix(key, " ") {
 		return fmt.Sprintf(`"%s"`, strings.ReplaceAll(key, "\"", "\\\""))
