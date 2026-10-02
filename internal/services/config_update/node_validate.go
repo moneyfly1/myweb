@@ -279,6 +279,13 @@ func ValidateProxyNode(n *ProxyNode) error {
 		if strings.TrimSpace(n.UUID) == "" && strings.TrimSpace(n.Password) == "" {
 			return newValidationError(ReasonMissingField, "tuic 缺少 uuid/password")
 		}
+		// tuic 的 uuid 同样被 sing-box 强制要求为合法 UUID（实测报 invalid uuid）。
+		// 现网实测来源：某上游 4 条 tuic 的 uuid 段长为 8-3-3-3-11（非标准），
+		// 令所有 sing-box 客户端的整份订阅起不来。
+		if u := strings.TrimSpace(n.UUID); u != "" && !isValidUUID(u) {
+			return newValidationError(ReasonMissingField,
+				"tuic 的 uuid 不是合法 UUID（sing-box 报 invalid uuid，会让整份订阅失效）")
+		}
 	case "anytls":
 		if strings.TrimSpace(n.Password) == "" {
 			return newValidationError(ReasonMissingField, "anytls 缺少 password")
@@ -562,6 +569,10 @@ func validateVMessNode(n *ProxyNode) error {
 	if strings.TrimSpace(n.UUID) == "" {
 		return newValidationError(ReasonMissingField, "vmess 缺少 uuid")
 	}
+	if !isValidUUID(n.UUID) {
+		return newValidationError(ReasonMissingField,
+			"vmess 的 uuid 不是合法 UUID（sing-box 报 invalid uuid，会让整份订阅失效）")
+	}
 	cipher := strings.ToLower(strings.TrimSpace(n.Cipher))
 	if cipher == "" {
 		cipher = "auto" // 内核拒绝空值，按默认值兜底（与解析器 getString(data,"scy","auto") 一致）
@@ -573,9 +584,14 @@ func validateVMessNode(n *ProxyNode) error {
 }
 
 func validateVLESSNode(n *ProxyNode) error {
-	// 内核实测 vless 的 uuid 不做格式校验（空/非 UUID 都能通过 -t），故只做非空检查以免误杀
 	if strings.TrimSpace(n.UUID) == "" {
 		return newValidationError(ReasonMissingField, "vless 缺少 uuid")
+	}
+	// 非 UUID 的 uuid：mihomo -t 能过，但 **sing-box 解码期直接 FATAL**
+	// （initialize outbound[N]: invalid uuid: uuid: invalid UUID format）→ 整份订阅失败。
+	if !isValidUUID(n.UUID) {
+		return newValidationError(ReasonMissingField,
+			"vless 的 uuid 不是合法 UUID（sing-box 报 invalid uuid，会让整份订阅失效）")
 	}
 	flow := strings.ToLower(strings.TrimSpace(optString(n.Options, "flow")))
 	if flow != "" && vlessFlowBlocklist[flow] {
@@ -600,9 +616,55 @@ func validateVLESSNode(n *ProxyNode) error {
 		if v, exists := m["public-key"]; !exists || v == nil || strings.TrimSpace(fmt.Sprintf("%v", v)) == "" {
 			return newValidationError(ReasonRealityInvalid,
 				"reality-opts 缺少 public-key（内核报 unset fields: public-key），会让整份配置失效")
+		} else if n := realityKeyBytes(fmt.Sprintf("%v", v)); n != 32 {
+			// 长度不对的公钥不是"弱公钥"，而是内核直接拒绝的**非法值**：
+			// mihomo → invalid REALITY public key；sing-box → invalid public_key。两者都是整份失败。
+			return newValidationError(ReasonRealityInvalid,
+				"reality-opts 的 public-key 不是 32 字节 X25519 公钥（base64 解码得 %d 字节；内核报 invalid REALITY public key / invalid public_key），会让整份配置失效", n)
 		}
 	}
 	return nil
+}
+
+// uuidRE 标准 UUID（8-4-4-4-12 十六进制）形态校验。
+//
+// 为什么必须校验：**sing-box 在解码/初始化期强制要求 uuid 是合法 UUID**，实测
+//
+//	sing-box 1.14.2 check → FATAL initialize outbound[N]: invalid uuid: uuid: invalid UUID format
+//	sing-box 1.12.0 check → 同上
+//
+// 未知/非法凭据会让**整份 sing-box 订阅起不来**（不是"该节点不可用"）。
+// mihomo 侧较宽松（非 UUID 也能过 -t），但一个非 UUID 凭据在任何标准内核上都跑不通，
+// 属于"真正非法的节点"，按项目既定原则在第一层拒收，而不是靠第二层内核自检兜底。
+// 现网实测来源：某上游 tuic 节点 uuid 形如 65F7C474-BE1-BA2-983-D40071464C1（段长 8-3-3-3-11）。
+var uuidRE = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+func isValidUUID(s string) bool { return uuidRE.MatchString(strings.TrimSpace(s)) }
+
+// realityKeyBytes 返回 reality public-key 的 base64 解码字节数；解码失败返回 -1。
+//
+// 为什么必须校验长度：REALITY 公钥是 **32 字节** X25519 公钥，base64 后 43/44 字符。
+// 内核实测（mihomo v1.19.32 / sing-box 1.12.0+1.14.2）对长度不对的公钥一律拒绝：
+//
+//	mihomo    → proxy N: invalid REALITY public key        （整份配置 -t 失败）
+//	sing-box  → FATAL initialize outbound[N]: invalid public_key
+//
+// 即"一个坏节点拖垮整份订阅"的典型成因。现网实测来源：某上游文件 25 条 vless 的 pbk
+// 全是 46 字符（正确 43 字符 + 多出的 "3ac"），解码为 34 字节 → 两个内核都整份失败。
+func realityKeyBytes(pk string) int {
+	s := strings.TrimSpace(pk)
+	if s == "" {
+		return -1
+	}
+	for _, enc := range []*base64.Encoding{
+		base64.RawURLEncoding, base64.URLEncoding,
+		base64.RawStdEncoding, base64.StdEncoding,
+	} {
+		if b, err := enc.DecodeString(s); err == nil {
+			return len(b)
+		}
+	}
+	return -1
 }
 
 // optString 安全读取 Options 里的字符串值

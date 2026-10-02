@@ -109,6 +109,43 @@ var formatRenderTypes = map[OutputFormat]map[string]bool{
 	FmtLoon: {"ss": true, "trojan": true, "vmess": true, "vless": true, "hysteria2": true, "socks": true, "socks5": true, "http": true, "anytls": true},
 }
 
+// singBoxTransports sing-box 支持的 outbound transport 类型（真内核实测/官方枚举）。
+//
+// ⚠️ 与 outbound **type** 同源的致命语义：**未知 transport type 会让整份配置解码失败**。
+// 内核原话（本机 bin/sing-box 1.14.2 = 1.12.0 同样）：
+//
+//	FATAL decode config: outbounds[947].transport: unknown transport type: xhttp
+//
+// 现网实测来源：新增采集源里带 17 条 vless(xhttp) 节点（"澳大利亚 vless-xhttp-reality"、
+// "Toca-*" 等）。mihomo 支持 xhttp 且 -t 通过，sing-box 不支持 —— 所以这**不能**在
+// 第一层整协议拒收（那样会连累 clash 用户），必须在**格式层**按格式能力剔除。
+//
+// sing-box 的 transport 枚举：http / ws / quic / grpc / httpupgrade。
+// 不含 xhttp（那是 Xray 的私有实现）。空 network 与 "tcp" 表示无 transport 块，永远可用。
+var singBoxTransports = map[string]bool{
+	"http": true, "ws": true, "quic": true, "grpc": true, "httpupgrade": true,
+}
+
+// formatUnsupportedNode 判断某格式能否渲染该节点（协议层之外还含"传输层"能力）。
+// 返回 (原因码, 是否不支持)。协议层由 formatRenderTypes 判定，这里只补协议表覆盖不到的维度。
+func formatUnsupportedNode(f OutputFormat, n *ProxyNode) (string, bool) {
+	if n == nil {
+		return "", false
+	}
+	if f == FmtSingBox {
+		// 传输层取值来自 ProxyNode.Network（解析器写入），与生成器读的
+		// nodeToMap → res["network"] → n.Network 同源；空值与 "tcp" 表示无 transport 块。
+		nw := strings.ToLower(strings.TrimSpace(n.Network))
+		if nw == "" {
+			nw = strings.ToLower(strings.TrimSpace(optString(n.Options, "network")))
+		}
+		if nw != "" && nw != "tcp" && !singBoxTransports[nw] {
+			return "format-unsupported-transport", true
+		}
+	}
+	return "", false
+}
+
 // clashBuiltinNames Clash 里无需定义即可被分组引用的内置名
 var clashBuiltinNames = map[string]bool{
 	"DIRECT": true, "REJECT": true, "REJECT-DROP": true, "PASS": true, "COMPATIBLE": true, "GLOBAL": true,
@@ -257,6 +294,14 @@ func (s *ConfigUpdateService) buildVerifiedPayload(
 			res.Unsupported++
 			res.Dropped = append(res.Dropped, FormatDropped{
 				Name: n.Name, Type: n.Type, Reason: "format-unsupported-type"})
+			continue
+		}
+		if reason, unsupported := formatUnsupportedNode(f, n); unsupported {
+			// 传输层不被该格式支持（如 sing-box 不认 xhttp）——同协议层一样只计数不落事件。
+			// 若这里漏判，客户端拿到的是**整份配置解码失败**（unknown transport type）。
+			res.Unsupported++
+			res.Dropped = append(res.Dropped, FormatDropped{
+				Name: n.Name, Type: n.Type, Reason: reason})
 			continue
 		}
 		candidates = append(candidates, n)
@@ -634,6 +679,15 @@ func validateSingBoxJSON(payload string) error {
 			}
 			if p, okc := m["server_port"].(float64); !okc || p < 1 || p > 65535 {
 				return fmt.Errorf("outbounds[%d](%s) server_port 非法", i, tag)
+			}
+			// transport 类型必须是内核认识的枚举值：未知值会让**整份配置解码失败**
+			// （FATAL outbounds[N].transport: unknown transport type: xhttp）。
+			// 生成前已由 formatUnsupportedNode 剔除，这里是第二道保险（防生成器回归）。
+			if tr, okc := m["transport"].(map[string]interface{}); okc {
+				tt, _ := tr["type"].(string)
+				if !singBoxTransports[strings.ToLower(strings.TrimSpace(tt))] {
+					return fmt.Errorf("outbounds[%d](%s) transport type %q 不被 sing-box 支持", i, tag, tt)
+				}
 			}
 			// sing-box 的 hysteria v1 出站**必填** up_mbps/down_mbps，缺了内核会拒绝该出站
 			if t == "hysteria" {
