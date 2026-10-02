@@ -83,11 +83,12 @@ func TestUUIDFormatValidated(t *testing.T) {
 			t.Errorf("vmess 非标准 uuid %q 未被拒（sing-box 会整份 FATAL）", u)
 		}
 	}
-	// 合法 UUID 必须放行（含大写与连字符形态）
+	// 合法 UUID 必须放行（含大写、小写、无连字符 32 位十六进制三种等价写法）
 	for _, u := range []string{
 		good,
 		"11111111-2222-3333-4444-555555555555",
 		strings.ToLower(good),
+		"11111111222233334444555555555555",
 	} {
 		if err := ValidateProxyNode(&ProxyNode{Name: "t", Type: "tuic", Server: "1.2.3.4", Port: 443, UUID: u, Password: "pw"}); err != nil {
 			t.Errorf("合法 tuic uuid %q 被误拒: %v", u, err)
