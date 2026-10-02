@@ -22,18 +22,50 @@ import (
 //   - 规则集中在本文件，可在不修改分发逻辑的前提下调整。
 // ============================================================
 
+// clientVersion 客户端版本号：主版本 + 次版本二元组。
+//
+// ⚠️ 为什么**不能**用 float64 表示：旧实现把 "major.minor" 拼成 float64
+// （1.12 → 1.12、1.8 → 1.8、1.10 → 1.1），于是 **1.8 > 1.12** —— 语义上 1.8 比 1.12 旧，
+// 比较结果整个反了。现网真实 UA "sing-box/1.8.0"（server.log 实测 9+8 次）正好落进这个坑：
+// 本该被 anytls 版本闸门剔除却照样放行，客户端拿到 anytls 就会整份订阅解码失败。
+// 换成二元组后 1.8 = {1,8} < {1,12} = 1.12，语义正确，且对纯构建号（Shadowrocket/1744
+// → {1744,0}）与既有整数阈值 1744/1600/1800 仍然直接可比。
+type clientVersion struct {
+	major int
+	minor int
+}
+
+// less 版本序比较（严格小于）
+func (v clientVersion) less(o clientVersion) bool {
+	if v.major != o.major {
+		return v.major < o.major
+	}
+	return v.minor < o.minor
+}
+
+// isZero 未识别出版本（调用方据此跳过版本类过滤，保持既有"识别不出就不动"的语义）
+func (v clientVersion) isZero() bool { return v.major == 0 && v.minor == 0 }
+
+// String 日志展示用：{1,12} → "1.12"，{1744,0} → "1744"
+func (v clientVersion) String() string {
+	if v.minor == 0 {
+		return strconv.Itoa(v.major)
+	}
+	return strconv.Itoa(v.major) + "." + strconv.Itoa(v.minor)
+}
+
 // clientCapabilities 描述一个客户端类型+版本区间支持/不支持的协议。
 type clientCapabilities struct {
 	// unsupportedProtocols 该客户端始终不支持的协议（不论版本）
 	unsupportedProtocols map[string]bool
 	// unsupportedBefore 版本号低于该值时额外不支持的协议（新协议随版本引入）
 	// 结构：协议名 -> 最低支持版本号（版本号按客户端自身的版本格式解析）
-	unsupportedBefore map[string]float64
+	unsupportedBefore map[string]clientVersion
 }
 
 // detectClientVersion 从 User-Agent 解析客户端类型与版本号。
 // 返回 (clientType, version, ok)；ok=false 表示无法识别（调用方保持现状）。
-func detectClientVersion(ua string) (string, float64, bool) {
+func detectClientVersion(ua string) (string, clientVersion, bool) {
 	uaLower := strings.ToLower(ua)
 
 	// Clash Meta 系列（支持全部新协议）
@@ -79,7 +111,13 @@ func detectClientVersion(ua string) (string, float64, bool) {
 		return "shadowrocket", parseVersionFromUA(ua), true
 	}
 
-	// sing-box 系列（支持全部新协议）
+	// sing-box 系列：内核版本可从 UA 直接读到（sing-box/1.12.2 → 1.12），
+	// 据此放行 anytls（1.12.0 才加入，见 getClientCapabilities 的 sing-box 分支）。
+	// 注意：Hiddify / Karing 这类"自称 like ClashMeta ... sing-box"的多格式客户端
+	// **不会**走到这里——它们的 UA 含 clashmeta / clash-verge，已被上面的 meta 分支
+	// 判为 clash-meta。已实证其后果：它们请求到的是 base64 链接（见 xboard_compat.go
+	// detectClientType 的 hiddify 分支 → 默认 universal），而不是本文件的 sing-box JSON，
+	// 因此本闸门管不到它们的链接解析。详见本次修复报告"未解决/待决策"一节。
 	if strings.Contains(uaLower, "sing-box") || strings.Contains(uaLower, "singbox") {
 		return "sing-box", parseVersionFromUA(ua), true
 	}
@@ -103,15 +141,15 @@ func detectClientVersion(ua string) (string, float64, bool) {
 		return "v2ray", parseVersionFromUA(ua), true
 	}
 
-	return "", 0, false
+	return "", clientVersion{}, false
 }
 
 var versionRegex = regexp.MustCompile(`([0-9]+)(?:\.([0-9]+))?(?:\.([0-9]+))?`)
 
 // parseVersionFromUA 从 UA 中提取版本号（首个形如 x.y.z 的数字序列）。
-// Shadowrocket/1744 这类纯构建号也支持（提取 1744）。
+// Shadowrocket/1744 这类纯构建号也支持（提取 1744 → {1744, 0}）。
 // 支持格式：0.19.23 → 0.19；2.11.24 → 2.11；1744 → 1744
-func parseVersionFromUA(ua string) float64 {
+func parseVersionFromUA(ua string) clientVersion {
 	// 优先匹配 "客户端名/版本" 模式：取第一个 "/" 后的数字段。
 	// 用 FirstIndex 避免 Shadowrocket/1744 CFNetwork/3860.700.1 这类多斜杠 UA 取错。
 	slashIdx := strings.Index(ua, "/")
@@ -139,24 +177,31 @@ func parseVersionFromUA(ua string) float64 {
 			return v
 		}
 	}
-	return 0
+	return clientVersion{}
 }
 
-// parseVersionString 解析形如 "0.19.23" / "2.11" / "1744" 的版本号为 float64。
-// 仅取主版本.次版本（如 0.19.23 → 0.19），纯数字按原值。
-func parseVersionString(s string) (float64, bool) {
+// parseVersionString 解析形如 "0.19.23" / "2.11" / "1744" 的版本号。
+// 仅取主版本.次版本（如 0.19.23 → {0, 19}），纯数字按 {n, 0}。
+func parseVersionString(s string) (clientVersion, bool) {
 	s = strings.TrimSuffix(s, ".")
 	if s == "" {
-		return 0, false
+		return clientVersion{}, false
 	}
 	parts := strings.Split(s, ".")
-	if len(parts) > 1 {
-		// 取主版本 + 次版本（0.19.23 → "0.19"）
-		s = parts[0] + "." + parts[1]
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return clientVersion{}, false
 	}
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil || v <= 0 {
-		return 0, false
+	v := clientVersion{major: major}
+	if len(parts) > 1 {
+		if minor, err := strconv.Atoi(parts[1]); err == nil && minor > 0 {
+			v.minor = minor
+		}
+	}
+	// 全零（"0" / "0.0"）视为解析失败——调用方据此跳过版本类过滤。
+	// 注意**不能**要求 major>0：Clash for Windows 正是 0.19 / 0.20 这类 0.x 版本号。
+	if v.isZero() {
+		return clientVersion{}, false
 	}
 	return v, true
 }
@@ -173,27 +218,41 @@ func getClientCapabilities(clientType string) *clientCapabilities {
 		return &clientCapabilities{
 			unsupportedProtocols: legacyClashUnsupported,
 		}
-	case "clash-meta", "sing-box", "stash":
-		// Meta 与 sing-box 支持全部新协议，无需过滤
+	case "clash-meta", "stash":
+		// Meta（mihomo）与 Stash 支持全部新协议，无需过滤。
+		// ⚠️ 这两个**不能**与下面的 sing-box 合并成一条 case：mihomo 内核原生支持
+		// anytls，不存在"1.12 边界"，套上阈值会把它们的 anytls 误砍。
 		return &clientCapabilities{}
+	case "sing-box":
+		// sing-box 支持全部新协议，但 anytls 出站是 **1.12.0** 才加入的类型：
+		//   1.11.15 真内核实测 → `FATAL decode config: outbounds[1]: unknown outbound type: anytls`（exit=1）
+		//   1.12.0 → exit=0；1.14.2 → exit=0
+		// 未知 outbound type 是**解码期失败 = 客户端整份订阅起不来**，不是"该节点不可用"，
+		// 所以低于 1.12 的 sing-box 必须整批剔除 anytls（其余协议不受影响）。
+		// 版本取自 UA（如 "sing-box/1.11.15" → {1,11}）；版本无法解析时 version.isZero()，
+		// nodeUnsupported 不做版本比较（与本表其它协议的既有语义一致），
+		// 因此"能识别客户端但版本未知"的请求不会被误砍。
+		return &clientCapabilities{
+			unsupportedBefore: map[string]clientVersion{"anytls": {major: 1, minor: 12}},
+		}
 	case "shadowrocket":
 		// Shadowrocket 构建号 >= 1744 支持 Reality；更老的版本不支持部分新协议
 		return &clientCapabilities{
-			unsupportedBefore: map[string]float64{
-				"reality": 1744, "hysteria2": 1600, "tuic": 1600, "anytls": 1800,
+			unsupportedBefore: map[string]clientVersion{
+				"reality": {major: 1744}, "hysteria2": {major: 1600}, "tuic": {major: 1600}, "anytls": {major: 1800},
 			},
 		}
 	case "surge":
 		// Surge 5+ 支持大部分，老版本不支持 Reality/Hy2
 		return &clientCapabilities{
-			unsupportedBefore: map[string]float64{
-				"reality": 5.0, "hysteria2": 5.0, "tuic": 5.0,
+			unsupportedBefore: map[string]clientVersion{
+				"reality": {major: 5}, "hysteria2": {major: 5}, "tuic": {major: 5},
 			},
 		}
 	case "loon":
 		return &clientCapabilities{
-			unsupportedBefore: map[string]float64{
-				"reality": 3.0, "hysteria2": 3.0, "tuic": 3.0,
+			unsupportedBefore: map[string]clientVersion{
+				"reality": {major: 3}, "hysteria2": {major: 3}, "tuic": {major: 3},
 			},
 		}
 	case "quantumult":
@@ -255,7 +314,7 @@ func nodeCapabilityKeys(n *ProxyNode) []string {
 
 // nodeUnsupported 判断该客户端（能力表 + 版本）是否不支持此节点。
 // 判定遍历节点的全部能力键，任一键命中不支持即判定不支持。
-func (c *clientCapabilities) nodeUnsupported(p *ProxyNode, version float64) bool {
+func (c *clientCapabilities) nodeUnsupported(p *ProxyNode, version clientVersion) bool {
 	if c == nil || p == nil {
 		return false
 	}
@@ -263,7 +322,7 @@ func (c *clientCapabilities) nodeUnsupported(p *ProxyNode, version float64) bool
 		if c.unsupportedProtocols[key] {
 			return true
 		}
-		if minVersion, exists := c.unsupportedBefore[key]; exists && version > 0 && version < minVersion {
+		if minVersion, exists := c.unsupportedBefore[key]; exists && !version.isZero() && version.less(minVersion) {
 			return true
 		}
 	}
@@ -272,7 +331,7 @@ func (c *clientCapabilities) nodeUnsupported(p *ProxyNode, version float64) bool
 
 // filterByCapabilities 客户端能力过滤的纯函数实现（不依赖 DB/日志，便于表驱动测试）。
 // 返回保留的节点与被剔除的节点数。
-func filterByCapabilities(proxies []*ProxyNode, version float64, caps *clientCapabilities) ([]*ProxyNode, int) {
+func filterByCapabilities(proxies []*ProxyNode, version clientVersion, caps *clientCapabilities) ([]*ProxyNode, int) {
 	if caps == nil {
 		return proxies, 0
 	}
@@ -319,15 +378,15 @@ func (s *ConfigUpdateService) filterProxiesByClientCapability(proxies []*ProxyNo
 // logCapabilityFilterOnce 每个（UA, 客户端类型, 版本, 规模）组合只记一次过滤摘要。
 // 能力过滤会让某些老客户端只拿到部分节点（如老 Clash 只支持 ss/vmess/trojan），
 // 没有这行日志时管理员只看到"节点变少"却查不到原因，容易误判为节点丢失事故。
-func (s *ConfigUpdateService) logCapabilityFilterOnce(userAgent, clientType string, version float64, total, kept, dropped int) {
+func (s *ConfigUpdateService) logCapabilityFilterOnce(userAgent, clientType string, version clientVersion, total, kept, dropped int) {
 	if s == nil || dropped <= 0 {
 		return
 	}
-	key := fmt.Sprintf("%s|%s|%.2f|%d|%d", userAgent, clientType, version, total, kept)
+	key := fmt.Sprintf("%s|%s|%s|%d|%d", userAgent, clientType, version.String(), total, kept)
 	if _, loaded := capabilityFilterLogSeen.LoadOrStore(key, true); loaded {
 		return
 	}
-	s.infof("🧭 客户端能力过滤: UA=%q 识别为 %s(v%.2f) → 下发 %d/%d 个节点（按该客户端不支持的协议剔除 %d 个）",
+	s.infof("🧭 客户端能力过滤: UA=%q 识别为 %s(v%s) → 下发 %d/%d 个节点（按该客户端不支持的协议剔除 %d 个）",
 		truncateUA(userAgent, 64), clientType, version, kept, total, dropped)
 }
 

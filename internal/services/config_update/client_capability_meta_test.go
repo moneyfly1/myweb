@@ -152,7 +152,7 @@ func TestNodeHasRealityVariants(t *testing.T) {
 // caps 为 nil（未识别客户端）时必须原样返回，不得丢节点。
 func TestFilterByCapabilitiesNilCapsReturnsInput(t *testing.T) {
 	in := []*ProxyNode{{Type: "vless", Name: "x"}}
-	got, dropped := filterByCapabilities(in, 1.0, nil)
+	got, dropped := filterByCapabilities(in, clientVersion{major: 1}, nil)
 	if dropped != 0 || len(got) != 1 {
 		t.Fatalf("got %d 个 dropped=%d, want 1/0", len(got), dropped)
 	}
@@ -170,7 +170,7 @@ func TestQuantumultXNotVersionGated(t *testing.T) {
 		if caps == nil {
 			t.Fatalf("%s 未被识别为 quantumult", ua)
 		}
-		if caps.nodeUnsupported(r, 1.4) {
+		if caps.nodeUnsupported(r, clientVersion{major: 1, minor: 4}) {
 			t.Errorf("%s：QX 的 reality 节点被版本阈值误剔除（QX 不应做版本门控）", ua)
 		}
 		if got := applyCapability(ua, []*ProxyNode{r}); len(got) != 1 {
