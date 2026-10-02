@@ -89,55 +89,81 @@ func TestSingBoxPayloadJSONShape(t *testing.T) {
 	}
 }
 
-// anytls 在 sing-box 1.12.0 才加入；真内核 1.11.15 实测：
+// anytls 是 sing-box **1.12.0** 才加入的 outbound 类型；真内核三版本实测（/root/sb-kernels）：
 //
-//	FATAL decode config at ...: outbounds[0]: unknown outbound type: anytls （exit=1）
+//	1.11.15 → FATAL decode config: outbounds[1]: unknown outbound type: anytls （exit=1）
+//	1.12.0  → exit=0
+//	1.14.2  → exit=0
 //
-// 致命点在于这是**解码期失败 = 整份订阅起不来**，不是"该节点不可用"。
-// 本表曾含 anytls（先于 2026-10-01 修复就存在）：只要源里出现 1 个 anytls 节点，
-// 所有 sing-box 1.11 客户端都会拿不到可用订阅。现网 anytls 节点为 0，属未爆的雷。
-func TestSingBoxDoesNotRenderAnyTLS(t *testing.T) {
-	if formatRenderTypes[FmtSingBox]["anytls"] {
-		t.Fatal("formatRenderTypes[FmtSingBox] 不应包含 anytls（sing-box 1.11 会整份配置 FATAL）")
+// 这是**版本边界**，不是"sing-box 不支持 anytls"。因此正确修法是：
+//   - 生成器/格式表恢复 anytls（= 生成器能渲染）；
+//   - 由 client_capability.go 按 UA 里的内核版本放行（<1.12 整批剔除）。
+//
+// 本用例锁定这两件事同时成立，防止有人再"一刀切"把 anytls 从生成器里删掉。
+func TestSingBoxRendersAnyTLS(t *testing.T) {
+	if !formatRenderTypes[FmtSingBox]["anytls"] {
+		t.Fatal("formatRenderTypes[FmtSingBox] 应包含 anytls（1.12+ 内核支持；<1.12 由能力闸门剔除）")
 	}
 	node := &ProxyNode{
 		Type: "anytls", Name: "anytls-1", Server: "1.2.3.4", Port: 443, Password: "pw", TLS: true,
+		Options: map[string]any{"sni": "s.example.com"},
 	}
 	svc := &ConfigUpdateService{}
 	out := svc.generateSingBoxConfig([]*ProxyNode{node})
-	var cfg map[string]any
+	var cfg struct {
+		Outbounds []map[string]any `json:"outbounds"`
+	}
 	if err := json.Unmarshal([]byte(out), &cfg); err != nil {
 		t.Fatalf("sing-box 产物不是合法 JSON: %v", err)
 	}
-	if obs, _ := cfg["outbounds"].([]any); len(obs) != 1 { // 只剩 DIRECT
-		t.Errorf("anytls 节点不应被渲染进 sing-box，实际 outbounds=%d", len(obs))
+	if len(cfg.Outbounds) != 2 { // anytls + DIRECT
+		t.Fatalf("anytls 节点应被渲染进 sing-box，实际 outbounds=%d:\n%s", len(cfg.Outbounds), out)
 	}
-	if strings.Contains(out, `"anytls"`) {
-		t.Errorf("产物中出现 anytls outbound（会导致 sing-box 1.11 整份配置解码失败）:\n%s", out)
+	ob := cfg.Outbounds[1]
+	if ob["type"] != "anytls" {
+		t.Errorf("outbound type = %v, want anytls", ob["type"])
+	}
+	if ob["password"] != "pw" {
+		t.Errorf("anytls 出站缺 password: %+v", ob)
+	}
+	if ob["server_port"] != float64(443) {
+		t.Errorf("anytls 出站 server_port 错误: %+v", ob)
+	}
+	// TLS 块必须存在且 enabled=true（anytls 是 TLS-only 协议，缺了内核报 TLS is required）
+	tls, ok := ob["tls"].(map[string]any)
+	if !ok || tls["enabled"] != true {
+		t.Fatalf("anytls 出站缺 TLS 块或未启用: %+v", ob["tls"])
+	}
+	if tls["server_name"] != "s.example.com" {
+		t.Errorf("anytls TLS server_name = %v, want s.example.com", tls["server_name"])
+	}
+	// 结构校验层必须放行
+	if err := validateFormatPayload(FmtSingBox, out); err != nil {
+		t.Errorf("validateFormatPayload(FmtSingBox) 拒绝了含 anytls 的产物: %v", err)
 	}
 }
 
-// anytls 只是"对 sing-box 不安全"，对其他格式仍应正常可用——避免这次修复误伤。
+// anytls 只是"对 sing-box <1.12 不安全"，对其他格式仍应正常可用——避免这次修复误伤。
 func TestAnyTLSStillAvailableInOtherFormats(t *testing.T) {
-	for _, f := range []OutputFormat{FmtClash, FmtLinksBase64, FmtLinksPlain, FmtLoon, FmtQuantumultX} {
+	for _, f := range []OutputFormat{FmtClash, FmtLinksBase64, FmtLinksPlain, FmtLoon, FmtQuantumultX, FmtSingBox} {
 		if !formatRenderTypes[f]["anytls"] {
-			t.Errorf("格式 %s 丢失了 anytls 支持（本次只应移出 SingBox）", f)
+			t.Errorf("格式 %s 丢失了 anytls 支持", f)
 		}
 	}
 }
 
-// 白名单锁定：本表内容 = sing-box 1.11.15 真内核 `check` 实测可通过的类型集合。
+// 白名单锁定：本表内容 = 真内核 `check` 实测可通过的类型集合。
 // 任何人想把新类型加进来，必须先拿真实内核跑出 exit=0（见 format_verify.go 里的注释）。
 func TestSingBoxTypeAllowlistMatchesKernelEvidence(t *testing.T) {
 	// 内核实测 exit=0：shadowsocks / vmess / vless / trojan / hysteria / hysteria2 /
-	// socks / http / direct / ssh。
+	// socks / http / direct / ssh / anytls（anytls 仅 1.12.0+，见 format_verify.go 的版本边界说明）。
 	//   · "socks5" 是**节点类型别名**（socks5:// 链接解析出的 Type），生成器把它渲染成
 	//     内核里的 "socks"，因此两者都要在表里（否则 socks5 节点会被 format 层误剔）。
 	//   · ssh 不在表内：项目没有 ssh:// 解析器（死代码），不是 sing-box 不支持。
 	//   · direct 由生成器固定追加，不来自节点，故不在表内。
 	want := map[string]bool{
 		"ss": true, "vmess": true, "vless": true, "trojan": true,
-		"hysteria": true, "hysteria2": true, "tuic": true,
+		"hysteria": true, "hysteria2": true, "tuic": true, "anytls": true,
 		"socks": true, "socks5": true, "http": true,
 	}
 	got := formatRenderTypes[FmtSingBox]

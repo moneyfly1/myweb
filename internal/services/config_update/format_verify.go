@@ -64,27 +64,29 @@ var linkRenderTypes = map[string]bool{
 //	Surge        : proxyNodeToSurgeLine 的 case（http/hysteria/socks/ss/trojan/tuic/vless/vmess）
 //	Loon         : generateLoonConfig 的 case（ss/trojan/vmess/vless/hysteria2/socks/socks5/http/anytls）
 //	QuantumultX  : generateQuantumultXConfig 的 case（ss/trojan/vmess/vless/socks/socks5/http/anytls）
-//	SingBox      : generateSingBoxConfig 的 case（hysteria/ss/trojan/tuic/vless/vmess）+ direct
+//	SingBox      : generateSingBoxConfig 的 case（hysteria/ss/trojan/tuic/vless/vmess/anytls）+ direct
 var formatRenderTypes = map[OutputFormat]map[string]bool{
 	FmtClash:       supportedClashTypes,
 	FmtLinksBase64: linkRenderTypes,
 	FmtLinksPlain:  linkRenderTypes,
 	FmtSurge:       {"http": true, "hysteria2": true, "socks": true, "socks5": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
-	// SingBox：本表只收"任何 sing-box 版本都能解析"的 outbound 类型。
-	// 判定依据 = 真实内核 sing-box 1.11.15 的 `sing-box check` 退出码（逐个类型实测），
-	// 不以文档的 Required 标记为准——实测二者有实质差异。
+	// SingBox：本表 = 生成器**能渲染**的 outbound 类型（由 go/ast 机械校验保证一致）。
+	// 判定依据 = 真实内核 `sing-box check` 的退出码（逐个类型实测，不以文档的 Required 标记为准）。
 	//
 	// ⚠️ 致命语义：**未知的 outbound type 会让整份配置解码失败**（不是"该节点不可用"）。
 	//    内核原话：`FATAL decode config: outbounds[0]: unknown outbound type: anytls`。
-	//    因此"没把握的类型一律不进本表"是这层的核心原则。
 	//
-	//   · anytls：sing-box **1.12.0 才加入**；实测 1.11.15 → `unknown outbound type: anytls`（exit=1）。
-	//     本表曾含 anytls（先于 2026-10-01 的修复就存在）——**只要源里出现 1 个 anytls 节点，
-	//     所有 sing-box 1.11 客户端拿到的整份订阅都会解析失败**（现网 anytls 节点 0 个，属未爆的雷）。
-	//     订阅端点识别不出客户端内核版本（Hiddify 等 UA 不带 sing-box 版本），无法按版本放行，
-	//     故按失败安全原则剔除：节点记为 format-unsupported-type（管理员可见），
-	//     同时仍经 clash / links / Loon / QuantumultX 正常下发。
-	//     恢复条件：能拿到 sing-box 内核版本并按 ≥1.12 放行时，可把 anytls 加回本表。
+	//   · anytls：**≥1.12 支持；<1.12 由客户端能力闸门剔除**。
+	//     anytls 出站是 sing-box **1.12.0** 才加入的类型。三内核实测（本机 /root/sb-kernels）：
+	//       1.11.15 → FATAL decode config: outbounds[1]: unknown outbound type: anytls（exit=1）
+	//       1.12.0  → exit=0
+	//       1.14.2  → exit=0
+	//     所以它是**版本边界**问题，不是"sing-box 不支持"。修复方式不是把它从本表删掉
+	//     （那会让 sing-box 1.12+ 用户也拿不到节点，等于修坏了），而是两端各司其职：
+	//       本表         = 声明"生成器能渲染"（版本无关）；
+	//       client_capability.go = 按 UA 里的内核版本放行（unsupportedBefore{"anytls": 1.12}）。
+	//     低于 1.12 的 sing-box UA 在过滤层就被整批剔除，绝不会拿到解码期就 FATAL 的配置。
+	//     仍不在本表内的类型见下方各条（wireguard / ssh / ssr），那才是真的不支持或死代码。
 	//   · wireguard：legacy wireguard **outbound** 自 1.11 起废弃。**实际移除版本是 1.14**——
 	//     官方文档、废弃页、连内核自己的告警文案都写 1.13，但直读源码 v1.13.0 仍真注册
 	//     registerWireGuardOutbound、v1.14.0 才换成报错桩（v1.13 的 stub 里只有 SSR）。
@@ -98,7 +100,7 @@ var formatRenderTypes = map[OutputFormat]map[string]bool{
 	//     将来若加 ssh:// 解析器：user+password 就够；host_key 要么写完整真实值要么不写
 	//     （官方文档示例里的 host_key 是截断占位串，照抄会 FATAL parse host key nil）。
 	//   · ssr：sing-box 自 1.6.0 起彻底移除，with_shadowsocksr 构建标签也救不活（实现体是 os.ErrInvalid）。
-	FmtSingBox: {"hysteria": true, "hysteria2": true, "socks": true, "socks5": true, "http": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
+	FmtSingBox: {"hysteria": true, "hysteria2": true, "anytls": true, "socks": true, "socks5": true, "http": true, "ss": true, "trojan": true, "tuic": true, "vless": true, "vmess": true},
 	// QuantumultX：官方 sample.conf 支持 shadowsocks/vmess/vless/trojan/http/socks5/anytls；
 	// 明确不支持 hysteria/hysteria2/tuic（不渲染比渲染坏行更安全——QX 遇到不支持的类型有整份失败风险）。
 	FmtQuantumultX: {"ss": true, "trojan": true, "vmess": true, "vless": true, "socks": true, "socks5": true, "http": true, "anytls": true},
@@ -640,6 +642,22 @@ func validateSingBoxJSON(payload string) error {
 				}
 				if dn, okc := m["down_mbps"].(float64); !okc || dn <= 0 {
 					return fmt.Errorf("outbounds[%d](%s) hysteria v1 缺少 down_mbps", i, tag)
+				}
+			}
+			// anytls 出站**必填** password 与 tls 块（内核 1.12+ 的 anytls 是 TLS-only 协议，
+			// 缺 password 时该出站无意义、缺 tls 时内核报 anytls: TLS is required）。
+			// 与第一层 node_validate.go 的 "anytls 缺少 password" 对齐，防止绕过第一层
+			// 的节点（手工导入 / custom node）在这里产出内核不认的 outbound。
+			if t == "anytls" {
+				if pw, okc := m["password"].(string); !okc || strings.TrimSpace(pw) == "" {
+					return fmt.Errorf("outbounds[%d](%s) anytls 缺少 password", i, tag)
+				}
+				tls, okc := m["tls"].(map[string]interface{})
+				if !okc {
+					return fmt.Errorf("outbounds[%d](%s) anytls 缺少 tls 块（anytls 必须走 TLS）", i, tag)
+				}
+				if on, okc := tls["enabled"].(bool); !okc || !on {
+					return fmt.Errorf("outbounds[%d](%s) anytls 的 tls.enabled 不为 true", i, tag)
 				}
 			}
 		default:

@@ -3004,6 +3004,18 @@ func (s *ConfigUpdateService) generateSingBoxConfig(proxies []*ProxyNode) string
 					Password string `json:"password,omitempty"`
 				}{Type: ot, Password: optVal[string](m, "obfs-password")}
 			}
+		case "anytls":
+			// anytls 出站是 sing-box **1.12.0** 才加入的类型（官方文档 + 真内核实测，
+			// 见 format_verify.go 的版本边界说明）。字段名按官方文档：
+			// type / server / server_port / password + tls 块。
+			//
+			// 这里的"能渲染"不等于"对每个客户端都能下发"：sing-box <1.12 收到它会
+			// **整份配置解码失败**（FATAL decode config: outbounds[N]: unknown outbound
+			// type: anytls）。按内核版本放行由 client_capability.go 的
+			// unsupportedBefore{"anytls": 1.12} 负责——低于 1.12 的 sing-box UA
+			// 在过滤层就被整批剔除，走不到这里；≥1.12 的客户端拿到的则是内核真正支持的写法。
+			ob.Type = "anytls"
+			ob.Password = optVal[string](m, "password")
 		case "socks", "socks5":
 			ob.Type = "socks"
 			ob.Version = "5"
@@ -3022,7 +3034,9 @@ func (s *ConfigUpdateService) generateSingBoxConfig(proxies []*ProxyNode) string
 		}
 
 		// TLS
-		if optVal[bool](m, "tls") || n.Type == "trojan" || n.Type == "tuic" || n.Type == "hysteria" {
+		// TLS：anytls **必须**带 TLS（协议本身跑在 TLS 之上，官方 anytls:// 链接
+		// 一律带 security=tls），解析器 parseAnytls 也固定置 n.TLS=true。
+		if optVal[bool](m, "tls") || n.Type == "trojan" || n.Type == "tuic" || n.Type == "hysteria" || n.Type == "anytls" {
 			sni := sniFromMap(m, ob.Server)
 			ob.TLS = &struct {
 				Enabled    bool     `json:"enabled"`
