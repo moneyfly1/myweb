@@ -492,6 +492,9 @@ $breakpoints: (
   }
   .el-pagination {
     padding: 10px 0;
+    /* 移动端的「每页条数」不再由 Element 内部插槽承担：
+       PaginationBar 会在移动端单独渲染一行（共 N 条 + 每页条数），
+       这里保持隐藏，避免两套控件打架导致上下/左右错位。 */
     .el-pagination__sizes,
     .el-pagination__jump {
       display: none;
@@ -835,6 +838,7 @@ $breakpoints: (
     gap: 6px;
     margin-top: 12px;
 
+    /* 移动端只保留「上一页 / 页码 / 下一页」一行；每页条数由 PaginationBar 自理。 */
     .el-pagination__sizes,
     .el-pagination__jump,
     .el-pagination__total {

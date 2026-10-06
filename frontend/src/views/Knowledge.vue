@@ -90,7 +90,7 @@
             :total="total"
             :page-sizes="[12, 24, 48, 100]"
             layout="total, sizes, prev, pager, next, jumper"
-            mobile-layout="sizes, prev, pager, next, jumper"
+            mobile-layout="prev, pager, next"
             @current-change="handlePageChange"
             @size-change="handleSizeChange"
           />

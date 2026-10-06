@@ -157,6 +157,9 @@
         title-field="subject"
         empty-title="暂无邮件数据"
         empty-description="可调整筛选条件或刷新队列"
+        selectable
+        :selected-rows="selectedEmails"
+        @selection-change="handleSelectionChange"
       >
         <template #table>
           <div class="table-wrapper">

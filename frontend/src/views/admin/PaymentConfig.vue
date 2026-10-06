@@ -93,6 +93,9 @@
         title-field="id"
         empty-title="暂无支付配置"
         empty-description="可添加支付宝、微信、易支付或码支付配置"
+        selectable
+        :selected-rows="selectedConfigs"
+        @selection-change="handleSelectionChange"
       >
         <template #table>
           <div class="table-wrapper desktop-only" v-if="viewMode === 'table'">

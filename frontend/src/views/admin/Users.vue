@@ -166,6 +166,9 @@
         :loading="loading"
         empty-title="暂无用户数据"
         empty-description="可调整筛选条件后重试"
+        selectable
+        :selected-rows="selectedUsers"
+        @selection-change="handleSelectionChange"
       >
         <template #table>
           <div class="table-wrapper">

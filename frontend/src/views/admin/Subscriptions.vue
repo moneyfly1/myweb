@@ -232,6 +232,9 @@
         title-field=""
         empty-title="暂无订阅记录"
         empty-description="可调整筛选条件后重试"
+        selectable
+        :selected-rows="selectedSubscriptions"
+        @selection-change="handleSelectionChange"
       >
         <template #table>
           <div class="table-wrapper">

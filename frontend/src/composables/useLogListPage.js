@@ -30,7 +30,8 @@ export function useLogListPage({ fetcher, defaultFilter = () => ({ keyword: '', 
   const filter = ref(defaultFilter())
   const isMobile = useMobile()
   // 统一分页能力：每页条数选择（sizes）+ 页码跳转（jumper），桌面与移动端一致
-  const paginationLayout = computed(() => (isMobile.value ? 'sizes, prev, pager, next, jumper' : 'total, sizes, prev, pager, next, jumper'))
+  // 移动端只留页码一行：每页条数由 PaginationBar 的 __meta 行渲染（避免与页码抢同一行导致错位）
+  const paginationLayout = computed(() => (isMobile.value ? 'prev, pager, next' : 'total, sizes, prev, pager, next, jumper'))
   const clearing = ref(false)
 
   async function fetchLogs() {

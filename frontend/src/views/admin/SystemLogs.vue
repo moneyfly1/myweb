@@ -994,7 +994,8 @@ ${selectedLog.value.stack_trace ? `堆栈跟踪: ${selectedLog.value.stack_trace
   .pagination-wrapper {
     margin-top: 16px;
     :deep(.el-pagination) {
-      flex-wrap: wrap;
+      /* 不再 wrap：页码行由 PaginationBar 统一控制为单行居中，
+         这里 wrap 会把「… 最后一页」拆到第二行。 */
       .el-pagination__sizes,
       .el-pagination__jump {
         display: none;

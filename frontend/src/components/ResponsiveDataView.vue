@@ -13,7 +13,11 @@
       :error="error"
       :empty-title="emptyTitle"
       :empty-description="emptyDescription"
+      :selectable="selectable"
+      :selected-rows="selectedRows"
+      :is-row-selectable="isRowSelectable"
       @retry="$emit('retry')"
+      @selection-change="$emit('selection-change', $event)"
     >
       <template
         v-for="(_, slotName) in forwardedSlots"
@@ -63,9 +67,22 @@ defineProps({
     type: String,
     default: '',
   },
+  // 移动端多选：透传给 MobileCardList（桌面端仍由 el-table 的 type="selection" 负责）
+  selectable: {
+    type: Boolean,
+    default: false,
+  },
+  selectedRows: {
+    type: Array,
+    default: () => [],
+  },
+  isRowSelectable: {
+    type: Function,
+    default: null,
+  },
 })
 
-defineEmits(['retry'])
+defineEmits(['retry', 'selection-change'])
 
 const slots = useSlots()
 const forwardedSlots = computed(() => {

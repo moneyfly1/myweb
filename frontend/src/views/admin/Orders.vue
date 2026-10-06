@@ -116,6 +116,10 @@
         title-field="order_no"
         :empty-title="activeTab === 'orders' ? '暂无订单数据' : '暂无充值记录'"
         empty-description="可调整搜索条件后重试"
+        :selectable="activeTab === 'orders'"
+        :selected-rows="selectedOrders"
+        :is-row-selectable="isOrderSelectable"
+        @selection-change="handleSelectionChange"
       >
         <template #table>
           <div class="table-wrapper">
