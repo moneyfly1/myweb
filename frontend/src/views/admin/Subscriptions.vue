@@ -155,6 +155,13 @@
           </div>
         </div>
       </div>
+      <!-- 精确用户过滤（从仪表盘实时动态/用户列表点进来时带上的 user_id）：
+           显示为可关闭的标签，避免与搜索框语义混淆 -->
+      <div v-if="userFilter" class="user-filter-bar">
+        <el-tag type="primary" effect="light" closable @close="clearUserFilter">
+          仅显示用户：{{ userFilter.label || ('ID ' + userFilter.id) }}
+        </el-tag>
+      </div>
       <el-form :inline="true" :model="searchForm" class="search-form list-filter-form desktop-only">
         <el-form-item label="搜索">
           <el-input
@@ -921,6 +928,10 @@ export default {
           search: searchForm.keyword || searchQuery.value,
           sort: currentSort.value
         }
+        // 精确用户过滤（来自实时动态的跳转）：后端有 user_id 时不走模糊搜索
+        if (userFilter.value?.id) {
+          params.user_id = userFilter.value.id
+        }
         if (searchForm.status) {
           params.status = searchForm.status
         }
@@ -966,7 +977,14 @@ export default {
       searchForm.status = ''
       searchForm.line_type = ''
       searchQuery.value = ''
+      clearUserFilter() // 精确用户过滤（来自实时动态跳转）也一并清掉
       currentPage.value = 1
+      loadSubscriptions()
+    }
+    // 清除「仅看某个用户」的精确过滤，并回到普通列表
+    const clearUserFilter = () => {
+      if (!userFilter.value) return
+      userFilter.value = null
       loadSubscriptions()
     }
     const handleStatusFilter = (status) => {
@@ -2023,21 +2041,62 @@ export default {
       saveColumnSettings(newColumns)
     }, { deep: true })
     const isMobile = useMobile()
-    onMounted(() => {
-      if (route.query.search) {
-        const searchParam = String(route.query.search).trim()
-        if (searchParam) {
-          searchForm.keyword = searchParam
-          searchQuery.value = searchParam
-          currentPage.value = 1
+    // 从仪表盘「实时动态」/用户列表点某个用户进来时，地址里带 search=用户名 与 user_id。
+    //
+    // 关键：本页被 keep-alive 缓存（见 AdminLayout 的 adminKeepAlivePages），
+    // onMounted **只会执行一次**。此前只在 onMounted 读参数，第二次从动态点另一个用户
+    // 进来时只剩 onActivated 刷新列表、搜索词还是上一次的，看起来就是
+    // 「点了 A 用户却出现 B 用户」。现在把「应用路由参数」抽出来，进入/激活/参数变化都走。
+    const userFilter = ref(null) // { id, label } 精确过滤（按 user_id，不受模糊搜索影响）
+    const applyRouteQuery = () => {
+      const uidRaw = route.query.user_id
+      const kwRaw = route.query.search
+      const label = kwRaw === undefined ? '' : String(kwRaw).trim()
+      let changed = false
+
+      if (uidRaw !== undefined && String(uidRaw).trim() !== '') {
+        const uid = Number(uidRaw)
+        if (!Number.isNaN(uid) && uid > 0) {
+          if (!userFilter.value || userFilter.value.id !== uid) {
+            userFilter.value = { id: uid, label }
+            // 精确过滤优先：清掉关键词，避免两个条件同时生效让人困惑
+            searchForm.keyword = ''
+            searchQuery.value = ''
+            currentPage.value = 1
+            changed = true
+          }
+          return changed
         }
       }
+
+      if (label) {
+        if (userFilter.value) {
+          userFilter.value = null
+          changed = true
+        }
+        if (label !== searchForm.keyword) {
+          searchForm.keyword = label
+          searchQuery.value = label
+          currentPage.value = 1
+          changed = true
+        }
+      }
+      return changed
+    }
+    onMounted(() => {
+      applyRouteQuery()
       loadSubscriptions()
     })
 
-    // keep-alive 激活时刷新数据（避免显示缓存旧数据）
+    // keep-alive 激活时：先应用本次进入带的参数，再刷新数据（避免显示缓存旧数据/旧筛选）
     onActivated(() => {
+      applyRouteQuery()
       loadSubscriptions()
+    })
+
+    // 已停留在本页时参数变化（例如从别的页面再次点某个用户）也要跟随
+    watch(() => [route.query.search, route.query.user_id], () => {
+      if (applyRouteQuery()) loadSubscriptions()
     })
     onUnmounted(() => {
       clearSubNotesTimers()
@@ -2068,6 +2127,8 @@ export default {
       lineModeSaving,
       loadSubscriptions,
       searchSubscriptions,
+      userFilter,
+      clearUserFilter,
       debouncedSearchSubscriptions,
       resetSearch,
       handleStatusFilter,
@@ -2333,6 +2394,12 @@ export default {
   align-items: center;
 }
 /* 订阅链接列：只放复制按钮，避免长链接把表格撑宽 */
+.user-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
 .sub-urls-compact {
   display: flex;
   flex-direction: column;
