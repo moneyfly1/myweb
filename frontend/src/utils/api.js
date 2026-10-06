@@ -540,6 +540,8 @@ export const nodeAPI = {
   deleteNode: (id) => api.delete(`/admin/nodes/${id}`),
   testNode: (id) => api.post(`/admin/nodes/${id}/test`),
   batchTestNodes: (nodeIds) => api.post('/admin/nodes/batch-test', { node_ids: nodeIds }),
+  // 批量测速是异步任务：POST 立即返回 job_id，进度/结果用这个接口轮询
+  getNodesBatchTestStatus: (jobId) => api.get('/admin/nodes/batch-test/status', { params: jobId ? { job_id: jobId } : {} }),
   batchDeleteNodes: (nodeIds) => api.post('/admin/nodes/batch-delete', { node_ids: nodeIds }),
   createSelfHostNode: (data) => api.post('/admin/nodes/selfhost', data),
   disableTimeoutNodes: () => api.post('/admin/nodes/disable-timeout'),
@@ -625,6 +627,7 @@ export const adminAPI = {
   deleteNode: (id) => nodeAPI.deleteNode(id),
   testNode: (id) => nodeAPI.testNode(id),
   batchTestNodes: (nodeIds) => nodeAPI.batchTestNodes(nodeIds),
+  getNodesBatchTestStatus: (jobId) => nodeAPI.getNodesBatchTestStatus(jobId),
   batchDeleteNodes: (nodeIds) => nodeAPI.batchDeleteNodes(nodeIds),
   getCustomNodes: (params) => api.get('/admin/custom-nodes', { params }),
   createCustomNode: (data) => api.post('/admin/custom-nodes', data),
@@ -651,6 +654,8 @@ export const adminAPI = {
   batchGetCustomNodeUsers: (nodeIds) => api.post('/admin/custom-nodes/batch-users', { node_ids: nodeIds }),
   testCustomNode: (id) => api.post(`/admin/custom-nodes/${id}/test`),
   batchTestCustomNodes: (nodeIds) => api.post('/admin/custom-nodes/batch-test', { node_ids: nodeIds }),
+  // 专线节点批量测速同样是异步任务
+  getCustomNodesBatchTestStatus: (jobId) => api.get('/admin/custom-nodes/batch-test/status', { params: jobId ? { job_id: jobId } : {} }),
   getCustomNodeLink: (id) => api.get(`/admin/custom-nodes/${id}/link`),
   deploySelfHostVPS: (data) => api.post('/admin/custom-nodes/selfhost/deploy', data),
   deploySelfHostVPSDomain: (data) => api.post('/admin/custom-nodes/selfhost/deploy-domain', data),

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"cboard-go/internal/core/database"
@@ -1509,6 +1510,10 @@ func TestCustomNode(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", res)
 }
 
+// BatchTestCustomNodes 批量测速专线节点（异步）。
+//
+// 与普通节点同样的问题：同步执行时专线节点多（数百个）会远超浏览器 10 秒超时，
+// 前端报超时且不刷新列表。现在立即返回任务号，后台测速，前端轮询进度。
 func BatchTestCustomNodes(c *gin.Context) {
 	var req struct {
 		NodeIDs []uint `json:"node_ids" binding:"required"`
@@ -1525,130 +1530,164 @@ func BatchTestCustomNodes(c *gin.Context) {
 	}
 
 	db := database.GetDB()
-	results := make([]gin.H, 0)
+	actor := utils.CaptureAuditActor(c)
 
-	// 批量查出所有节点
+	job, err := node_health.StartBatchJob(node_health.BatchJobCustom, len(req.NodeIDs), func(job *node_health.BatchJob) {
+		runCustomNodesBatchTest(db, req.NodeIDs, job, actor)
+	})
+	if err != nil {
+		utils.SuccessResponse(c, http.StatusOK, "已有测速任务正在进行，请稍后查看进度", gin.H{
+			"started": false, "running": true, "job_id": job.ID,
+			"total": job.Total, "done": job.Done,
+		})
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusAccepted, "已在后台开始测速，请稍候…", gin.H{
+		"started": true, "running": true, "job_id": job.ID,
+		"total": job.Total, "done": 0,
+	})
+}
+
+// GetCustomNodesBatchTestStatus 查询专线节点批量测速进度（?job_id= 缺省为最近一次）
+func GetCustomNodesBatchTestStatus(c *gin.Context) {
+	job, ok := findBatchJob(c, node_health.BatchJobCustom)
+	if !ok {
+		utils.SuccessResponse(c, http.StatusOK, "暂无测速任务", gin.H{"running": false, "status": "idle"})
+		return
+	}
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"job_id":      job.ID,
+		"running":     job.Status == node_health.BatchJobRunning,
+		"status":      job.Status,
+		"total":       job.Total,
+		"done":        job.Done,
+		"online":      job.Online,
+		"success":     job.Online,
+		"failed":      job.Failed,
+		"unsupported": job.Unsupported,
+		"message":     job.Message,
+		"results":     job.Results,
+	})
+}
+
+// runCustomNodesBatchTest 后台执行专线节点批量测速：10 并发探测 + 串行落库。
+func runCustomNodesBatchTest(db *gorm.DB, ids []uint, job *node_health.BatchJob, actor utils.AuditActor) {
 	var nodes []models.CustomNode
-	db.Where("id IN ?", req.NodeIDs).Find(&nodes)
-	nodeMap := make(map[uint]*models.CustomNode)
+	db.Where("id IN ?", ids).Find(&nodes)
+	nodeMap := make(map[uint]*models.CustomNode, len(nodes))
 	for i := range nodes {
 		nodeMap[nodes[i].ID] = &nodes[i]
 	}
 
-	for _, nodeID := range req.NodeIDs {
+	// 复用同一个 service：原实现每个节点都 NewNodeHealthService()，会重复读配置表
+	svc := node_health.NewNodeHealthService()
+
+	var wg sync.WaitGroup
+	var writeMu sync.Mutex // 串行落库（SQLite 写锁敏感），探测本身仍然并发
+	sem := make(chan struct{}, 10)
+
+	for _, nodeID := range ids {
 		node, ok := nodeMap[nodeID]
 		if !ok {
-			results = append(results, gin.H{
-				"node_id": nodeID,
-				"status":  "error",
-				"latency": 0,
-				"message": "节点不存在",
-			})
+			job.AddResult(node_health.BatchJobItem{NodeID: nodeID, Status: "error", Message: "节点不存在"})
 			continue
 		}
 
-		var config models.NodeConfig
-		if err := json.Unmarshal([]byte(node.Config), &config); err != nil {
-			results = append(results, gin.H{
-				"node_id": nodeID,
-				"status":  "error",
-				"latency": 0,
-				"message": "配置解析失败",
-			})
-			continue
-		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(node *models.CustomNode) {
+			defer wg.Done()
+			defer func() { <-sem }()
 
-		if config.Server == "" {
-			results = append(results, gin.H{
-				"node_id": nodeID,
-				"status":  "error",
-				"latency": 0,
-				"message": "服务器地址为空",
-			})
-			continue
-		}
+			res, errMsg := probeCustomNode(svc, node)
 
-		// 注意：这里不要预写 status（旧代码先写 active 再测试，属于假测试残留，
-		// 测试中途失败会留下与真实状态不符的 active）。状态一律由测试结果决定。
+			writeMu.Lock()
+			item := persistCustomNodeResult(db, node, res, errMsg)
+			writeMu.Unlock()
 
-		// 真实连通性测试：非 UDP 协议走 TCP 握手/网页测速，UDP 协议返回 unsupported
-		svc := node_health.NewNodeHealthService()
-		cfgJSON, _ := json.Marshal(config_update.ProxyNode{
-			Type:     config.Type,
-			Server:   config.Server,
-			Port:     config.Port,
-			UUID:     config.UUID,
-			Password: config.Password,
-			Network:  config.Network,
-			Cipher:   config.Encryption,
-			TLS:      config.Security == "tls",
-		})
-		cfgStr := string(cfgJSON)
-		tempNode := models.Node{ID: node.ID, Config: &cfgStr}
-		res, err := svc.TestNode(&tempNode)
-		if err != nil {
-			results = append(results, gin.H{
-				"node_id": nodeID,
-				"status":  "error",
-				"latency": 0,
-				"message": err.Error(),
-			})
-			continue
-		}
-
-		now := utils.GetBeijingTime()
-		node.Status = res.Status
-		node.Latency = res.Latency
-		node.LastTest = &now
-		// 自动屏蔽超时/离线专线节点（与普通节点同一开关：node_health.auto_disable_timeout）；
-		// unsupported 不参与判定，否则 hysteria2/tuic 等 UDP 节点会被误禁
-		if autoDisableTimeoutEnabled(db) && node_health.ShouldAutoDisable(res.Status) {
-			node.IsActive = false
-		} else if res.Status == node_health.StatusOnline {
-			node.IsActive = true
-		}
-		db.Save(node)
-
-		results = append(results, gin.H{
-			"node_id":   nodeID,
-			"status":    res.Status,
-			"latency":   res.Latency,
-			"message":   res.Error,
-			"is_active": node.IsActive,
-		})
+			job.AddResult(item)
+		}(node)
 	}
+	wg.Wait()
 
 	clearNodeCaches()
 
-	// 统计口径必须与节点状态常量一致：online 算在线，timeout/offline/error 算失败。
-	// UDP 协议（hysteria2/tuic）现在按 online 返回（服务端测不到不代表不可用），
-	// StatusUnsupported 只可能出现在历史数据里，这里仍然兜住，避免总数对不上。
-	onlineCount, failedCount, unsupportedCount := 0, 0, 0
-	for _, r := range results {
-		status, _ := r["status"].(string)
-		switch {
-		case status == node_health.StatusOnline:
-			onlineCount++
-		case status == node_health.StatusUnsupported:
-			unsupportedCount++
-		case status == node_health.StatusTimeout || status == node_health.StatusOffline || status == "error":
-			failedCount++
+	snap := job.Snapshot()
+	auditMsg := fmt.Sprintf("管理员操作: 批量测试专线节点 %d 个 在线 %d 个 离线/超时 %d 个",
+		snap.Total, snap.Online, snap.Failed)
+	if snap.Unsupported > 0 {
+		auditMsg += fmt.Sprintf(" 无法探测 %d 个", snap.Unsupported)
+	}
+	utils.CreateAuditLogForActor(actor, "batch_test_custom_nodes", "custom_node", 0, auditMsg)
+	job.Finish(fmt.Sprintf("测速完成：在线 %d / 离线或超时 %d", snap.Online, snap.Failed))
+}
+
+// probeCustomNode 只做连通性探测，不写库（便于并发）；errMsg 非空表示无法测试
+func probeCustomNode(svc *node_health.NodeHealthService, node *models.CustomNode) (*node_health.TestResult, string) {
+	var config models.NodeConfig
+	if err := json.Unmarshal([]byte(node.Config), &config); err != nil {
+		return nil, "配置解析失败"
+	}
+	if config.Server == "" {
+		return nil, "服务器地址为空"
+	}
+
+	// 真实连通性测试：非 UDP 协议走 TCP 握手/网页测速，UDP 协议按在线处理
+	cfgJSON, _ := json.Marshal(config_update.ProxyNode{
+		Type:     config.Type,
+		Server:   config.Server,
+		Port:     config.Port,
+		UUID:     config.UUID,
+		Password: config.Password,
+		Network:  config.Network,
+		Cipher:   config.Encryption,
+		TLS:      config.Security == "tls",
+	})
+	cfgStr := string(cfgJSON)
+	tempNode := models.Node{ID: node.ID, Config: &cfgStr}
+	res, err := svc.TestNode(&tempNode)
+	if err != nil {
+		return nil, err.Error()
+	}
+	return res, ""
+}
+
+// persistCustomNodeResult 落库并生成结果项。
+// 注意：不要预写 status（旧代码先写 active 再测试，属假测试残留）；状态一律由测试结果决定。
+func persistCustomNodeResult(db *gorm.DB, node *models.CustomNode, res *node_health.TestResult, errMsg string) node_health.BatchJobItem {
+	if res == nil {
+		return node_health.BatchJobItem{
+			NodeID:  node.ID,
+			Status:  "error",
+			Latency: 0,
+			Message: errMsg,
 		}
 	}
-	auditMsg := fmt.Sprintf("管理员操作: 批量测试专线节点 %d 个 在线 %d 个 离线/超时 %d 个",
-		len(req.NodeIDs), onlineCount, failedCount)
-	if unsupportedCount > 0 {
-		auditMsg += fmt.Sprintf(" 无法探测 %d 个", unsupportedCount)
-	}
-	utils.CreateAuditLogSimple(c, "batch_test_custom_nodes", "custom_node", 0, auditMsg)
 
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"results":     results,
-		"total":       len(req.NodeIDs),
-		"success":     onlineCount,
-		"failed":      failedCount,
-		"unsupported": unsupportedCount,
-	})
+	now := utils.GetBeijingTime()
+	node.Status = res.Status
+	node.Latency = res.Latency
+	node.LastTest = &now
+	// 自动屏蔽超时/离线专线节点（与普通节点同一开关：node_health.auto_disable_timeout）；
+	// unsupported 不参与判定，否则 hysteria2/tuic 等 UDP 节点会被误禁
+	if autoDisableTimeoutEnabled(db) && node_health.ShouldAutoDisable(res.Status) {
+		node.IsActive = false
+	} else if res.Status == node_health.StatusOnline {
+		node.IsActive = true
+	}
+	if err := db.Save(node).Error; err != nil {
+		utils.LogError("批量测速: 保存专线节点失败", err, map[string]interface{}{"custom_node_id": node.ID})
+	}
+
+	active := node.IsActive
+	return node_health.BatchJobItem{
+		NodeID:   node.ID,
+		Status:   res.Status,
+		Latency:  res.Latency,
+		Message:  res.Error,
+		IsActive: &active,
+	}
 }
 
 // DisableTimeoutCustomNodes 一键屏蔽所有超时/离线的专线节点（is_active=false）。

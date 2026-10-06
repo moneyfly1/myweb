@@ -149,6 +149,83 @@ func CreateAuditLogSimple(c *gin.Context, actionType, resourceType string, resou
 	CreateAuditLog(c, actionType, resourceType, resourceID, description, nil, nil)
 }
 
+// AuditActor 请求期捕获的操作者信息。
+//
+// 异步任务（如后台批量测速）在 HTTP 请求返回后才结束，此时 **不能** 再持有或使用
+// *gin.Context（可能已被复用/释放，会把别的请求的 IP/UA 写进审计）。做法是在请求内
+// 用 CaptureAuditActor 取一份快照，任务结束时用 CreateAuditLogForActor 补写审计。
+type AuditActor struct {
+	UserID    uint
+	IP        string
+	UserAgent string
+	Method    string
+	Path      string
+}
+
+// CaptureAuditActor 在请求内捕获操作者信息快照
+func CaptureAuditActor(c *gin.Context) AuditActor {
+	actor := AuditActor{}
+	if c == nil {
+		return actor
+	}
+	if uid, exists := c.Get("user_id"); exists {
+		if u, ok := uid.(uint); ok {
+			actor.UserID = u
+		}
+	}
+	actor.IP = GetRealClientIP(c)
+	actor.UserAgent = c.GetHeader("User-Agent")
+	if c.Request != nil {
+		actor.Method = c.Request.Method
+		actor.Path = c.Request.URL.Path
+	}
+	return actor
+}
+
+// CreateAuditLogForActor 用捕获到的操作者信息写审计日志（可在后台 goroutine 中安全调用）
+func CreateAuditLogForActor(actor AuditActor, actionType, resourceType string, resourceID uint, description string) {
+	db := database.GetDB()
+	if db == nil {
+		if actor.UserID > 0 {
+			LogAudit(actor.UserID, actionType, resourceType, resourceID, description)
+		}
+		return
+	}
+
+	var userID sql.NullInt64
+	if actor.UserID > 0 {
+		userID = sql.NullInt64{Int64: MustSafeUintToInt64(actor.UserID), Valid: true}
+	}
+
+	var location sql.NullString
+	if actor.IP != "" {
+		location = geoip.GetLocationWithCache(actor.IP)
+	}
+
+	auditLog := models.AuditLog{
+		UserID:            userID,
+		ActionType:        actionType,
+		ResourceType:      sql.NullString{String: resourceType, Valid: resourceType != ""},
+		ResourceID:        sql.NullInt64{Int64: MustSafeUintToInt64(resourceID), Valid: resourceID > 0},
+		ActionDescription: sql.NullString{String: description, Valid: description != ""},
+		IPAddress:         sql.NullString{String: actor.IP, Valid: actor.IP != ""},
+		UserAgent:         sql.NullString{String: actor.UserAgent, Valid: actor.UserAgent != ""},
+		Location:          location,
+		RequestMethod:     sql.NullString{String: actor.Method, Valid: actor.Method != ""},
+		RequestPath:       sql.NullString{String: actor.Path, Valid: actor.Path != ""},
+		ResponseStatus:    sql.NullInt64{Int64: http.StatusAccepted, Valid: true},
+	}
+
+	if err := db.Create(&auditLog).Error; err != nil {
+		if actor.UserID > 0 {
+			LogAudit(actor.UserID, actionType, resourceType, resourceID, description)
+		}
+		if AppLogger != nil {
+			AppLogger.Error("保存审计日志失败: %v", err)
+		}
+	}
+}
+
 func CreateAuditLogWithData(c *gin.Context, actionType, resourceType string, resourceID uint, description string, beforeData, afterData interface{}) {
 	CreateAuditLog(c, actionType, resourceType, resourceID, description, beforeData, afterData)
 }

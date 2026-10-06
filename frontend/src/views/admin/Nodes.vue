@@ -18,7 +18,7 @@
               <el-icon><Monitor /></el-icon>自建节点列表
             </el-button>
             <el-button type="success" @click="batchTest" :loading="testing" :disabled="!selectedNodes.length">
-              <el-icon><Connection /></el-icon>批量测试
+              <el-icon><Connection /></el-icon>{{ testProgress ? `测速中 ${testProgress.done}/${testProgress.total}` : '批量测试' }}
             </el-button>
             <el-button type="danger" @click="batchDelete" :loading="deleting" :disabled="!selectedNodes.length">
               <el-icon><Delete /></el-icon>批量删除
@@ -556,7 +556,7 @@
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, computed, onActivated} from 'vue'
+import { ref, reactive, onMounted, computed, onActivated, onBeforeUnmount} from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { 
   Plus, Refresh, Search, Connection, Delete, 
@@ -934,16 +934,72 @@ export default {
       startSelfHostPolling(n.id)
     }
 
+    // 批量测速是后台任务：POST 只负责启动（立即返回），进度靠轮询，结束后无论如何都刷新列表。
+    // 旧实现是同步请求 + 只在成功分支刷新：600+ 节点要 20 秒以上，浏览器 10 秒超时后
+    // 界面既不显示结果也不刷新，用户看到的就是「测速超时、没有结果」。
+    const testProgress = ref(null) // { done, total, online, failed }
+    let batchTestTimer = null
+    const stopBatchTestPoll = () => {
+      if (batchTestTimer) {
+        clearInterval(batchTestTimer)
+        batchTestTimer = null
+      }
+    }
+    onBeforeUnmount(stopBatchTestPoll)
+    const pollBatchTest = (jobId) => {
+      stopBatchTestPoll()
+      const startedAt = Date.now()
+      batchTestTimer = setInterval(async () => {
+        try {
+          const res = await adminAPI.getNodesBatchTestStatus(jobId)
+          const st = res.data?.data || res.data || {}
+          testProgress.value = {
+            done: st.done || 0,
+            total: st.total || 0,
+            online: st.online || 0,
+            failed: st.failed || 0
+          }
+          const running = st.running === true
+          if (!running || Date.now() - startedAt > 10 * 60 * 1000) {
+            stopBatchTestPoll()
+            try {
+              if (!running) {
+                const msg = st.message || `测速完成：在线 ${st.online || 0} / 离线或超时 ${st.failed || 0}`
+                if ((st.failed || 0) > 0) ElMessage.warning(msg)
+                else ElMessage.success(msg)
+              } else {
+                ElMessage.warning('测速仍在后台进行，可稍后刷新查看结果')
+              }
+              // 关键：失败/超时也要刷新，避免“点了没结果”
+              try {
+                await loadNodes()
+              } catch (e) {
+                console.warn('测速结束刷新节点列表失败:', e)
+              }
+            } finally {
+              // 复位必须无条件执行，否则按钮会一直卡在「测速中 x/y」
+              testProgress.value = null
+              testing.value = false
+            }
+          }
+        } catch (_) { /* 单次轮询失败继续，下一次再来 */ }
+      }, 2000)
+    }
     const batchTest = async () => {
+      if (!selectedNodes.value.length) return
       testing.value = true
+      testProgress.value = null
       try {
-        await adminAPI.batchTestNodes(selectedNodes.value.map(n => n.id))
-        ElMessage.success('批量测试请求已发送')
-        setTimeout(loadNodes, 1000) // 稍作延迟刷新
+        const res = await adminAPI.batchTestNodes(selectedNodes.value.map(n => n.id))
+        const data = res.data?.data || {}
+        testProgress.value = { done: data.done || 0, total: data.total || 0, online: 0, failed: 0 }
+        if (data.started === false) ElMessage.info(res.data?.message || '已有测速任务正在进行')
+        else ElMessage.success('已在后台开始测速…')
+        pollBatchTest(data.job_id)
       } catch (err) {
-        ElMessage.error('测试失败')
-      } finally {
-        testing.value = false
+        // 没收到响应也不代表测速没开始：继续按状态接口确认
+        ElMessage.warning('请求未收到响应，正在按进度确认…')
+        pollBatchTest()
       }
     }
     const batchDelete = async () => {
@@ -1083,7 +1139,7 @@ export default {
       searchKeyword, addNodeTab, nodeLinkInput, parsedNode, subUrlInput, importingSubscription, importSubscription, mobileNodeFields,
       loadNodes, applyNodeFilters, debouncedApplyNodeFilters, resetNodeFilters, handleSelectionChange, handleMobileSelect,
       handleAdd, handleCommand, editNode, saveNode, deleteNode,
-      batchTest, batchDelete, testNode, toggleNodeStatus,
+      batchTest, testProgress, batchDelete, testNode, toggleNodeStatus,
       parseNodeLink, batchImportLinks, copyNodeLink, nodeLink,
       getStatusType, getStatusText, getLatencyClass, formatLatency,
       isSelected, isAllSelected, isIndeterminate, toggleMobileSelectAll,
