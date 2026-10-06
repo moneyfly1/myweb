@@ -78,7 +78,7 @@
       v-model:page-size="pageSize"
       :total="total"
       layout="total, sizes, prev, pager, next, jumper"
-      mobile-layout="sizes, prev, pager, next, jumper"
+      mobile-layout="prev, pager, next"
       :page-sizes="[10, 20, 50, 100]"
       @current-change="fetch"
       @size-change="(s) => { pageSize = s; page = 1; fetch() }"

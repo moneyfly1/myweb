@@ -131,6 +131,9 @@
             :loading="codesLoading"
             title-field="code"
             empty-title="暂无邀请码"
+            selectable
+            :selected-rows="selectedCodes"
+            @selection-change="handleCodeSelectionChange"
           >
             <template #table>
               <el-table
@@ -316,6 +319,9 @@
             :loading="relationsLoading"
             title-field="invite_code"
             empty-title="暂无邀请关系"
+            selectable
+            :selected-rows="selectedRelations"
+            @selection-change="handleRelationSelectionChange"
           >
             <template #table>
               <el-table

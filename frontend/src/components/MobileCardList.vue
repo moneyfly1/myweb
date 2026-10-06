@@ -6,14 +6,40 @@
       :message="errorMessage"
       @retry="$emit('retry')"
     />
-    <div v-else class="mobile-card-list__items">
+    <template v-else>
+      <!-- 移动端多选：卡片列表原本没有任何勾选入口，导致"批量操作"在手机上不可达。
+           这里提供「全选 + 已选计数 + 批量按钮插槽」，语义与桌面 el-table type="selection" 一致：
+           全选只作用于**当前页**的数据（selectedRows 由父组件持有，双向同步）。 -->
+      <div v-if="selectable && normalizedData.length > 0" class="mobile-card-list__selection">
+        <el-checkbox
+          class="mobile-card-list__select-all"
+          :model-value="allSelected"
+          :indeterminate="indeterminate"
+          :disabled="selectableItems.length === 0"
+          @change="toggleAll"
+        >
+          全选
+        </el-checkbox>
+        <span class="mobile-card-list__selection-count">
+          已选 {{ selectedKeySet.size }}<template v-if="selectableItems.length !== normalizedData.length"> / {{ selectableItems.length }}</template>
+        </span>
+        <div class="mobile-card-list__selection-actions"><slot name="selection-actions" :selected="selectedRows" /></div>
+      </div>
+      <div class="mobile-card-list__items">
       <div
         v-for="(item, index) in normalizedData" 
         :key="item[idField] || index" 
         class="mobile-card"
         role="listitem"
       >
-      <div class="mobile-card-header" v-if="$slots.header || hasTitleField">
+      <div class="mobile-card-header" v-if="$slots.header || hasTitleField || (selectable && rowSelectable(item))">
+        <el-checkbox
+          v-if="selectable && rowSelectable(item)"
+          class="mobile-card-list__row-check"
+          :model-value="isSelected(item)"
+          @change="(val) => toggleRow(item, val)"
+          @click.stop
+        />
         <slot name="header" :item="item" :index="index">
           <div class="card-title" :title="getTitle(item)">{{ getTitle(item) }}</div>
         </slot>
@@ -63,6 +89,7 @@
       </div>
       </div>
     </div>
+    </template>
     
     <div v-if="!loading && !error && normalizedData.length === 0" class="mobile-card-empty">
       <slot name="empty">
@@ -123,12 +150,66 @@ const props = defineProps({
   emptyDescription: {
     type: String,
     default: ''
+  },
+  // ===== 移动端多选（可选）=====
+  // selectable: 打开后卡片前出现复选框，并在列表顶部显示「全选 + 已选计数」
+  selectable: {
+    type: Boolean,
+    default: false
+  },
+  // selectedRows: 父组件持有的已选行（数组）。与桌面 el-table 的 selection 语义一致，
+  // 组件内部按 idField 派生勾选状态，勾选变化时通过 selection-change 回传新的行数组。
+  selectedRows: {
+    type: Array,
+    default: () => []
+  },
+  // isRowSelectable: 逐行可选性判定（如订单里"已支付"不允许批量取消）
+  isRowSelectable: {
+    type: Function,
+    default: null
   }
 })
 
-defineEmits(['retry'])
+const emit = defineEmits(['retry', 'selection-change'])
 
 const normalizedData = computed(() => Array.isArray(props.data) ? props.data : [])
+
+// ===== 移动端多选 =====
+const rowKey = (item) => String(item?.[props.idField])
+const selectedKeySet = computed(() => new Set((props.selectedRows || []).map(rowKey)))
+const rowSelectable = (item) => (typeof props.isRowSelectable === 'function' ? !!props.isRowSelectable(item) : true)
+const selectableItems = computed(() => normalizedData.value.filter(rowSelectable))
+const allSelected = computed(() => selectableItems.value.length > 0 && selectableItems.value.every(isSelected))
+const indeterminate = computed(() => {
+  const n = selectableItems.value.filter(isSelected).length
+  return n > 0 && n < selectableItems.value.length
+})
+function isSelected(item) {
+  return selectedKeySet.value.has(rowKey(item))
+}
+function emitSelection(rows) {
+  emit('selection-change', rows)
+}
+function toggleRow(item, checked) {
+  const key = rowKey(item)
+  const cur = [...(props.selectedRows || [])]
+  if (checked) {
+    if (!cur.some(r => rowKey(r) === key)) cur.push(item)
+  } else {
+    const i = cur.findIndex(r => rowKey(r) === key)
+    if (i >= 0) cur.splice(i, 1)
+  }
+  emitSelection(cur)
+}
+// 与 el-table 表头全选一致：只作用于当前页
+function toggleAll(checked) {
+  if (!checked) return emitSelection([])
+  const cur = [...(props.selectedRows || [])]
+  selectableItems.value.forEach((item) => {
+    if (!cur.some(r => rowKey(r) === rowKey(item))) cur.push(item)
+  })
+  emitSelection(cur)
+}
 
 const errorMessage = computed(() => {
   if (typeof props.error === 'string') return props.error
@@ -208,7 +289,52 @@ const getFieldTitle = (item, field) => {
   }
 }
 
+.mobile-card-list__selection {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  margin-bottom: 2px;
+  background: var(--card-bg, #fff);
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+}
+
+.mobile-card-list__select-all {
+  flex: 0 0 auto;
+  height: auto;
+  margin-right: 0;
+  font-weight: 500;
+}
+
+.mobile-card-list__selection-count {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--theme-text-secondary, #909399);
+  white-space: nowrap;
+}
+
+.mobile-card-list__selection-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+
+  &:empty {
+    display: none;
+  }
+}
+
 .mobile-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   padding: 12px;
   background: #f8fafc;
   border-bottom: 1px solid #ebeef5;
@@ -216,12 +342,22 @@ const getFieldTitle = (item, field) => {
   min-width: 0;
   
   .card-title {
+    flex: 1 1 auto;
     font-size: 15px;
     font-weight: 600;
     line-height: 1.4;
     min-width: 0;
     max-width: 100%;
     word-break: break-word;
+  }
+
+  .mobile-card-list__row-check {
+    flex: 0 0 auto;
+    height: auto;
+    margin-right: 0;
+    /* 触控热区：复选框本身太小，撑到 ~40px 便于手机点选 */
+    padding: 8px 2px;
+    margin: -8px 0;
   }
 }
 

@@ -264,6 +264,19 @@
             />
           </div>
           <div class="mobile-expiring-list mobile-only">
+            <!-- 移动端原本只有逐项复选框、没有全选：一次要提醒几十个客户时只能一个个点。
+                 这里补「全选 + 已选计数」，语义与桌面 el-table 表头全选一致（仅作用于当前筛选结果）。 -->
+            <div
+              v-if="expiringSubscriptions && expiringSubscriptions.length > 0"
+              class="mobile-expiring-selection"
+            >
+              <el-checkbox
+                :model-value="expiringAllSelected"
+                :indeterminate="expiringIndeterminate"
+                @change="toggleExpiringSelectAll"
+              >全选</el-checkbox>
+              <span class="mobile-expiring-count">已选 {{ selectedExpiring.length }}/{{ expiringSubscriptions.length }}</span>
+            </div>
             <EmptyState
               v-if="!expiringSubscriptions || expiringSubscriptions.length === 0"
               class="expiring-empty-state expiring-empty-state-mobile"
@@ -324,7 +337,7 @@
   </div>
 </template>
 <script>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { useRouter } from 'vue-router'
 import { useApi } from '@/utils/api'
@@ -655,6 +668,19 @@ export default {
         selectedExpiring.value.push(id)
       }
     }
+    // 移动端到期客户「全选」（桌面端由 el-table 表头复选框承担）
+    const expiringSelectableIds = computed(() => (expiringSubscriptions.value || []).map(i => i.user_id || i.id))
+    const expiringAllSelected = computed(() =>
+      expiringSelectableIds.value.length > 0 &&
+      expiringSelectableIds.value.every(id => selectedExpiring.value.includes(id))
+    )
+    const expiringIndeterminate = computed(() => {
+      const n = expiringSelectableIds.value.filter(id => selectedExpiring.value.includes(id)).length
+      return n > 0 && n < expiringSelectableIds.value.length
+    })
+    const toggleExpiringSelectAll = (val) => {
+      selectedExpiring.value = val ? [...expiringSelectableIds.value] : []
+    }
     const getExpireTagType = (days) => {
       if (days <= 0) return 'danger'
       if (days <= 1) return 'warning'
@@ -740,6 +766,9 @@ export default {
       loadExpiringSubscriptions,
       handleExpiringSelectionChange,
       toggleExpiringSelection,
+      expiringAllSelected,
+      expiringIndeterminate,
+      toggleExpiringSelectAll,
       getExpireTagType,
       getExpireStatusClass,
       sendExpireReminder,
@@ -1227,6 +1256,19 @@ export default {
   min-height: 180px;
   padding: 28px 16px;
 }
+.mobile-expiring-selection {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 0 8px;
+
+  .mobile-expiring-count {
+    font-size: 12px;
+    color: var(--theme-text-secondary, #909399);
+    white-space: nowrap;
+  }
+}
+
 .mobile-expiring-list {
   padding: 12px;
 }
