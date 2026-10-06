@@ -209,13 +209,25 @@
               <el-table-column label="操作" :width="columnWidths.actions" fixed="right" resizable>
                 <template #default="{ row }">
                   <div class="action-buttons">
+                    <!-- 管理员可在「系统设置 → 用户与注册 → 允许用户删除设备」关闭删除；
+                         关闭后这里不显示移除按钮，改为引导升级设备数量 -->
                     <el-button
+                      v-if="canDeleteDevice"
                       type="danger"
                       size="small"
                       @click="removeDevice(row.id)"
                       :loading="row.removing"
                     >
                       移除
+                    </el-button>
+                    <el-button
+                      v-else
+                      type="primary"
+                      size="small"
+                      link
+                      @click="openUpgradeDrawer"
+                    >
+                      升级设备数量
                     </el-button>
                   </div>
                 </template>
@@ -273,13 +285,23 @@
           />
         </template>
         <template #actions="{ item }">
-          <el-button 
-            type="danger" 
-            size="small" 
+          <el-button
+            v-if="canDeleteDevice"
+            type="danger"
+            size="small"
             @click="removeDevice(item.id)"
             :loading="item.removing"
           >
             移除
+          </el-button>
+          <el-button
+            v-else
+            type="primary"
+            size="small"
+            link
+            @click="openUpgradeDrawer"
+          >
+            升级设备数量
           </el-button>
         </template>
       </ResponsiveDataView>
@@ -313,6 +335,7 @@ import { formatDateTimeSafe, formatLocation } from '@/utils/date'
 import { getDeviceTypeIcon as getDeviceIcon, getDeviceTypeName, getDeviceTypeColor, truncateText } from '@/utils/device'
 import { confirmWarning } from '@/utils/confirmAction'
 import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
+import { useSettingsStore } from '@/store/settings'
 import EmptyState from '@/components/EmptyState.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
@@ -364,6 +387,12 @@ export default {
       defaultColumnWidths,
       DEVICE_COLUMN_KEYS
     )
+    // 「允许用户删除设备」开关（系统设置 → 用户与注册）：关闭后不显示移除按钮，
+    // 用户只能通过「升级设备数量」增加可用设备。未配置/加载失败时按允许处理。
+    const settingsStore = useSettingsStore()
+    // 设备列表接口实时下发开关（公开设置接口有 1 小时前端缓存，不能作为唯一依据）
+    const listAllowsDelete = ref(true)
+    const canDeleteDevice = computed(() => listAllowsDelete.value && settingsStore.allowUserDeleteDevice !== false)
     const deviceStats = reactive({
       total: 0,
       online: 0,
@@ -444,6 +473,8 @@ export default {
             if (responseData.data.devices && Array.isArray(responseData.data.devices)) {
               devices.value = responseData.data.devices
               total.value = responseData.data.total || 0
+              // 开关随列表实时下发：只有明确 false 才隐藏删除按钮
+              listAllowsDelete.value = responseData.data.allow_delete_device !== false
               updateDeviceStats(responseData.data)
             } else if (Array.isArray(responseData.data)) {
               devices.value = responseData.data
@@ -657,7 +688,9 @@ export default {
       upgradeSubscriptionLoading,
       openUpgradeDrawer,
       handleUpgradeSuccess,
-      saveRemark
+      saveRemark,
+      canDeleteDevice,
+      listAllowsDelete
     }
   }
 }
