@@ -593,7 +593,18 @@ export default {
       }
     }
     const goToUserSubscription = (row) => {
-      const searchParam = row.email || row.username || row.id || row.user_id
+      const userId = row.user_id || null
+      const label = row.username || row.email || (userId ? `ID ${userId}` : '')
+      // 带上 user_id 做「精确过滤」：只用用户名搜索是模糊匹配，可能命中别人的备注/邮箱，
+      // 出现「点了 A 用户却显示 B 用户」的错觉。search 仅用于落地页展示标签。
+      if (userId) {
+        router.push({
+          path: '/admin/subscriptions',
+          query: { user_id: userId, search: label }
+        })
+        return
+      }
+      const searchParam = row.email || row.username || row.id
       if (searchParam) {
         router.push({
           path: '/admin/subscriptions',

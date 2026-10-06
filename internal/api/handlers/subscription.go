@@ -479,7 +479,17 @@ func GetAdminSubscriptions(c *gin.Context) {
 	p := utils.ParsePagination(c)
 	page, size := p.Page, p.Size
 
-	if keyword := utils.SanitizeSearchKeyword(c.DefaultQuery("search", c.Query("keyword"))); keyword != "" {
+	// 精确按用户过滤：仪表盘「实时动态」点某个用户时带 user_id 过来。
+	// 有 user_id 时以它为准（不再走模糊搜索）——否则用户名模糊匹配可能命中
+	// 别人的备注/邮箱，看起来就像「点了 A 却出现 B」。
+	if uidStr := c.Query("user_id"); uidStr != "" {
+		uid, err := strconv.Atoi(uidStr)
+		if err != nil || uid <= 0 {
+			utils.ErrorResponse(c, http.StatusBadRequest, "user_id 参数无效", nil)
+			return
+		}
+		query = query.Where("subscriptions.user_id = ?", uid)
+	} else if keyword := utils.SanitizeSearchKeyword(c.DefaultQuery("search", c.Query("keyword"))); keyword != "" {
 		likeKey := "%" + keyword + "%"
 		// 用子查询匹配用户，避免 JOIN 影响 Count 和 Preload
 		userSubQuery := db.Model(&models.User{}).Select("id").Where("username LIKE ? OR email LIKE ? OR notes LIKE ?", likeKey, likeKey, likeKey)

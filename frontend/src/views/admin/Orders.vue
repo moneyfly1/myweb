@@ -740,7 +740,7 @@
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted, onActivated} from 'vue'
+import { ref, reactive, computed, onMounted, onActivated, watch} from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from '@/utils/elementPlusServices'
 import {
@@ -1416,15 +1416,31 @@ export default {
     }
 
     // Lifecycle
+    //
+    // 本页同样被 keep-alive 缓存：onMounted 只执行一次，此前只在 onMounted 读 ?search=，
+    // 第二次带着新关键词进来时会被忽略（搜索词还是上一次的），看起来像「点了 A 出现 B」。
+    const applyRouteQuery = () => {
+      const raw = route.query.search === undefined ? '' : String(route.query.search).trim()
+      if (!raw || raw === searchForm.keyword) return false
+      searchForm.keyword = raw
+      currentPage.value = 1
+      return true
+    }
     onMounted(() => {
-      if (route.query.search) searchForm.keyword = String(route.query.search).trim()
+      applyRouteQuery()
       loadOrders()
       loadStatistics()
     })
 
-    // keep-alive 激活时刷新数据（避免显示缓存旧数据）
+    // keep-alive 激活时：先应用本次进入带的参数，再刷新数据
     onActivated(() => {
+      applyRouteQuery()
       loadOrders()
+    })
+
+    // 停留本页时参数变化也要跟随
+    watch(() => route.query.search, () => {
+      if (applyRouteQuery()) loadOrders()
     })
 
     return {
