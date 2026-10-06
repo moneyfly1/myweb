@@ -137,3 +137,8 @@ __pycache__/
 server.bak-*
 server.log.*
 server.new
+
+# 部署时的旧构建备份与 macOS 资源叉文件（避免污染 git status）
+frontend/dist.old*/
+dist.old*/
+._*
