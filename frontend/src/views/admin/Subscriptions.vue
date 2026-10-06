@@ -317,21 +317,26 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column 
-              v-if="visibleColumns.includes('qr_code')" 
-              label="二维码" 
-              width="100" 
+            <el-table-column
+              v-if="visibleColumns.includes('qr_code')"
+              label="二维码"
+              width="96"
               align="center"
             >
               <template #default="scope">
                 <div class="qr-code-section">
-                  <div 
-                    class="qr-code" 
-                    @click="showQRCode(scope.row)"
+                  <!-- 表格里不再直接渲染二维码图片（会把行撑高、需要为每行加载外部图片）；
+                       改成点击才弹出，弹窗内再生成 -->
+                  <el-button
                     v-if="scope.row.subscription_url || scope.row.universal_url"
+                    size="small"
+                    text
+                    type="primary"
+                    class="qr-view-btn"
+                    @click="showQRCode(scope.row)"
                   >
-                    <img :src="scope.row.qr_code_url" alt="QR Code" />
-                  </div>
+                    <el-icon><View /></el-icon>二维码
+                  </el-button>
                   <el-text v-else type="info" size="small">无订阅</el-text>
                 </div>
               </template>
@@ -339,32 +344,43 @@
             <el-table-column
               v-if="visibleColumns.includes('sub_urls')"
               label="订阅链接"
-              min-width="200"
+              width="132"
+              align="center"
             >
               <template #default="scope">
-                <div class="sub-urls-stacked">
-                  <div class="sub-url-row" v-if="scope.row.universal_url">
-                    <span class="sub-url-label">通用</span>
-                    <el-link
+                <!-- 长链接直接铺在表格里会把列撑爆、页面显得错乱；这里只留「点击复制」按钮，
+                     链接内容通过 tooltip 与复制结果呈现 -->
+                <div class="sub-urls-compact">
+                  <el-tooltip
+                    v-if="scope.row.universal_url"
+                    content="点击复制「通用」订阅链接"
+                    placement="top"
+                  >
+                    <el-button
+                      size="small"
+                      text
+                      type="primary"
+                      class="sub-url-btn"
                       @click="copyToClipboard(scope.row.universal_url)"
-                      type="primary"
-                      class="link-text copy-link"
-                      :title="'点击复制: ' + scope.row.universal_url"
                     >
-                      {{ scope.row.universal_url }}
-                    </el-link>
-                  </div>
-                  <div class="sub-url-row" v-if="scope.row.clash_url">
-                    <span class="sub-url-label">Clash</span>
-                    <el-link
+                      <el-icon><DocumentCopy /></el-icon>通用
+                    </el-button>
+                  </el-tooltip>
+                  <el-tooltip
+                    v-if="scope.row.clash_url"
+                    content="点击复制「Clash」订阅链接"
+                    placement="top"
+                  >
+                    <el-button
+                      size="small"
+                      text
+                      type="warning"
+                      class="sub-url-btn"
                       @click="copyToClipboard(scope.row.clash_url)"
-                      type="primary"
-                      class="link-text copy-link"
-                      :title="'点击复制: ' + scope.row.clash_url"
                     >
-                      {{ scope.row.clash_url }}
-                    </el-link>
-                  </div>
+                      <el-icon><DocumentCopy /></el-icon>Clash
+                    </el-button>
+                  </el-tooltip>
                   <el-text v-if="!scope.row.universal_url && !scope.row.clash_url" type="info" size="small">未配置</el-text>
                 </div>
               </template>
@@ -922,7 +938,6 @@ export default {
               notesSaved: false
             }
             // 预计算二维码 URL，避免模板每次渲染重复计算
-            mapped.qr_code_url = generateQRCode(mapped)
             const uid = sub.user?.id || sub.user_id
             if (uid) subOriginalNotes.set(uid, mapped.user_notes)
             return mapped
@@ -2313,6 +2328,23 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
+}
+/* 订阅链接列：只放复制按钮，避免长链接把表格撑宽 */
+.sub-urls-compact {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.sub-urls-compact .sub-url-btn {
+  padding: 0 4px;
+  height: 22px;
+  font-size: 12px;
+}
+.qr-view-btn {
+  padding: 0 4px;
+  height: 22px;
+  font-size: 12px;
 }
 .qr-code {
   cursor: pointer;
