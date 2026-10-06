@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
@@ -85,6 +86,22 @@ func GetDevices(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", deviceList)
 }
 
+// UserDeviceDeleteAllowed 是否允许用户自行删除（踢下线）设备。
+//
+// 由「系统设置 → 用户与注册 → 允许用户删除设备」控制（config key:
+// allow_user_delete_device，category: registration）：
+//   - 允许（默认）：用户端设备管理显示删除按钮；
+//   - 不允许：用户端不显示删除按钮，只能升级设备数量后再连接新设备。
+//
+// 未配置时按「允许」处理，保持既有行为。
+func UserDeviceDeleteAllowed(db *gorm.DB) bool {
+	v, err := utils.GetCachedSetting(db, "allow_user_delete_device", "registration")
+	if err != nil || strings.TrimSpace(v) == "" {
+		return true
+	}
+	return !strings.EqualFold(strings.TrimSpace(v), "false")
+}
+
 func DeleteDevice(c *gin.Context) {
 	user, ok := getCurrentUserOrError(c)
 	if !ok {
@@ -92,6 +109,13 @@ func DeleteDevice(c *gin.Context) {
 	}
 
 	db := database.GetDB()
+
+	// 管理员可关闭「用户删除设备」：此时用户端不显示删除按钮，这里再做服务端拦截，
+	// 避免直接调接口绕过（提示引导用户去升级设备数量）。
+	if !UserDeviceDeleteAllowed(db) {
+		utils.ErrorResponse(c, http.StatusForbidden, "管理员已关闭设备删除，如需更换设备请升级设备数量", nil)
+		return
+	}
 	deviceID := c.Param("id")
 
 	var device models.Device

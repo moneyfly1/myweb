@@ -389,6 +389,8 @@ func GetAdminSettings(c *gin.Context) {
 		CatRegistration: {
 			"registration_enabled": "true", "email_verification_required": "true", "min_password_length": 8,
 			"invite_code_required": "false", "default_subscription_device_limit": 3, "default_subscription_duration_months": 1,
+			// 是否允许用户自行删除（踢下线）设备：关闭后用户端不显示删除按钮，只能升级设备数量
+			"allow_user_delete_device": true,
 		},
 		"security": {
 			"login_fail_limit": 5, "login_lock_time": 30, "session_timeout": 120,
@@ -800,7 +802,7 @@ func GetPublicSettings(c *gin.Context) {
 	}
 
 	// 2. Registration Logic
-	regKeysBool := []string{"email_verification_required", "registration_enabled", "invite_code_required"}
+	regKeysBool := []string{"email_verification_required", "registration_enabled", "invite_code_required", "allow_user_delete_device"}
 	regKeysInt := []string{"min_password_length", "default_subscription_device_limit", "default_subscription_duration_months"}
 
 	for _, k := range regKeysBool {
@@ -816,6 +818,11 @@ func GetPublicSettings(c *gin.Context) {
 				settings[k] = conf.Value
 			}
 		}
+	}
+
+	// 设备删除开关：未配置时默认允许（保持既有行为），保证客户端总能拿到明确取值
+	if _, ok := settings["allow_user_delete_device"]; !ok {
+		settings["allow_user_delete_device"] = true
 	}
 
 	// 3. Announcement Logic

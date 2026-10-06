@@ -233,6 +233,21 @@
                 </div>
               </el-form>
             </div>
+
+            <div class="notification-panel">
+              <div class="panel-header">
+                <h3>设备管理</h3>
+              </div>
+              <el-form :model="registrationSettings" label-position="top" class="compact-form">
+                <el-form-item label="允许用户删除设备">
+                  <el-switch v-model="registrationSettings.allow_user_delete_device" />
+                  <div class="form-tip">
+                    关闭后用户端设备管理不再显示「移除」按钮（服务端同时拦截该接口），
+                    用户只能通过「升级设备数量」增加可用设备
+                  </div>
+                </el-form-item>
+              </el-form>
+            </div>
           </div>
 
           <div class="single-panel-wrapper">
@@ -1387,7 +1402,8 @@ export default {
     const registrationSettings = reactive({
       registration_enabled: true, email_verification_required: true,
       min_password_length: 8, invite_code_required: false,
-      default_subscription_device_limit: 3, default_subscription_duration_months: 1
+      default_subscription_device_limit: 3, default_subscription_duration_months: 1,
+      allow_user_delete_device: true
     })
     const inviteSettings = reactive({
       inviter_reward: 0, invitee_reward: 0, min_order_amount: 0, new_user_only: true
@@ -1539,7 +1555,11 @@ export default {
           if (data.node_health.test_url) nodeHealthSettings.test_url = data.node_health.test_url
           if (data.node_health.auto_disable_timeout !== undefined) nodeHealthSettings.auto_disable_timeout = toBool(data.node_health.auto_disable_timeout)
         }
-        if (data.registration) Object.assign(registrationSettings, data.registration)
+        if (data.registration) {
+          Object.assign(registrationSettings, data.registration)
+          // 后端以字符串存储布尔值，这里统一归一化，避免开关拿到 "false" 仍显示为开
+          registrationSettings.allow_user_delete_device = toBool(registrationSettings.allow_user_delete_device)
+        }
         if (data.cleanup) {
           Object.entries(data.cleanup).forEach(([k, v]) => {
             if (k in cleanupSettings) cleanupSettings[k] = Number(v) || 0

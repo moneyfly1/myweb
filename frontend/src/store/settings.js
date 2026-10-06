@@ -8,6 +8,9 @@ export const useSettingsStore = defineStore('settings', {
     minPasswordLength: 8,
     defaultTheme: 'default',
     allowUserTheme: true,
+    // 是否允许用户自行删除（踢下线）设备：由系统设置 → 用户与注册控制
+    // 关闭后用户端设备管理不显示「移除」按钮，只能升级设备数量
+    allowUserDeleteDevice: true,
     availableThemes: ['default', 'dark', 'blue', 'green'],
     loading: false,
     error: null
@@ -40,6 +43,7 @@ export const useSettingsStore = defineStore('settings', {
         this.minPasswordLength = typeof minPasswordValue === 'number' ? minPasswordValue : (parseInt(minPasswordValue) || 8)
         this.defaultTheme = settings.default_theme || 'light'
         this.allowUserTheme = settings.allow_user_theme !== false
+        this.allowUserDeleteDevice = settings.allow_user_delete_device !== false
         this.availableThemes = settings.available_themes || ['light', 'dark', 'blue', 'green', 'purple', 'orange', 'red', 'cyan', 'luck', 'aurora', 'auto']
         document.title = this.siteName
         if (this.siteFavicon) {

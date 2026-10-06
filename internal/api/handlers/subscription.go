@@ -752,6 +752,10 @@ func GetUserSubscriptionDevices(c *gin.Context) {
 		"total_online":  totalOnline,
 		"total_mobile":  totalMobile,
 		"total_desktop": totalDesktop,
+		// 是否允许用户删除设备（系统设置 → 用户与注册）。
+		// 与 /settings/public-settings 里有同一开关，但那个接口前端缓存 1 小时，
+		// 管理端一改就要等缓存过期；这里随设备列表实时下发，页面始终按最新值渲染。
+		"allow_delete_device": UserDeviceDeleteAllowed(database.GetDB()),
 	})
 }
 
