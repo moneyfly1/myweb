@@ -28,7 +28,10 @@
             class="settings-nav-item"
             :class="{ 'is-active': activeTab === item.name }"
             @click="activeTab = item.name"
-          >{{ item.label }}</button>
+          >
+            <el-icon v-if="item.icon" class="settings-nav-icon"><component :is="item.icon" /></el-icon>
+            <span class="settings-nav-label">{{ item.label }}</span>
+          </button>
         </nav>
         <div class="settings-panes">
         <section v-show="activeTab === 'general'" class="settings-pane" data-tab="general">
@@ -1178,18 +1181,20 @@
             </div>
           </div>
 
-            <section class="settings-block">
-              <div class="settings-block-head">
-                <h3>缓存</h3>
-                <p>改动配置后如果前台没立刻生效，清一次缓存即可。</p>
-              </div>
-              <div class="settings-block-body">
-                <el-button type="danger" plain @click="flushCache" :loading="cacheClearing" :class="{ 'full-width': isMobile }">
-                  {{ cacheClearing ? '清除中...' : '清除所有缓存' }}
-                </el-button>
-                <div class="form-tip mt-2">清除后系统会在下次访问时自动重建缓存，不影响用户数据。</div>
-              </div>
-            </section>
+          <!-- 缓存：与上面两个面板同一套卡片外观（.settings-block 此前没有样式，
+               曾以透明无边框的形式贴在页面上，显得很乱） -->
+          <section class="settings-block">
+            <div class="settings-block-head">
+              <h3>缓存</h3>
+              <p>改动配置后如果前台没立刻生效，清一次缓存即可。</p>
+            </div>
+            <div class="settings-block-body">
+              <el-button type="danger" plain @click="flushCache" :loading="cacheClearing" :class="{ 'full-width': isMobile }">
+                {{ cacheClearing ? '清除中...' : '清除所有缓存' }}
+              </el-button>
+              <div class="form-tip mt-2">清除后系统会在下次访问时自动重建缓存，不影响用户数据。</div>
+            </div>
+          </section>
         </section>
         </div>
       </div>
@@ -1200,7 +1205,11 @@
 <script>
 import { ref, reactive, onMounted, onBeforeUnmount, computed } from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
-import { Check, Plus, Refresh, Message, Bell } from '@element-plus/icons-vue'
+import {
+  Check, Plus, Refresh, Message, Bell,
+  // 设置分类导航图标
+  Setting, Link, User, Picture, Connection, Key, Lock, FolderOpened, Location, Delete
+} from '@element-plus/icons-vue'
 import { useApi, adminAPI, secureStorage } from '@/utils/api'
 import { formatFileSize as formatFileSizeUtil } from '@/utils/format'
 import { copyToClipboard } from '@/utils/textSelection'
@@ -1317,19 +1326,20 @@ export default {
     // 管理员很难判断某个开关该去哪找。
     // 设置分类（唯一真相源）：顺序按功能聚拢（站点 → 域名 → 用户 → 内容与通知 → 节点与订阅
     // → 安全 → 运维），但**不再渲染分组标题** —— 导航没有折叠功能，标题只是多占地方。
+    // 分类导航：label 为文案，icon 为 Element Plus 图标组件（渲染在文案左侧）
     const settingsNav = [
-      { name: 'general', label: '站点设置' },
-      { name: 'domains', label: '域名与订阅' },
-      { name: 'registration', label: '用户与注册' },
-      { name: 'notification', label: '通知设置' },
-      { name: 'content', label: '内容与展示' },
-      { name: 'node', label: '节点与协议' },
-      { name: 'access', label: '订阅访问控制' },
-      { name: 'security', label: '安全设置' },
-      { name: 'backup', label: '备份与恢复' },
-      { name: 'geoip', label: 'GeoIP 数据库' },
-      { name: 'repo-sync', label: '仓库文件同步' },
-      { name: 'cleanup', label: '数据清理' }
+      { name: 'general', label: '站点设置', icon: Setting },
+      { name: 'domains', label: '域名与订阅', icon: Link },
+      { name: 'registration', label: '用户与注册', icon: User },
+      { name: 'notification', label: '通知设置', icon: Bell },
+      { name: 'content', label: '内容与展示', icon: Picture },
+      { name: 'node', label: '节点与协议', icon: Connection },
+      { name: 'access', label: '订阅访问控制', icon: Key },
+      { name: 'security', label: '安全设置', icon: Lock },
+      { name: 'backup', label: '备份与恢复', icon: FolderOpened },
+      { name: 'geoip', label: 'GeoIP 数据库', icon: Location },
+      { name: 'repo-sync', label: '仓库文件同步', icon: Refresh },
+      { name: 'cleanup', label: '数据清理', icon: Delete }
     ]
     const themeStore = useThemeStore()
     const activeTab = ref('general')
@@ -2277,7 +2287,9 @@ export default {
   overflow-y: auto;
 }
 .settings-nav-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   padding: 9px 12px;
   border: 0;
@@ -2290,6 +2302,8 @@ export default {
   cursor: pointer;
   transition: background-color 0.16s ease, color 0.16s ease;
 }
+.settings-nav-icon { font-size: 15px; flex: 0 0 auto; }
+.settings-nav-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .settings-nav-item:hover { background: var(--el-fill-color); color: var(--el-text-color-primary); }
 .settings-nav-item.is-active {
   background: var(--el-bg-color);
@@ -2536,6 +2550,45 @@ export default {
   border: 1px solid var(--el-border-color-light);
   border-radius: 10px;
   padding: 16px;
+}
+/* settings-block：与 notification-panel 同一套卡片外观。
+   此前它没有任何基础样式（只有移动端 padding 覆盖），导致「数据清理 → 缓存」等
+   7 处区块是透明/无边框/无内边距地贴在页面上，跟旁边的面板完全不是一套，看着很乱。 */
+.settings-block {
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.settings-block + .settings-block,
+.settings-general > * + .settings-block,
+.notification-layout + .settings-block {
+  margin-top: 16px;
+}
+.settings-block-head {
+  padding: 14px 16px 0;
+}
+.settings-block-head h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.settings-block-head p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--el-text-color-secondary);
+}
+.settings-block-body {
+  padding: 12px 16px 16px;
+}
+/* 手动清理列表较长：桌面端限高滚动，避免右栏比左栏高出一大截 */
+@media (min-width: 768px) {
+  .cleanup-manual-list {
+    max-height: 470px;
+    overflow-y: auto;
+    padding-right: 2px;
+  }
 }
 .notification-panel :deep(.el-form-item) { margin-bottom: 12px; }
 .notification-panel :deep(.el-form-item__label) { padding-bottom: 4px; }
