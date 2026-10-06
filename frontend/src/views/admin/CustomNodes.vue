@@ -120,7 +120,7 @@
       <div v-if="selectedNodes.length > 0 && !isMobile" class="batch-actions-bar">
         <span class="batch-tip">已选择 {{ selectedNodes.length }} 个节点</span>
         <div class="batch-btns">
-          <el-button type="success" link @click="batchTest" :loading="batchTesting">批量测速</el-button>
+          <el-button type="success" link @click="batchTest" :loading="batchTesting">{{ customTestProgress ? `测速中 ${customTestProgress.done}/${customTestProgress.total}` : '批量测速' }}</el-button>
           <el-divider direction="vertical" />
           <el-button type="primary" link @click="handleBatchAssignClick">批量分配</el-button>
           <el-divider direction="vertical" />
@@ -776,7 +776,7 @@
   </div>
 </template>
 <script>
-import { ref, reactive, onMounted, computed, watch, onActivated} from 'vue'
+import { ref, reactive, onMounted, computed, watch, onActivated, onBeforeUnmount} from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { 
   Plus, Refresh, Search, Connection, Delete, 
@@ -1161,22 +1161,72 @@ export default {
       if (cmd === 'migrate_assignments' && selectedNodes.value.length === 1) openMigrateDialog(selectedNodes.value[0])
       if (cmd === 'batch_delete') batchDelete()
     }
+    // 批量测速是后台任务：POST 只启动（立即返回），进度靠轮询，结束后无论如何都刷新列表。
+    // 旧实现同步等待全部节点测完：专线节点上百个远超浏览器 10 秒超时，界面既不显示结果也不刷新。
+    const customTestProgress = ref(null) // { done, total, online, failed }
+    let customBatchTimer = null
+    const stopCustomBatchPoll = () => {
+      if (customBatchTimer) {
+        clearInterval(customBatchTimer)
+        customBatchTimer = null
+      }
+    }
+    onBeforeUnmount(stopCustomBatchPoll)
+    const pollCustomBatchTest = (jobId) => {
+      stopCustomBatchPoll()
+      const startedAt = Date.now()
+      customBatchTimer = setInterval(async () => {
+        try {
+          const res = await adminAPI.getCustomNodesBatchTestStatus(jobId)
+          const st = res.data?.data || res.data || {}
+          customTestProgress.value = {
+            done: st.done || 0,
+            total: st.total || 0,
+            online: st.online || 0,
+            failed: st.failed || 0
+          }
+          const running = st.running === true
+          if (!running || Date.now() - startedAt > 10 * 60 * 1000) {
+            stopCustomBatchPoll()
+            try {
+              if (!running) {
+                // 结果口径由后端给出：online 计在线；离线/超时计失败
+                // （UDP 协议如 hysteria2/tuic 服务端无法用 TCP 探测，按在线处理，不计入失败）
+                const msg = st.message || `测试完成：在线 ${st.online || 0} / 离线超时 ${st.failed || 0}`
+                if ((st.failed || 0) > 0) ElMessage.warning(msg)
+                else ElMessage.success(msg)
+              } else {
+                ElMessage.warning('测速仍在后台进行，可稍后刷新查看结果')
+              }
+              try {
+                await loadCustomNodes()
+              } catch (e) {
+                console.warn('测速结束刷新专线节点列表失败:', e)
+              }
+            } finally {
+              // 复位必须无条件执行，否则按钮会一直卡在「测速中 x/y」
+              customTestProgress.value = null
+              batchTesting.value = false
+            }
+          }
+        } catch (_) { /* 单次轮询失败继续 */ }
+      }, 2000)
+    }
     const batchTest = async () => {
       if (!selectedNodes.value.length) return
       batchTesting.value = true
+      customTestProgress.value = null
       try {
         const res = await adminAPI.batchTestCustomNodes(selectedNodes.value.map(n => n.id))
         const data = res?.data?.data || res?.data || {}
-        if (typeof data.success === 'number') {
-          // 结果口径由后端给出：online 计在线；离线/超时计失败
-          // （UDP 协议如 hysteria2/tuic 服务端无法用 TCP 探测，按在线处理，不计入失败）
-          ElMessage.success(`测试完成：在线 ${data.success} / 离线超时 ${data.failed ?? 0}`)
-        } else {
-          ElMessage.success('批量测试请求已发送')
-        }
-        setTimeout(loadCustomNodes, 1000)
-      } catch { ElMessage.error('测试请求失败') }
-      finally { batchTesting.value = false }
+        customTestProgress.value = { done: data.done || 0, total: data.total || 0, online: 0, failed: 0 }
+        if (data.started === false) ElMessage.info(res?.data?.message || '已有测速任务正在进行')
+        else ElMessage.success('已在后台开始测速…')
+        pollCustomBatchTest(data.job_id)
+      } catch {
+        ElMessage.warning('请求未收到响应，正在按进度确认…')
+        pollCustomBatchTest()
+      }
     }
     const batchDelete = async () => {
       if (!selectedNodes.value.length) return
@@ -1732,7 +1782,7 @@ export default {
       selfHostStatusMap, selfHostStatusTypeMap, formatBytes2, formatTime2,
       assignMode, assignedUsers, userSearchKeyword, searchedUsers, selectedUserIds,
       loadingUsers, batchAssigning, assignExtraData, subscriptionTypeDesc, deviceLimitDesc,
-      batchTesting, batchDeleting, batchUnassigning,
+      batchTesting, customTestProgress, batchDeleting, batchUnassigning,
       showMigrateDialog, migratingNode, migrateTargetNodeId, migrateTargetNodes,
       deactivateSourceAfterMigrate, migratingAssignments,
       loadCustomNodes, handleFilterChange, debouncedSearch, resetFilters, handleSelectionChange, handleMobileSelect, handleGridSelect,

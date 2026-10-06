@@ -329,6 +329,12 @@ func (s *NodeHealthService) testTCPConnection(host string, port int) (int, error
 }
 
 func (s *NodeHealthService) BatchTestNodes(nodeIDs []uint) ([]*TestResult, error) {
+	return s.BatchTestNodesWithProgress(nodeIDs, nil)
+}
+
+// BatchTestNodesWithProgress 与 BatchTestNodes 相同（10 并发），但每完成一个节点
+// 回调一次 onResult，供异步批量测速任务上报进度。onResult 会被多个 goroutine 并发调用。
+func (s *NodeHealthService) BatchTestNodesWithProgress(nodeIDs []uint, onResult func(*TestResult)) ([]*TestResult, error) {
 	var nodes []models.Node
 	if err := s.db.Where("id IN ?", nodeIDs).Find(&nodes).Error; err != nil {
 		return nil, err
@@ -361,6 +367,10 @@ func (s *NodeHealthService) BatchTestNodes(nodeIDs []uint) ([]*TestResult, error
 			mu.Lock()
 			results = append(results, result)
 			mu.Unlock()
+
+			if onResult != nil {
+				onResult(result)
+			}
 		}(node)
 	}
 

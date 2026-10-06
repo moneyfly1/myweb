@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -1011,6 +1012,11 @@ func TestNode(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", res)
 }
 
+// BatchTestNodes 批量测速（异步）。
+//
+// 同步版本在请求内测完所有节点：600+ 个节点要 20 秒以上、专线节点更多，而浏览器
+// 默认 10 秒超时 —— 前端报「测速超时」并放弃请求，界面又不刷新，于是「点了没结果」。
+// 现在请求立即返回任务号，测速在后台跑，前端轮询 GetNodesBatchTestStatus 看进度。
 func BatchTestNodes(c *gin.Context) {
 	var req struct {
 		NodeIDs []uint `json:"node_ids"`
@@ -1034,74 +1040,176 @@ func BatchTestNodes(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "未选择节点", nil)
 		return
 	}
-	db := database.GetDB()
-	svc := node_health.NewNodeHealthService()
 
-	// 分离专线虚拟 ID（>1000000）：service 的 BatchTestNodes 只查普通节点表。
-	// 普通节点表自增 ID 可能已超过 1000000，需先确认 ID 是否真实存在（普通节点优先），
-	// 确认不是普通节点后再按专线虚拟 ID 处理（与 BatchDeleteNodes 的处理一致）。
-	var normalIDs, customIDs []uint
+	db := database.GetDB()
+	normalIDs, customIDs := splitBatchNodeIDs(db, req.NodeIDs)
+	// 请求结束后仍要写审计，操作者信息必须在请求内先取快照
+	actor := utils.CaptureAuditActor(c)
+
+	job, err := node_health.StartBatchJob(node_health.BatchJobNodes, len(req.NodeIDs), func(job *node_health.BatchJob) {
+		runNodesBatchTest(db, normalIDs, customIDs, job, actor)
+	})
+	if errors.Is(err, node_health.ErrBatchJobRunning) {
+		utils.SuccessResponse(c, http.StatusOK, "已有测速任务正在进行，请稍后查看进度", gin.H{
+			"started": false, "running": true, "job_id": job.ID,
+			"total": job.Total, "done": job.Done,
+		})
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusAccepted, "已在后台开始测速，请稍候…", gin.H{
+		"started": true, "running": true, "job_id": job.ID,
+		"total": job.Total, "done": 0,
+	})
+}
+
+// GetNodesBatchTestStatus 查询批量测速进度（?job_id= 缺省时返回最近一次任务）
+func GetNodesBatchTestStatus(c *gin.Context) {
+	job, ok := findBatchJob(c, node_health.BatchJobNodes)
+	if !ok {
+		utils.SuccessResponse(c, http.StatusOK, "暂无测速任务", gin.H{"running": false, "status": "idle"})
+		return
+	}
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"job_id":      job.ID,
+		"running":     job.Status == node_health.BatchJobRunning,
+		"status":      job.Status,
+		"total":       job.Total,
+		"done":        job.Done,
+		"online":      job.Online,
+		"failed":      job.Failed,
+		"unsupported": job.Unsupported,
+		"message":     job.Message,
+		"results":     job.Results,
+	})
+}
+
+// findBatchJob 按 ?job_id= 取任务；未指定则回退到该类型最近一次任务
+func findBatchJob(c *gin.Context, kind node_health.BatchJobKind) (node_health.BatchJob, bool) {
+	if id := c.Query("job_id"); id != "" {
+		return node_health.GetBatchJob(id)
+	}
+	return node_health.LatestBatchJob(kind)
+}
+
+// splitBatchNodeIDs 分离专线虚拟 ID（>1000000）。
+// service 的批量测速只查普通节点表，而普通节点表自增 ID 可能已超过 1000000，
+// 因此先确认 ID 是否真实存在（普通节点优先），确认不是普通节点后再按专线虚拟 ID 处理
+// （与 BatchDeleteNodes 的处理一致）。
+func splitBatchNodeIDs(db *gorm.DB, ids []uint) (normalIDs, customIDs []uint) {
 	var maybeCustomIDs []uint
-	for _, id := range req.NodeIDs {
+	for _, id := range ids {
 		if id > 1000000 {
 			maybeCustomIDs = append(maybeCustomIDs, id)
 		} else {
 			normalIDs = append(normalIDs, id)
 		}
 	}
-	if len(maybeCustomIDs) > 0 {
-		var existingNodeIDs []uint
-		db.Model(&models.Node{}).Where("id IN ?", maybeCustomIDs).Pluck("id", &existingNodeIDs)
-		existingSet := make(map[uint]bool, len(existingNodeIDs))
-		for _, id := range existingNodeIDs {
-			existingSet[id] = true
+	if len(maybeCustomIDs) == 0 {
+		return normalIDs, nil
+	}
+	var existingNodeIDs []uint
+	db.Model(&models.Node{}).Where("id IN ?", maybeCustomIDs).Pluck("id", &existingNodeIDs)
+	existingSet := make(map[uint]bool, len(existingNodeIDs))
+	for _, id := range existingNodeIDs {
+		existingSet[id] = true
+	}
+	for _, id := range maybeCustomIDs {
+		if existingSet[id] {
+			normalIDs = append(normalIDs, id)
+		} else {
+			customIDs = append(customIDs, id)
 		}
-		for _, id := range maybeCustomIDs {
-			if existingSet[id] {
-				normalIDs = append(normalIDs, id)
-			} else {
-				customIDs = append(customIDs, id)
+	}
+	return normalIDs, customIDs
+}
+
+// runNodesBatchTest 后台执行批量测速：普通节点 10 并发测试、结果分批串行落库；
+// 专线虚拟 ID 逐个测试。全程上报进度，结束时补写审计。
+func runNodesBatchTest(db *gorm.DB, normalIDs, customIDs []uint, job *node_health.BatchJob, actor utils.AuditActor) {
+	svc := node_health.NewNodeHealthService()
+
+	if len(normalIDs) > 0 {
+		// 10 并发测试 + 串行落库：SQLite 写锁敏感，测速本身并发、写库不并发
+		var pendingMu sync.Mutex
+		pending := make([]*node_health.TestResult, 0, 32)
+		persist := func(batch []*node_health.TestResult) {
+			for _, res := range batch {
+				if res == nil {
+					continue
+				}
+				if err := svc.UpdateNodeStatus(res); err != nil {
+					utils.LogError("批量测速: 更新节点状态失败", err, map[string]interface{}{"node_id": res.NodeID})
+				}
 			}
 		}
-	}
 
-	results := make([]*node_health.TestResult, 0, len(req.NodeIDs))
-	if len(normalIDs) > 0 {
-		normalResults, err := svc.BatchTestNodes(normalIDs)
+		_, err := svc.BatchTestNodesWithProgress(normalIDs, func(res *node_health.TestResult) {
+			if res == nil {
+				return
+			}
+			job.AddResult(node_health.BatchJobItem{
+				NodeID:  res.NodeID,
+				Status:  res.Status,
+				Latency: res.Latency,
+				Message: res.Error,
+			})
+
+			pendingMu.Lock()
+			pending = append(pending, res)
+			var flush []*node_health.TestResult
+			if len(pending) >= 25 {
+				flush, pending = pending, make([]*node_health.TestResult, 0, 32)
+			}
+			pendingMu.Unlock()
+			if len(flush) > 0 {
+				persist(flush)
+			}
+		})
 		if err != nil {
-			utils.LogError("BatchTestNodes: batch test normal nodes failed", err, nil)
-		} else {
-			results = append(results, normalResults...)
+			utils.LogError("批量测速: 测试普通节点失败", err, nil)
+			job.Fail(fmt.Sprintf("测速失败: %v", err))
+			return
 		}
-	}
-	for _, virtualID := range customIDs {
-		res := testNodeByVirtualID(c, db, virtualID)
-		if res != nil {
-			results = append(results, res)
-		}
+
+		pendingMu.Lock()
+		rest := append([]*node_health.TestResult(nil), pending...)
+		pendingMu.Unlock()
+		persist(rest)
 	}
 
-	for _, res := range results {
+	// 专线虚拟 ID：逐个测试并落库（不阻塞普通节点结果）
+	for _, virtualID := range customIDs {
+		res := testNodeByVirtualID(db, virtualID)
 		if res == nil {
+			job.AddResult(node_health.BatchJobItem{
+				NodeID:  virtualID,
+				Status:  "error",
+				Message: "节点不存在或配置无效",
+			})
 			continue
 		}
-		if err := svc.UpdateNodeStatus(res); err != nil {
-			log.Printf("failed to update node status: %v", err)
-		}
+		job.AddResult(node_health.BatchJobItem{
+			NodeID:  res.NodeID,
+			Status:  res.Status,
+			Latency: res.Latency,
+			Message: res.Error,
+		})
 	}
+
 	clearNodeCaches()
-	successCount := 0
-	for _, res := range results {
-		if res != nil && res.Status == "online" {
-			successCount++
-		}
+
+	snap := job.Snapshot()
+	auditMsg := fmt.Sprintf("管理员操作: 批量测试节点 %d 个 在线 %d 个 离线/超时 %d 个", snap.Total, snap.Online, snap.Failed)
+	if snap.Unsupported > 0 {
+		auditMsg += fmt.Sprintf(" 无法探测 %d 个", snap.Unsupported)
 	}
-	utils.CreateAuditLogSimple(c, "batch_test_nodes", "node", 0, fmt.Sprintf("管理员操作: 批量测试节点 %d 个 在线 %d 个", len(req.NodeIDs), successCount))
-	utils.SuccessResponse(c, http.StatusOK, "", results)
+	utils.CreateAuditLogForActor(actor, "batch_test_nodes", "node", 0, auditMsg)
+	job.Finish(fmt.Sprintf("测速完成：在线 %d / 离线或超时 %d", snap.Online, snap.Failed))
 }
 
 // testNodeByVirtualID 测试单个专线虚拟 ID（>1000000）对应的专线节点，返回测试结果
-func testNodeByVirtualID(c *gin.Context, db *gorm.DB, virtualID uint) *node_health.TestResult {
+func testNodeByVirtualID(db *gorm.DB, virtualID uint) *node_health.TestResult {
 	customNodeID := virtualID - 1000000
 	var customNode models.CustomNode
 	if err := db.First(&customNode, customNodeID).Error; err != nil {
