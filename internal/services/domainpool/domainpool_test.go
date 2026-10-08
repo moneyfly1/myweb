@@ -1,6 +1,7 @@
 package domainpool
 
 import (
+	"cboard-go/internal/core/paths"
 	"strings"
 	"testing"
 )
@@ -45,7 +46,19 @@ func TestValidateDomain(t *testing.T) {
 	}
 }
 
+// 测试用：把 vhost 目录指向临时目录（vhost 目录现在是可配置的，
+// 不再依赖机器上是否存在宝塔路径），同时清掉解析缓存让环境变量生效。
+func useTempVhostDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv(paths.EnvNginxVhostDir, dir)
+	paths.ResetCache()
+	t.Cleanup(paths.ResetCache)
+	return dir
+}
+
 func TestCertNameAndPaths(t *testing.T) {
+	_ = useTempVhostDir(t)
 	if got := CertNameFor("sub.moneyfly.dpdns.org"); got != "sub-moneyfly-dpdns-org" {
 		t.Errorf("CertNameFor = %q", got)
 	}
@@ -125,8 +138,12 @@ func TestFullVhostWithoutStaticRoot(t *testing.T) {
 // 按 server_name 定位 vhost：历史文件命名不统一（cboard_sub.conf 之类）时也要能找到，
 // 否则一键配置会另写一个同 server_name 的文件，nginx 会告警且实际生效的可能还是旧文件。
 func TestFindVhostFileFallsBackToConvention(t *testing.T) {
-	// 测试环境里没有 /www/server/panel/vhost/nginx，应回退到「域名.conf」
+	dir := useTempVhostDir(t)
+	// 目录里没有该域名的站点文件时，回退到「域名.conf」这个约定命名
 	got := FindVhostFile("sub.example.com")
+	if got == "" {
+		t.Fatalf("VhostPath 不应为空（vhost 目录已指向 %s）", dir)
+	}
 	if !strings.HasSuffix(got, "/sub.example.com.conf") {
 		t.Errorf("回退路径异常: %s", got)
 	}

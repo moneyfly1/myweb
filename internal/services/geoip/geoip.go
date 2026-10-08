@@ -2,6 +2,8 @@ package geoip
 
 import (
 	"cboard-go/internal/core/netutil"
+	"cboard-go/internal/core/paths"
+
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -10,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -123,6 +126,16 @@ func InitGeoIP(dbPath string) error {
 			"./data/GeoLite2-City.mmdb",
 			"/usr/share/GeoIP/GeoLite2-City.mmdb",
 			"/var/lib/GeoIP/GeoLite2-City.mmdb",
+		}
+
+		// 环境变量 GEOIP_DIR 指定的目录（不同机器把数据库放在别处时用），
+		// 以及统一路径解析器探测到的目录；都找不到才落到上面的固定候选。
+		if dir, err := paths.GeoIPDir(); err == nil && dir != "" {
+			possiblePaths = append(possiblePaths,
+				filepath.Join(dir, "GeoLite2-City.mmdb"),
+				filepath.Join(dir, "dbip-city-lite.mmdb"),
+				filepath.Join(dir, "IP2LOCATION-LITE-DB11.BIN"),
+			)
 		}
 
 		for _, path := range possiblePaths {

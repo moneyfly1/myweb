@@ -32,6 +32,8 @@ import (
 	"strings"
 	"time"
 
+	"cboard-go/internal/core/config"
+	"cboard-go/internal/core/paths"
 	"cboard-go/internal/models"
 	"cboard-go/internal/utils"
 
@@ -45,18 +47,49 @@ const (
 	ConfigCategory                     = "general"
 )
 
-const (
-	// BT 面板的 vhost 目录（被 nginx.conf include）
-	VhostDir = "/www/server/panel/vhost/nginx"
-	// certbot 证书目录
-	LetsencryptLiveDir = "/etc/letsencrypt/live"
-	// ACME 校验用的 webroot（与手工配置时保持一致）
-	DefaultWebroot = "/www/wwwroot/cboard"
-	// 面板后端地址（所有订阅域名都反代到这里）
-	PanelUpstream = "http://127.0.0.1:8000"
+// 运行环境相关的路径不再写死：
+// vhost 目录 / nginx 可执行文件 / ACME webroot / 证书目录 / 前端产物目录 全部由
+// internal/core/paths 统一解析（环境变量覆盖 > 常见位置自动探测 > 兜底默认），
+// 这样同一份代码可以在宝塔、系统包 nginx、源码编译 nginx 等不同机器上正常工作。
 
-	nginxBinCandidates = "/www/server/nginx/sbin/nginx,/usr/sbin/nginx,/usr/local/nginx/sbin/nginx"
+// DefaultUpstreamHost / DefaultUpstreamPort 面板后端地址的兜底值；
+// 实际地址优先取配置里的 HOST/PORT（见 panelUpstream），避免面板换端口后反代写错。
+const (
+	DefaultUpstreamHost = "127.0.0.1"
+	DefaultUpstreamPort = 8000
 )
+
+// panelUpstream 面板后端地址（所有订阅域名都反代到这里）。
+// 过去这里是写死的 http://127.0.0.1:8000，面板改了 PORT 就会反代到错误端口。
+func panelUpstream() string {
+	host := DefaultUpstreamHost
+	port := DefaultUpstreamPort
+	if cfg := config.AppConfig; cfg != nil {
+		if strings.TrimSpace(cfg.Host) != "" {
+			host = strings.TrimSpace(cfg.Host)
+		}
+		// 监听 0.0.0.0 / :: 时反代要走回环地址
+		if host == "0.0.0.0" || host == "::" || host == "[::]" {
+			host = DefaultUpstreamHost
+		}
+		if cfg.Port > 0 {
+			port = cfg.Port
+		}
+	}
+	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		host = "[" + host + "]" // IPv6
+	}
+	return fmt.Sprintf("http://%s:%d", host, port)
+}
+
+// vhostDir 取 nginx 站点配置目录，取不到时返回错误（由调用方转成可读提示）
+func vhostDir() (string, error) { return paths.NginxVhostDir() }
+
+// acmeWebroot ACME HTTP-01 校验目录
+func acmeWebroot() string { return paths.AcmeWebroot() }
+
+// letsencryptLiveDir 证书目录
+func letsencryptLiveDir() string { return paths.LetsencryptLiveDir() }
 
 // Status 单个域名的检测结果（既用于展示，也用于「添加后自检」）
 type Status struct {
@@ -111,22 +144,14 @@ func (m *Manager) Available() (bool, string) {
 	if _, err := exec.LookPath("certbot"); err != nil {
 		return false, "未找到 certbot，无法自动签发证书"
 	}
-	if st, err := os.Stat(VhostDir); err != nil || !st.IsDir() {
-		return false, fmt.Sprintf("vhost 目录不存在：%s", VhostDir)
+	if _, err := vhostDir(); err != nil {
+		return false, err.Error()
 	}
 	return true, ""
 }
 
 func (m *Manager) nginxBin() (string, error) {
-	for _, p := range strings.Split(nginxBinCandidates, ",") {
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			return p, nil
-		}
-	}
-	if p, err := exec.LookPath("nginx"); err == nil {
-		return p, nil
-	}
-	return "", fmt.Errorf("未找到 nginx 可执行文件（已尝试 %s）", nginxBinCandidates)
+	return paths.NginxBin()
 }
 
 var domainRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
@@ -165,13 +190,17 @@ func CertNameFor(domain string) string {
 
 // CertPaths 证书文件路径
 func CertPaths(domain string) (fullchain, privkey string) {
-	base := filepath.Join(LetsencryptLiveDir, CertNameFor(domain))
+	base := filepath.Join(letsencryptLiveDir(), CertNameFor(domain))
 	return filepath.Join(base, "fullchain.pem"), filepath.Join(base, "privkey.pem")
 }
 
 // VhostPath 新建 vhost 时的默认文件路径（域名原样 + .conf，与面板里手工建的保持一致）
 func VhostPath(domain string) string {
-	return filepath.Join(VhostDir, domain+".conf")
+	dir, err := vhostDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, domain+".conf")
 }
 
 // FindVhostFile 找出该域名**当前实际生效**的 vhost 文件。
@@ -181,13 +210,17 @@ func VhostPath(domain string) string {
 // 同 server_name 的文件，造成 nginx "conflicting server name" 警告、实际生效的可能还是旧文件。
 // 这里按 server_name 扫描，命中就原地改那个文件（并保留备份）。
 func FindVhostFile(domain string) string {
-	entries, err := os.ReadDir(VhostDir)
+	dir, derr := vhostDir()
+	if derr != nil {
+		return ""
+	}
+	entries, err := os.ReadDir(dir)
 	if err == nil {
 		for _, e := range entries {
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".conf") {
 				continue
 			}
-			full := filepath.Join(VhostDir, e.Name())
+			full := filepath.Join(dir, e.Name())
 			data, rerr := os.ReadFile(full)
 			if rerr != nil {
 				continue
@@ -219,6 +252,7 @@ server {
 
 // fullVhost 完整反代配置：80 保留 ACME 校验 + 跳转，443 反代面板并服务前端静态资源
 func fullVhost(domain, webroot, staticRoot, certFullchain, certPrivkey string) string {
+	upstream := panelUpstream()
 	staticBlock := ""
 	if staticRoot != "" {
 		staticBlock = fmt.Sprintf(`    root %s;
@@ -275,39 +309,31 @@ server {
     location / { %s }
 }
 `, domain, webroot, domain, certFullchain, certPrivkey, staticBlock,
-		PanelUpstream, PanelUpstream, PanelUpstream,
+		upstream, upstream, upstream,
 		func() string {
 			if staticRoot != "" {
 				return "try_files $uri $uri/ /index.html;"
 			}
-			return fmt.Sprintf("proxy_pass %s;\n        proxy_set_header Host $host;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;", PanelUpstream)
+			return fmt.Sprintf("proxy_pass %s;\n        proxy_set_header Host $host;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;", upstream)
 		}())
 }
 
 // staticRootOf 面板前端静态资源目录（找不到则返回空 = 该域名只做 API 反代）
 func (m *Manager) staticRootOf() string {
-	candidates := []string{}
+	// PanelRoot 若已显式给出（例如命令行工具指定），优先按它找；否则交给统一解析器
+	// （env FRONTEND_DIST > <站点根>/frontend/dist > /www/wwwroot/<域名>/frontend/dist > ...）
 	if m.PanelRoot != "" {
-		candidates = append(candidates, filepath.Join(m.PanelRoot, "frontend", "dist"))
-	}
-	// 按站点域名推断（迁移/换域名后依然成立，避免再依赖写死的旧站点路径）
-	if m.SiteDomain != "" {
-		candidates = append(candidates, filepath.Join("/www/wwwroot", m.SiteDomain, "frontend", "dist"))
-	}
-	candidates = append(candidates,
-		"/www/wwwroot/cboard/frontend/dist",
-	)
-	for _, c := range candidates {
-		if st, err := os.Stat(filepath.Join(c, "index.html")); err == nil && !st.IsDir() {
-			return c
+		direct := filepath.Join(m.PanelRoot, "frontend", "dist")
+		if st, err := os.Stat(filepath.Join(direct, "index.html")); err == nil && !st.IsDir() {
+			return direct
 		}
 	}
-	return ""
+	return paths.FrontendDist(m.SiteDomain)
 }
 
 func (m *Manager) webroot() string {
-	if st, err := os.Stat(DefaultWebroot); err == nil && st.IsDir() {
-		return DefaultWebroot
+	if root := acmeWebroot(); root != "" {
+		return root
 	}
 	if m.PanelRoot != "" {
 		return m.PanelRoot
@@ -709,12 +735,13 @@ type CertInfo struct {
 // 一键配置还会重复签发同一域名（浪费 ACME 次数、可能撞 Let's Encrypt 限流）。
 func FindCertCovering(domain string) (CertInfo, bool) {
 	domain = strings.ToLower(strings.TrimSpace(domain))
-	entries, err := os.ReadDir(LetsencryptLiveDir)
+	certDir := letsencryptLiveDir()
+	entries, err := os.ReadDir(certDir)
 	if err != nil {
 		return CertInfo{}, false
 	}
 	build := func(name string) (CertInfo, bool) {
-		full := filepath.Join(LetsencryptLiveDir, name, "fullchain.pem")
+		full := filepath.Join(certDir, name, "fullchain.pem")
 		data, rerr := os.ReadFile(full)
 		if rerr != nil {
 			return CertInfo{}, false
@@ -726,7 +753,7 @@ func FindCertCovering(domain string) (CertInfo, bool) {
 		info := CertInfo{
 			Name:        name,
 			Fullchain:   full,
-			Privkey:     filepath.Join(LetsencryptLiveDir, name, "privkey.pem"),
+			Privkey:     filepath.Join(certDir, name, "privkey.pem"),
 			DaysLeft:    int(time.Until(notAfter).Hours() / 24),
 			IsExactName: name == CertNameFor(domain),
 		}
@@ -746,7 +773,7 @@ func FindCertCovering(domain string) (CertInfo, bool) {
 		if !e.IsDir() || name == "README" {
 			continue
 		}
-		full := filepath.Join(LetsencryptLiveDir, name, "fullchain.pem")
+		full := filepath.Join(certDir, name, "fullchain.pem")
 		data, rerr := os.ReadFile(full)
 		if rerr != nil {
 			continue

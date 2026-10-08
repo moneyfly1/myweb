@@ -735,13 +735,13 @@ func SelfHostBatchManage(c *gin.Context) {
 	case "reset":
 		// 重新生成 UUID 并重启（重置节点凭据）
 		newUUID, _ := selfhost.GenerateUUID()
-		conf, err := client.ReadFile("/etc/sing-box/config.json")
+		conf, err := client.ReadFile(selfhost.SingBoxConfigPath())
 		if err != nil || conf == "" {
 			utils.ErrorResponse(c, http.StatusBadGateway, "读取远程配置失败", err)
 			return
 		}
 		updated := replaceUUIDInConfig(conf, newUUID)
-		if err := client.WriteFile("/etc/sing-box/config.json", updated); err != nil {
+		if err := client.WriteFile(selfhost.SingBoxConfigPath(), updated); err != nil {
 			utils.ErrorResponse(c, http.StatusBadGateway, "更新远程配置失败", err)
 			return
 		}
@@ -761,13 +761,13 @@ func SelfHostBatchManage(c *gin.Context) {
 			return
 		}
 		newUUID := strings.TrimSpace(req.NewPass)
-		conf, err := client.ReadFile("/etc/sing-box/config.json")
+		conf, err := client.ReadFile(selfhost.SingBoxConfigPath())
 		if err != nil || conf == "" {
 			utils.ErrorResponse(c, http.StatusBadGateway, "读取远程配置失败", err)
 			return
 		}
 		updated := replaceUUIDInConfig(conf, newUUID)
-		if err := client.WriteFile("/etc/sing-box/config.json", updated); err != nil {
+		if err := client.WriteFile(selfhost.SingBoxConfigPath(), updated); err != nil {
 			utils.ErrorResponse(c, http.StatusBadGateway, "更新远程配置失败", err)
 			return
 		}
@@ -782,7 +782,7 @@ func SelfHostBatchManage(c *gin.Context) {
 		return
 
 	case "change-port":
-		conf, err := client.ReadFile("/etc/sing-box/config.json")
+		conf, err := client.ReadFile(selfhost.SingBoxConfigPath())
 		if err != nil || conf == "" {
 			utils.ErrorResponse(c, http.StatusBadGateway, "读取远程配置失败", err)
 			return
@@ -817,7 +817,7 @@ func SelfHostBatchManage(c *gin.Context) {
 			updated = replacePortInConfig(conf, req.NewPort)
 		}
 
-		if err := client.WriteFile("/etc/sing-box/config.json", updated); err != nil {
+		if err := client.WriteFile(selfhost.SingBoxConfigPath(), updated); err != nil {
 			utils.ErrorResponse(c, http.StatusBadGateway, "更新远程配置失败", err)
 			return
 		}
@@ -1114,7 +1114,7 @@ func SelfHostBatchManageMany(c *gin.Context) {
 				}
 				continue
 			}
-			conf, err := client.ReadFile("/etc/sing-box/config.json")
+			conf, err := client.ReadFile(selfhost.SingBoxConfigPath())
 			client.Close()
 			if err != nil || conf == "" {
 				for _, n := range hostNodes {
@@ -1171,7 +1171,7 @@ func SelfHostBatchManageMany(c *gin.Context) {
 			if err != nil {
 				continue
 			}
-			if err := client2.WriteFile("/etc/sing-box/config.json", updated); err == nil {
+			if err := client2.WriteFile(selfhost.SingBoxConfigPath(), updated); err == nil {
 				client2.RunWithTimeout("systemctl restart sing-box", 30*time.Second)
 			}
 			client2.Close()

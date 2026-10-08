@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"cboard-go/internal/core/database"
+	"cboard-go/internal/core/paths"
 	"cboard-go/internal/services/domainpool"
 	"cboard-go/internal/utils"
 
@@ -84,6 +85,10 @@ func GetDomainPool(c *gin.Context) {
 		"backups":     backups,
 		"site_domain": siteDomain,
 		"items":       items,
+		// 暴露本机路径解析结果（nginx/vhost 目录/ACME webroot/前端产物目录）：
+		// 换机器后如果「一键配置」不可用或站点没界面，管理员在这里就能看到
+		// 究竟探测到了哪个路径、来自环境变量还是自动探测，不必再翻服务器。
+		"resolved_paths": paths.Describe(siteDomain),
 	})
 }
 
