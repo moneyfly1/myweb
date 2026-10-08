@@ -91,6 +91,11 @@ func acmeWebroot() string { return paths.AcmeWebroot() }
 // letsencryptLiveDir 证书目录
 func letsencryptLiveDir() string { return paths.LetsencryptLiveDir() }
 
+// renewalDir certbot 的续期配置目录（证书目录的兄弟目录）
+func renewalDir() string {
+	return filepath.Join(filepath.Dir(letsencryptLiveDir()), "renewal")
+}
+
 // Status 单个域名的检测结果（既用于展示，也用于「添加后自检」）
 type Status struct {
 	Domain       string `json:"domain"`
@@ -757,7 +762,9 @@ func FindCertCovering(domain string) (CertInfo, bool) {
 			DaysLeft:    int(time.Until(notAfter).Hours() / 24),
 			IsExactName: name == CertNameFor(domain),
 		}
-		if _, serr := os.Stat(filepath.Join("/etc/letsencrypt/renewal", name+".conf")); serr == nil {
+		// 续期配置目录由证书目录推导（certbot 固定放在 live 的兄弟目录 renewal/），
+		// 这样把证书目录换成别的位置时「自动续期」标记也不会失效
+		if _, serr := os.Stat(filepath.Join(renewalDir(), name+".conf")); serr == nil {
 			info.AutoRenew = true
 		}
 		return info, true
