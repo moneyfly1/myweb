@@ -401,3 +401,30 @@ func FormatIP(ip string) string {
 	}
 	return normalized
 }
+
+// GetACMEEmailFromDB 取用于 ACME（Let's Encrypt）注册的联系邮箱。
+//
+// 优先级：管理员通知邮箱 > 客服邮箱 > 首个管理员的登录邮箱。
+// 证书到期提醒会发到这里，所以优先用运维真正会看的地址。
+// 用途：certbot 在**全新服务器**上首次签发必须带 --email 才会自动注册账户，
+// 否则会报 MissingCommandlineFlag 导致「一键配置/一键修复」卡在签发证书这一步。
+func GetACMEEmailFromDB(db *gorm.DB) string {
+	if db == nil {
+		return ""
+	}
+	for _, key := range []string{"admin_notification_email", "support_email", "from_email"} {
+		var cfg models.SystemConfig
+		if err := db.Where("key = ?", key).First(&cfg).Error; err == nil {
+			if v := strings.TrimSpace(cfg.Value); v != "" && strings.Contains(v, "@") {
+				return v
+			}
+		}
+	}
+	var admin models.User
+	if err := db.Where("is_admin = ?", true).Order("id").First(&admin).Error; err == nil {
+		if v := strings.TrimSpace(admin.Email); strings.Contains(v, "@") {
+			return v
+		}
+	}
+	return ""
+}
