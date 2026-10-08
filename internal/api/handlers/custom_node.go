@@ -167,6 +167,53 @@ func BatchGetCustomNodeUsers(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", grouped)
 }
 
+// applyExplicitNodeConfigOverrides 把请求里**显式提供**的 protocol/domain/port 写进 config JSON。
+//
+// 优先级约定（修复「编辑专线节点改了不生效」）：
+//  1. 表单显式提交的字段（如「节点类型」下拉框）——最高优先级，写进 config；
+//  2. config JSON 里已声明的值——其次（订阅下发只读 config）；
+//  3. 数据库旧列值——仅用于补全 config 缺失的键。
+//
+// 显式覆盖必须发生在 normalizeCustomNodeConfig 之前：后者以 config 为权威，
+// 而更新接口传入的 domain/port 是数据库里的旧列值（编辑表单不提交这两个字段），
+// 旧实现直接用旧列值覆盖 config，导致改完保存又被改回旧地址。
+func applyExplicitNodeConfigOverrides(configStr, protocol, domain string, port int) string {
+	if protocol != "" {
+		configStr = mutateCustomNodeConfig(configStr, func(data map[string]interface{}) {
+			setStringInConfigMap(data, protocol, "Type", "type", "protocol")
+		})
+	}
+	if domain != "" {
+		configStr = mutateCustomNodeConfig(configStr, func(data map[string]interface{}) {
+			setStringInConfigMap(data, domain, "Server", "server", "add", "address")
+		})
+	}
+	if port > 0 {
+		configStr = mutateCustomNodeConfig(configStr, func(data map[string]interface{}) {
+			setIntInConfigMap(data, port, "Port", "port")
+		})
+	}
+	return configStr
+}
+
+// mutateCustomNodeConfig 对可解析为 JSON 对象的 config 做一次改写；
+// 空配置或历史脏数据（非 JSON）原样返回，交由调用方按缺省逻辑处理。
+func mutateCustomNodeConfig(configStr string, mutate func(map[string]interface{})) string {
+	if strings.TrimSpace(configStr) == "" {
+		return configStr
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(configStr), &data); err != nil {
+		return configStr
+	}
+	mutate(data)
+	out, err := json.Marshal(data)
+	if err != nil {
+		return configStr
+	}
+	return string(out)
+}
+
 func normalizeCustomNodeConfig(configStr, protocol, domain string, port int) (string, string, string, int) {
 	trimmed := strings.TrimSpace(configStr)
 	if trimmed == "" {
@@ -178,16 +225,24 @@ func normalizeCustomNodeConfig(configStr, protocol, domain string, port int) (st
 		return configStr, protocol, domain, port
 	}
 
-	if protocol == "" {
-		protocol = getStringFromConfigMap(data, "type", "Type", "protocol")
+	// config 是订阅生成时的权威来源：config_update.appendCustomNodes 只反序列化
+	// custom_nodes.config，protocol/domain/port 三列不参与下发。
+	// 因此 config 里已声明的值必须优先于传入值——更新接口传进来的是数据库里的
+	// 旧列值（编辑表单不提交 domain/port），若让旧值覆盖 config，
+	// 「编辑专线节点 → 改服务器地址 → 保存」就会被静默改回旧地址（改了不生效）。
+	// 传入值只在 config 缺少该字段时用于补全。
+	if v := getStringFromConfigMap(data, "type", "Type", "protocol"); v != "" {
+		protocol = v
 	}
-	if domain == "" {
-		domain = getStringFromConfigMap(data, "server", "Server", "add", "address")
+	if v := getStringFromConfigMap(data, "server", "Server", "add", "address"); v != "" {
+		domain = v
 	}
-	if port <= 0 {
-		port = getIntFromConfigMap(data, "port", "Port")
+	if v := getIntFromConfigMap(data, "port", "Port"); v > 0 {
+		port = v
 	}
 
+	// 写回只做键名规范化（补全 server/port/type 等别名键），值始终取自上面定下的有效值，
+	// 不会再出现「用旧列值覆盖 config 新值」的情况。
 	if protocol != "" {
 		setStringInConfigMap(data, protocol, "Type", "type", "protocol")
 	}
@@ -375,7 +430,12 @@ func CreateCustomNode(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "节点名称、协议和配置为必填项", nil)
 		return
 	}
-	configStr, protocol, domain, port := normalizeCustomNodeConfig(req.Config, req.Protocol, req.Domain, req.Port)
+	configStr, protocol, domain, port := normalizeCustomNodeConfig(
+		applyExplicitNodeConfigOverrides(req.Config, req.Protocol, req.Domain, req.Port),
+		req.Protocol,
+		req.Domain,
+		req.Port,
+	)
 
 	customNode := models.CustomNode{
 		Name:             truncateNodeName(req.Name),
@@ -1062,8 +1122,13 @@ func UpdateCustomNode(c *gin.Context) {
 		node.FollowUserExpire = *req.FollowUserExpire
 	}
 
+	// 更新时 config 是权威来源：
+	//  - 表单显式提交的字段（节点类型下拉框、少数客户端传的 domain/port）先写进 config；
+	//  - 编辑表单「配置(JSON)」里改好的 server/port 必须保留，不能被下面传入的
+	//    数据库旧列值覆盖，否则表现就是「改了保存后不生效」；
+	//  - protocol/domain/port 三列若有差异，以 config 为准回写，保持与下发一致。
 	node.Config, node.Protocol, node.Domain, node.Port = normalizeCustomNodeConfig(
-		node.Config,
+		applyExplicitNodeConfigOverrides(node.Config, req.Protocol, req.Domain, req.Port),
 		node.Protocol,
 		node.Domain,
 		node.Port,
