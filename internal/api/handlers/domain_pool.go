@@ -29,10 +29,16 @@ import (
 
 func domainPoolManager() *domainpool.Manager {
 	siteDomain := ""
+	acmeEmail := ""
 	if db := database.GetDB(); db != nil {
 		siteDomain = utils.GetDomainFromDB(db)
+		// 全新服务器上 certbot 尚未注册 ACME 账户，首次签发必须带邮箱，
+		// 否则会 MissingCommandlineFlag 失败（表现为一键配置卡在签发证书）
+		acmeEmail = utils.GetACMEEmailFromDB(db)
 	}
-	return domainpool.New("", siteDomain)
+	m := domainpool.New("", siteDomain)
+	m.Email = acmeEmail
+	return m
 }
 
 // 域名池的读写与体检列表统一放在 services/domainpool 里（SSH 命令行工具也用同一套）。

@@ -92,6 +92,8 @@ type Manager struct {
 	PanelRoot string
 	// 已配置的网站域名（不参与删除，且会作为备用订阅地址兜底）
 	SiteDomain string
+	// ACME 注册邮箱（certbot 首次签发时注册账户用；空则依赖服务器上已存在的账户）
+	Email string
 }
 
 func New(panelRoot, siteDomain string) *Manager {
@@ -310,6 +312,30 @@ func (m *Manager) webroot() string {
 	return "/tmp"
 }
 
+// certbotIssueArgs 组装「首次签发」的 certbot 参数。
+//
+// 必须带 --email：全新服务器上 certbot 还没有注册 ACME 账户，只给 --agree-tos 会被
+// certbot 直接拒绝（MissingCommandlineFlag: You should register before running
+// non-interactively, or provide --agree-tos and --email）。老服务器因为早就注册过账户
+// 所以不带也能过，于是这个坑只在「换新机/新域名」时才暴露：DNS 校验通过、站点配置也
+// 写好了，却卡在签发证书，看起来就像「一键配置/修复点了没反应」。
+func certbotIssueArgs(domain, webroot, certName, email, deployHook string) []string {
+	args := []string{
+		"certonly",
+		"--webroot", "-w", webroot,
+		"--cert-name", certName,
+		"-d", domain,
+		"--non-interactive", "--agree-tos", "--no-eff-email",
+	}
+	if e := strings.TrimSpace(email); e != "" {
+		args = append(args, "--email", e)
+	}
+	if deployHook != "" {
+		args = append(args, "--deploy-hook", deployHook)
+	}
+	return args
+}
+
 func runCmd(ctx context.Context, timeout time.Duration, name string, args ...string) (string, error) {
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -507,13 +533,8 @@ func (m *Manager) Configure(ctx context.Context, rawDomain string) (Status, []St
 			return Status{Domain: domain}, steps, err
 		}
 		addStep("写入站点配置（ACM 校验用）", true, FindVhostFile(domain))
-		certbotOut, certErr := runCmd(ctx, 180*time.Second, "certbot", "certonly",
-			"--webroot", "-w", webroot,
-			"--cert-name", CertNameFor(domain),
-			"-d", domain,
-			"--non-interactive", "--agree-tos", "--no-eff-email",
-			"--deploy-hook", nginxBin+" -s reload",
-		)
+		certbotOut, certErr := runCmd(ctx, 180*time.Second, "certbot",
+			certbotIssueArgs(domain, webroot, CertNameFor(domain), m.Email, nginxBin+" -s reload")...)
 		if certErr != nil {
 			addStep("签发证书", false, certbotOut)
 			return Status{Domain: domain}, steps, certErr
