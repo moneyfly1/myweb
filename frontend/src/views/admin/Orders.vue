@@ -1460,6 +1460,10 @@ export default {
       exportOrders, bulkMarkAsPaid, bulkCancel, bulkDelete,
       
       // Utils
+      // formatLocation 是模板（充值详情「IP 归属地」）要用的导入函数，
+      // 本组件是 setup() + 显式 return 写法，漏 return 会让模板渲染期抛
+      // TypeError（抽屉内容整棵渲染失败、遮罩残留、页面卡死），必须暴露。
+      formatLocation,
       detailTitle, getStatusType, getStatusText, formatDateTime, formatMoney,
       orderExtra, extraValue, numberOrZero, numberOrDash,
       isDeviceUpgradeOrder, isCustomPackageOrder, isPackageLikeOrder,

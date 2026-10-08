@@ -924,7 +924,10 @@ export default {
       showCustomPackageDialog,
       saveCustomPackageSettings,
       addDiscount,
-      removeDiscount
+      removeDiscount,
+      // 模板里用 :icon="Setting/Plus/Search/Refresh/Delete" 表达式引用图标，
+      // setup() 写法必须显式暴露，否则图标静默丢失（components 注册只服务 <X /> 写法）
+      Setting, Plus, Search, Refresh, Delete
     }
   }
 }

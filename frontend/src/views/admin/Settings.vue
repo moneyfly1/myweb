@@ -2208,6 +2208,9 @@ export default {
 
     return {
       activeTab, isMobile, formLayout, settingsNav, pageLoading, savingCurrent, Refresh, Check,
+      // 模板「放弃修改并重新加载」按钮绑定 @click="loadSettings"，setup() 必须显式暴露，
+      // 否则按钮点了没反应（并触发渲染期 undefined 告警）
+      loadSettings,
       subscriptionAccessForm, subscriptionAccessLoading, saveSubscriptionAccessConfig, loadSubscriptionAccessConfig,
       saveDomainSettings,
       generalSettings, generalRules, generalFormRef, registrationSettings, inviteSettings, notificationSettings, securitySettings,
