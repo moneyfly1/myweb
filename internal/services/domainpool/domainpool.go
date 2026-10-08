@@ -290,8 +290,11 @@ func (m *Manager) staticRootOf() string {
 	if m.PanelRoot != "" {
 		candidates = append(candidates, filepath.Join(m.PanelRoot, "frontend", "dist"))
 	}
+	// 按站点域名推断（迁移/换域名后依然成立，避免再依赖写死的旧站点路径）
+	if m.SiteDomain != "" {
+		candidates = append(candidates, filepath.Join("/www/wwwroot", m.SiteDomain, "frontend", "dist"))
+	}
 	candidates = append(candidates,
-		"/www/wwwroot/dy.moneyfly.top/frontend/dist",
 		"/www/wwwroot/cboard/frontend/dist",
 	)
 	for _, c := range candidates {

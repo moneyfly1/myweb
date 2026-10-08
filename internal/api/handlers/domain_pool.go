@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -36,7 +37,14 @@ func domainPoolManager() *domainpool.Manager {
 		// 否则会 MissingCommandlineFlag 失败（表现为一键配置卡在签发证书）
 		acmeEmail = utils.GetACMEEmailFromDB(db)
 	}
-	m := domainpool.New("", siteDomain)
+	// 面板站点根目录 = 进程工作目录（与 backup/repo_sync/config 等模块一致）。
+	// 之前这里传空字符串，导致 staticRootOf 只能命中写死的旧站点路径，
+	// 换域名/迁移后新域名建出来的站点「只有 API、没有前端界面」。
+	panelRoot := ""
+	if wd, err := os.Getwd(); err == nil {
+		panelRoot = wd
+	}
+	m := domainpool.New(panelRoot, siteDomain)
 	m.Email = acmeEmail
 	return m
 }
