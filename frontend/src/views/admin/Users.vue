@@ -1785,6 +1785,8 @@ export default {
       pageSize,
       total,
       searchForm,
+      // 模板 @input="debouncedSearch" 需要 setup 暴露，否则输入时防抖搜索静默失效
+      debouncedSearch,
       showAddUserDialog,
       showUserDialog,
       editingUser,

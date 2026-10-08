@@ -649,7 +649,7 @@
                    {{ formatTime(u.special_node_expires_at) }}
                  </div>
                </div>
-               <el-button type="danger" circle size="small" icon="Close" @click="handleUnassign(u)" />
+               <el-button type="danger" circle size="small" :icon="Close" @click="handleUnassign(u)" />
              </div>
              <EmptyState
                v-if="!assignedUsers.length"
@@ -1792,7 +1792,8 @@ export default {
       handleUserSearch, handleUnassign, batchUnassignAssignedUsers, openMigrateDialog, migrateAssignments,
       getStatusType, getStatusText, getProtocolLabel, getSourceText, getSourceTagType, getNodeServer, formatExpire, formatTime, isExpired,
       isSelected, isAllSelected, isIndeterminate, toggleMobileSelectAll,
-      Delete, Edit, Link, Refresh, Connection, User,
+      // 图标用于 :icon="X" 表达式时必须由 setup 暴露（components 注册只服务 <X /> 写法）
+      Delete, Edit, Link, Refresh, Connection, User, Close,
       editingNode
     }
   }
