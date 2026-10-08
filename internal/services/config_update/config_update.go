@@ -1438,6 +1438,26 @@ func (s *ConfigUpdateService) calculateCacheTTL(sub *models.Subscription) time.D
 	return 10 * time.Minute
 }
 
+// renderLinksPayload 把节点渲染成 base64 链接列表（通用 / Shadowrocket / v2rayN 共用）。
+//
+// 面板提示节点（📢官网 / ⏰到期 / 📱设备 / 💬客服）必须一起下发：base64 链接格式是
+// 扫码订阅（sub:// + universal_url）以及 v2rayN/小火箭的默认路径，此前这里跳过提示节点，
+// 导致「扫码或复制通用链接订阅后，客户端里最前面几个提示节点不见了」（Clash 等格式却正常）。
+// 校验层（format_verify.go 的 isPlaceholderInfoNode 分支）本就放行这类占位节点，无需预剔。
+func (s *ConfigUpdateService) renderLinksPayload(nodes []*ProxyNode, useSSRFormat bool) string {
+	var links []string
+	for _, n := range nodes {
+		link := s.nodeToLink(n)
+		if useSSRFormat && n.Type == "ssr" {
+			link = s.nodeToSSRLink(n)
+		}
+		if link != "" {
+			links = append(links, link)
+		}
+	}
+	return base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n")))
+}
+
 func (s *ConfigUpdateService) GenerateClashConfig(token, clientIP, userAgent string) (string, error) {
 	cache := &CacheService{}
 	if cached, ok := cache.GetSubscriptionConfigCache(token, "clash"); ok {
@@ -1500,20 +1520,7 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent
 
 	useSSRFormat := format == "ssr"
 	rv := s.buildVerifiedPayload(FmtLinksBase64, nodes, func(ns []*ProxyNode) string {
-		var links []string
-		for _, n := range ns {
-			if isPlaceholderInfoNode(n) {
-				continue
-			}
-			link := s.nodeToLink(n)
-			if useSSRFormat && n.Type == "ssr" {
-				link = s.nodeToSSRLink(n)
-			}
-			if link != "" {
-				links = append(links, link)
-			}
-		}
-		return base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n")))
+		return s.renderLinksPayload(ns, useSSRFormat)
 	}, token)
 	config := rv.Payload
 	if ctx.Status == StatusNormal {
@@ -2757,16 +2764,7 @@ func (s *ConfigUpdateService) generateClientConfig(token, clientIP, userAgent, s
 		// 旧实现会依据 UA 里的 "v2rayn" 丢掉 socks 节点，属错误假设，已移除。
 		nodes = s.applySubscriptionFilters(nodes, "universal_protocols", userAgent, excludedProtocols)
 		r := s.buildVerifiedPayload(FmtLinksBase64, nodes, func(ns []*ProxyNode) string {
-			var links []string
-			for _, n := range ns {
-				if isPlaceholderInfoNode(n) {
-					continue
-				}
-				if link := s.nodeToLink(n); link != "" {
-					links = append(links, link)
-				}
-			}
-			return base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n")))
+			return s.renderLinksPayload(ns, false)
 		}, token)
 		return r.Payload, "text/plain; charset=utf-8", subName
 	}
