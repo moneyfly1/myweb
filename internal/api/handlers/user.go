@@ -277,6 +277,16 @@ func GetUsers(c *gin.Context) {
 			query = query.Where("is_admin = ?", true)
 		}
 	}
+	// 注册时间区间筛选（含首尾两天）。
+	// 前端桌面端日期选择器历史上未设置 value-format，会把 Date 序列化成 RFC3339
+	// （如 2026-08-31T16:00:00.000Z），因此这里两种格式都要能解析；解析不了就忽略该参数
+	// 而不是报 400，避免一个坏参数把整个用户列表打挂。
+	if start := parseUserDateFilter(c.Query("start_date")); !start.IsZero() {
+		query = query.Where("created_at >= ?", start)
+	}
+	if end := parseUserDateFilter(c.Query("end_date")); !end.IsZero() {
+		query = query.Where("created_at < ?", end.AddDate(0, 0, 1))
+	}
 	// 处理排序
 	sortField := strings.TrimSpace(c.Query("sort"))
 	sortOrder := strings.TrimSpace(c.Query("order"))
@@ -3295,4 +3305,32 @@ func SendEmailToUser(c *gin.Context) {
 		fmt.Sprintf("向用户 %s 加入邮件队列: %s (模板: %s, 类型: %s)", user.Username, subject, req.TemplateName, emailType))
 
 	utils.SuccessResponse(c, http.StatusOK, "邮件已加入队列", nil)
+}
+
+// parseUserDateFilter 解析用户列表的注册时间筛选参数。
+//
+// 支持两种输入：
+//   - YYYY-MM-DD（前端设置 value-format 后发送的标准格式）
+//   - RFC3339 / ISO8601（历史前端未设 value-format 时 Date 被序列化的结果，
+//     例如北京时间 2026-09-01 00:00 会变成 2026-08-31T16:00:00.000Z）
+//
+// 统一按北京时间取「当天 00:00」返回，保证区间筛选按用户看到的自然日生效，
+// 不会因为时区换算出现差一天。无法识别时返回零值（调用方据此忽略该参数）。
+func parseUserDateFilter(raw string) time.Time {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}
+	}
+	if t, err := time.ParseInLocation("2006-01-02", raw, utils.BeijingTZ); err == nil {
+		return t
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.000Z0700", "2006-01-02 15:04:05"} {
+		parsed, err := time.Parse(layout, raw)
+		if err != nil {
+			continue
+		}
+		beijing := utils.ToBeijingTime(parsed)
+		return time.Date(beijing.Year(), beijing.Month(), beijing.Day(), 0, 0, 0, 0, utils.BeijingTZ)
+	}
+	return time.Time{}
 }

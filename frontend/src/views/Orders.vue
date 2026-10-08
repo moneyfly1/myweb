@@ -1353,6 +1353,8 @@ export default {
       paymentQRCode,
       qrDisplaySrc,
       paymentUrl,
+      // 支付弹窗里 {{ formatMoney(payableOnlineAmount) }} 要用，漏暴露会让应付金额显示为空
+      payableOnlineAmount,
       openAlipayApp,
       isCheckingPayment,
       emptyText,
