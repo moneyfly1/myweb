@@ -791,9 +791,14 @@ export default {
     }
     return {
       subscription,
+      // 模板里 v-loading="loading" 用到（漏暴露则整页 loading 指示不显示）
+      loading,
       resetLoading,
       sendEmailLoading,
       showUpgradeDrawer,
+      // 升级设备抽屉的成功回调（:on-success）：漏暴露会导致升级成功后列表不刷新，
+      // 用户以为没生效，必须手动刷新页面
+      handleUpgradeSuccess,
       selectedExcludedProtocols,
       activeMoreClientPanels,
       subscriptionQrCanvas,

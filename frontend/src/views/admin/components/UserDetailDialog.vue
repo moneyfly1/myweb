@@ -994,6 +994,12 @@ export default {
     }
   },
   computed: {
+    // 模板里以 :icon="X" 表达式使用的图标必须挂在实例上：
+    // components 注册只服务 <X /> 写法，用组件名当表达式只会拿到 undefined（图标不显示）。
+    CopyDocument: () => CopyDocument,
+    RefreshRight: () => RefreshRight,
+    Plus: () => Plus,
+    Delete: () => Delete,
     rechargeRecords() {
       return this.user?.recharge_records || []
     },
