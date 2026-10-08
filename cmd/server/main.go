@@ -21,6 +21,7 @@ import (
 	"cboard-go/internal/core/cache"
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
+	"cboard-go/internal/core/paths"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/queue"
@@ -49,6 +50,11 @@ func main() {
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
+
+	// 打印「运行环境路径解析」结果：换机器/换部署方式后，一眼就能看出
+	// nginx 可执行文件、vhost 目录、ACME webroot、前端产物目录分别用了哪个路径、
+	// 是环境变量指定还是自动探测到的（过去这些路径写死在代码里，出问题只能靠猜）。
+	log.Printf("运行环境路径: %s", paths.SummaryLine())
 
 	// 初始化可信代理列表，必须在路由/限流使用 GetRealClientIP 之前调用。
 	// 取值顺序：配置（viper 读 .env，缺失时默认 127.0.0.1,::1）→ 环境变量兜底。

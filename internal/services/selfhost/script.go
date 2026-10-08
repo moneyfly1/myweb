@@ -364,6 +364,8 @@ echo "========================================================"
 		protoConfig,
 		linkBuildBlock(cfg.Protocol),
 	)
+	// 目标机器路径可按需覆盖（默认与历史行为一致）
+	script = applyTargetPaths(script)
 	return script, nil
 }
 
