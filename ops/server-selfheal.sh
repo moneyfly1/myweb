@@ -16,9 +16,17 @@
 set -u
 
 LOG=${SELFHEAL_LOG:-/var/log/cboard-selfheal.log}
-NGINX_BIN=${NGINX_BIN:-/www/server/nginx/sbin/nginx}
 SERVICE=${CBOARD_SERVICE:-cboard}
 SITE_URL=${SELFHEAL_URL:-https://127.0.0.1/}
+
+# nginx 二进制自动识别：宝塔装在 /www/server/nginx/sbin/nginx，系统包在 /usr/sbin/nginx
+# （迁移到新机器后路径可能不同，硬编码会让自愈守护静默失效）
+if [ -z "${NGINX_BIN:-}" ]; then
+  for candidate in /www/server/nginx/sbin/nginx /usr/sbin/nginx /usr/local/nginx/sbin/nginx; do
+    if [ -x "$candidate" ]; then NGINX_BIN="$candidate"; break; fi
+  done
+fi
+NGINX_BIN=${NGINX_BIN:-/usr/sbin/nginx}
 
 log() { echo "[$(date '+%F %T')] $*" >>"$LOG" 2>/dev/null || true; }
 
@@ -30,8 +38,15 @@ fi
 # ① nginx：443 未监听时尝试拉起（先自检配置，避免把坏配置反复拉起刷屏）
 if ! ss -ltn 2>/dev/null | grep -q ':443 '; then
   if "$NGINX_BIN" -t >/dev/null 2>&1; then
-    if "$NGINX_BIN" >/dev/null 2>&1; then
-      log "检测到 443 未监听 → 已启动宝塔 nginx"
+    started=0
+    # 有 systemd 单元就交给 systemd（宝塔/系统包两种情况都覆盖），否则直接执行二进制
+    if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files 2>/dev/null | grep -q '^nginx\.service'; then
+      systemctl start nginx >/dev/null 2>&1 && started=1
+    else
+      "$NGINX_BIN" >/dev/null 2>&1 && started=1
+    fi
+    if [ "$started" = "1" ]; then
+      log "检测到 443 未监听 → 已启动 nginx（$NGINX_BIN）"
     else
       log "!! 443 未监听且 nginx 启动失败（需人工处理）"
     fi
