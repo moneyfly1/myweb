@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"archive/zip"
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -9,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"cboard-go/internal/core/cache"
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/services/backup_service"
@@ -229,8 +232,16 @@ func ListBackups(c *gin.Context) {
 
 	files, err := os.ReadDir(backupDir)
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "读取备份目录失败", err)
-		return
+		// 目录不存在时不要报 500：迁移/换机后 uploads/backups 可能还没建出来，
+		// 「本地备份」列表应该显示为空（而不是让整个「备份与恢复」面板报错），
+		// 顺便把目录补齐，之后点「立即备份」就能正常落盘。
+		if os.IsNotExist(err) {
+			_ = os.MkdirAll(backupDir, 0o750)
+			files = nil
+		} else {
+			utils.ErrorResponse(c, http.StatusInternalServerError, "读取备份目录失败", err)
+			return
+		}
 	}
 
 	var backups []map[string]interface{}
@@ -442,6 +453,9 @@ func RestoreBackup(c *gin.Context) {
 	}
 	defer os.Remove(extractedDB)
 
+	// 恢复前记下本机身份配置（域名等），恢复后写回，避免跨站点恢复导致"认错家门"
+	savedIdentity := captureSiteIdentity()
+
 	backupPath := dbPath + ".before_restore"
 	if err := copyFile(dbPath, backupPath); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建数据库快照失败", err)
@@ -477,14 +491,21 @@ func RestoreBackup(c *gin.Context) {
 		return
 	}
 
+	// 恢复进来的库带着来源站点的域名设置 → 写回本机身份，并清掉可能残留的旧缓存
+	keptIdentity := applySiteIdentity(savedIdentity)
+	flushAppCache()
+
 	sourceName := req.Filename
 	if req.Source == "remote" {
 		sourceName = req.RemotePath
 	}
-	utils.CreateAuditLogSimple(c, "restore_backup", "backup", 0, fmt.Sprintf("管理员操作: 从%s恢复备份 %s", req.Source, sourceName))
+	utils.CreateAuditLogSimple(c, "restore_backup", "backup", 0,
+		fmt.Sprintf("管理员操作: 从%s恢复备份 %s（保留本机域名配置: %s）",
+			req.Source, sourceName, strings.Join(keptIdentity, ",")))
 	utils.SuccessResponse(c, http.StatusOK, "数据库恢复成功", gin.H{
-		"source":   req.Source,
-		"filename": sourceName,
+		"source":        req.Source,
+		"filename":      sourceName,
+		"kept_identity": keptIdentity,
 	})
 }
 
@@ -551,4 +572,69 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return out.Sync()
+}
+
+// siteIdentityKeys 恢复备份后需要保留「本机身份」的配置键。
+//
+// 场景：把 A 站的备份恢复到 B 站（换域名/换机器时很常见）。备份里存的是 A 站的域名设置，
+// 直接照搬会让 B 站的官网链接、订阅地址、域名池全部指回 A 站 —— 相当于站点"认错家门"：
+// 客户端拉到错域名的订阅、一键配置也管不到自己。因此恢复前记下本机这三项，恢复后写回。
+//
+// 对「同一站点恢复自己的备份」而言这组值是相同的，写回是无副作用的幂等操作。
+var siteIdentityKeys = []string{"domain_name", "subscription_domain", "subscription_backup_domains"}
+
+// captureSiteIdentity 记录当前站点的身份配置（恢复前调用）
+func captureSiteIdentity() map[string]string {
+	saved := map[string]string{}
+	db := database.GetDB()
+	if db == nil {
+		return saved
+	}
+	for _, key := range siteIdentityKeys {
+		var cfg struct {
+			Value string
+		}
+		if err := db.Table("system_configs").Select("value").Where("key = ?", key).Scan(&cfg).Error; err == nil {
+			saved[key] = cfg.Value
+		}
+	}
+	return saved
+}
+
+// applySiteIdentity 恢复备份后把本机身份配置写回，返回实际写回的键（供响应里展示）
+func applySiteIdentity(saved map[string]string) []string {
+	if len(saved) == 0 {
+		return nil
+	}
+	db := database.GetDB()
+	if db == nil {
+		return nil
+	}
+	var applied []string
+	for _, key := range siteIdentityKeys {
+		val, ok := saved[key]
+		if !ok {
+			continue
+		}
+		// 仅当恢复进来的库里确实有该键时才写回，避免给不同版本的库凭空补字段
+		res := db.Exec("UPDATE system_configs SET value = ? WHERE key = ?", val, key)
+		if res.Error == nil && res.RowsAffected > 0 {
+			applied = append(applied, key)
+		}
+	}
+	return applied
+}
+
+// flushAppCache 恢复数据库后清理缓存：Redis 里可能残留恢复前的会话/配置缓存，
+// 不清会出现"库已经换回来了、页面还是老数据"的错觉。
+func flushAppCache() {
+	client := cache.GetRedisClient()
+	if client == nil || !cache.IsRedisEnabled() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.FlushAll(ctx).Err(); err != nil {
+		log.Printf("恢复备份后清空 Redis 缓存失败（忽略）: %v", err)
+	}
 }
