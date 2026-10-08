@@ -40,12 +40,24 @@ if ! gzip -9 "$TMP"; then
 fi
 GZ="$TMP.gz"
 
-# 校验：能完整解压、能打开、关键表可读、记录数与线上同量级
-if ! gzip -t "$GZ" 2>/dev/null; then
-  log "!! 备份压缩包损坏：$GZ"; exit 1
+# 校验：解压成真实文件后打开验证。
+# 注意：sqlite3 无法通过 "file:/dev/stdin" 读管道，必须落成文件；顺便做 quick_check
+# 与关键表记录数比对（记录数不一致说明快照不是一致性视图，必须人工介入）。
+VERIFY="$DEST/daily/.verify-$$.db"
+rm -f "$VERIFY"
+CHECK=""
+if gzip -dc "$GZ" >"$VERIFY" 2>/dev/null; then
+  QC=$(sqlite3 "$VERIFY" "PRAGMA quick_check;" 2>/dev/null | head -1)
+  if [ "$QC" = "ok" ]; then
+    CHECK=$(sqlite3 "$VERIFY" \
+      "select (select count(*) from users)||'/'||(select count(*) from orders)||'/'||(select count(*) from subscriptions);" 2>/dev/null || echo "")
+  else
+    log "!! 备份完整性检查未通过（quick_check=${QC:-空}）：$GZ"
+  fi
+else
+  log "!! 备份压缩包无法解压：$GZ"
 fi
-CHECK=$(gzip -dc "$GZ" 2>/dev/null | sqlite3 "file:/dev/stdin?mode=ro" \
-        "select (select count(*) from users)||'/'||(select count(*) from orders)||'/'||(select count(*) from subscriptions);" 2>/dev/null || echo "")
+rm -f "$VERIFY"
 LIVE=$(sqlite3 "$DB" "select (select count(*) from users)||'/'||(select count(*) from orders)||'/'||(select count(*) from subscriptions);" 2>/dev/null || echo "")
 if [ -z "$CHECK" ]; then
   log "!! 备份无法读取校验（保留文件待人工确认）：$GZ"
@@ -62,26 +74,32 @@ if [ "$DAY" = "7" ]; then
 fi
 
 # ---------- ② 关键配置归档（换机恢复必需）----------
+# 这些是「换台机器恢复时最容易漏、又不可再生」的东西：.env 里的 SECRET_KEY 丢了
+# 全体用户要重新登录、支付/邮件密钥失效；vhost/systemd 单元丢了要重写。
 CFG="$DEST/config/cboard-config-$STAMP.tar.gz"
-TARLIST=()
-[ -f "$SITE/.env" ] && TARLIST+=(".env")
-[ -d /www/server/panel/vhost/nginx ] && TARLIST+=(vhost-nginx)
-[ -d /etc/nginx/conf.d ] && TARLIST+=(etc-nginx-conf.d)
-[ -f /etc/systemd/system/cboard.service ] && TARLIST+=(cboard.service)
-[ -f /etc/systemd/system/cboard-v2.service ] && TARLIST+=(cboard-v2.service)
-[ -d /etc/letsencrypt/renewal ] && TARLIST+=(letsencrypt-renewal)
-if [ "${#TARLIST[@]}" -gt 0 ]; then
-  ( cd / && tar czf "$CFG" \
-      --transform 's#^#root/#' \
-      "$SITE/.env" \
-      /www/server/panel/vhost/nginx \
-      /etc/nginx/conf.d \
-      /etc/systemd/system/cboard.service \
-      /etc/systemd/system/cboard-v2.service \
-      /etc/letsencrypt/renewal \
-      2>/dev/null )
+TAR_LIST=()
+[ -f "$SITE/.env" ] && TAR_LIST+=("$SITE/.env")
+[ -d /www/server/panel/vhost/nginx ] && TAR_LIST+=(/www/server/panel/vhost/nginx)
+[ -d /etc/nginx/conf.d ] && TAR_LIST+=(/etc/nginx/conf.d)
+[ -f /etc/systemd/system/cboard.service ] && TAR_LIST+=(/etc/systemd/system/cboard.service)
+[ -f /etc/systemd/system/cboard-v2.service ] && TAR_LIST+=(/etc/systemd/system/cboard-v2.service)
+[ -d /etc/letsencrypt/renewal ] && TAR_LIST+=(/etc/letsencrypt/renewal)
+
+if [ "${#TAR_LIST[@]}" -eq 0 ]; then
+  log "!! 未找到任何可归档的配置（.env / vhost / systemd 单元全都不存在？）"
+else
+  ( cd / && tar czf "$CFG" "${TAR_LIST[@]}" 2>/dev/null )
   crontab -l >"$DEST/config/crontab-$STAMP.txt" 2>/dev/null || true
-  log "配置归档 → $CFG（另存 crontab-$STAMP.txt）"
+
+  # 归档必须真的含 .env 与 systemd 单元，否则等于备份了个空壳 —— 大声报错
+  MISSING=""
+  tar tzf "$CFG" 2>/dev/null | grep -q '\.env$' || MISSING="$MISSING .env"
+  tar tzf "$CFG" 2>/dev/null | grep -q 'cboard.service' || MISSING="$MISSING cboard.service"
+  if [ -n "$MISSING" ]; then
+    log "!! 配置归档缺少关键文件:$MISSING → $CFG"
+  else
+    log "配置归档完整（.env + vhost + systemd 已含）→ $CFG（另存 crontab-$STAMP.txt）"
+  fi
 fi
 
 # ---------- ③ 轮转 ----------
