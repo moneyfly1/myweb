@@ -37,7 +37,14 @@
         <div class="stat-icon">¥</div>
         <div>
           <div class="stat-value">¥{{ (stats.total_reward || 0).toFixed(2) }}</div>
-          <div class="stat-label">累计奖励</div>
+          <div class="stat-label">已到账奖励</div>
+        </div>
+      </div>
+      <div class="stat-card" v-if="(stats.pending_reward || 0) > 0">
+        <div class="stat-icon">W</div>
+        <div>
+          <div class="stat-value">¥{{ (stats.pending_reward || 0).toFixed(2) }}</div>
+          <div class="stat-label">待发放奖励</div>
         </div>
       </div>
     </div>
@@ -191,7 +198,9 @@
                   </el-table-column>
                   <el-table-column prop="reward_given" label="奖励状态" :width="recentColumnWidths.reward_given" resizable align="center">
                     <template #default="scope">
-                      <el-tag :type="scope.row.reward_given ? 'success' : 'warning'" size="small">{{ scope.row.reward_given ? '已发放' : '未发放' }}</el-tag>
+                      <el-tag :type="scope.row.reward_given ? 'success' : 'warning'" size="small">
+                        {{ scope.row.reward_given ? `已到账 ¥${(scope.row.reward_amount || 0).toFixed(2)}` : (scope.row.status_text || '未发放') }}
+                      </el-tag>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -369,7 +378,7 @@ const mobileRecentFields = computed(() => [
     label: '奖励状态',
     type: 'tag',
     tagType: value => value ? 'success' : 'warning',
-    formatter: value => value ? '已发放' : '未发放'
+    formatter: (value, row) => value ? `已到账 ¥${(row?.reward_amount || 0).toFixed(2)}` : (row?.status_text || '未发放')
   }
 ])
 const loadInviteRewardSettings = async () => {
@@ -423,30 +432,26 @@ const loadInviteCodes = async () => {
 }
 const loadStats = async () => {
   try {
-    const response = await inviteAPI.getInviteStats()
-    if (response && response.data) {
-      const responseData = response.data
-      if (responseData.success !== false && responseData.data) {
-        const backendStats = responseData.data
-        stats.value = {
-          total_invites: backendStats.total_invite_count || 0,
-          registered_invites: backendStats.total_invite_relations || 0,
-          purchased_invites: 0, // 后端未提供此字段，需要从邀请关系中统计
-          total_reward: backendStats.total_invite_reward || 0,
-          total_consumption: 0,
-          recent_invites: [] // 后端未提供此字段
-        }
-      }
-      else if (responseData.total_invite_count !== undefined) {
-        stats.value = {
-          total_invites: responseData.total_invite_count || 0,
-          registered_invites: responseData.total_invite_relations || 0,
-          purchased_invites: 0,
-          total_reward: responseData.total_invite_reward || 0,
-          total_consumption: 0,
-          recent_invites: []
-        }
-      }
+    // 统计 + 邀请记录一次取回：/invites/records 同时返回明细（含奖励到账状态）与汇总。
+    // 历史上这里把 recent_invites / purchased_invites / total_consumption 写死为 0 或 []，
+    // 因为后端当时没有明细接口，导致「最近邀请记录」永远是空的。
+    const [statsRes, recordsRes] = await Promise.all([
+      inviteAPI.getInviteStats(),
+      inviteAPI.getMyInviteRecords()
+    ])
+
+    const statsData = statsRes?.data?.data || {}
+    const recordsData = recordsRes?.data?.data || {}
+    const summary = recordsData.summary || {}
+
+    stats.value = {
+      total_invites: statsData.total_invite_count || summary.registered || 0,
+      registered_invites: statsData.total_invite_relations || summary.registered || 0,
+      purchased_invites: summary.purchased || 0,
+      total_reward: statsData.total_invite_reward || summary.total_reward || 0,
+      pending_reward: summary.pending_reward || 0,
+      total_consumption: summary.total_consumption || 0,
+      recent_invites: Array.isArray(recordsData.records) ? recordsData.records : []
     }
   } catch (error) {
     const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '未知错误'

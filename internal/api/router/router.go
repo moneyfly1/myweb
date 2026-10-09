@@ -294,6 +294,8 @@ func SetupRouter() *gin.Engine {
 			invites.GET("/stats", handlers.GetInviteStats)
 			invites.GET("/reward-settings", handlers.GetRewardSettings)
 			invites.GET("/my-codes", handlers.GetMyInviteCodes)
+			// 邀请记录明细（含奖励到账状态）：用户端「邀请记录」表格的数据来源
+			invites.GET("/records", handlers.GetMyInviteRecords)
 			invites.PUT("/:id", handlers.UpdateInviteCode)
 			invites.DELETE("/:id", handlers.DeleteInviteCode)
 		}

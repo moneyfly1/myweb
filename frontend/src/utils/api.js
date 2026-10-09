@@ -793,6 +793,8 @@ export const inviteAPI = {
   generateInviteCode: (data) => api.post('/invites', data),
   getMyInviteCodes: () => api.get('/invites/my-codes'),
   getInviteStats: () => api.get('/invites/stats'),
+  // 我的邀请记录明细（含奖励是否到账）：用户端「最近邀请记录」表格的数据来源
+  getMyInviteRecords: () => api.get('/invites/records'),
   getInviteRewardSettings: () => api.get('/invites/reward-settings'),
   validateInviteCode: (code) => api.get(`/invites/validate/${code}`),
   updateInviteCode: (id, data) => api.put(`/invites/${id}`, data),

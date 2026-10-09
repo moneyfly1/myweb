@@ -7,6 +7,7 @@ import (
 	"cboard-go/internal/services/cache_service"
 	discountService "cboard-go/internal/services/discount"
 	"cboard-go/internal/services/email"
+	"cboard-go/internal/services/invite"
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/services/payment"
 	promotionService "cboard-go/internal/services/promotion"
@@ -1309,88 +1310,13 @@ func (s *OrderService) processInviteRewardsTx(tx *gorm.DB, order *models.Order, 
 	inviteRelation.InviteeFirstOrderID = sql.NullInt64{Int64: utils.MustSafeUintToInt64(order.ID), Valid: true}
 	inviteRelation.InviteeTotalConsumption += paidAmount
 
-	if !inviteRelation.InviterRewardGiven && inviteRelation.InviterRewardAmount > 0 {
-		var inviter models.User
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&inviter, inviteRelation.InviterID).Error; err == nil {
-			oldBalance := inviter.Balance
-			result := tx.Model(&models.User{}).Where("id = ?", inviter.ID).
-				Updates(map[string]interface{}{
-					"balance":             gorm.Expr("balance + ?", inviteRelation.InviterRewardAmount),
-					"total_invite_reward": gorm.Expr("total_invite_reward + ?", inviteRelation.InviterRewardAmount),
-					"total_invite_count":  gorm.Expr("total_invite_count + 1"),
-				})
-			if result.Error == nil {
-				inviteRelation.InviterRewardGiven = true
-				var freshInviter models.User
-				tx.First(&freshInviter, inviter.ID)
-				if utils.AppLogger != nil {
-					utils.AppLogger.Info("processInviteRewards: ✅ 发放邀请者奖励 - inviter_id=%d, amount=%.2f, order_id=%d",
-						inviter.ID, inviteRelation.InviterRewardAmount, order.ID)
-				}
-				if err := utils.CreateBalanceLogWithDB(
-					tx,
-					inviter.ID, "commission", inviteRelation.InviterRewardAmount,
-					oldBalance, freshInviter.Balance, nil, nil,
-					fmt.Sprintf("邀请奖励: 邀请人奖励 (订单 %s)", order.OrderNo),
-					"system", nil, "",
-				); err != nil {
-					log.Printf("failed to create balance log: %v", err)
-				}
-				relationID := uint(inviteRelation.ID)
-				if err := utils.CreateCommissionLogWithDB(
-					tx,
-					inviter.ID, order.UserID, "order_reward",
-					inviteRelation.InviterRewardAmount, &relationID, nil,
-					fmt.Sprintf("邀请人奖励: 订单 %s", order.OrderNo),
-				); err != nil {
-					log.Printf("failed to create commission log: %v", err)
-				}
-			} else {
-				utils.LogError("processInviteRewards: failed to give inviter reward", result.Error, map[string]interface{}{
-					"inviter_id": inviter.ID, "amount": inviteRelation.InviterRewardAmount,
-				})
-			}
-		}
-	}
-
-	if !inviteRelation.InviteeRewardGiven && inviteRelation.InviteeRewardAmount > 0 {
-		var invitee models.User
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&invitee, order.UserID).Error; err == nil {
-			oldBalance := invitee.Balance
-			result := tx.Model(&models.User{}).Where("id = ?", invitee.ID).
-				Update("balance", gorm.Expr("balance + ?", inviteRelation.InviteeRewardAmount))
-			if result.Error == nil {
-				inviteRelation.InviteeRewardGiven = true
-				var freshInvitee models.User
-				tx.First(&freshInvitee, invitee.ID)
-				if utils.AppLogger != nil {
-					utils.AppLogger.Info("processInviteRewards: ✅ 发放被邀请者奖励 - invitee_id=%d, amount=%.2f, order_id=%d",
-						invitee.ID, inviteRelation.InviteeRewardAmount, order.ID)
-				}
-				if err := utils.CreateBalanceLogWithDB(
-					tx,
-					invitee.ID, "commission", inviteRelation.InviteeRewardAmount,
-					oldBalance, freshInvitee.Balance, nil, nil,
-					fmt.Sprintf("邀请奖励: 被邀请人奖励 (订单 %s)", order.OrderNo),
-					"system", nil, "",
-				); err != nil {
-					log.Printf("failed to create balance log: %v", err)
-				}
-				relationID := uint(inviteRelation.ID)
-				if err := utils.CreateCommissionLogWithDB(
-					tx,
-					inviteRelation.InviterID, invitee.ID, "order_reward",
-					inviteRelation.InviteeRewardAmount, &relationID, nil,
-					fmt.Sprintf("被邀请人奖励: 订单 %s", order.OrderNo),
-				); err != nil {
-					log.Printf("failed to create commission log: %v", err)
-				}
-			} else {
-				utils.LogError("processInviteRewards: failed to give invitee reward", result.Error, map[string]interface{}{
-					"invitee_id": invitee.ID, "amount": inviteRelation.InviteeRewardAmount,
-				})
-			}
-		}
+	// 发放奖励：金额按「邀请码显式设置 > 全局配置」实时解析（见 internal/services/invite）。
+	// 旧实现只在 inviteRelation.InviterRewardAmount > 0 时才发，而历史上创建的邀请码
+	// 该字段为 0，等于永远不发——这正是「推荐了人付款但奖励不到账」的根因。
+	if _, err := invite.GrantForRelation(tx, &inviteRelation, &inviteCode, "首单"); err != nil {
+		utils.LogError("processInviteRewards: 发放邀请奖励失败", err, map[string]interface{}{
+			"invite_relation_id": inviteRelation.ID,
+		})
 	}
 
 	if err := tx.Save(&inviteRelation).Error; err != nil {

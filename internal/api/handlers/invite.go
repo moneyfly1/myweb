@@ -12,6 +12,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/invite"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -406,4 +407,36 @@ func DeleteInviteCode(c *gin.Context) {
 	utils.CreateAuditLogSimple(c, "delete_invite_code", "invite_code", inviteCode.ID, fmt.Sprintf("删除邀请码: %s", inviteCode.Code))
 
 	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
+}
+
+// GetMyInviteRecords 当前用户的邀请记录列表（含奖励是否到账）。
+//
+// 背景：此前用户端的「最近邀请记录」表格永远是空的 —— 后端没有提供明细接口，
+// 前端把 recent_invites 写死成 []（代码注释就写着「后端未提供此字段」）。
+// 本接口同时返回明细与汇总，前端据此展示「邀请记录」与「奖励是否到账」。
+func GetMyInviteRecords(c *gin.Context) {
+	user, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "未登录", nil)
+		return
+	}
+
+	db := database.GetDB()
+	records, summary, err := invite.ListRecords(db, user.ID)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取邀请记录失败", err)
+		return
+	}
+	if records == nil {
+		records = []invite.Record{}
+	}
+
+	// 顺手带上当前全局奖励设置，便于前端展示「邀请可获得多少奖励」
+	rewards := invite.LoadRewards(db)
+
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"records":  records,
+		"summary":  summary,
+		"settings": rewards,
+	})
 }
