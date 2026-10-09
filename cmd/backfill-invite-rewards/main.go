@@ -35,6 +35,24 @@ import (
 	"cboard-go/internal/services/invite"
 )
 
+// resolveDBPath 复刻 database 层的 sqlite 路径解析规则（含可执行文件目录锚定），
+// 仅用于在初始化前做存在性检查。
+func resolveDBPath(databaseURL string) (string, bool) {
+	if !strings.Contains(strings.ToLower(databaseURL), "sqlite") {
+		return "", false
+	}
+	dbPath := strings.Replace(databaseURL, "sqlite:///./", "", 1)
+	dbPath = strings.Replace(dbPath, "sqlite:///", "", 1)
+	if !filepath.IsAbs(dbPath) {
+		if exePath, err := os.Executable(); err == nil {
+			dbPath = filepath.Join(filepath.Dir(exePath), dbPath)
+		} else {
+			dbPath = filepath.Join(".", dbPath)
+		}
+	}
+	return dbPath, true
+}
+
 func mustGetwd() string {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -54,38 +72,25 @@ func main() {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 
-	// 防呆：数据库路径默认是「工作目录下的 cboard.db」。用 `go run` 执行时，
-	// 二进制会被放到 go-build 缓存目录里运行，工作目录不是站点目录 ——
-	// 于是会静默新建一个空库、扫描到 0 条关系，看起来像「没有需要补发的」。
-	// 这里先确认目标库真实存在，并要求用 DATABASE_URL 或编译后的二进制运行。
-	dbFile := ""
-	if du := strings.TrimSpace(os.Getenv("DATABASE_URL")); du != "" {
-		if strings.Contains(strings.ToLower(du), "sqlite") {
-			// sqlite:///abs/path 或 sqlite://rel/path 或 sqlite:///./rel
-			trimmed := du[strings.Index(du, "://")+3:]
-			trimmed = strings.TrimPrefix(trimmed, "/")
-			if strings.HasPrefix(du, "sqlite:////") {
-				dbFile = "/" + strings.TrimPrefix(trimmed, "/")
-			} else {
-				dbFile = trimmed
+	// 防呆：数据库相对路径由 database 层锚定到「可执行文件所在目录」
+	// （例如默认 sqlite:///./cboard.db + /www/wwwroot/<站点>/server → 站点库）。
+	// 因此把本命令编译到别处执行（如 /tmp/bf-invite）会解析到那一侧的 cboard.db，
+	// 甚至新建空库、扫到 0 条关系，看起来像「没有需要补发的」。
+	// 这里按同一套规则先算一遍并确认库存在，不存在就直接退出并给出正确用法。
+	if cfg := config.AppConfig; cfg != nil {
+		if target, ok := resolveDBPath(cfg.DatabaseURL); ok {
+			abs, _ := filepath.Abs(target)
+			st, err := os.Stat(target)
+			if err != nil {
+				fmt.Printf("找不到数据库：%s\n", abs)
+				fmt.Println("（相对路径由 database 层锚定到可执行文件所在目录，所以本命令要放到站点目录再执行）")
+				fmt.Println("用法：")
+				fmt.Println("  1) 编译到站点目录：go build -o /www/wwwroot/<站点>/bf-invite ./cmd/backfill-invite-rewards && /www/wwwroot/<站点>/bf-invite --dry-run")
+				fmt.Println("  2) 或显式指定：DATABASE_URL='sqlite:////绝对路径/cboard.db' go run ./cmd/backfill-invite-rewards --dry-run")
+				os.Exit(2)
 			}
-			dbFile = strings.TrimPrefix(dbFile, "./")
+			fmt.Printf("目标数据库: %s（%.1f MB）\n", abs, float64(st.Size())/1024/1024)
 		}
-	} else {
-		dbFile = "cboard.db"
-	}
-	if dbFile != "" {
-		abs, _ := filepath.Abs(dbFile)
-		st, err := os.Stat(dbFile)
-		if err != nil {
-			fmt.Printf("找不到数据库：%s（当前工作目录 %s）\n", abs, mustGetwd())
-			fmt.Println("用法提示：二选一")
-			fmt.Println("  1) 指定库路径：DATABASE_URL='sqlite:////绝对路径/cboard.db' go run ./cmd/backfill-invite-rewards --dry-run")
-			fmt.Println("  2) 先编译再在站点目录执行：go build -o /tmp/bf-invite ./cmd/backfill-invite-rewards && cd /www/wwwroot/<站点> && /tmp/bf-invite --dry-run")
-			fmt.Println("（用 go run 直接跑时工作目录是 go-build 缓存目录，会新建空库、扫到 0 条关系）")
-			os.Exit(2)
-		}
-		fmt.Printf("目标数据库: %s（%.1f MB）\n", abs, float64(st.Size())/1024/1024)
 	}
 
 	if err := database.InitDatabase(); err != nil {
