@@ -1,469 +1,299 @@
 <template>
   <div class="list-container admin-invites">
-    <el-card shadow="never" class="list-card invites-card">
+    <!--
+      邀请管理（单页版）
+      ------------------------------------------------------------------
+      旧版把「邀请码列表 / 邀请关系 / 邀请统计」拆成三个页签，管理员要来回切换
+      才能把「谁邀请了多少人、转化多少、奖励发了多少」拼起来看。
+      现在改成：顶部统计 + 一张邀请人主表 + 点开详情抽屉（邀请码 / 邀请关系）。
+    -->
+    <div class="invite-overview" v-loading="statsLoading">
+      <div
+        v-for="item in overviewCards"
+        :key="item.label"
+        class="invite-overview__item"
+        :class="`is-${item.tone}`"
+      >
+        <div class="invite-overview__label">{{ item.label }}</div>
+        <div class="invite-overview__value">{{ item.value }}</div>
+        <div class="invite-overview__hint">{{ item.hint }}</div>
+      </div>
+    </div>
+
+    <el-card shadow="never" class="list-card">
       <template #header>
         <div class="card-header-wrapper">
-          <span>邀请管理</span>
+          <span>邀请人列表<template v-if="total > 0">（{{ total }}）</template></span>
           <div class="header-buttons">
-            <el-button 
-              type="default" 
-              @click="showSettingsDialog = true"
-              class="settings-button"
-            >
+            <el-button type="default" @click="openSettings">
               <el-icon><Setting /></el-icon>
               <span class="desktop-only">邀请设置</span>
             </el-button>
-            <el-button type="primary" @click="loadData" class="refresh-button">
+            <el-button type="primary" @click="refreshAll">
               <el-icon><Refresh /></el-icon>
               <span class="desktop-only">刷新</span>
             </el-button>
           </div>
         </div>
       </template>
-      <el-tabs v-model="activeTab" type="border-card">
-        <el-tab-pane label="邀请码列表" name="codes">
-          <div class="mobile-action-bar" v-if="isMobile">
-            <div class="mobile-search-section">
-              <div class="search-input-wrapper">
-                <el-input
-                  v-model="codeFilterForm.user_query"
-                  placeholder="邀请人账号或邮箱"
-                  clearable
-                  class="mobile-search-input"
-                  @input="debouncedSearchCodes"
-                  @clear="searchCodes"
-                  @keyup.enter="searchCodes"
-                />
-                <el-button 
-                  @click="searchCodes" 
-                  class="search-button-inside"
-                  type="default"
-                  plain
-                >
-                  <el-icon><Search /></el-icon>
-                </el-button>
-              </div>
-            </div>
-            <div class="mobile-filter-buttons">
-              <el-dropdown @command="handleStatusFilter" trigger="click" placement="bottom-start">
-                <el-button 
-                  size="small" 
-                  :type="codeFilterForm.is_active !== null ? 'primary' : 'default'"
-                  plain
-                >
-                  <el-icon><Filter /></el-icon>
-                  {{ getStatusFilterText() }}
-                </el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="">全部状态</el-dropdown-item>
-                    <el-dropdown-item command="true">启用</el-dropdown-item>
-                    <el-dropdown-item command="false">禁用</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-              <el-button 
-                size="small" 
-                type="default" 
-                plain
-                @click="resetCodeFilter"
-              >
-                <el-icon><Refresh /></el-icon>
-                重置
-              </el-button>
-            </div>
-          </div>
-          <div class="desktop-only filter-section">
-            <el-form :inline="true" :model="codeFilterForm" class="filter-form">
-              <el-form-item label="邀请人">
-                <el-input
-                  v-model="codeFilterForm.user_query"
-                  placeholder="账号或邮箱"
-                  clearable
-                  class="filter-input"
-                  @input="debouncedSearchCodes"
-                  @clear="searchCodes"
-                  @keyup.enter="searchCodes"
-                />
-              </el-form-item>
-              <el-form-item label="邀请码">
-                <el-input
-                  v-model="codeFilterForm.code"
-                  placeholder="搜索邀请码"
-                  clearable
-                  class="filter-input"
-                  @input="debouncedSearchCodes"
-                  @clear="searchCodes"
-                  @keyup.enter="searchCodes"
-                />
-              </el-form-item>
-              <el-form-item label="状态">
-                <el-select v-model="codeFilterForm.is_active" clearable placeholder="全部" class="status-filter" @change="searchCodes">
-                  <el-option label="启用" :value="true" />
-                  <el-option label="禁用" :value="false" />
-                </el-select>
-              </el-form-item>
-              <el-form-item>
-                <el-button type="primary" @click="searchCodes">搜索</el-button>
-                <el-button @click="resetCodeFilter">重置</el-button>
-              </el-form-item>
-            </el-form>
-          </div>
-          <div class="batch-actions" v-if="selectedCodes.length > 0">
-            <div class="batch-info">
-              <span>已选择 {{ selectedCodes.length }} 个邀请码</span>
-            </div>
-            <div class="batch-buttons">
-              <el-button type="danger" @click="batchDeleteCodes" :loading="batchDeleting">
-                <el-icon><Delete /></el-icon>
-                批量删除
-              </el-button>
-              <el-button @click="clearCodeSelection">
-                <el-icon><Refresh /></el-icon>
-                取消选择
-              </el-button>
-            </div>
-          </div>
-          <ResponsiveDataView
-            class="admin-invites-data"
-            :data="inviteCodes"
-            :fields="mobileCodeFields"
-            :loading="codesLoading"
-            title-field="code"
-            empty-title="暂无邀请码"
-            selectable
-            :selected-rows="selectedCodes"
-            @selection-change="handleCodeSelectionChange"
-          >
-            <template #table>
-              <el-table
-                :data="inviteCodes"
-                v-loading="codesLoading"
-                border
-                stripe
-                class="data-table"
-                :default-sort="{ prop: 'created_at', order: 'descending' }"
-                @selection-change="handleCodeSelectionChange"
-              >
-                <el-table-column type="selection" width="50" />
-                <el-table-column prop="id" label="ID" width="80" />
-                <el-table-column prop="code" label="邀请码" min-width="120">
-                  <template #default="scope">
-                    <el-tag>{{ scope.row.code }}</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="username" label="邀请人" min-width="150">
-                  <template #default="scope">
-                    <div>
-                      <div>{{ scope.row.username || '未知用户' }}</div>
-                      <div class="muted-cell">{{ scope.row.user_email || scope.row.email || '无邮箱' }}</div>
-                    </div>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="used_count" label="已使用" width="100" align="center">
-                  <template #default="scope">
-                    <span>{{ scope.row.used_count }} / {{ scope.row.max_uses || '∞' }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="inviter_reward" label="邀请人奖励" width="120" align="right">
-                  <template #default="scope">
-                    <span class="money-value money-success">¥{{ (scope.row.inviter_reward || 0).toFixed(2) }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="invitee_reward" label="被邀请人奖励" width="140" align="right">
-                  <template #default="scope">
-                    <span class="money-value money-primary">¥{{ (scope.row.invitee_reward || 0).toFixed(2) }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="expires_at" label="过期时间" width="180" class-name="expires-column">
-                  <template #default="scope">
-                    <span v-if="scope.row.expires_at">{{ formatDate(scope.row.expires_at) }}</span>
-                    <span v-else class="muted-text">永不过期</span>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="is_active" label="状态" width="100" align="center">
-                  <template #default="scope">
-                    <el-tag :type="scope.row.is_active ? 'success' : 'danger'">
-                      {{ scope.row.is_active ? '启用' : '禁用' }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="created_at" label="创建时间" width="180" sortable="custom">
-                  <template #default="scope">
-                    {{ formatDate(scope.row.created_at) }}
-                  </template>
-                </el-table-column>
-              </el-table>
-            </template>
-            <template #header="{ item }">
-              <div class="mobile-invite-header">
-                <span>{{ item.code }}</span>
-                <el-tag :type="item.is_active ? 'success' : 'danger'" size="small">
-                  {{ item.is_active ? '启用' : '禁用' }}
-                </el-tag>
-              </div>
-            </template>
-          </ResponsiveDataView>
-          <PaginationBar
-            v-model:current-page="codePage"
-            v-model:page-size="codePageSize"
-            :total="codeTotal"
-            @change="loadInviteCodes"
-          />
-        </el-tab-pane>
-        <el-tab-pane label="邀请关系" name="relations">
-          <div class="mobile-action-bar" v-if="isMobile">
-            <div class="mobile-search-section">
-              <div class="search-input-wrapper">
-                <el-input
-                  v-model="relationFilterForm.inviter_query"
-                  placeholder="邀请人账号或邮箱"
-                  clearable
-                  class="mobile-search-input"
-                  @input="debouncedSearchRelations"
-                  @clear="searchRelations"
-                  @keyup.enter="searchRelations"
-                />
-                <el-button 
-                  @click="searchRelations" 
-                  class="search-button-inside"
-                  type="default"
-                  plain
-                >
-                  <el-icon><Search /></el-icon>
-                </el-button>
-              </div>
-            </div>
-            <div class="mobile-filter-buttons">
-              <el-button 
-                size="small" 
-                type="default" 
-                plain
-                @click="resetRelationFilter"
-              >
-                <el-icon><Refresh /></el-icon>
-                重置
-              </el-button>
-            </div>
-            <div class="mobile-search-section secondary-search">
-              <div class="search-input-wrapper">
-                <el-input
-                  v-model="relationFilterForm.invitee_query"
-                  placeholder="被邀请人账号或邮箱"
-                  clearable
-                  class="mobile-search-input"
-                  @input="debouncedSearchRelations"
-                  @clear="searchRelations"
-                  @keyup.enter="searchRelations"
-                />
-                <el-button 
-                  @click="searchRelations" 
-                  class="search-button-inside"
-                  type="default"
-                  plain
-                >
-                  <el-icon><Search /></el-icon>
-                </el-button>
-              </div>
-            </div>
-          </div>
-          <div class="desktop-only filter-section">
-            <el-form :inline="true" :model="relationFilterForm" class="filter-form">
-              <el-form-item label="邀请人">
-                <el-input
-                  v-model="relationFilterForm.inviter_query"
-                  placeholder="账号或邮箱"
-                  clearable
-                  class="filter-input"
-                  @input="debouncedSearchRelations"
-                  @clear="searchRelations"
-                  @keyup.enter="searchRelations"
-                />
-              </el-form-item>
-              <el-form-item label="被邀请人">
-                <el-input
-                  v-model="relationFilterForm.invitee_query"
-                  placeholder="账号或邮箱"
-                  clearable
-                  class="filter-input"
-                  @input="debouncedSearchRelations"
-                  @clear="searchRelations"
-                  @keyup.enter="searchRelations"
-                />
-              </el-form-item>
-              <el-form-item>
-                <el-button type="primary" @click="searchRelations">搜索</el-button>
-                <el-button @click="resetRelationFilter">重置</el-button>
-              </el-form-item>
-            </el-form>
-          </div>
-          <div class="batch-actions" v-if="selectedRelations.length > 0">
-            <div class="batch-info">
-              <span>已选择 {{ selectedRelations.length }} 条邀请关系</span>
-            </div>
-            <div class="batch-buttons">
-              <el-button type="danger" @click="batchDeleteRelations" :loading="batchDeleting">
-                <el-icon><Delete /></el-icon>
-                批量删除
-              </el-button>
-              <el-button @click="clearRelationSelection">
-                <el-icon><Refresh /></el-icon>
-                取消选择
-              </el-button>
-            </div>
-          </div>
-          <ResponsiveDataView
-            class="admin-invites-data"
-            :data="inviteRelations"
-            :fields="mobileRelationFields"
-            :loading="relationsLoading"
-            title-field="invite_code"
-            empty-title="暂无邀请关系"
-            selectable
-            :selected-rows="selectedRelations"
-            @selection-change="handleRelationSelectionChange"
-          >
-            <template #table>
-              <el-table
-                :data="inviteRelations"
-                v-loading="relationsLoading"
-                border
-                stripe
-                class="data-table"
-                @selection-change="handleRelationSelectionChange"
-              >
-                <el-table-column type="selection" width="50" />
-                <el-table-column prop="id" label="ID" width="80" />
-                <el-table-column prop="invite_code" label="邀请码" width="150">
-                  <template #default="scope">
-                    <el-tag>{{ scope.row.invite_code }}</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="inviter_username" label="邀请人" width="180">
-                  <template #default="scope">
-                    <div>
-                      <div>{{ scope.row.inviter_username }}</div>
-                      <div class="muted-cell">{{ scope.row.inviter_email || '无邮箱' }}</div>
-                    </div>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="invitee_username" label="被邀请人" width="180">
-                  <template #default="scope">
-                    <div>
-                      <div>{{ scope.row.invitee_username }}</div>
-                      <div class="muted-cell">{{ scope.row.invitee_email || '无邮箱' }}</div>
-                    </div>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="inviter_reward_amount" label="邀请人奖励" width="140" align="right">
-                  <template #default="scope">
-                    <div>
-                      <span class="money-value money-success">¥{{ (scope.row.inviter_reward_amount || 0).toFixed(2) }}</span>
-                      <el-tag
-                        :type="scope.row.inviter_reward_given ? 'success' : 'warning'"
-                        size="small"
-                        class="reward-status-tag"
-                      >
-                        {{ scope.row.inviter_reward_given ? '已发放' : '未发放' }}
-                      </el-tag>
-                    </div>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="invitee_reward_amount" label="被邀请人奖励" width="140" align="right">
-                  <template #default="scope">
-                    <div>
-                      <span class="money-value money-primary">¥{{ (scope.row.invitee_reward_amount || 0).toFixed(2) }}</span>
-                      <el-tag
-                        :type="scope.row.invitee_reward_given ? 'success' : 'warning'"
-                        size="small"
-                        class="reward-status-tag"
-                      >
-                        {{ scope.row.invitee_reward_given ? '已发放' : '未发放' }}
-                      </el-tag>
-                    </div>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="invitee_total_consumption" label="累计消费" width="120" align="right">
-                  <template #default="scope">
-                    <span class="money-value money-warning">¥{{ (scope.row.invitee_total_consumption || 0).toFixed(2) }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="created_at" label="注册时间" width="180">
-                  <template #default="scope">
-                    {{ formatDate(scope.row.created_at) }}
-                  </template>
-                </el-table-column>
-              </el-table>
-            </template>
-            <template #header="{ item }">
-              <div class="mobile-invite-header">
-                <span>{{ item.invite_code || '-' }}</span>
-                <el-tag :type="item.invitee_reward_given ? 'success' : 'warning'" size="small">
-                  {{ item.invitee_reward_given ? '奖励已发放' : '奖励未发放' }}
-                </el-tag>
-              </div>
-            </template>
-          </ResponsiveDataView>
-          <PaginationBar
-            v-model:current-page="relationPage"
-            v-model:page-size="relationPageSize"
-            :total="relationTotal"
-            @change="loadInviteRelations"
-          />
-        </el-tab-pane>
-        <el-tab-pane label="邀请统计" name="statistics">
-          <el-row :gutter="20" class="statistics-row">
-            <el-col :xs="12" :sm="12" :md="6">
-              <el-card shadow="never" class="stat-card">
-                <div class="stat-content">
-                  <div class="stat-value stat-primary">
-                    {{ statistics?.total_codes || 0 }}
-                  </div>
-                  <div class="stat-label">总邀请码数</div>
+
+      <div class="invite-toolbar">
+        <el-input
+          v-model="keyword"
+          class="invite-search"
+          placeholder="搜索邀请人用户名 / 邮箱 / ID"
+          clearable
+          @input="debouncedSearch"
+          @keyup.enter="searchNow"
+          @clear="searchNow"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+      </div>
+
+      <ResponsiveDataView
+        :data="inviters"
+        :fields="inviterFields"
+        id-field="inviter_id"
+        title-field="username"
+        :loading="loading"
+        :error="error || false"
+        empty-title="暂无邀请数据"
+        empty-description="还没有用户通过邀请码成功邀请他人"
+        @retry="loadInviters"
+      >
+        <template #table>
+          <el-table :data="inviters" v-loading="loading" class="data-table" style="width: 100%">
+            <el-table-column label="邀请人" min-width="220">
+              <template #default="{ row }">
+                <div class="cell-user">
+                  <span class="cell-user__name">{{ row.username || '未知用户' }}</span>
+                  <span class="cell-user__meta">
+                    ID {{ row.inviter_id }}<template v-if="row.email"> · {{ row.email }}</template>
+                  </span>
                 </div>
-              </el-card>
-            </el-col>
-            <el-col :xs="12" :sm="12" :md="6">
-              <el-card shadow="never" class="stat-card">
-                <div class="stat-content">
-                  <div class="stat-value stat-success">
-                    {{ statistics?.total_relations || 0 }}
-                  </div>
-                  <div class="stat-label">总邀请关系数</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="现存邀请码" width="110" align="center">
+              <template #default="{ row }">{{ row.code_count || 0 }} 个</template>
+            </el-table-column>
+            <el-table-column label="已邀请" width="100" align="center">
+              <template #default="{ row }">
+                <span class="cell-strong">{{ row.invited_count || 0 }}</span> 人
+              </template>
+            </el-table-column>
+            <el-table-column label="已消费" width="110" align="center">
+              <template #default="{ row }">
+                <span class="cell-strong">{{ row.purchased_count || 0 }}</span> 人
+              </template>
+            </el-table-column>
+            <el-table-column label="累计消费" width="130" align="right">
+              <template #default="{ row }">
+                <span class="money-value">¥{{ money(row.consumption) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="奖励" width="150" align="right">
+              <template #default="{ row }">
+                <div class="cell-reward">
+                  <span class="reward-given">已发 ¥{{ money(row.reward_given) }}</span>
+                  <span class="reward-pending" :class="{ 'is-zero': !(row.reward_pending > 0) }">
+                    待发 ¥{{ money(row.reward_pending) }}
+                  </span>
                 </div>
-              </el-card>
-            </el-col>
-            <el-col :xs="12" :sm="12" :md="6">
-              <el-card shadow="never" class="stat-card">
-                <div class="stat-content">
-                  <div class="stat-value stat-warning">
-                    ¥{{ (statistics?.total_reward || 0).toFixed(2) }}
-                  </div>
-                  <div class="stat-label">总奖励金额</div>
-                </div>
-              </el-card>
-            </el-col>
-            <el-col :xs="12" :sm="12" :md="6">
-              <el-card shadow="never" class="stat-card">
-                <div class="stat-content">
-                  <div class="stat-value stat-danger">
-                    ¥{{ (statistics?.total_consumption || 0).toFixed(2) }}
-                  </div>
-                  <div class="stat-label">被邀请人总消费</div>
-                </div>
-              </el-card>
-            </el-col>
-          </el-row>
-        </el-tab-pane>
-      </el-tabs>
+              </template>
+            </el-table-column>
+            <el-table-column label="最近邀请" width="170" align="center">
+              <template #default="{ row }">{{ formatDateTimeSafe(row.last_invited_at) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="90" align="center" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </template>
+
+        <template #actions="{ item }">
+          <el-button size="small" type="primary" plain @click="openDetail(item)">查看详情</el-button>
+        </template>
+      </ResponsiveDataView>
+
+      <PaginationBar
+        :current-page="page"
+        :page-size="pageSize"
+        :total="total"
+        @current-change="handlePageChange"
+        @size-change="handleSizeChange"
+      />
     </el-card>
+
+    <!-- 邀请人详情：邀请码 + 邀请关系（列表点「详情」后展开） -->
+    <AppDrawer
+      v-model="detailVisible"
+      :title="detailTitle"
+      size="820px"
+      mobile-size="100%"
+      :loading="detailLoading"
+    >
+      <div v-loading="detailLoading" class="inviter-detail">
+        <template v-if="detail">
+          <div class="detail-summary">
+            <div v-for="item in detailSummaryCards" :key="item.label" class="detail-summary__item">
+              <div class="detail-summary__value">{{ item.value }}</div>
+              <div class="detail-summary__label">{{ item.label }}</div>
+            </div>
+          </div>
+
+          <section class="detail-section">
+            <h4 class="detail-section__title">基本信息</h4>
+            <div class="detail-info">
+              <div class="detail-info__row">
+                <span class="detail-info__label">用户名</span>
+                <span class="detail-info__value">{{ detail.user.username || '-' }}</span>
+              </div>
+              <div class="detail-info__row">
+                <span class="detail-info__label">邮箱</span>
+                <span class="detail-info__value">{{ detail.user.email || '-' }}</span>
+              </div>
+              <div class="detail-info__row">
+                <span class="detail-info__label">用户 ID</span>
+                <span class="detail-info__value">{{ detail.user.id }}</span>
+              </div>
+              <div class="detail-info__row">
+                <span class="detail-info__label">账户余额</span>
+                <span class="detail-info__value money-value">¥{{ money(detail.user.balance) }}</span>
+              </div>
+              <div class="detail-info__row">
+                <span class="detail-info__label">注册时间</span>
+                <span class="detail-info__value">{{ formatDateTimeSafe(detail.user.created_at) }}</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="detail-section">
+            <h4 class="detail-section__title">
+              邀请码
+              <span class="detail-section__count">{{ detail.codes.length }}</span>
+            </h4>
+            <ResponsiveDataView
+              :data="detail.codes"
+              :fields="codeFields"
+              id-field="id"
+              title-field="code"
+              :loading="detailLoading"
+              empty-title="暂无邀请码"
+              empty-description="该用户名下没有有效邀请码（已删除的邀请码不在列表中，但邀请关系会保留）"
+            >
+              <template #table>
+                <el-table :data="detail.codes" class="data-table" style="width: 100%">
+                  <el-table-column label="邀请码" min-width="140">
+                    <template #default="{ row }">
+                      <span class="code-text">{{ row.code }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="已使用" width="90" align="center">
+                    <template #default="{ row }">{{ row.used_count || 0 }} 次</template>
+                  </el-table-column>
+                  <el-table-column label="状态" width="90" align="center">
+                    <template #default="{ row }">
+                      <el-tag :type="row.is_active ? 'success' : 'info'" size="small">
+                        {{ row.is_active ? '启用' : '已禁用' }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="邀请人奖励" width="110" align="right">
+                    <template #default="{ row }">¥{{ money(row.inviter_reward) }}</template>
+                  </el-table-column>
+                  <el-table-column label="被邀请人奖励" width="120" align="right">
+                    <template #default="{ row }">¥{{ money(row.invitee_reward) }}</template>
+                  </el-table-column>
+                  <el-table-column label="创建时间" width="170" align="center">
+                    <template #default="{ row }">{{ formatDateTimeSafe(row.created_at) }}</template>
+                  </el-table-column>
+                  <el-table-column label="操作" width="80" align="center" fixed="right">
+                    <template #default="{ row }">
+                      <el-button link type="danger" @click="removeCode(row)">删除</el-button>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </template>
+              <template #actions="{ item }">
+                <el-button size="small" type="danger" plain @click="removeCode(item)">删除邀请码</el-button>
+              </template>
+            </ResponsiveDataView>
+          </section>
+
+          <section class="detail-section">
+            <h4 class="detail-section__title">
+              邀请关系
+              <span class="detail-section__count">{{ detail.relations.length }}</span>
+            </h4>
+            <ResponsiveDataView
+              :data="detail.relations"
+              :fields="relationFields"
+              id-field="invitee_id"
+              title-field="invitee_username"
+              :loading="detailLoading"
+              empty-title="暂无邀请关系"
+              empty-description="该用户还没有成功邀请他人"
+            >
+              <template #table>
+                <el-table :data="detail.relations" class="data-table" style="width: 100%">
+                  <el-table-column label="被邀请人" min-width="180">
+                    <template #default="{ row }">
+                      <div class="cell-user">
+                        <span class="cell-user__name">
+                          {{ row.invitee_username || `用户 ${row.invitee_id}` }}
+                        </span>
+                        <span class="cell-user__meta">
+                          ID {{ row.invitee_id }}<template v-if="row.invitee_email"> · {{ row.invitee_email }}</template>
+                        </span>
+                      </div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="注册时间" width="170" align="center">
+                    <template #default="{ row }">{{ formatDateTimeSafe(row.created_at) }}</template>
+                  </el-table-column>
+                  <el-table-column label="是否消费" width="100" align="center">
+                    <template #default="{ row }">
+                      <el-tag :type="row.has_purchased ? 'success' : 'info'" size="small">
+                        {{ row.has_purchased ? '已消费' : '未消费' }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="消费金额" width="120" align="right">
+                    <template #default="{ row }">
+                      <span class="money-value">¥{{ money(row.total_consumption) }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="奖励" width="150" align="center">
+                    <template #default="{ row }">
+                      <el-tag :type="row.reward_given ? 'success' : 'warning'" size="small">
+                        {{ row.status_text || (row.reward_given ? '已发放' : '未发放') }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </template>
+            </ResponsiveDataView>
+          </section>
+        </template>
+      </div>
+      <template #footer>
+        <el-button @click="detailVisible = false">关闭</el-button>
+        <el-button type="primary" @click="openUserDetail">查看完整用户详情</el-button>
+      </template>
+    </AppDrawer>
+
+    <!-- 邀请设置（保留原有入口，避免能力丢失） -->
     <AppDrawer
       v-model="showSettingsDialog"
       title="邀请设置"
       size="500px"
       mobile-size="100%"
       :loading="savingSettings"
-      class="settings-drawer"
     >
       <div class="settings-dialog-content">
         <el-alert
@@ -474,9 +304,9 @@
         >
           <template #default>
             <div class="alert-content">
-              <p><strong>邀请人奖励：</strong>当被邀请人首次购买套餐后，邀请人将获得的奖励金额（元）</p>
+              <p><strong>邀请人奖励：</strong>被邀请人首次购买套餐后，邀请人获得的奖励金额（元）</p>
               <p><strong>被邀请人奖励：</strong>新用户使用邀请码注册后，立即获得的奖励金额（元）</p>
-              <p class="alert-note">注意：此设置将应用于所有新生成的邀请码，已生成的邀请码不受影响</p>
+              <p class="alert-note">注意：此设置应用于之后新生成的邀请码，已生成的邀请码不受影响</p>
             </div>
           </template>
         </el-alert>
@@ -486,12 +316,12 @@
               <div class="form-item-label">邀请人奖励（元）</div>
               <el-input-number
                 v-model="inviteSettings.inviter_reward"
-                :min="0" 
+                :min="0"
                 :max="10000"
                 :precision="2"
                 :step="1"
+                controls-position="right"
                 class="settings-input-number"
-                :controls-position="isMobile ? 'right' : 'right'"
               />
             </div>
           </el-form-item>
@@ -500,12 +330,12 @@
               <div class="form-item-label">被邀请人奖励（元）</div>
               <el-input-number
                 v-model="inviteSettings.invitee_reward"
-                :min="0" 
+                :min="0"
                 :max="10000"
                 :precision="2"
                 :step="1"
+                controls-position="right"
                 class="settings-input-number"
-                :controls-position="isMobile ? 'right' : 'right'"
               />
             </div>
           </el-form-item>
@@ -523,40 +353,316 @@
     </AppDrawer>
   </div>
 </template>
+
 <script setup>
 defineOptions({ name: 'AdminInvites' })
 
-import { computed, ref, reactive, onMounted, onActivated} from 'vue'
+import { computed, reactive, ref, onMounted, onActivated } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { Search, Filter, Refresh, Setting, Delete } from '@element-plus/icons-vue'
+import { Search, Refresh, Setting } from '@element-plus/icons-vue'
 import { inviteAPI } from '@/utils/api'
 import { useApi } from '@/utils/api'
 import { formatDateTimeSafe } from '@/utils/date'
-import { useMobile } from '@/composables/useMobile'
 import { debounce } from '@/composables/useDebounce'
+import { confirmDelete } from '@/utils/confirmAction'
 import AppDrawer from '@/components/AppDrawer.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
-import { confirmDelete } from '@/utils/confirmAction'
+
 const api = useApi()
-const activeTab = ref('codes')
-const codesLoading = ref(false)
-const relationsLoading = ref(false)
-const savingSettings = ref(false)
-const isMobile = useMobile()
-const showSettingsDialog = ref(false)
-const selectedCodes = ref([])
-const selectedRelations = ref([])
-const batchDeleting = ref(false)
-const inviteSettings = reactive({
-  inviter_reward: 0.0,
-  invitee_reward: 0.0
+const router = useRouter()
+
+const money = (value) => Number(value || 0).toFixed(2)
+
+// ---------------------------------------------------------------------------
+// 顶部统计
+// ---------------------------------------------------------------------------
+const statsLoading = ref(false)
+const stats = reactive({
+  total_codes: 0,
+  active_codes: 0,
+  total_relations: 0,
+  total_inviters: 0,
+  purchased_count: 0,
+  total_consumption: 0,
+  reward_given_amount: 0,
+  reward_pending_amount: 0,
 })
-const loadInviteSettings = async () => {
+
+const loadStats = async () => {
+  statsLoading.value = true
+  try {
+    const response = await inviteAPI.getAdminInviteStatistics()
+    const data = response?.data?.data || response?.data || {}
+    Object.assign(stats, {
+      total_codes: Number(data.total_codes ?? data.total_invite_codes ?? 0),
+      active_codes: Number(data.active_codes ?? data.active_invite_codes ?? 0),
+      total_relations: Number(data.total_relations ?? data.total_invite_relations ?? 0),
+      total_inviters: Number(data.total_inviters ?? 0),
+      purchased_count: Number(data.purchased_count ?? 0),
+      total_consumption: Number(data.total_consumption ?? 0),
+      reward_given_amount: Number(data.reward_given_amount ?? data.total_invite_reward ?? 0),
+      reward_pending_amount: Number(data.reward_pending_amount ?? 0),
+    })
+  } catch (error) {
+    console.error('加载邀请统计失败:', error)
+    ElMessage.error('加载邀请统计失败: ' + (error.response?.data?.message || error.message || '未知错误'))
+  } finally {
+    statsLoading.value = false
+  }
+}
+
+const purchasedRate = computed(() => {
+  if (!stats.total_relations) return 0
+  return Math.round((stats.purchased_count / stats.total_relations) * 100)
+})
+
+const overviewCards = computed(() => [
+  {
+    label: '邀请码',
+    value: stats.total_codes,
+    hint: `生效中 ${stats.active_codes}`,
+    tone: 'default',
+  },
+  {
+    label: '邀请人',
+    value: stats.total_inviters,
+    hint: `共邀请 ${stats.total_relations} 人`,
+    tone: 'default',
+  },
+  {
+    label: '被邀请人已消费',
+    value: stats.purchased_count,
+    hint: `转化率 ${purchasedRate.value}%`,
+    tone: 'success',
+  },
+  {
+    label: '被邀请人累计消费',
+    value: `¥${money(stats.total_consumption)}`,
+    hint: '邀请带来的订单金额',
+    tone: 'success',
+  },
+  {
+    label: '已发放奖励',
+    value: `¥${money(stats.reward_given_amount)}`,
+    hint: '邀请人奖励已到账',
+    tone: 'primary',
+  },
+  {
+    label: '待发放奖励',
+    value: `¥${money(stats.reward_pending_amount)}`,
+    hint: stats.reward_pending_amount > 0 ? '达标但尚未到账' : '没有待发放奖励',
+    tone: stats.reward_pending_amount > 0 ? 'warning' : 'default',
+  },
+])
+
+// ---------------------------------------------------------------------------
+// 邀请人列表（唯一列表）
+// ---------------------------------------------------------------------------
+const loading = ref(false)
+const error = ref('')
+const inviters = ref([])
+const keyword = ref('')
+const page = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
+
+// 并发保护：keep-alive 首次进入时 onMounted 与 onActivated 会先后触发同一份请求，
+// 用序号保证只有最后一次请求的结果（含失败）能写回状态，避免旧请求把新数据清空。
+let loadSeq = 0
+
+const loadInviters = async () => {
+  const seq = ++loadSeq
+  loading.value = true
+  error.value = ''
+  try {
+    const response = await inviteAPI.getAdminInviteInviters({
+      page: page.value,
+      size: pageSize.value,
+      keyword: keyword.value.trim(),
+    })
+    if (seq !== loadSeq) return
+    const data = response?.data?.data || response?.data || {}
+    inviters.value = data.list || data.items || []
+    total.value = Number(data.total || 0)
+  } catch (err) {
+    if (seq !== loadSeq) return
+    console.error('加载邀请人列表失败:', err)
+    error.value = err.response?.data?.message || err.message || '加载邀请人列表失败'
+    inviters.value = []
+    total.value = 0
+  } finally {
+    if (seq === loadSeq) loading.value = false
+  }
+}
+
+const debouncedSearch = debounce(() => {
+  page.value = 1
+  loadInviters()
+}, 350)
+
+const searchNow = () => {
+  page.value = 1
+  loadInviters()
+}
+
+const handlePageChange = (value) => {
+  page.value = value
+  loadInviters()
+}
+
+const handleSizeChange = (value) => {
+  pageSize.value = value
+  page.value = 1
+  loadInviters()
+}
+
+const refreshAll = () => {
+  loadStats()
+  loadInviters()
+  ElMessage.success('已刷新')
+}
+
+const inviterFields = [
+  // 移动端卡片标题已经是用户名（titleField），这里不再重复一行，直接给联系方式与聚合数据
+  { key: 'email', label: '邮箱', fullWidth: true, formatter: v => v || '-' },
+  { key: 'code_count', label: '现存邀请码', formatter: v => `${v || 0} 个` },
+  { key: 'invited_count', label: '已邀请人数', formatter: v => `${v || 0} 人` },
+  { key: 'purchased_count', label: '已消费人数', formatter: v => `${v || 0} 人` },
+  { key: 'consumption', label: '累计消费', type: 'money' },
+  { key: 'reward_given', label: '已发奖励', type: 'money' },
+  { key: 'reward_pending', label: '待发奖励', type: 'money' },
+  { key: 'last_invited_at', label: '最近邀请', type: 'date' },
+]
+
+// ---------------------------------------------------------------------------
+// 详情抽屉
+// ---------------------------------------------------------------------------
+const detailVisible = ref(false)
+const detailLoading = ref(false)
+const detail = ref(null)
+
+const detailTitle = computed(() => {
+  const name = detail.value?.user?.username
+  return name ? `${name} 的邀请详情` : '邀请详情'
+})
+
+const detailSummaryCards = computed(() => {
+  const summary = detail.value?.summary || {}
+  return [
+    { label: '邀请人数', value: summary.registered || 0 },
+    { label: '已消费', value: summary.purchased || 0 },
+    { label: '累计消费', value: `¥${money(summary.total_consumption)}` },
+    { label: '已发奖励', value: `¥${money(summary.total_reward)}` },
+    { label: '待发奖励', value: `¥${money(summary.pending_reward)}` },
+  ]
+})
+
+const openDetail = async (row) => {
+  const inviterId = row?.inviter_id || row?.id
+  if (!inviterId) return
+  detailVisible.value = true
+  detailLoading.value = true
+  detail.value = null
+  try {
+    const response = await inviteAPI.getAdminInviterDetail(inviterId)
+    const data = response?.data?.data || response?.data || {}
+    detail.value = {
+      user: data.user || {},
+      codes: data.codes || [],
+      relations: data.relations || [],
+      summary: data.summary || {},
+    }
+  } catch (err) {
+    ElMessage.error('加载邀请详情失败: ' + (err.response?.data?.message || err.message || '未知错误'))
+    detailVisible.value = false
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+const openUserDetail = () => {
+  const userId = detail.value?.user?.id
+  if (!userId) return
+  detailVisible.value = false
+  router.push({ path: '/admin/users', query: { user_id: String(userId) } })
+}
+
+const removeCode = async (row) => {
+  try {
+    await confirmDelete('邀请码', 1, {
+      message: row.used_count > 0
+        ? `邀请码「${row.code}」已被使用 ${row.used_count} 次，删除后将被禁用（保留已产生的邀请关系）。确认继续？`
+        : `确定删除邀请码「${row.code}」吗？删除后不可恢复。`,
+    })
+  } catch (err) {
+    return
+  }
+  try {
+    const response = await inviteAPI.batchDeleteInviteCodes([row.id])
+    const data = response?.data?.data || {}
+    const deleted = data.deleted_count || 0
+    const disabled = data.disabled_count || 0
+    let message = `已删除 ${deleted} 个邀请码`
+    if (disabled > 0) message += `，已禁用 ${disabled} 个已使用的邀请码`
+    ElMessage.success(message)
+    // 就地更新，避免整页刷新导致抽屉关闭
+    if (detail.value) {
+      detail.value.codes = detail.value.codes.filter(item => item.id !== row.id)
+    }
+    loadStats()
+    loadInviters()
+  } catch (err) {
+    ElMessage.error('删除邀请码失败: ' + (err.response?.data?.message || err.message || '未知错误'))
+  }
+}
+
+const codeFields = [
+  { key: 'used_count', label: '已使用', formatter: v => `${v || 0} 次` },
+  {
+    key: 'is_active',
+    label: '状态',
+    type: 'tag',
+    tagType: v => (v ? 'success' : 'info'),
+    formatter: v => (v ? '启用' : '已禁用'),
+  },
+  { key: 'inviter_reward', label: '邀请人奖励', type: 'money' },
+  { key: 'invitee_reward', label: '被邀请人奖励', type: 'money' },
+  { key: 'created_at', label: '创建时间', type: 'date' },
+]
+
+const relationFields = [
+  // 移动端卡片标题即被邀请人用户名（titleField），这里只列明细字段
+  { key: 'invitee_email', label: '邮箱', fullWidth: true, formatter: v => v || '-' },
+  {
+    key: 'has_purchased',
+    label: '是否消费',
+    type: 'tag',
+    tagType: v => (v ? 'success' : 'info'),
+    formatter: v => (v ? '已消费' : '未消费'),
+  },
+  { key: 'total_consumption', label: '消费金额', type: 'money' },
+  { key: 'created_at', label: '注册时间', type: 'date' },
+  { key: 'status_text', label: '奖励状态' },
+]
+
+// ---------------------------------------------------------------------------
+// 邀请设置
+// ---------------------------------------------------------------------------
+const showSettingsDialog = ref(false)
+const savingSettings = ref(false)
+const inviteSettings = reactive({
+  inviter_reward: 0,
+  invitee_reward: 0,
+})
+
+const openSettings = async () => {
+  showSettingsDialog.value = true
   try {
     const response = await api.get('/admin/settings')
-    const settings = response.data?.data || response.data || {}
+    const settings = response?.data?.data || response?.data || {}
     if (settings.invite) {
       Object.assign(inviteSettings, settings.invite)
     }
@@ -565,6 +671,7 @@ const loadInviteSettings = async () => {
     ElMessage.error('加载邀请设置失败: ' + (error.response?.data?.message || error.message || '未知错误'))
   }
 }
+
 const saveInviteSettings = async () => {
   savingSettings.value = true
   try {
@@ -573,385 +680,24 @@ const saveInviteSettings = async () => {
     showSettingsDialog.value = false
   } catch (error) {
     console.error('保存邀请设置失败:', error)
-    ElMessage.error('保存失败: ' + (error.response?.data?.message || error.message || '未知错误'))
+    ElMessage.error('保存邀请设置失败: ' + (error.response?.data?.message || error.message || '未知错误'))
   } finally {
     savingSettings.value = false
   }
 }
-const inviteCodes = ref([])
-const codePage = ref(1)
-const codePageSize = ref(10)
-const codeTotal = ref(0)
-const codeFilterForm = reactive({
-  user_query: '',
-  code: '',
-  is_active: null
-})
-const inviteRelations = ref([])
-const relationPage = ref(1)
-const relationPageSize = ref(10)
-const relationTotal = ref(0)
-const relationFilterForm = reactive({
-  inviter_query: '',
-  invitee_query: ''
-})
-const mobileCodeFields = computed(() => [
-  { key: 'username', label: '邀请人', formatter: value => value || '-' },
-  { key: 'user_email', label: '邮箱', formatter: value => value || '-' },
-  { key: 'used_count', label: '已使用', formatter: (_value, row) => `${row.used_count || 0} / ${row.max_uses_display || row.max_uses || '∞'}` },
-  { key: 'inviter_reward', label: '邀请人奖励', formatter: value => `¥${(value || 0).toFixed(2)}` },
-  { key: 'invitee_reward', label: '被邀请人奖励', formatter: value => `¥${(value || 0).toFixed(2)}` },
-  { key: 'expires_at', label: '过期时间', formatter: value => value ? formatDate(value) : '永不过期' },
-  {
-    key: 'is_active',
-    label: '状态',
-    type: 'tag',
-    tagType: value => value ? 'success' : 'danger',
-    formatter: value => value ? '启用' : '禁用'
-  },
-  { key: 'created_at', label: '创建时间', formatter: value => formatDate(value) }
-])
-const mobileRelationFields = computed(() => [
-  { key: 'inviter_username', label: '邀请人', formatter: value => value || '-' },
-  { key: 'inviter_email', label: '邀请人邮箱', formatter: value => value || '-' },
-  { key: 'invitee_username', label: '被邀请人', formatter: value => value || '-' },
-  { key: 'invitee_email', label: '被邀请人邮箱', formatter: value => value || '-' },
-  { key: 'inviter_reward_amount', label: '邀请人奖励', formatter: value => `¥${(value || 0).toFixed(2)}` },
-  {
-    key: 'inviter_reward_given',
-    label: '邀请人奖励状态',
-    type: 'tag',
-    tagType: value => value ? 'success' : 'warning',
-    formatter: value => value ? '已发放' : '未发放'
-  },
-  { key: 'invitee_reward_amount', label: '被邀请人奖励', formatter: value => `¥${(value || 0).toFixed(2)}` },
-  {
-    key: 'invitee_reward_given',
-    label: '被邀请人奖励状态',
-    type: 'tag',
-    tagType: value => value ? 'success' : 'warning',
-    formatter: value => value ? '已发放' : '未发放'
-  },
-  { key: 'invitee_total_consumption', label: '累计消费', formatter: value => `¥${(value || 0).toFixed(2)}` },
-  { key: 'created_at', label: '注册时间', formatter: value => formatDate(value) }
-])
-const statistics = reactive({
-  total_codes: 0,
-  total_relations: 0,
-  total_reward: 0,
-  total_consumption: 0
-})
-const loadInviteCodes = async () => {
-  codesLoading.value = true
-  try {
-    const params = {
-      page: codePage.value,
-      size: codePageSize.value
-    }
-    if (codeFilterForm.user_query) {
-      params.user_query = codeFilterForm.user_query
-    }
-    if (codeFilterForm.code) {
-      params.code = codeFilterForm.code
-    }
-    if (codeFilterForm.is_active !== null) {
-      params.is_active = codeFilterForm.is_active
-    }
-    const response = await inviteAPI.getAllInviteCodes(params)
-    if (response && response.data) {
-      const responseData = response.data
-      let codeList = []
-      if (responseData.success !== false && responseData.data) {
-        codeList = responseData.data.invite_codes || []
-        codeTotal.value = responseData.data.total || 0
-      } 
-      else if (responseData.invite_codes) {
-        codeList = Array.isArray(responseData.invite_codes) ? responseData.invite_codes : []
-        codeTotal.value = responseData.total || codeList.length
-      }
-      else if (responseData.success === false) {
-        const errorMsg = responseData.message || '获取邀请码列表失败'
-        ElMessage.error(errorMsg)
-        codeList = []
-        codeTotal.value = 0
-      }
-      else {
-        codeList = []
-        codeTotal.value = 0
-      }
-      inviteCodes.value = codeList.map(code => {
-        let maxUsesDisplay = null;
-        if (code.max_uses && typeof code.max_uses === 'object' && code.max_uses.Valid) {
-          maxUsesDisplay = code.max_uses.Int64;
-        } else if (typeof code.max_uses === 'number') {
-          maxUsesDisplay = code.max_uses;
-        }
-        return {
-          ...code,
-          is_active: code.is_active === true || code.is_active === 1 || code.is_active === '1',
-          username: code.username || code.user?.username || '未知用户',
-          user_email: code.user_email || code.email || code.user?.email || code.User?.Email || '无邮箱',
-          max_uses_display: maxUsesDisplay,
-        };
-      })
-    } else {
-      inviteCodes.value = []
-      codeTotal.value = 0
-    }
-  } catch (error) {
-    console.error('加载邀请码列表失败:', error)
-    const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '未知错误'
-    ElMessage.error('加载邀请码列表失败: ' + errorMsg)
-    inviteCodes.value = []
-    codeTotal.value = 0
-  } finally {
-    codesLoading.value = false
-  }
-}
-const loadInviteRelations = async () => {
-  relationsLoading.value = true
-  try {
-    const params = {
-      page: relationPage.value,
-      size: relationPageSize.value
-    }
-    if (relationFilterForm.inviter_query) {
-      params.inviter_query = relationFilterForm.inviter_query
-    }
-    if (relationFilterForm.invitee_query) {
-      params.invitee_query = relationFilterForm.invitee_query
-    }
-    const response = await inviteAPI.getInviteRelations(params)
-    if (response && response.data) {
-      const responseData = response.data
-      if (responseData.success !== false && responseData.data) {
-        if (responseData.data.relations && Array.isArray(responseData.data.relations)) {
-          inviteRelations.value = responseData.data.relations.map(relation => ({
-            ...relation,
-            invite_code: relation.invite_code || '',
-            inviter_username: relation.inviter_username || '',
-            inviter_email: relation.inviter_email || '',
-            invitee_username: relation.invitee_username || '',
-            invitee_email: relation.invitee_email || '',
-            inviter_reward_amount: relation.inviter_reward_amount || 0,
-            invitee_reward_amount: relation.invitee_reward_amount || 0,
-            invitee_total_consumption: relation.invitee_total_consumption || 0,
-            inviter_reward_given: relation.inviter_reward_given || false,
-            invitee_reward_given: relation.invitee_reward_given || false
-          }))
-          relationTotal.value = responseData.data.total || 0
-        } else {
-          inviteRelations.value = []
-          relationTotal.value = 0
-        }
-      } 
-      else if (responseData.relations && Array.isArray(responseData.relations)) {
-        inviteRelations.value = responseData.relations.map(relation => ({
-          ...relation,
-          invite_code: relation.invite_code || '',
-          inviter_username: relation.inviter_username || '',
-          inviter_email: relation.inviter_email || '',
-          invitee_username: relation.invitee_username || '',
-          invitee_email: relation.invitee_email || '',
-          inviter_reward_amount: relation.inviter_reward_amount || 0,
-          invitee_reward_amount: relation.invitee_reward_amount || 0,
-          invitee_total_consumption: relation.invitee_total_consumption || 0,
-          inviter_reward_given: relation.inviter_reward_given || false,
-          invitee_reward_given: relation.invitee_reward_given || false
-        }))
-        relationTotal.value = responseData.total || inviteRelations.value.length
-      }
-      else if (responseData.success === false) {
-        const errorMsg = responseData.message || '获取邀请关系列表失败'
-        ElMessage.error(errorMsg)
-        inviteRelations.value = []
-        relationTotal.value = 0
-      }
-      else {
-        inviteRelations.value = []
-        relationTotal.value = 0
-      }
-    } else {
-      inviteRelations.value = []
-      relationTotal.value = 0
-    }
-  } catch (error) {
-    console.error('加载邀请关系列表失败:', error)
-    console.error('错误详情:', {
-      message: error.message,
-      response: error.response,
-      responseData: error.response?.data,
-      responseStatus: error.response?.status,
-      responseHeaders: error.response?.headers
-    })
-    const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '未知错误'
-    ElMessage.error('加载邀请关系列表失败: ' + errorMsg)
-    inviteRelations.value = []
-    relationTotal.value = 0
-  } finally {
-    relationsLoading.value = false
-  }
-}
-const loadStatistics = async () => {
-  try {
-    const response = await inviteAPI.getAdminInviteStatistics()
-    if (response?.data?.data) {
-      statistics.total_codes = response.data.data.total_codes || 0
-      statistics.total_relations = response.data.data.total_relations || 0
-      statistics.total_reward = response.data.data.total_reward || 0
-      statistics.total_consumption = response.data.data.total_consumption || 0
-    } else {
-      statistics.total_codes = 0
-      statistics.total_relations = 0
-      statistics.total_reward = 0
-      statistics.total_consumption = 0
-    }
-  } catch (error) {
-    console.error('加载统计数据失败:', error)
-    statistics.total_codes = 0
-    statistics.total_relations = 0
-    statistics.total_reward = 0
-    statistics.total_consumption = 0
-    try {
-      const codesResponse = await inviteAPI.getAllInviteCodes({ page: 1, size: 1 })
-      const relationsResponse = await inviteAPI.getInviteRelations({ page: 1, size: 1 })
-      if (codesResponse?.data?.data) {
-        statistics.total_codes = codesResponse.data.data.total || 0
-      }
-      if (relationsResponse?.data?.data) {
-        statistics.total_relations = relationsResponse.data.data.total || 0
-      }
-    } catch (fallbackError) {
-      console.error('获取基本信息也失败:', fallbackError)
-    }
-  }
-}
-const searchCodes = () => {
-  codePage.value = 1
-  loadInviteCodes()
-}
-// 搜索输入实时生效，无需再次点击搜索按钮（500ms 防抖）
-const debouncedSearchCodes = debounce(searchCodes, 500)
-const resetCodeFilter = () => {
-  Object.assign(codeFilterForm, {
-    user_query: '',
-    code: '',
-    is_active: null
-  })
-  searchCodes()
-}
-const searchRelations = () => {
-  relationPage.value = 1
-  loadInviteRelations()
-}
-// 搜索输入实时生效，无需再次点击搜索按钮（500ms 防抖）
-const debouncedSearchRelations = debounce(searchRelations, 500)
-const resetRelationFilter = () => {
-  Object.assign(relationFilterForm, {
-    inviter_query: '',
-    invitee_query: ''
-  })
-  searchRelations()
-}
-const handleCodeSelectionChange = (selection) => {
-  selectedCodes.value = selection
-}
-const clearCodeSelection = () => {
-  selectedCodes.value = []
-}
-const handleRelationSelectionChange = (selection) => {
-  selectedRelations.value = selection
-}
-const clearRelationSelection = () => {
-  selectedRelations.value = []
-}
-const batchDeleteCodes = async () => {
-  if (selectedCodes.value.length === 0) {
-    ElMessage.warning('请先选择要删除的邀请码')
-    return
-  }
-  try {
-    await confirmDelete(
-      `确定要删除选中的 ${selectedCodes.value.length} 个邀请码吗？已使用的邀请码将被禁用而不是删除。`,
-      '确认批量删除'
-    )
-    batchDeleting.value = true
-    const codeIds = selectedCodes.value.map(code => code.id)
-    const response = await inviteAPI.batchDeleteInviteCodes(codeIds)
-    const data = response.data?.data || {}
-    const deletedCount = data.deleted_count || 0
-    const disabledCount = data.disabled_count || 0
-    let message = `成功删除 ${deletedCount} 个邀请码`
-    if (disabledCount > 0) {
-      message += `，已禁用 ${disabledCount} 个已使用的邀请码`
-    }
-    ElMessage.success(message)
-    clearCodeSelection()
-    loadInviteCodes()
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('批量删除失败: ' + (error.response?.data?.message || error.message || '未知错误'))
-    }
-  } finally {
-    batchDeleting.value = false
-  }
-}
-const batchDeleteRelations = async () => {
-  if (selectedRelations.value.length === 0) {
-    ElMessage.warning('请先选择要删除的邀请关系')
-    return
-  }
-  try {
-    await confirmDelete(
-      `确定要删除选中的 ${selectedRelations.value.length} 条邀请关系吗？此操作不可恢复。`,
-      '确认批量删除'
-    )
-    batchDeleting.value = true
-    const relationIds = selectedRelations.value.map(relation => relation.id)
-    await inviteAPI.batchDeleteInviteRelations(relationIds)
-    ElMessage.success(`成功删除 ${selectedRelations.value.length} 条邀请关系`)
-    clearRelationSelection()
-    loadInviteRelations()
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('批量删除失败: ' + (error.response?.data?.message || error.message || '未知错误'))
-    }
-  } finally {
-    batchDeleting.value = false
-  }
-}
-const getStatusFilterText = () => {
-  if (codeFilterForm.is_active === true) return '启用'
-  if (codeFilterForm.is_active === false) return '禁用'
-  return '状态筛选'
-}
-const handleStatusFilter = (command) => {
-  if (command === '') {
-    codeFilterForm.is_active = null
-  } else if (command === 'true') {
-    codeFilterForm.is_active = true
-  } else if (command === 'false') {
-    codeFilterForm.is_active = false
-  }
-  searchCodes()
-}
-const loadData = () => {
-  loadInviteCodes()
-  loadInviteRelations()
-  loadStatistics()
-}
-const formatDate = (dateString) => {
-  return formatDateTimeSafe(dateString, 'YYYY-MM-DD HH:mm:ss', '-')
-}
+
 onMounted(() => {
-  loadInviteSettings()
-  loadData()
+  loadStats()
+  loadInviters()
 })
-// keep-alive 激活时刷新数据
+
+// AdminLayout 用 keep-alive 缓存后台页面，重新进入本页时 onMounted 不会再触发
 onActivated(() => {
-  loadData()
+  loadStats()
+  loadInviters()
 })
 </script>
+
 <style scoped lang="scss">
 .admin-invites {
   padding: 20px;
@@ -959,6 +705,82 @@ onActivated(() => {
   box-sizing: border-box;
   overflow-x: clip;
 }
+
+/* 顶部统计 */
+.invite-overview {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+
+  @media (max-width: 1280px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  @media (max-width: 768px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+}
+
+.invite-overview__item {
+  min-width: 0;
+  padding: 12px 14px;
+  background: var(--card-bg, #fff);
+  border: 1px solid #ebeef5;
+  border-left: 3px solid #dcdfe6;
+  border-radius: 8px;
+  box-sizing: border-box;
+
+  &.is-success {
+    border-left-color: #67c23a;
+  }
+
+  &.is-primary {
+    border-left-color: var(--el-color-primary, #409eff);
+  }
+
+  &.is-warning {
+    border-left-color: #e6a23c;
+  }
+
+  @media (max-width: 768px) {
+    padding: 10px 12px;
+  }
+}
+
+.invite-overview__label {
+  color: #909399;
+  font-size: 13px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.invite-overview__value {
+  margin: 4px 0 2px;
+  color: #303133;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.15;
+  word-break: break-all;
+
+  @media (max-width: 768px) {
+    font-size: 18px;
+  }
+}
+
+.invite-overview__hint {
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 表头 / 工具条 */
 .card-header-wrapper {
   display: flex;
   justify-content: space-between;
@@ -967,839 +789,235 @@ onActivated(() => {
   flex-wrap: wrap;
   gap: 10px;
 }
+
 .header-buttons {
   display: flex;
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
 }
-.settings-button,
-.refresh-button {
-  display: flex;
+
+.header-buttons :deep(.el-button) {
+  display: inline-flex;
   align-items: center;
   gap: 5px;
 }
+
 .desktop-only {
   @media (max-width: 768px) {
     display: none !important;
   }
 }
-.batch-info {
-  font-size: 14px;
-  color: #606266;
-  font-weight: 500;
-}
-.filter-section {
-  margin-bottom: 20px;
-}
-.filter-input {
-  width: 100%;
-  min-width: 0;
-}
-.status-filter {
-  width: 100%;
-  min-width: 0;
-}
-.filter-form {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  align-items: end;
-  gap: 12px;
-  width: 100%;
-}
-.filter-form :deep(.el-form-item) {
-  margin: 0;
-  min-width: 0;
-}
-.filter-form :deep(.el-form-item__content) {
+
+.invite-toolbar {
   display: flex;
-  gap: 8px;
-  width: 100%;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+
+  @media (max-width: 768px) {
+    margin-bottom: 10px;
+  }
+}
+
+.invite-search {
+  width: 320px;
+  max-width: 100%;
   min-width: 0;
+
+  @media (max-width: 768px) {
+    width: 100%;
+  }
 }
-.filter-form :deep(.el-input),
-.filter-form :deep(.el-select) {
-  width: 100%;
-  min-width: 0;
-}
-.filter-form :deep(.el-form-item:last-child) {
-  justify-self: end;
-  min-width: max-content;
-}
-.batch-actions {
-  margin-bottom: 16px;
-}
+
+/* 表格单元格 */
 .data-table {
   width: 100%;
 }
-.muted-cell {
+
+.cell-user {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.cell-user__name {
+  color: #303133;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.cell-user__meta {
+  color: #909399;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.cell-strong {
+  color: var(--el-color-primary, #409eff);
+  font-weight: 700;
+}
+
+.money-value {
+  color: #303133;
+  font-weight: 600;
+}
+
+.cell-reward {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.35;
+}
+
+.reward-given {
+  color: #67c23a;
+  font-weight: 600;
+}
+
+.reward-pending {
+  color: #e6a23c;
+  font-size: 12px;
+
+  &.is-zero {
+    color: #c0c4cc;
+  }
+}
+
+.code-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+/* 详情抽屉 */
+.inviter-detail {
+  min-width: 0;
+}
+
+.detail-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+
+  @media (max-width: 768px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.detail-summary__item {
+  min-width: 0;
+  padding: 10px 8px;
+  text-align: center;
+  background: #f8fafc;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+.detail-summary__value {
+  color: var(--el-color-primary, #409eff);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+  word-break: break-all;
+}
+
+.detail-summary__label {
+  margin-top: 2px;
   color: #909399;
   font-size: 12px;
 }
-.muted-text {
-  color: #909399;
-}
-.money-value {
-  font-weight: 700;
-}
-.money-success,
-.stat-success {
-  color: #67c23a;
-}
-.money-primary,
-.stat-primary {
-  color: #409eff;
-}
-.money-warning,
-.stat-warning {
-  color: #e6a23c;
-}
-.stat-danger {
-  color: #f56c6c;
-}
-.reward-status-tag {
-  margin-left: 8px;
-}
-.secondary-search {
-  margin-top: 12px;
-}
-.statistics-row {
-  row-gap: 12px;
-}
-.stat-card {
-  border: 1px solid var(--theme-border, #dcdfe6);
-  border-radius: var(--border-radius, 8px);
 
-  :deep(.el-card__body) {
-    padding: 16px;
-  }
+.detail-section {
+  margin-bottom: 18px;
 }
-.stat-content {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-.stat-value {
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-.stat-label {
-  color: #606266;
-  font-size: 13px;
-  line-height: 1.4;
-}
-@media (max-width: 768px) {
-  .batch-buttons {
-    width: 100%;
-    flex-direction: column;
-  }
-  .batch-buttons .el-button {
-    width: 100%;
-  }
-}
-.admin-invites :deep(.el-input-number) {
-  width: 100%;
-  box-sizing: border-box;
-}
-.admin-invites :deep(.el-input-number__increase),
-.admin-invites :deep(.el-input-number__decrease) {
-  box-sizing: border-box;
-}
-.admin-invites :deep(.el-table) {
-  .el-table__cell {
-    padding: 12px 0;
-  }
-}
-.mobile-filter-form {
-  width: 100%;
-  margin-bottom: 12px;
-  box-sizing: border-box;
-  :deep(.el-form) {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  :deep(.el-form-item) {
-    margin-bottom: 0;
-    width: 100%;
-  }
-  :deep(.el-form-item__content) {
-    margin-left: 0 !important;
-    width: 100%;
-  }
-}
-.mobile-filter-input,
-.mobile-filter-select {
-  width: 100% !important;
-}
-.desktop-only {
-  @media (max-width: 768px) {
-    display: none !important;
-  }
-}
-@media (max-width: 768px) {
-  .admin-invites {
-    padding: 8px 5px;
-    width: 100%;
-    box-sizing: border-box;
-    overflow-x: clip;
-  }
-  .invites-card {
-    width: 100%;
-    box-sizing: border-box;
-    margin: 0;
 
-    :deep(.el-card__header) {
-      padding: 12px 10px;
-      font-size: 14px;
-    }
-
-    :deep(.el-card__body) {
-      padding: 12px 10px;
-      width: 100%;
-      box-sizing: border-box;
-      overflow-x: clip;
-    }
-  }
-  .statistics-row {
-    margin-left: -5px !important;
-    margin-right: -5px !important;
-  }
-  .stat-card {
-    margin-bottom: 10px;
-
-    :deep(.el-card__body) {
-      padding: 12px;
-    }
-  }
-  .stat-value {
-    font-size: 20px;
-  }
-  .mobile-action-bar {
-    display: block !important;
-    width: 100%;
-    box-sizing: border-box;
-    padding: 12px;
-  }
-  .mobile-search-section {
-    margin-bottom: 12px;
-  }
-  .search-input-wrapper {
-    height: 44px;
-  }
-  .mobile-search-input {
-    :deep(.el-input__wrapper) {
-      height: 44px;
-      padding-right: 50px;
-    }
-    :deep(.el-input__inner) {
-      height: 44px;
-      line-height: 44px;
-      font-size: 16px;
-      padding-right: 50px;
-    }
-    :deep(.el-input-number) {
-      width: 100%;
-      .el-input__wrapper {
-        height: 44px;
-        padding-right: 50px;
-      }
-      .el-input__inner {
-        height: 44px;
-        line-height: 44px;
-        font-size: 16px;
-        padding-right: 50px;
-      }
-    }
-  }
-  .search-button-inside {
-    min-height: 44px;
-    padding: 6px 10px;
-    touch-action: manipulation;
-  }
-  .mobile-filter-buttons {
-    margin-bottom: 12px;
-    .el-button {
-      min-height: 44px;
-      font-size: 14px;
-      touch-action: manipulation;
-    }
-  }
-  .mobile-filter-form {
-    margin-bottom: 0;
-  }
-  .mobile-filter-input {
-    :deep(.el-input__wrapper) {
-      height: 44px;
-    }
-    :deep(.el-input-number__input) {
-      height: 44px;
-      line-height: 44px;
-      font-size: 15px;
-    }
-  }
-  .admin-invites :deep(.el-tabs) {
-    width: 100%;
-    box-sizing: border-box;
-    overflow-x: clip;
-    .el-tabs__header {
-      margin: 0;
-      width: 100%;
-      box-sizing: border-box;
-    }
-    .el-tabs__nav-wrap {
-      width: 100%;
-      box-sizing: border-box;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    .el-tabs__item {
-      padding: 0 10px;
-      font-size: 13px;
-      white-space: nowrap;
-    }
-    .el-tabs__content {
-      width: 100%;
-      box-sizing: border-box;
-      overflow-x: clip;
-    }
-  }
-  .card-header-wrapper {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-  }
-  .header-buttons {
-    width: 100%;
-    display: flex;
-    gap: 8px;
-  }
-  .settings-button,
-  .refresh-button {
-    flex: 1;
-    min-height: 44px;
-    font-size: 14px;
-    justify-content: center;
-    touch-action: manipulation;
-  }
-  .settings-dialog-content {
-    width: 100%;
-    box-sizing: border-box;
-    overflow-x: clip;
-  }
-  .invite-settings-form {
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-    overflow-x: clip;
-    padding: 0;
-    margin: 0;
-    :deep(.el-form-item) {
-      margin-bottom: 24px;
-      width: 100% !important;
-      max-width: 100% !important;
-      box-sizing: border-box !important;
-      padding: 0;
-      margin-left: 0 !important;
-      margin-right: 0 !important;
-      .el-form-item__label {
-        display: none !important;
-      }
-      .el-form-item__content {
-        margin-left: 0 !important;
-        margin-right: 0 !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        box-sizing: border-box !important;
-        padding: 0;
-      }
-    }
-    .form-item-wrapper {
-      width: 100% !important;
-      max-width: 100% !important;
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      box-sizing: border-box !important;
-      gap: 12px;
-    }
-    .form-item-label {
-      font-size: 15px;
-      font-weight: 500;
-      color: #303133;
-      line-height: 1.5;
-      text-align: left !important;
-      width: 100% !important;
-      max-width: 100% !important;
-      box-sizing: border-box !important;
-      word-wrap: break-word;
-      word-break: break-all;
-      order: 1;
-      margin: 0 !important;
-      padding: 0 !important;
-    }
-    .settings-input-number {
-      width: 100% !important;
-      max-width: 100% !important;
-      min-width: 0 !important;
-      margin: 0 !important;
-      box-sizing: border-box !important;
-      order: 2;
-      :deep(.el-input__wrapper) {
-        width: 100% !important;
-        max-width: 100% !important;
-        height: 44px;
-        box-sizing: border-box !important;
-        padding: 0 40px 0 11px;
-      }
-      :deep(.el-input__inner) {
-        width: 100% !important;
-        height: 44px;
-        line-height: 44px;
-        font-size: 16px;
-        text-align: left !important;
-        padding: 0 !important;
-        box-sizing: border-box;
-      }
-      :deep(.el-input-number__increase),
-      :deep(.el-input-number__decrease) {
-        width: 32px;
-        height: 22px;
-        right: 1px;
-        touch-action: manipulation;
-      }
-    }
-  }
-  .settings-alert {
-    margin-bottom: 16px !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-    overflow-x: clip;
-    :deep(.el-alert__title) {
-      font-size: 14px;
-      font-weight: 600;
-      margin-bottom: 8px;
-      text-align: left !important;
-      word-wrap: break-word;
-      word-break: break-all;
-    }
-    :deep(.el-alert__content) {
-      width: 100% !important;
-      max-width: 100% !important;
-      box-sizing: border-box !important;
-      overflow-x: clip;
-    }
-  }
-  .alert-content {
-    font-size: 12px;
-    line-height: 1.6;
-    text-align: left !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-    word-wrap: break-word;
-    word-break: break-all;
-    :is(p) {
-      margin: 0 0 6px 0;
-      text-align: left !important;
-      width: 100%;
-      word-wrap: break-word;
-      word-break: break-all;
-      &:last-child {
-        margin-bottom: 0;
-      }
-    }
-    :is(strong) {
-      color: #303133;
-      font-weight: 600;
-    }
-  }
-  .alert-note {
-    color: #909399 !important;
-    margin-top: 6px !important;
-    font-size: 11px !important;
-    line-height: 1.5 !important;
-    text-align: left !important;
-    word-wrap: break-word;
-    word-break: break-all;
-  }
-  .filter-form {
-    :deep(.el-form-item) {
-      margin-bottom: 15px;
-      display: block;
-      width: 100%;
-      .el-form-item__label {
-        width: 100% !important;
-        text-align: left;
-        margin-bottom: 5px;
-        padding: 0;
-      }
-      .el-form-item__content {
-        margin-left: 0 !important;
-        width: 100%;
-      }
-    }
-    :deep(.el-input),
-    :deep(.el-input-number),
-    :deep(.el-select) {
-      width: 100% !important;
-    }
-  }
-  .admin-invites :deep(.el-table) {
-    font-size: 12px;
-    .el-table__cell {
-      padding: 8px 4px;
-      word-break: break-word;
-    }
-    .el-table__header th {
-      padding: 8px 4px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-    .el-table__body-wrapper {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-  }
-  .settings-container {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 0 10px;
-  }
-  .settings-dialog-content {
-    width: 100%;
-    box-sizing: border-box;
-  }
-  .invite-settings-form {
-    :deep(.el-form-item) {
-      margin-bottom: 24px;
-      .el-form-item__label {
-        display: none !important;
-      }
-      .el-form-item__content {
-        margin-left: 0 !important;
-        width: 100%;
-      }
-    }
-    .form-item-wrapper {
-      width: 100%;
-      max-width: 500px;
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      gap: 12px;
-    }
-    .form-item-label {
-      font-size: 15px;
-      font-weight: 500;
-      color: #303133;
-      line-height: 1.5;
-      text-align: left;
-      width: 100%;
-      order: 1;
-      margin: 0;
-      padding: 0;
-    }
-    .settings-input-number {
-      width: 100% !important;
-      margin: 0;
-      order: 2;
-      :deep(.el-input__wrapper) {
-        width: 100%;
-      }
-    }
-  }
-  .settings-alert {
-    margin-bottom: 24px;
-    max-width: 600px;
-    margin-left: auto;
-    margin-right: auto;
-    :deep(.el-alert__content) {
-      width: 100%;
-    }
-  }
-  .alert-content {
-    line-height: 1.8;
-    font-size: 14px;
-    :is(p) {
-      margin: 0 0 8px 0;
-      &:last-child {
-        margin-bottom: 0;
-      }
-    }
-    :is(strong) {
-      color: #303133;
-      font-weight: 600;
-    }
-  }
-  .alert-note {
-    color: #909399 !important;
-    margin-top: 10px !important;
-    font-size: 13px !important;
-  }
-  .admin-invites :deep(.el-pagination) {
-    flex-wrap: wrap;
-    .el-pagination__sizes,
-    .el-pagination__jump {
-      margin-top: 10px;
-      width: 100%;
-      justify-content: center;
-    }
-  }
-}
-@media (max-width: 480px) {
-  .admin-invites {
-    padding: 5px 3px;
-    width: 100%;
-    box-sizing: border-box;
-    overflow-x: clip;
-  }
-  .admin-invites :deep(.el-card) {
-    .el-card__header {
-      padding: 10px 8px;
-      font-size: 13px;
-    }
-    .el-card__body {
-      padding: 10px 8px;
-    }
-  }
-  .card-header-wrapper {
-    gap: 10px;
-  }
-  .header-buttons {
-    gap: 8px;
-  }
-  .settings-button,
-  .refresh-button {
-    min-height: 44px;
-    font-size: 13px;
-    padding: 0 10px;
-  }
-  .invite-settings-form {
-    .form-item-wrapper {
-      gap: 10px;
-    }
-    .form-item-label {
-      font-size: 14px;
-    }
-    .settings-input-number {
-      :deep(.el-input__wrapper) {
-        height: 42px;
-      }
-      :deep(.el-input__inner) {
-        height: 42px;
-        line-height: 42px;
-        font-size: 15px;
-      }
-    }
-  }
-  .invite-settings-form {
-    width: 100% !important;
-    max-width: 100% !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    box-sizing: border-box !important;
-    :deep(.el-form-item) {
-      margin-bottom: 18px;
-      width: 100% !important;
-      max-width: 100% !important;
-      padding: 0 !important;
-      margin-left: 0 !important;
-      margin-right: 0 !important;
-      .el-form-item__label {
-        font-size: 14px;
-        margin-bottom: 8px;
-        text-align: left !important;
-        padding: 0 !important;
-        width: 100% !important;
-        max-width: 100% !important;
-      }
-      .el-form-item__content {
-        width: 100% !important;
-        max-width: 100% !important;
-        padding: 0 !important;
-        margin: 0 !important;
-      }
-    }
-    .form-item-wrapper {
-      width: 100% !important;
-      max-width: 100% !important;
-      gap: 6px;
-    }
-    .settings-input-number {
-      width: 100% !important;
-      max-width: 100% !important;
-      margin: 0 !important;
-      box-sizing: border-box !important;
-      :deep(.el-input__wrapper) {
-        height: 44px;
-        width: 100% !important;
-        max-width: 100% !important;
-        padding: 0 38px 0 10px;
-        box-sizing: border-box !important;
-      }
-      :deep(.el-input__inner) {
-        height: 44px;
-        line-height: 44px;
-        font-size: 15px;
-        text-align: left !important;
-        padding: 0 !important;
-        width: 100% !important;
-        box-sizing: border-box;
-      }
-      :deep(.el-input-number__increase),
-      :deep(.el-input-number__decrease) {
-        width: 30px;
-        height: 22px;
-        touch-action: manipulation;
-      }
-    }
-    .form-item-tip {
-      font-size: 12px;
-      text-align: left !important;
-      padding: 0 !important;
-      width: 100% !important;
-      max-width: 100% !important;
-      line-height: 1.5;
-      margin: 0 !important;
-    }
-    .save-settings-btn {
-      min-height: 44px;
-      font-size: 14px;
-      width: 100% !important;
-      max-width: 100% !important;
-      margin: 14px 0 0 0 !important;
-      padding: 0 12px;
-      box-sizing: border-box !important;
-      touch-action: manipulation;
-    }
-  }
-  .settings-alert {
-    margin-bottom: 14px !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    box-sizing: border-box !important;
-    :deep(.el-alert__title) {
-      font-size: 13px;
-      text-align: left !important;
-      margin-bottom: 6px;
-    }
-    :deep(.el-alert__content) {
-      width: 100% !important;
-      max-width: 100% !important;
-    }
-  }
-  .alert-content {
-    font-size: 11px;
-    line-height: 1.5;
-    text-align: left !important;
-    :is(p) {
-      text-align: left !important;
-      margin: 0 0 5px 0;
-    }
-  }
-  .alert-note {
-    font-size: 10px !important;
-    margin-top: 5px !important;
-    text-align: left !important;
-    line-height: 1.4 !important;
-  }
-  .admin-invites :deep(.el-table) {
-    font-size: 11px;
-    .el-table__cell {
-      padding: 6px 2px;
-    }
-    .el-table__header th {
-      padding: 6px 2px;
-      font-size: 11px;
-    }
-  }
-}
-@media (min-width: 769px) {
-  .mobile-action-bar {
-    display: none !important;
-  }
-}
-.statistics-row {
-  margin-bottom: 20px;
-  .stat-card {
-    height: 100%;
-    transition: border-color 0.2s ease, background-color 0.2s ease;
-    &:hover {
-      border-color: var(--el-color-primary-light-7, #c6e2ff);
-      background: #fbfdff;
-    }
-  }
-  .stat-content {
-    text-align: center;
-    padding: 10px;
-  }
-  .stat-value {
-    font-size: 32px;
-    font-weight: bold;
-    margin-bottom: 10px;
-    line-height: 1.2;
-    word-break: break-all;
-    overflow-wrap: break-word;
-  }
-  .stat-label {
-    color: #909399;
-    font-size: 14px;
-    line-height: 1.4;
-    word-break: break-all;
-    overflow-wrap: break-word;
-    min-height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  @media (max-width: 768px) {
-    .stat-content {
-      padding: 12px 8px;
-    }
-    .stat-value {
-      font-size: 24px;
-      margin-bottom: 8px;
-    }
-    .stat-label {
-      font-size: 12px;
-      min-height: 32px;
-    }
-  }
-  @media (max-width: 480px) {
-    .stat-content {
-      padding: 10px 6px;
-    }
-    .stat-value {
-      font-size: 20px;
-      margin-bottom: 6px;
-    }
-    .stat-label {
-      font-size: 11px;
-      min-height: 28px;
-    }
-  }
-}
-.admin-invites-data {
-  margin-bottom: 16px;
-}
-.mobile-invite-header {
+.detail-section__title {
   display: flex;
   align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding-left: 8px;
+  border-left: 3px solid var(--el-color-primary, #409eff);
+  color: #303133;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.detail-section__count {
+  color: #909399;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.detail-info {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+
+  @media (max-width: 768px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.detail-info__row {
+  display: flex;
+  align-items: baseline;
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
-  span {
-    min-width: 0;
-    word-break: break-all;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed #ebeef5;
+}
+
+.detail-info__label {
+  flex: 0 0 auto;
+  color: #909399;
+  font-size: 13px;
+}
+
+.detail-info__value {
+  min-width: 0;
+  color: #303133;
+  font-size: 13px;
+  text-align: right;
+  word-break: break-all;
+}
+
+/* 邀请设置 */
+.settings-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-alert {
+  :deep(.alert-content p) {
+    margin: 0 0 6px;
+    line-height: 1.5;
   }
+
+  :deep(.alert-note) {
+    margin-bottom: 0;
+    color: #e6a23c;
+  }
+}
+
+.invite-settings-form :deep(.el-form-item) {
+  margin-bottom: 16px;
+}
+
+.form-item-label {
+  margin-bottom: 6px;
+  color: #303133;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.settings-input-number {
+  width: 100%;
 }
 </style>
