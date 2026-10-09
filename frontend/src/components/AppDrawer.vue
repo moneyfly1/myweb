@@ -1,7 +1,7 @@
 <template>
   <el-drawer
     v-model="visible"
-    :class="['app-drawer', drawerClass]"
+    :class="['app-drawer', drawerClass, { 'app-drawer--full-mobile': isFullMobile }]"
     :title="title"
     :size="computedSize"
     :direction="direction"
@@ -71,6 +71,11 @@ const visible = computed({
 })
 
 const computedSize = computed(() => isMobile.value ? props.mobileSize : props.size)
+
+// 组件显式要求移动端满屏（mobile-size="100%"）时打个标记：
+// global.scss 里有一条「管理后台移动端抽屉统一 85%、留边距」的全局规则，
+// 会把这类抽屉也压窄（例如用户详情抽屉只能占 85% 宽）。标记类用于让显式满屏的抽屉豁免。
+const isFullMobile = computed(() => isMobile.value && String(props.mobileSize || '').trim() === '100%')
 
 const handleBeforeClose = (done) => {
   if (props.loading) {
