@@ -18,6 +18,7 @@ import (
 	"cboard-go/internal/services/device"
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/geoip"
+	"cboard-go/internal/services/invite"
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
 
@@ -192,7 +193,11 @@ func Register(c *gin.Context) {
 
 	// 事务提交后发放即时邀请奖励
 	if req.InviteCode != "" {
-		go distributeInviteRewardAfterCommit(db, user.ID)
+		go func() {
+			if err := invite.GrantForNewInvitee(db, user.ID); err != nil {
+				utils.LogError("注册后发放邀请奖励失败", err, map[string]interface{}{"invitee_id": user.ID})
+			}
+		}()
 	}
 
 	db.Where("id = ?", user.ID).First(&user)
@@ -930,14 +935,18 @@ func processInviteCode(db *gorm.DB, inviteCodeStr string, newUserID uint) *uint 
 		inviterID := inviteCode.UserID
 		resolvedInviterID = &inviterID
 
+		// 奖励金额按「邀请码显式设置 > 全局配置」实时解析后记录：
+		// 过去直接取 inviteCode.InviterReward，而历史上创建的邀请码该字段是 0，
+		// 等于把 0 冻结进关系，导致全局配置再怎么改都发不出奖励。
+		effective := invite.EffectiveRewards(tx, &inviteCode)
 		inviteRelation := models.InviteRelation{
 			InviteCodeID:        inviteCode.ID,
 			InviterID:           inviteCode.UserID,
 			InviteeID:           newUserID,
 			InviterRewardGiven:  false,
 			InviteeRewardGiven:  false,
-			InviterRewardAmount: inviteCode.InviterReward,
-			InviteeRewardAmount: inviteCode.InviteeReward,
+			InviterRewardAmount: effective.Inviter,
+			InviteeRewardAmount: effective.Invitee,
 		}
 
 		if err := tx.Create(&inviteRelation).Error; err != nil {
@@ -957,7 +966,7 @@ func processInviteCode(db *gorm.DB, inviteCodeStr string, newUserID uint) *uint 
 			tx.Save(&newUser)
 		}
 
-		// 无最低消费要求时，由事务外 distributeInviteRewardAfterCommit 发放奖励
+		// 无最低消费要求时，由事务外 invite.GrantForNewInvitee 发放奖励（金额按当前配置实时解析）
 		if inviteCode.MinOrderAmount > 0 && utils.AppLogger != nil {
 			utils.AppLogger.Info("processInviteCode: ⏳ 等待订单支付后发放奖励 - invitee_id=%d, min_order_amount=%.2f", newUserID, inviteCode.MinOrderAmount)
 		}
@@ -971,114 +980,6 @@ func processInviteCode(db *gorm.DB, inviteCodeStr string, newUserID uint) *uint 
 	}
 
 	return resolvedInviterID
-}
-
-// distributeInviteRewardAfterCommit 在注册事务提交后发放即时邀请奖励。
-// 使用事务 + 行锁，与订单路径 processInviteRewardsTx 串行化，避免并发重复发奖。
-func distributeInviteRewardAfterCommit(db *gorm.DB, inviteeID uint) {
-	err := db.Transaction(func(tx *gorm.DB) error {
-		var relation models.InviteRelation
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("invitee_id = ? AND inviter_reward_given = ? AND invitee_reward_given = ?", inviteeID, false, false).
-			First(&relation).Error; err != nil {
-			return nil // 无待发放关系
-		}
-
-		var inviteCode models.InviteCode
-		if err := tx.First(&inviteCode, relation.InviteCodeID).Error; err != nil {
-			return nil
-		}
-
-		// 仅处理无最低消费要求的即时奖励
-		if inviteCode.MinOrderAmount > 0 {
-			return nil
-		}
-
-		distributeReward(tx, relation.InviterID, relation.InviterRewardAmount, inviteeID, &relation, true)
-		distributeReward(tx, inviteeID, relation.InviteeRewardAmount, inviteeID, &relation, false)
-		return nil
-	})
-	if err != nil {
-		utils.LogError("distributeInviteRewardAfterCommit: transaction failed", err, map[string]interface{}{"invitee_id": inviteeID})
-	}
-}
-
-func distributeReward(tx *gorm.DB, userID uint, amount float64, relatedUserID uint, relation *models.InviteRelation, isInviter bool) {
-	if amount <= 0 {
-		return
-	}
-	var user models.User
-	if err := tx.First(&user, userID).Error; err != nil {
-		return
-	}
-
-	oldBalance := user.Balance
-	updates := map[string]interface{}{
-		"balance": gorm.Expr("balance + ?", amount),
-	}
-	if isInviter {
-		updates["total_invite_reward"] = gorm.Expr("total_invite_reward + ?", amount)
-		updates["total_invite_count"] = gorm.Expr("total_invite_count + 1")
-	}
-
-	if err := tx.Model(&user).Updates(updates).Error; err == nil {
-		// 刷新余额用于日志记录
-		tx.First(&user, user.ID)
-		if isInviter {
-			relation.InviterRewardGiven = true
-		} else {
-			relation.InviteeRewardGiven = true
-		}
-		tx.Save(relation)
-		if utils.AppLogger != nil {
-			utils.AppLogger.Info("processInviteCode: ✅ 发放奖励 - user_id=%d, amount=%.2f, related_id=%d", userID, amount, relatedUserID)
-		}
-
-		// 记录余额日志和佣金日志
-		// 注意：这里是在异步 goroutine 中，无法获取 gin.Context，所以 IP 为空
-		// 这是系统内部操作（邀请奖励），不是用户直接操作，所以 IP 为空是合理的
-		go func() {
-			// 余额日志
-			if err := utils.CreateBalanceLog(
-				userID,
-				"commission",
-				amount,
-				oldBalance,
-				user.Balance,
-				nil,
-				nil,
-				fmt.Sprintf("邀请奖励: %s", map[bool]string{true: "邀请人奖励", false: "被邀请人奖励"}[isInviter]),
-				"system",
-				nil,
-				"", // 系统内部操作，无客户端 IP
-			); err != nil {
-				log.Printf("failed to create balance log: %v", err)
-			}
-
-			// 佣金日志
-			commissionType := "register_reward"
-			inviterID := userID
-			inviteeID := relatedUserID
-			if !isInviter {
-				inviterID = relatedUserID
-				inviteeID = userID
-			}
-			relationID := uint(relation.ID)
-			if err := utils.CreateCommissionLog(
-				inviterID,
-				inviteeID,
-				commissionType,
-				amount,
-				&relationID,
-				nil,
-				fmt.Sprintf("邀请奖励: %s", map[bool]string{true: "邀请人奖励", false: "被邀请人奖励"}[isInviter]),
-			); err != nil {
-				log.Printf("failed to create commission log: %v", err)
-			}
-		}()
-	} else {
-		utils.LogError("processInviteCode: failed to give reward", err, map[string]interface{}{"user_id": userID, "amount": amount})
-	}
 }
 
 // ==========================================
