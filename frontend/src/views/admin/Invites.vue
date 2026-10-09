@@ -66,7 +66,7 @@
       >
         <template #table>
           <el-table :data="inviters" v-loading="loading" class="data-table" style="width: 100%">
-            <el-table-column label="邀请人" min-width="220">
+            <el-table-column label="邀请人" min-width="200">
               <template #default="{ row }">
                 <div class="cell-user">
                   <span class="cell-user__name">{{ row.username || '未知用户' }}</span>
@@ -76,25 +76,25 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="现存邀请码" width="110" align="center">
+            <el-table-column label="现存邀请码" width="104" align="center">
               <template #default="{ row }">{{ row.code_count || 0 }} 个</template>
             </el-table-column>
-            <el-table-column label="已邀请" width="100" align="center">
+            <el-table-column label="已邀请" width="90" align="center">
               <template #default="{ row }">
                 <span class="cell-strong">{{ row.invited_count || 0 }}</span> 人
               </template>
             </el-table-column>
-            <el-table-column label="已消费" width="110" align="center">
+            <el-table-column label="已消费" width="90" align="center">
               <template #default="{ row }">
                 <span class="cell-strong">{{ row.purchased_count || 0 }}</span> 人
               </template>
             </el-table-column>
-            <el-table-column label="累计消费" width="130" align="right">
+            <el-table-column label="累计消费" width="120" align="right">
               <template #default="{ row }">
                 <span class="money-value">¥{{ money(row.consumption) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="奖励" width="150" align="right">
+            <el-table-column label="奖励" width="140" align="right">
               <template #default="{ row }">
                 <div class="cell-reward">
                   <span class="reward-given">已发 ¥{{ money(row.reward_given) }}</span>
@@ -104,10 +104,10 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="最近邀请" width="170" align="center">
+            <el-table-column label="最近邀请" width="160" align="center">
               <template #default="{ row }">{{ formatDateTimeSafe(row.last_invited_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="90" align="center" fixed="right">
+            <el-table-column label="操作" width="76" align="center" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="openDetail(row)">详情</el-button>
               </template>
@@ -433,27 +433,27 @@ const overviewCards = computed(() => [
     tone: 'default',
   },
   {
-    label: '被邀请人已消费',
+    label: '已消费人数',
     value: stats.purchased_count,
     hint: `转化率 ${purchasedRate.value}%`,
     tone: 'success',
   },
   {
-    label: '被邀请人累计消费',
+    label: '累计消费',
     value: `¥${money(stats.total_consumption)}`,
-    hint: '邀请带来的订单金额',
+    hint: '被邀请人订单金额',
     tone: 'success',
   },
   {
-    label: '已发放奖励',
+    label: '已发奖励',
     value: `¥${money(stats.reward_given_amount)}`,
     hint: '邀请人奖励已到账',
     tone: 'primary',
   },
   {
-    label: '待发放奖励',
+    label: '待发奖励',
     value: `¥${money(stats.reward_pending_amount)}`,
-    hint: stats.reward_pending_amount > 0 ? '达标但尚未到账' : '没有待发放奖励',
+    hint: stats.reward_pending_amount > 0 ? '达标但尚未到账' : '暂无待发放',
     tone: stats.reward_pending_amount > 0 ? 'warning' : 'default',
   },
 ])
@@ -704,6 +704,12 @@ onActivated(() => {
   width: 100%;
   box-sizing: border-box;
   overflow-x: clip;
+
+  // 手机上与其他后台页保持一致的内边距：360px 屏幕上 20px 会把可用宽度压到 254px，
+  // 统计卡和卡片列表都会显得拥挤。
+  @media (max-width: 768px) {
+    padding: 12px;
+  }
 }
 
 /* 顶部统计 */
@@ -728,20 +734,21 @@ onActivated(() => {
   padding: 12px 14px;
   background: var(--card-bg, #fff);
   border: 1px solid #ebeef5;
-  border-left: 3px solid #dcdfe6;
   border-radius: 8px;
   box-sizing: border-box;
+  overflow: hidden;
 
-  &.is-success {
-    border-left-color: #67c23a;
+  // 不再用左侧色条（窄卡片上像"半截颜色"），改为数值本身着色，更统一也更省空间
+  &.is-success .invite-overview__value {
+    color: #529b2e;
   }
 
-  &.is-primary {
-    border-left-color: var(--el-color-primary, #409eff);
+  &.is-primary .invite-overview__value {
+    color: var(--el-color-primary, #409eff);
   }
 
-  &.is-warning {
-    border-left-color: #e6a23c;
+  &.is-warning .invite-overview__value {
+    color: #b88230;
   }
 
   @media (max-width: 768px) {
