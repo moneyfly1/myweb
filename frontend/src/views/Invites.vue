@@ -161,13 +161,25 @@
       <div class="section-stack invites-side">
         <el-card class="list-card">
           <template #header>
-            <div class="card-header">
-              <span>最近邀请记录</span>
+            <div class="card-header records-header">
+              <div class="records-header-text">
+                <span>邀请记录</span>
+                <span class="records-sub">
+                  共 {{ recordsTotal }} 人<template v-if="recordsPurchasedCount"> · 已消费 {{ recordsPurchasedCount }} 人</template>
+                </span>
+              </div>
+              <el-input
+                v-model="recordsKeyword"
+                :placeholder="isMobile ? '搜索用户名/邮箱' : '搜索被邀请人用户名或邮箱'"
+                clearable
+                size="small"
+                class="records-search"
+              />
             </div>
           </template>
           <ResponsiveDataView
-            v-if="stats.recent_invites && stats.recent_invites.length > 0"
-            :data="stats.recent_invites"
+            v-if="pagedRecords.length > 0"
+            :data="pagedRecords"
             :fields="mobileRecentFields"
             title-field="invitee_username"
             empty-title="暂无邀请记录"
@@ -176,21 +188,23 @@
               <div class="table-wrapper">
                 <el-table
                   ref="recentTableRef"
-                  :data="stats.recent_invites"
+                  :data="pagedRecords"
                   border
                   stripe
                   size="small"
                   class="invite-table"
                   @header-dragend="handleRecentColumnResize"
                 >
-                  <el-table-column prop="invitee_username" label="被邀请人" :width="recentColumnWidths.invitee_username" resizable />
+                  <el-table-column prop="invitee_username" label="被邀请人" :width="recentColumnWidths.invitee_username" resizable show-overflow-tooltip />
                   <el-table-column prop="invitee_email" label="邮箱" :min-width="recentColumnWidths.invitee_email" resizable />
                   <el-table-column prop="created_at" label="注册时间" :width="recentColumnWidths.created_at" resizable>
                     <template #default="scope">{{ formatDate(scope.row.created_at) }}</template>
                   </el-table-column>
-                  <el-table-column prop="has_purchased" label="已购买" :width="recentColumnWidths.has_purchased" resizable align="center">
+                  <el-table-column prop="has_purchased" label="是否消费" :width="recentColumnWidths.has_purchased" resizable align="center">
                     <template #default="scope">
-                      <el-tag :type="scope.row.has_purchased ? 'success' : 'info'" size="small">{{ scope.row.has_purchased ? '是' : '否' }}</el-tag>
+                      <el-tag :type="scope.row.has_purchased ? 'success' : 'info'" size="small">
+                        {{ scope.row.has_purchased ? '已消费' : '未消费' }}
+                      </el-tag>
                     </template>
                   </el-table-column>
                   <el-table-column prop="total_consumption" label="累计消费" :width="recentColumnWidths.total_consumption" resizable align="right">
@@ -209,9 +223,23 @@
           </ResponsiveDataView>
           <div v-else class="card-body">
             <div class="ticket-item">
-              <div class="item-title">暂无最近邀请记录</div>
-              <div class="item-meta">邀请用户注册或购买后会在这里展示注册、购买和奖励状态。</div>
+              <div class="item-title">{{ recordsKeyword ? '没有匹配的邀请记录' : '暂无邀请记录' }}</div>
+              <div class="item-meta">
+                {{ recordsKeyword
+                  ? '换个关键词试试，或清空搜索查看全部被邀请人。'
+                  : '邀请用户注册后会在这里展示用户名、邮箱、消费与奖励到账情况。' }}
+              </div>
             </div>
+          </div>
+          <div v-if="filteredRecords.length > recordsPageSize" class="records-pagination">
+            <el-pagination
+              v-model:current-page="recordsPage"
+              :page-size="recordsPageSize"
+              :total="filteredRecords.length"
+              layout="prev, pager, next"
+              background
+              small
+            />
           </div>
         </el-card>
       </div>
@@ -273,7 +301,7 @@
   </div>
 </template>
 <script setup>
-import { computed, ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { DocumentCopy, Delete } from '@element-plus/icons-vue'
 import { inviteAPI } from '@/utils/api'
@@ -361,26 +389,64 @@ const mobileInviteFields = computed(() => [
   { key: 'expires_at', label: '过期时间', formatter: value => value && value !== 'null' ? formatDate(value) : '永不过期' },
   { key: 'invite_link', label: '邀请链接', type: 'copy', fullWidth: true }
 ])
+// 手机端邀请记录卡片：把「邀请了谁、怎么联系、有没有消费、奖励到没到」放在最前面，
+// 邮箱/时间这类次要信息随后，避免在窄屏上被挤成一行看不清。
 const mobileRecentFields = computed(() => [
+  { key: 'invitee_username', label: '被邀请人', formatter: value => value || '-' },
+  { key: 'invitee_email', label: '邮箱', fullWidth: true, formatter: value => value || '-' },
   {
     key: 'has_purchased',
-    label: '状态',
+    label: '是否消费',
     type: 'tag',
     tagType: value => value ? 'success' : 'info',
-    formatter: value => value ? '已购买' : '未购买'
+    formatter: value => value ? '已消费' : '未消费'
   },
-  { key: 'invitee_username', label: '被邀请人', formatter: value => value || '-' },
-  { key: 'invitee_email', label: '邮箱', formatter: value => value || '-' },
+  {
+    key: 'total_consumption',
+    label: '消费金额',
+    formatter: value => value ? formatMoney(value) : '¥0.00'
+  },
   { key: 'created_at', label: '注册时间', formatter: value => formatDate(value) },
-  { key: 'total_consumption', label: '累计消费', formatter: value => value !== undefined ? formatMoney(value) : '-' },
   {
     key: 'reward_given',
-    label: '奖励状态',
+    label: '奖励',
     type: 'tag',
     tagType: value => value ? 'success' : 'warning',
     formatter: (value, row) => value ? `已到账 ¥${(row?.reward_amount || 0).toFixed(2)}` : (row?.status_text || '未发放')
   }
 ])
+
+// ---------- 邀请记录：搜索 + 前端分页 ----------
+// 记录条数随邀请人数增长，这里做前端过滤与分页，保证「能看到自己邀请了谁」而不是只展示最近几条。
+const recordsKeyword = ref('')
+const recordsPage = ref(1)
+const recordsPageSize = ref(10)
+
+const allRecords = computed(() => Array.isArray(stats.value?.recent_invites) ? stats.value.recent_invites : [])
+
+const filteredRecords = computed(() => {
+  const kw = recordsKeyword.value.trim().toLowerCase()
+  if (!kw) return allRecords.value
+  return allRecords.value.filter(r =>
+    String(r?.invitee_username || '').toLowerCase().includes(kw) ||
+    String(r?.invitee_email || '').toLowerCase().includes(kw)
+  )
+})
+
+const pagedRecords = computed(() => {
+  const start = (recordsPage.value - 1) * recordsPageSize.value
+  return filteredRecords.value.slice(start, start + recordsPageSize.value)
+})
+
+const recordsTotal = computed(() => allRecords.value.length)
+const recordsPurchasedCount = computed(() => allRecords.value.filter(r => r?.has_purchased).length)
+
+// 搜索词变化时回到第一页，避免停在不存在的页码上
+watch(recordsKeyword, () => { recordsPage.value = 1 })
+watch(filteredRecords, list => {
+  const maxPage = Math.max(1, Math.ceil(list.length / recordsPageSize.value))
+  if (recordsPage.value > maxPage) recordsPage.value = maxPage
+})
 const loadInviteRewardSettings = async () => {
   try {
     const response = await inviteAPI.getInviteRewardSettings()
@@ -783,6 +849,52 @@ const getIsValid = (row) => {
 @media (max-width: 480px) {
   .invites-container :deep(.el-card__body) {
     padding: 10px;
+  }
+}
+
+.invites-container .records-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.invites-container .records-header-text {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.invites-container .records-sub {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--el-text-color-secondary);
+}
+
+.invites-container .records-search {
+  width: 220px;
+  max-width: 100%;
+}
+
+.invites-container .records-pagination {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 2px;
+}
+
+@media (max-width: 768px) {
+  .invites-container .records-header {
+    align-items: flex-start;
+  }
+
+  .invites-container .records-search {
+    width: 100%;
+  }
+
+  .invites-container .records-pagination {
+    padding: 8px 0 0;
   }
 }
 </style>
