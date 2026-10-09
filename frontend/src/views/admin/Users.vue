@@ -806,6 +806,7 @@
 </template>
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted, onActivated, watch, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { unwrapList } from '@/utils/format'
 import {
@@ -863,6 +864,8 @@ export default {
   },
   setup() {
     const settingsStore = useSettingsStore()
+    const route = useRoute()
+    const router = useRouter()
     // 密码最小长度统一取自 settings store，与后端 min_password_length 保持一致
     const minPasswordLength = computed(() => settingsStore.minPasswordLength)
     const loading = ref(false)
@@ -1372,6 +1375,18 @@ export default {
       detailActiveTab.value = 'recharge'
       await viewUserDetails(userId)
     }
+    // 深链入口：其它后台页面（例如邀请管理）带 ?user_id=xxx 跳过来时直接打开该用户详情
+    const handleUserDeepLink = async () => {
+      const raw = route.query?.user_id
+      if (!raw) return
+      const userId = Number(raw)
+      if (Number.isFinite(userId) && userId > 0) {
+        await viewUserDetails(userId)
+      }
+      const rest = { ...route.query }
+      delete rest.user_id
+      router.replace({ path: route.path, query: rest })
+    }
     const loadUserDevices = async () => {
       if (!selectedUser.value?.id) {
         userDevices.value = []
@@ -1759,11 +1774,13 @@ export default {
     }
     onMounted(() => {
       loadUsers()
+      handleUserDeepLink()
       window.addEventListener('subscription-device-limit-updated', loadUsers)
     })
     // keep-alive 激活时刷新数据（避免显示缓存旧数据）
     onActivated(() => {
       loadUsers()
+      handleUserDeepLink()
     })
     onUnmounted(() => {
       window.removeEventListener('subscription-device-limit-updated', loadUsers)

@@ -802,6 +802,10 @@ export const inviteAPI = {
   getAllInviteCodes: (params) => api.get('/admin/invites', { params }),
   getInviteRelations: (params) => api.get('/admin/invite-relations', { params }),
   getAdminInviteStatistics: () => api.get('/admin/invite-statistics'),
+  // 邀请人维度聚合列表（管理员邀请管理页的唯一列表数据源）
+  getAdminInviteInviters: (params) => api.get('/admin/invite-inviters', { params }),
+  // 单个邀请人详情：基本信息 + 邀请码 + 邀请关系
+  getAdminInviterDetail: (id) => api.get(`/admin/invite-inviters/${id}`),
   batchDeleteInviteCodes: (ids) => api.post('/admin/invites/batch-delete', { ids }),
   batchDeleteInviteRelations: (ids) => api.post('/admin/invite-relations/batch-delete', { ids })
 }

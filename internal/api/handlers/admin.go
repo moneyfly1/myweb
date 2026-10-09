@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"cboard-go/internal/core/database"
@@ -15,6 +16,7 @@ import (
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/cache_service"
 	"cboard-go/internal/services/device"
+	"cboard-go/internal/services/invite"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -145,6 +147,13 @@ func GetAdminInviteRelations(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", utils.PaginatedList(result, "relations", total, page, size))
 }
 
+// GetAdminInviteStatistics 邀请统计（后台「邀请管理」顶部卡片）。
+//
+// 字段命名与语义在这里统一定义，前端直接使用，避免再出现「前后端字段名不一致 →
+// 页面永远显示 0」的问题（历史上 total_codes/total_relations/total_reward 都与后端
+// 返回名对不上，total_consumption 后端根本没返回，导致统计一直不准）。
+//
+// 同时保留旧的 *_invite_* 字段名以兼容仍在调用旧名字的客户端。
 func GetAdminInviteStatistics(c *gin.Context) {
 	db := database.GetDB()
 	var stats struct {
@@ -152,18 +161,179 @@ func GetAdminInviteStatistics(c *gin.Context) {
 		ActiveInviteCodes    int64   `json:"active_invite_codes"`
 		TotalInviteRelations int64   `json:"total_invite_relations"`
 		TotalInviteReward    float64 `json:"total_invite_reward"`
+
+		// 前端「邀请管理」直接使用的字段（语义明确）
+		TotalCodes        int64   `json:"total_codes"`
+		ActiveCodes       int64   `json:"active_codes"`
+		TotalRelations    int64   `json:"total_relations"`
+		TotalInviters     int64   `json:"total_inviters"`
+		PurchasedCount    int64   `json:"purchased_count"`
+		TotalConsumption  float64 `json:"total_consumption"`
+		RewardGivenAmount float64 `json:"reward_given_amount"`
+		RewardPending     float64 `json:"reward_pending_amount"`
+		RewardTotalAmount float64 `json:"reward_total_amount"`
 	}
 	if err := db.Raw(`
 		SELECT
 			(SELECT COUNT(*) FROM invite_codes) AS total_invite_codes,
 			(SELECT COUNT(*) FROM invite_codes WHERE is_active = ?) AS active_invite_codes,
 			(SELECT COUNT(*) FROM invite_relations) AS total_invite_relations,
-			(SELECT COALESCE(SUM(total_invite_reward), 0) FROM users) AS total_invite_reward
-	`, true).Scan(&stats).Error; err != nil {
+			(SELECT COALESCE(SUM(CASE WHEN inviter_reward_given THEN inviter_reward_amount ELSE 0 END), 0) FROM invite_relations) AS total_invite_reward,
+			(SELECT COUNT(*) FROM invite_codes) AS total_codes,
+			(SELECT COUNT(*) FROM invite_codes WHERE is_active = ?) AS active_codes,
+			(SELECT COUNT(*) FROM invite_relations) AS total_relations,
+			(SELECT COUNT(DISTINCT inviter_id) FROM invite_relations) AS total_inviters,
+			(SELECT COUNT(*) FROM invite_relations WHERE invitee_first_order_id IS NOT NULL OR invitee_total_consumption > 0) AS purchased_count,
+			(SELECT COALESCE(SUM(invitee_total_consumption), 0) FROM invite_relations) AS total_consumption,
+			(SELECT COALESCE(SUM(CASE WHEN inviter_reward_given THEN inviter_reward_amount ELSE 0 END), 0) FROM invite_relations) AS reward_given_amount,
+			(SELECT COALESCE(SUM(CASE WHEN inviter_reward_given = 0 THEN inviter_reward_amount ELSE 0 END), 0) FROM invite_relations) AS reward_pending_amount,
+			(SELECT COALESCE(SUM(inviter_reward_amount), 0) FROM invite_relations) AS reward_total_amount
+	`, true, true).Scan(&stats).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取邀请统计失败", err)
 		return
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
+}
+
+// GetAdminInviteInviters 邀请人维度列表（后台「邀请管理」的主表）。
+//
+// 一行 = 一个邀请人，聚合其邀请码数量与邀请结果，避免把「邀请码列表 / 邀请关系 /
+// 邀请统计」拆成三个页签来回对照。点击某行由 GetAdminInviterDetail 展开明细。
+func GetAdminInviteInviters(c *gin.Context) {
+	db := database.GetDB()
+	p := utils.ParsePaginationWithDefaultSize(c, 20)
+	keyword := strings.TrimSpace(c.Query("keyword"))
+	if keyword == "" {
+		keyword = strings.TrimSpace(c.Query("search"))
+	}
+
+	base := `
+		FROM invite_relations r
+		LEFT JOIN users u ON u.id = r.inviter_id
+	`
+	where := ""
+	args := []interface{}{}
+	if keyword != "" {
+		kw := "%" + utils.EscapeLikePattern(utils.SanitizeSearchKeyword(keyword)) + "%"
+		where = " WHERE u.username LIKE ? OR u.email LIKE ? OR r.inviter_id = ?"
+		args = append(args, kw, kw, parseUintOrZero(keyword))
+	}
+
+	var total int64
+	if err := db.Raw("SELECT COUNT(DISTINCT r.inviter_id) "+base+where, args...).Scan(&total).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "统计邀请人数量失败", err)
+		return
+	}
+
+	type row struct {
+		InviterID      uint    `json:"inviter_id"`
+		Username       string  `json:"username"`
+		Email          string  `json:"email"`
+		InvitedCount   int64   `json:"invited_count"`
+		PurchasedCount int64   `json:"purchased_count"`
+		Consumption    float64 `json:"consumption"`
+		RewardGiven    float64 `json:"reward_given"`
+		RewardPending  float64 `json:"reward_pending"`
+		CodeCount      int64   `json:"code_count"`
+		LastInvitedAt  string  `json:"last_invited_at"`
+	}
+	var rows []row
+	query := `
+		SELECT r.inviter_id AS inviter_id,
+		       COALESCE(u.username, '') AS username,
+		       COALESCE(u.email, '') AS email,
+		       COUNT(*) AS invited_count,
+		       SUM(CASE WHEN r.invitee_first_order_id IS NOT NULL OR r.invitee_total_consumption > 0 THEN 1 ELSE 0 END) AS purchased_count,
+		       COALESCE(SUM(r.invitee_total_consumption), 0) AS consumption,
+		       COALESCE(SUM(CASE WHEN r.inviter_reward_given THEN r.inviter_reward_amount ELSE 0 END), 0) AS reward_given,
+		       COALESCE(SUM(CASE WHEN r.inviter_reward_given = 0 THEN r.inviter_reward_amount ELSE 0 END), 0) AS reward_pending,
+		       (SELECT COUNT(*) FROM invite_codes c WHERE c.user_id = r.inviter_id) AS code_count,
+		       COALESCE(MAX(r.created_at), '') AS last_invited_at
+	` + base + where + `
+		GROUP BY r.inviter_id
+		ORDER BY invited_count DESC, r.inviter_id ASC
+		LIMIT ? OFFSET ?
+	`
+	queryArgs := append(append([]interface{}{}, args...), p.Size, p.GetOffset())
+	if err := db.Raw(query, queryArgs...).Scan(&rows).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取邀请人列表失败", err)
+		return
+	}
+	if rows == nil {
+		rows = []row{}
+	}
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"list":  rows,
+		"items": rows,
+		"total": total,
+		"page":  p.Page,
+		"size":  p.Size,
+	})
+}
+
+// GetAdminInviterDetail 单个邀请人的明细：邀请码 + 邀请关系（供列表点开抽屉展示）。
+func GetAdminInviterDetail(c *gin.Context) {
+	inviterID := parseUintOrZero(c.Param("id"))
+	if inviterID == 0 {
+		utils.ErrorResponse(c, http.StatusBadRequest, "无效的邀请人 ID", nil)
+		return
+	}
+	db := database.GetDB()
+
+	var user models.User
+	if err := db.First(&user, inviterID).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "邀请人不存在", err)
+		return
+	}
+
+	var codes []models.InviteCode
+	if err := db.Where("user_id = ?", inviterID).Order("id DESC").Find(&codes).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取邀请码失败", err)
+		return
+	}
+	codeViews := make([]gin.H, 0, len(codes))
+	for _, code := range codes {
+		item := gin.H{
+			"id":             code.ID,
+			"code":           code.Code,
+			"used_count":     code.UsedCount,
+			"is_active":      code.IsActive,
+			"inviter_reward": code.InviterReward,
+			"invitee_reward": code.InviteeReward,
+			"created_at":     utils.FormatBeijingTime(code.CreatedAt),
+		}
+		if code.MaxUses.Valid {
+			item["max_uses"] = code.MaxUses.Int64
+		}
+		if code.ExpiresAt.Valid {
+			item["expires_at"] = utils.FormatBeijingTime(code.ExpiresAt.Time)
+		}
+		codeViews = append(codeViews, item)
+	}
+
+	records, summary, err := invite.ListRecords(db, inviterID)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取邀请关系失败", err)
+		return
+	}
+	if records == nil {
+		records = []invite.Record{}
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"user": gin.H{
+			"id":                  user.ID,
+			"username":            user.Username,
+			"email":               user.Email,
+			"balance":             user.Balance,
+			"total_invite_count":  user.TotalInviteCount,
+			"total_invite_reward": user.TotalInviteReward,
+			"created_at":          utils.FormatBeijingTime(user.CreatedAt),
+		},
+		"codes":     codeViews,
+		"relations": records,
+		"summary":   summary,
+	})
 }
 
 func BatchDeleteInviteCodes(c *gin.Context) {
@@ -1568,4 +1738,13 @@ func ptrToNullString(s *string) sql.NullString {
 		return sql.NullString{}
 	}
 	return database.NullString(*s)
+}
+
+// parseUintOrZero 宽松解析数字（后台列表的 id / 关键词搜索用），失败返回 0。
+func parseUintOrZero(raw string) uint {
+	v, err := strconv.ParseUint(strings.TrimSpace(raw), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return uint(v)
 }

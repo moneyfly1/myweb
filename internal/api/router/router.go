@@ -558,6 +558,9 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/invites", handlers.GetAdminInvites)
 			admin.GET("/invite-relations", handlers.GetAdminInviteRelations)
 			admin.GET("/invite-statistics", handlers.GetAdminInviteStatistics)
+			// 邀请人维度列表 + 明细（后台「邀请管理」单表 + 抽屉）
+			admin.GET("/invite-inviters", handlers.GetAdminInviteInviters)
+			admin.GET("/invite-inviters/:id", handlers.GetAdminInviterDetail)
 			admin.POST("/invites/batch-delete", handlers.BatchDeleteInviteCodes)
 			admin.POST("/invite-relations/batch-delete", handlers.BatchDeleteInviteRelations)
 
