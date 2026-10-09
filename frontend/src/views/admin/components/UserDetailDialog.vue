@@ -9,179 +9,307 @@
     close-on-click-modal
   >
     <div v-if="user" class="drawer-content">
-      <!-- 用户基本信息 (始终可见) -->
-      <el-descriptions :column="isMobile ? 1 : 2" border size="small">
-        <el-descriptions-item label="用户ID">{{ user.user_info?.id || user.id }}</el-descriptions-item>
-        <el-descriptions-item label="用户名">{{ user.user_info?.username || user.username }}</el-descriptions-item>
-        <el-descriptions-item label="邮箱">{{ user.user_info?.email || user.email }}</el-descriptions-item>
-        <el-descriptions-item label="账户余额">
-          <span class="balance-highlight">¥{{ ((user.user_info?.balance || user.balance || 0)).toFixed(2) }}</span>
-        </el-descriptions-item>
-        <el-descriptions-item label="状态">
-          <el-tag :type="getStatusType(user.user_info?.is_active !== false ? 'active' : 'inactive')" size="small">
-            {{ getStatusText(user.user_info?.is_active !== false ? 'active' : 'inactive') }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="用户等级">
-          <el-tag v-if="user.user_info?.is_admin" type="danger" size="small">管理员</el-tag>
-          <el-tag v-else-if="user.user_info?.is_verified" type="success" size="small">已验证</el-tag>
-          <el-tag v-else type="info" size="small">普通用户</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="注册时间">{{ formatDate(user.user_info?.created_at || user.created_at) }}</el-descriptions-item>
-        <el-descriptions-item label="最后登录">{{ formatDate(user.user_info?.last_login || user.last_login) || '从未登录' }}</el-descriptions-item>
-      </el-descriptions>
-
-      <!-- 订阅信息分隔线 -->
-      <el-divider content-position="left">订阅信息</el-divider>
-
-      <!-- 订阅信息 (始终可见) -->
-      <div v-if="user.subscriptions && user.subscriptions.length > 0">
-        <div v-for="(sub, index) in user.subscriptions" :key="sub.id" class="subscription-section">
-          <el-descriptions :column="isMobile ? 1 : 2" border size="small">
-            <el-descriptions-item label="套餐名称">{{ sub.package_name || '未知套餐' }}</el-descriptions-item>
-            <el-descriptions-item label="订阅状态">
-              <el-tag :type="sub.is_active ? 'success' : 'danger'" size="small">
-                {{ sub.is_active ? '活跃' : '未激活' }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="设备数量">
-              {{ sub.current_devices || 0 }} / {{ sub.device_limit || 0 }}
-            </el-descriptions-item>
-            <el-descriptions-item label="到期时间">
-              <span :class="{ 'expired-text': sub.is_expired }">
-                {{ sub.expire_time || '未设置' }}
-                <span v-if="sub.days_until_expire !== undefined && !sub.is_expired">
-                  (剩余 {{ sub.days_until_expire }} 天)
-                </span>
-                <span v-if="sub.is_expired" class="expired-badge">已过期</span>
-              </span>
-            </el-descriptions-item>
-          </el-descriptions>
-
-          <!-- 订阅链接 -->
-          <div class="url-section">
-            <div class="protocol-exclude-panel" v-if="protocolOptions.length">
-              <div class="protocol-exclude-header">
-                <div>
-                  <div class="exclude-title">协议排除</div>
-                  <div class="exclude-subtitle">
-                    {{ getExcludedProtocols(sub).length ? `已排除 ${getExcludedProtocols(sub).length} 种协议` : '默认遵循后台系统协议过滤' }}
-                  </div>
-                </div>
-                <el-button
-                  text
-                  type="primary"
-                  size="small"
-                  :disabled="!getExcludedProtocols(sub).length"
-                  @click="clearExcludedProtocols(sub)"
-                >
-                  清空
-                </el-button>
-              </div>
-              <el-checkbox-group
-                :model-value="getExcludedProtocols(sub)"
-                class="protocol-checkboxes"
-                @change="value => setExcludedProtocols(sub, value)"
-              >
-                <el-checkbox-button
-                  v-for="protocol in protocolOptions"
-                  :key="protocol.value"
-                  :label="protocol.value"
-                >
-                  {{ protocol.label }}
-                </el-checkbox-button>
-              </el-checkbox-group>
-            </div>
-            <div class="url-item" v-if="sub.universal_url || sub.subscription_url">
-              <div class="url-header">
-                <span class="url-label">通用订阅 (V2Ray/Shadowrocket):</span>
-                <el-button
-                  size="small"
-                  :icon="CopyDocument"
-                  @click="copyToClipboard(getSubscriptionUrlWithExclude(sub, sub.universal_url || sub.subscription_url))"
-                  :disabled="!sub.universal_url && !sub.subscription_url"
-                >
-                  复制
-                </el-button>
-              </div>
-              <button
-                type="button"
-                class="url-code url-copy"
-                @click="copyToClipboard(getSubscriptionUrlWithExclude(sub, sub.universal_url || sub.subscription_url))"
-                :disabled="!sub.universal_url && !sub.subscription_url"
-                :title="`点击复制: ${getSubscriptionUrlWithExclude(sub, sub.universal_url || sub.subscription_url) || ''}`"
-              >
-                {{ getSubscriptionUrlWithExclude(sub, sub.universal_url || sub.subscription_url) || '无' }}
-              </button>
-            </div>
-            <div class="url-item" v-if="sub.clash_url">
-              <div class="url-header">
-                <span class="url-label">Clash / Clash Meta:</span>
-                <el-button
-                  size="small"
-                  :icon="CopyDocument"
-                  @click="copyToClipboard(getSubscriptionUrlWithExclude(sub, getTypedSubscriptionUrl(sub, 'clash')))"
-                  :disabled="!getTypedSubscriptionUrl(sub, 'clash')"
-                >
-                  复制
-                </el-button>
-              </div>
-              <button
-                type="button"
-                class="url-code url-copy"
-                @click="copyToClipboard(getSubscriptionUrlWithExclude(sub, getTypedSubscriptionUrl(sub, 'clash')))"
-                :disabled="!getTypedSubscriptionUrl(sub, 'clash')"
-                :title="`点击复制: ${getSubscriptionUrlWithExclude(sub, getTypedSubscriptionUrl(sub, 'clash')) || ''}`"
-              >
-                {{ getSubscriptionUrlWithExclude(sub, getTypedSubscriptionUrl(sub, 'clash')) || '无' }}
-              </button>
-            </div>
-            <div class="url-item" v-if="!sub.universal_url && !sub.subscription_url && !sub.clash_url">
-              <div class="url-header">
-                <span class="url-label">订阅地址:</span>
-              </div>
-              <code class="url-code">无</code>
-            </div>
-            <el-collapse v-if="hasMoreSubscriptionUrls(sub)" class="more-urls-collapse">
-              <el-collapse-item title="更多订阅地址" :name="`more-${sub.id || index}`">
-                <div
-                  v-for="client in getMoreSubscriptionUrls(sub)"
-                  :key="client.type"
-                  class="url-item"
-                >
-                  <div class="url-header">
-                    <span class="url-label">{{ client.label }}:</span>
-                    <el-button size="small" :icon="CopyDocument" @click="copyToClipboard(client.url)">复制</el-button>
-                  </div>
-                  <button
-                    type="button"
-                    class="url-code url-copy"
-                    @click="copyToClipboard(client.url)"
-                    :title="`点击复制: ${client.url}`"
-                  >
-                    {{ client.url }}
-                  </button>
-                </div>
-              </el-collapse-item>
-            </el-collapse>
-          </div>
-
-          <el-divider v-if="index < user.subscriptions.length - 1" />
-        </div>
+      <!-- 账户与订阅信息：默认折叠（记录信息优先级更高，避免一屏详情把记录挤到下面） -->
+      <div class="detail-collapse-bar">
+        <span class="detail-collapse-hint">{{ detailSections.length ? "上方信息已展开" : "上方为账户与订阅信息，点击标题展开" }}</span>
+        <el-button text type="primary" size="small" @click="toggleDetailSections">
+          {{ detailSections.length ? '全部收起' : '全部展开' }}
+        </el-button>
       </div>
-      <EmptyState
-        v-else
-        title="暂无订阅信息"
-        description="该用户当前没有可展示的订阅。"
-        :icon-size="48"
-        class="detail-empty-state"
-      />
+      <el-collapse v-model="detailSections" class="detail-collapse">
+        <el-collapse-item name="profile">
+          <template #title>
+            <span class="collapse-head">
+              <span class="collapse-title">用户信息</span>
+              <span class="collapse-summary">{{ profileSummary }}</span>
+            </span>
+          </template>
+              <el-descriptions :column="isMobile ? 1 : 2" border size="small">
+                <el-descriptions-item label="用户ID">{{ user.user_info?.id || user.id }}</el-descriptions-item>
+                <el-descriptions-item label="用户名">{{ user.user_info?.username || user.username }}</el-descriptions-item>
+                <el-descriptions-item label="邮箱">{{ user.user_info?.email || user.email }}</el-descriptions-item>
+                <el-descriptions-item label="账户余额">
+                  <span class="balance-highlight">¥{{ ((user.user_info?.balance || user.balance || 0)).toFixed(2) }}</span>
+                </el-descriptions-item>
+                <el-descriptions-item label="状态">
+                  <el-tag :type="getStatusType(user.user_info?.is_active !== false ? 'active' : 'inactive')" size="small">
+                    {{ getStatusText(user.user_info?.is_active !== false ? 'active' : 'inactive') }}
+                  </el-tag>
+                </el-descriptions-item>
+                <el-descriptions-item label="用户等级">
+                  <el-tag v-if="user.user_info?.is_admin" type="danger" size="small">管理员</el-tag>
+                  <el-tag v-else-if="user.user_info?.is_verified" type="success" size="small">已验证</el-tag>
+                  <el-tag v-else type="info" size="small">普通用户</el-tag>
+                </el-descriptions-item>
+                <el-descriptions-item label="注册时间">{{ formatDate(user.user_info?.created_at || user.created_at) }}</el-descriptions-item>
+                <el-descriptions-item label="最后登录">{{ formatDate(user.user_info?.last_login || user.last_login) || '从未登录' }}</el-descriptions-item>
+              </el-descriptions>
+        </el-collapse-item>
+
+        <el-collapse-item name="subscription">
+          <template #title>
+            <span class="collapse-head">
+              <span class="collapse-title">订阅信息</span>
+              <span class="collapse-summary">{{ subscriptionSummary }}</span>
+            </span>
+          </template>
+              <div v-if="user.subscriptions && user.subscriptions.length > 0">
+                <div v-for="(sub, index) in user.subscriptions" :key="sub.id" class="subscription-section">
+                  <el-descriptions :column="isMobile ? 1 : 2" border size="small">
+                    <el-descriptions-item label="套餐名称">{{ sub.package_name || '未知套餐' }}</el-descriptions-item>
+                    <el-descriptions-item label="订阅状态">
+                      <el-tag :type="sub.is_active ? 'success' : 'danger'" size="small">
+                        {{ sub.is_active ? '活跃' : '未激活' }}
+                      </el-tag>
+                    </el-descriptions-item>
+                    <el-descriptions-item label="设备数量">
+                      {{ sub.current_devices || 0 }} / {{ sub.device_limit || 0 }}
+                    </el-descriptions-item>
+                    <el-descriptions-item label="到期时间">
+                      <span :class="{ 'expired-text': sub.is_expired }">
+                        {{ sub.expire_time || '未设置' }}
+                        <span v-if="sub.days_until_expire !== undefined && !sub.is_expired">
+                          (剩余 {{ sub.days_until_expire }} 天)
+                        </span>
+                        <span v-if="sub.is_expired" class="expired-badge">已过期</span>
+                      </span>
+                    </el-descriptions-item>
+                  </el-descriptions>
+
+                  <!-- 订阅链接 -->
+                  <div class="url-section">
+                    <div class="protocol-exclude-panel" v-if="protocolOptions.length">
+                      <div class="protocol-exclude-header">
+                        <div>
+                          <div class="exclude-title">协议排除</div>
+                          <div class="exclude-subtitle">
+                            {{ getExcludedProtocols(sub).length ? `已排除 ${getExcludedProtocols(sub).length} 种协议` : '默认遵循后台系统协议过滤' }}
+                          </div>
+                        </div>
+                        <el-button
+                          text
+                          type="primary"
+                          size="small"
+                          :disabled="!getExcludedProtocols(sub).length"
+                          @click="clearExcludedProtocols(sub)"
+                        >
+                          清空
+                        </el-button>
+                      </div>
+                      <el-checkbox-group
+                        :model-value="getExcludedProtocols(sub)"
+                        class="protocol-checkboxes"
+                        @change="value => setExcludedProtocols(sub, value)"
+                      >
+                        <el-checkbox-button
+                          v-for="protocol in protocolOptions"
+                          :key="protocol.value"
+                          :label="protocol.value"
+                        >
+                          {{ protocol.label }}
+                        </el-checkbox-button>
+                      </el-checkbox-group>
+                    </div>
+                    <div class="url-item" v-if="sub.universal_url || sub.subscription_url">
+                      <div class="url-header">
+                        <span class="url-label">通用订阅 (V2Ray/Shadowrocket):</span>
+                        <el-button
+                          size="small"
+                          :icon="CopyDocument"
+                          @click="copyToClipboard(getSubscriptionUrlWithExclude(sub, sub.universal_url || sub.subscription_url))"
+                          :disabled="!sub.universal_url && !sub.subscription_url"
+                        >
+                          复制
+                        </el-button>
+                      </div>
+                      <button
+                        type="button"
+                        class="url-code url-copy"
+                        @click="copyToClipboard(getSubscriptionUrlWithExclude(sub, sub.universal_url || sub.subscription_url))"
+                        :disabled="!sub.universal_url && !sub.subscription_url"
+                        :title="`点击复制: ${getSubscriptionUrlWithExclude(sub, sub.universal_url || sub.subscription_url) || ''}`"
+                      >
+                        {{ getSubscriptionUrlWithExclude(sub, sub.universal_url || sub.subscription_url) || '无' }}
+                      </button>
+                    </div>
+                    <div class="url-item" v-if="sub.clash_url">
+                      <div class="url-header">
+                        <span class="url-label">Clash / Clash Meta:</span>
+                        <el-button
+                          size="small"
+                          :icon="CopyDocument"
+                          @click="copyToClipboard(getSubscriptionUrlWithExclude(sub, getTypedSubscriptionUrl(sub, 'clash')))"
+                          :disabled="!getTypedSubscriptionUrl(sub, 'clash')"
+                        >
+                          复制
+                        </el-button>
+                      </div>
+                      <button
+                        type="button"
+                        class="url-code url-copy"
+                        @click="copyToClipboard(getSubscriptionUrlWithExclude(sub, getTypedSubscriptionUrl(sub, 'clash')))"
+                        :disabled="!getTypedSubscriptionUrl(sub, 'clash')"
+                        :title="`点击复制: ${getSubscriptionUrlWithExclude(sub, getTypedSubscriptionUrl(sub, 'clash')) || ''}`"
+                      >
+                        {{ getSubscriptionUrlWithExclude(sub, getTypedSubscriptionUrl(sub, 'clash')) || '无' }}
+                      </button>
+                    </div>
+                    <div class="url-item" v-if="!sub.universal_url && !sub.subscription_url && !sub.clash_url">
+                      <div class="url-header">
+                        <span class="url-label">订阅地址:</span>
+                      </div>
+                      <code class="url-code">无</code>
+                    </div>
+                    <el-collapse v-if="hasMoreSubscriptionUrls(sub)" class="more-urls-collapse">
+                      <el-collapse-item title="更多订阅地址" :name="`more-${sub.id || index}`">
+                        <div
+                          v-for="client in getMoreSubscriptionUrls(sub)"
+                          :key="client.type"
+                          class="url-item"
+                        >
+                          <div class="url-header">
+                            <span class="url-label">{{ client.label }}:</span>
+                            <el-button size="small" :icon="CopyDocument" @click="copyToClipboard(client.url)">复制</el-button>
+                          </div>
+                          <button
+                            type="button"
+                            class="url-code url-copy"
+                            @click="copyToClipboard(client.url)"
+                            :title="`点击复制: ${client.url}`"
+                          >
+                            {{ client.url }}
+                          </button>
+                        </div>
+                      </el-collapse-item>
+                    </el-collapse>
+                  </div>
+
+                  <el-divider v-if="index < user.subscriptions.length - 1" />
+                </div>
+              </div>
+              <EmptyState
+                v-else
+                title="暂无订阅信息"
+                description="该用户当前没有可展示的订阅。"
+                :icon-size="48"
+                class="detail-empty-state"
+              />
+        </el-collapse-item>
+      </el-collapse>
 
       <!-- 记录信息分隔线 -->
       <el-divider content-position="left">记录信息</el-divider>
 
       <!-- 底部记录 Tabs -->
       <el-tabs v-model="activeTab" class="records-tabs">
+        <!-- 专线节点 Tab -->
+        <el-tab-pane label="专线节点" name="custom-nodes">
+          <div class="custom-nodes-section">
+            <div class="line-mode-panel">
+              <div class="line-mode-heading">
+                <div>
+                  <div class="line-mode-title">线路模式</div>
+                  <div class="line-mode-meta">切换模式不会删除已分配的专线节点。</div>
+                </div>
+                <el-tag :type="getLineModeTagType(lineModeForm)" effect="plain" size="small">
+                  {{ getLineModeText(lineModeForm) }}
+                </el-tag>
+              </div>
+              <el-radio-group
+                v-model="lineModeForm"
+                size="small"
+                class="line-mode-control"
+                :disabled="savingLineMode"
+                @change="updateLineMode"
+              >
+                <el-radio-button label="normal">普通线路</el-radio-button>
+                <el-radio-button label="both" :disabled="!hasAssignedCustomNodes">专线 + 普通线路</el-radio-button>
+                <el-radio-button label="special_only" :disabled="!hasAssignedCustomNodes">仅专线</el-radio-button>
+              </el-radio-group>
+            </div>
+            <div class="custom-nodes-actions">
+              <el-button
+                type="primary"
+                size="small"
+                :icon="Plus"
+                @click="openAssignDialog"
+              >
+                分配专线节点
+              </el-button>
+              <el-button
+                type="danger"
+                size="small"
+                :icon="Delete"
+                :disabled="selectedCustomNodes.length === 0"
+                :loading="batchUnassigning"
+                @click="batchUnassignSelectedNodes"
+              >
+                批量取消分配{{ selectedCustomNodes.length > 0 ? ` (${selectedCustomNodes.length})` : '' }}
+              </el-button>
+              <el-button
+                type="danger"
+                size="small"
+                plain
+                :disabled="!(customNodes && customNodes.length > 0)"
+                :loading="clearingNodes"
+                @click="clearAllCustomNodes"
+              >
+                清空专线节点
+              </el-button>
+              <el-button
+                size="small"
+                :icon="RefreshRight"
+                @click="loadUserCustomNodes"
+                :loading="loadingNodes"
+              >
+                刷新
+              </el-button>
+            </div>
+
+            <el-table
+              v-if="customNodes && customNodes.length > 0"
+              :data="customNodes"
+              size="small"
+              max-height="240"
+              class="data-table"
+              @selection-change="handleCustomNodeSelectionChange"
+            >
+              <el-table-column type="selection" width="40" />
+              <el-table-column prop="node_name" label="节点名称" min-width="150" />
+              <el-table-column prop="node_address" label="节点地址" min-width="200" show-overflow-tooltip />
+              <el-table-column label="专线到期" width="160">
+                <template #default="scope">
+                  {{ formatDateTime(scope.row.special_node_expires_at) || '跟随订阅' }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="assigned_at" label="分配时间" width="160">
+                <template #default="scope">
+                  {{ formatDateTime(scope.row.assigned_at) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="100" fixed="right">
+                <template #default="scope">
+                  <el-button
+                    type="danger"
+                    size="small"
+                    link
+                    @click="unassignNode(scope.row.node_id)"
+                  >
+                    取消分配
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <EmptyState
+              v-else
+              title="暂无专线节点"
+              description="该用户当前没有分配专线节点。"
+              :icon-size="48"
+              class="detail-empty-state"
+            />
+          </div>
+        </el-tab-pane>
+
         <!-- 订单记录 Tab -->
         <el-tab-pane label="订单记录" name="orders">
           <el-table
@@ -502,114 +630,6 @@
               :total="checkinPagination.total"
               @size-change="handleCheckinSizeChange"
               @current-change="handleCheckinPageChange"
-            />
-          </div>
-        </el-tab-pane>
-
-        <!-- 专线节点 Tab -->
-        <el-tab-pane label="专线节点" name="custom-nodes">
-          <div class="custom-nodes-section">
-            <div class="line-mode-panel">
-              <div class="line-mode-heading">
-                <div>
-                  <div class="line-mode-title">线路模式</div>
-                  <div class="line-mode-meta">切换模式不会删除已分配的专线节点。</div>
-                </div>
-                <el-tag :type="getLineModeTagType(lineModeForm)" effect="plain" size="small">
-                  {{ getLineModeText(lineModeForm) }}
-                </el-tag>
-              </div>
-              <el-radio-group
-                v-model="lineModeForm"
-                size="small"
-                class="line-mode-control"
-                :disabled="savingLineMode"
-                @change="updateLineMode"
-              >
-                <el-radio-button label="normal">普通线路</el-radio-button>
-                <el-radio-button label="both" :disabled="!hasAssignedCustomNodes">专线 + 普通线路</el-radio-button>
-                <el-radio-button label="special_only" :disabled="!hasAssignedCustomNodes">仅专线</el-radio-button>
-              </el-radio-group>
-            </div>
-            <div class="custom-nodes-actions">
-              <el-button
-                type="primary"
-                size="small"
-                :icon="Plus"
-                @click="openAssignDialog"
-              >
-                分配专线节点
-              </el-button>
-              <el-button
-                type="danger"
-                size="small"
-                :icon="Delete"
-                :disabled="selectedCustomNodes.length === 0"
-                :loading="batchUnassigning"
-                @click="batchUnassignSelectedNodes"
-              >
-                批量取消分配{{ selectedCustomNodes.length > 0 ? ` (${selectedCustomNodes.length})` : '' }}
-              </el-button>
-              <el-button
-                type="danger"
-                size="small"
-                plain
-                :disabled="!(customNodes && customNodes.length > 0)"
-                :loading="clearingNodes"
-                @click="clearAllCustomNodes"
-              >
-                清空专线节点
-              </el-button>
-              <el-button
-                size="small"
-                :icon="RefreshRight"
-                @click="loadUserCustomNodes"
-                :loading="loadingNodes"
-              >
-                刷新
-              </el-button>
-            </div>
-
-            <el-table
-              v-if="customNodes && customNodes.length > 0"
-              :data="customNodes"
-              size="small"
-              max-height="240"
-              class="data-table"
-              @selection-change="handleCustomNodeSelectionChange"
-            >
-              <el-table-column type="selection" width="40" />
-              <el-table-column prop="node_name" label="节点名称" min-width="150" />
-              <el-table-column prop="node_address" label="节点地址" min-width="200" show-overflow-tooltip />
-              <el-table-column label="专线到期" width="160">
-                <template #default="scope">
-                  {{ formatDateTime(scope.row.special_node_expires_at) || '跟随订阅' }}
-                </template>
-              </el-table-column>
-              <el-table-column prop="assigned_at" label="分配时间" width="160">
-                <template #default="scope">
-                  {{ formatDateTime(scope.row.assigned_at) }}
-                </template>
-              </el-table-column>
-              <el-table-column label="操作" width="100" fixed="right">
-                <template #default="scope">
-                  <el-button
-                    type="danger"
-                    size="small"
-                    link
-                    @click="unassignNode(scope.row.node_id)"
-                  >
-                    取消分配
-                  </el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-            <EmptyState
-              v-else
-              title="暂无专线节点"
-              description="该用户当前没有分配专线节点。"
-              :icon-size="48"
-              class="detail-empty-state"
             />
           </div>
         </el-tab-pane>
@@ -942,6 +962,9 @@ export default {
   data() {
     return {
       activeTab: this.initialTab,
+      // 记录信息上方的信息区（用户信息 / 订阅信息）默认全部收起：
+      // 打开抽屉时优先看到底部的记录 Tabs，需要看详情再展开。
+      detailSections: [],
       customNodes: [],
       selectedCustomNodes: [],
       batchUnassigning: false,
@@ -994,6 +1017,31 @@ export default {
     }
   },
   computed: {
+    // 折叠标题里的摘要：收起状态下不点开也能看到关键信息
+    profileSummary() {
+      const info = this.user?.user_info || this.user || {}
+      const parts = []
+      if (info.id) parts.push(`ID ${info.id}`)
+      if (info.username) parts.push(info.username)
+      const balance = Number(info.balance ?? 0)
+      parts.push(`余额 ¥${(Number.isFinite(balance) ? balance : 0).toFixed(2)}`)
+      parts.push(info.is_active === false ? '已禁用' : '正常')
+      return parts.join(' · ')
+    },
+    subscriptionSummary() {
+      const subs = this.user?.subscriptions || []
+      if (!subs.length) return '暂无订阅'
+      const active = subs.filter(sub => sub.is_active).length
+      const soonest = subs
+        .filter(sub => sub.expire_time)
+        .map(sub => String(sub.expire_time))
+        .sort()[0]
+      return [
+        `共 ${subs.length} 个`,
+        active ? `${active} 个活跃` : '',
+        soonest ? `最近到期 ${soonest}` : ''
+      ].filter(Boolean).join(' · ')
+    },
     // 模板里以 :icon="X" 表达式使用的图标必须挂在实例上：
     // components 注册只服务 <X /> 写法，用组件名当表达式只会拿到 undefined（图标不显示）。
     CopyDocument: () => CopyDocument,
@@ -1076,6 +1124,10 @@ export default {
     this._unmounted = true
   },
   methods: {
+    // 在「全部展开 / 全部收起」之间切换（默认是全部收起）
+    toggleDetailSections() {
+      this.detailSections = this.detailSections.length ? [] : ['profile', 'subscription']
+    },
     // 重置所有按用户缓存的状态（打开或切换用户时调用）
     resetDialogState() {
       this.activeTab = this.initialTab
@@ -1815,6 +1867,60 @@ export default {
     padding: 0;
   }
 
+  /* 记录信息上方的信息区：默认收起，只在标题里展示摘要 */
+  .detail-collapse-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .detail-collapse-hint {
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+  }
+
+  .detail-collapse {
+    border-top: none;
+
+    :deep(.el-collapse-item__header) {
+      height: auto;
+      min-height: 40px;
+      padding: 6px 0;
+      line-height: 1.4;
+      font-weight: 600;
+      border-bottom-color: var(--el-border-color-lighter);
+    }
+
+    :deep(.el-collapse-item__content) {
+      padding-bottom: 12px;
+    }
+  }
+
+  .collapse-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .collapse-title {
+    flex: none;
+    font-size: 14px;
+    color: var(--el-text-color-primary);
+  }
+
+  .collapse-summary {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--el-text-color-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .balance-highlight {
     font-weight: 600;
     color: #409eff;
@@ -2153,6 +2259,17 @@ export default {
   }
 
   @media (max-width: 768px) {
+    .collapse-head {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+    }
+
+    .collapse-summary {
+      white-space: normal;
+      line-height: 1.3;
+    }
+
     .drawer-content {
       padding: 0;
     }
