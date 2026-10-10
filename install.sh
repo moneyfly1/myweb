@@ -551,6 +551,14 @@ DISABLE_SCHEDULE_TASKS=false
 ADMIN_USERNAME=admin
 ADMIN_EMAIL=admin@${DOMAIN}
 ADMIN_PASSWORD=${_new_admin_pw}
+
+# 路径覆盖：让应用面板（订阅域名池一键配置 / 证书自检）与本脚本用同一套路径。
+# 不加这两项时，应用的 AcmeWebroot() 会在 ACME_WEBROOT 缺失时退回"历史默认
+# /www/wwwroot/cboard"（只要该目录存在就选中）——真实踩坑：站点已搬到
+# /www/wwwroot/speedora.top，旧目录还在，于是应用生成的 vhost 与 certbot 的 webroot
+# 都指向了那个只剩空壳的旧目录。
+SITE_ROOT=${PROJECT_DIR}
+ACME_WEBROOT=${PROJECT_DIR}
 EOF
         umask "$_old_umask"
         log "✅ .env 已创建（HOST=127.0.0.1，仅 nginx 可访问后端；含管理员账号密码）"
@@ -578,6 +586,21 @@ EOF
         } >> "$env_file"
         if [[ "$_changed_admin" == "yes" ]]; then
             log "已把管理员账号写入 .env: ${_au} / 密码 16 位（应用每次启动都会按它重置，固定可用）"
+        fi
+        # 路径覆盖（只补缺失项，不动用户已显式配置的值）
+        local _paths_added="no"
+        {
+            if ! grep -q '^SITE_ROOT=' "$env_file"; then echo "SITE_ROOT=${PROJECT_DIR}"; _paths_added="yes"; fi
+            if ! grep -q '^ACME_WEBROOT=' "$env_file"; then echo "ACME_WEBROOT=${PROJECT_DIR}"; _paths_added="yes"; fi
+        } >> "$env_file"
+        if [[ "$_paths_added" == "yes" ]]; then
+            log "已写入路径覆盖 SITE_ROOT / ACME_WEBROOT = ${PROJECT_DIR}（应用面板与脚本路径一致）"
+        fi
+        # 历史遗留目录告警：应用在 ACME_WEBROOT 缺失时会优先选它
+        if [[ -d /www/wwwroot/cboard && "/www/wwwroot/cboard" != "${PROJECT_DIR}" ]]; then
+            if ! grep -q '^ACME_WEBROOT=' "$env_file"; then
+                warn "检测到历史目录 /www/wwwroot/cboard：应用在缺少 ACME_WEBROOT 时会优先把它当成校验目录，可能造成续期 404"
+            fi
         fi
         if ! grep -q '^HOST=' "$env_file"; then
             echo "HOST=127.0.0.1" >> "$env_file"
