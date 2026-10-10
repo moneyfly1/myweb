@@ -2381,7 +2381,18 @@ awk '
 if ${NGINX_TEST_CMD:-nginx -t} >/dev/null 2>&1; then
     ${reload_cmd} >/dev/null 2>&1
     touch "\$FLAG"
-    logger -t cboard-acme "已临时关闭强制HTTPS跳转（http-01 校验期间）"
+    # nginx reload 是异步的（宝塔机器上十几个站点时更明显）：必须等新配置真正生效，
+    # 否则 certbot 可能在旧配置（还在 301 跳转）下开始校验。本机探测该路径直到不再是 301。
+    code="skip"
+    if command -v curl >/dev/null 2>&1; then
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+            code=\$(curl -s -o /dev/null -m 3 -w '%{http_code}' -H "Host: ${DOMAIN}" \
+                "http://127.0.0.1/.well-known/acme-challenge/cboard-acme-readiness" 2>/dev/null)
+            [ "\$code" != "301" ] && break
+            sleep 1
+        done
+    fi
+    logger -t cboard-acme "已临时关闭强制HTTPS跳转（http-01 校验期间），本机探测码=\$code"
     exit 0
 fi
 # 关掉跳转后配置反而不过 → 立刻还原，让续期以清晰的原因失败
