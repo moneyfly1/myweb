@@ -346,6 +346,11 @@ check_and_update_redis_config() {
 ensure_env_file() {
     local env_file="${PROJECT_DIR}/.env"
     local db_abs="${PROJECT_DIR}/cboard.db"
+    # 管理员密码：脚本生成一个强随机密码（写入 .env 后应用每次启动都会按它重置，
+    # 所以既能"安装完就显示给你"，又不会像应用自带的随机初始密码那样只打印一次、清日志就丢）
+    local _new_admin_pw
+    _new_admin_pw="$(openssl rand -base64 24 2>/dev/null | tr -d '=+/' | cut -c1-16)"
+    [[ -n "$_new_admin_pw" ]] || _new_admin_pw="Cboard$(date +%Y%m%d%H%M)"
     if [[ ! -f "$env_file" ]]; then
         step "创建 .env 配置文件..."
         local secret
@@ -371,9 +376,15 @@ API_V1_STR=/api/v1
 UPLOAD_DIR=uploads
 MAX_FILE_SIZE=10485760
 DISABLE_SCHEDULE_TASKS=false
+
+# 管理员账号（脚本生成并写入；应用每次启动都会按 ADMIN_PASSWORD 重置该账号密码，
+# 保证密码固定、始终可登录。忘记密码也可用脚本菜单 2 重置）
+ADMIN_USERNAME=admin
+ADMIN_EMAIL=admin@${DOMAIN}
+ADMIN_PASSWORD=${_new_admin_pw}
 EOF
         umask "$_old_umask"
-        log "✅ .env 已创建（HOST=127.0.0.1，仅 nginx 可访问后端）"
+        log "✅ .env 已创建（HOST=127.0.0.1，仅 nginx 可访问后端；含管理员账号密码）"
     else
         cp "$env_file" "${env_file}.backup.$(date +%Y%m%d_%H%M%S)" 2>/dev/null
         local cur_db
@@ -385,6 +396,19 @@ EOF
             # 相对路径（sqlite:///./cboard.db）→ 改成绝对路径
             sed -i "s|^DATABASE_URL=.*|DATABASE_URL=sqlite:///${db_abs}|" "$env_file"
             log "已将相对 DATABASE_URL 修正为绝对路径: ${db_abs}"
+        fi
+        # 补齐管理员账号/密码（只补缺失项）
+        local _au _am _ap _changed_admin="no"
+        _au="$(grep -E '^ADMIN_USERNAME=' "$env_file" 2>/dev/null | head -1 | cut -d'=' -f2-)"
+        _am="$(grep -E '^ADMIN_EMAIL=' "$env_file" 2>/dev/null | head -1 | cut -d'=' -f2-)"
+        _ap="$(grep -E '^ADMIN_PASSWORD=' "$env_file" 2>/dev/null | head -1 | cut -d'=' -f2-)"
+        {
+            if [[ -z "$_au" ]]; then echo "ADMIN_USERNAME=admin"; _au="admin"; _changed_admin="yes"; fi
+            if [[ -z "$_am" ]]; then echo "ADMIN_EMAIL=admin@${DOMAIN}"; _am="admin@${DOMAIN}"; _changed_admin="yes"; fi
+            if [[ -z "$_ap" ]]; then echo "ADMIN_PASSWORD=${_new_admin_pw}"; _ap="$_new_admin_pw"; _changed_admin="yes"; fi
+        } >> "$env_file"
+        if [[ "$_changed_admin" == "yes" ]]; then
+            log "已把管理员账号写入 .env: ${_au} / 密码 16 位（应用每次启动都会按它重置，固定可用）"
         fi
         if ! grep -q '^HOST=' "$env_file"; then
             echo "HOST=127.0.0.1" >> "$env_file"
@@ -718,38 +742,77 @@ EOF
     log "已配置日志轮转: $f"
 }
 
-# 首次启动时应用会自动创建管理员，并在 server.log 打印一次「初始密码」。
-# 这个密码只出现一次，日志被清（菜单 4）或轮转后就找不回来了 —— 所以脚本主动把它捞出来显示。
-show_admin_credentials() {
-    local logf="${PROJECT_DIR}/server.log"
-    local db; db="$(detect_db_path)"
-    local admins=""
-    if [[ -n "$db" && -f "$db" ]] && command -v sqlite3 >/dev/null 2>&1; then
-        admins="$(sqlite3 "$db" "select username||' <'||email||'>' from users where is_admin=1 order by id;" 2>/dev/null)"
+# 安装完成后打印「登录地址 + 管理员账号密码」。
+#
+# 密码来源优先级：
+#   1) .env 的 ADMIN_PASSWORD —— 脚本安装时生成并写入，应用每次启动都会按它重置该账号密码，
+#      所以这里显示的值一定是当前可用的（不怕日志被清、重启后依然有效）
+#   2) .env 没有时，从 server.log 里捞应用首次启动打印的「初始密码」（只出现过一次）
+#   3) 都没有 → 提示用菜单 2 重置
+print_access_info() {
+    local conf; conf="$(site_conf_path)"
+    local scheme="http"
+    if [[ -f "$conf" ]] && grep -qE "listen[[:space:]]+443" "$conf" && [[ -n "$(detect_cert >/dev/null; echo "$CERT_DIR")" ]]; then
+        scheme="https"
     fi
+    [[ "${SITE_SCHEME:-}" == "https" ]] && scheme="https"
+
+    local au am ap
+    au="$(grep -E '^ADMIN_USERNAME=' "${PROJECT_DIR}/.env" 2>/dev/null | head -1 | cut -d'=' -f2-)"
+    am="$(grep -E '^ADMIN_EMAIL=' "${PROJECT_DIR}/.env" 2>/dev/null | head -1 | cut -d'=' -f2-)"
+    ap="$(grep -E '^ADMIN_PASSWORD=' "${PROJECT_DIR}/.env" 2>/dev/null | head -1 | cut -d'=' -f2-)"
+    au="${au:-admin}"; am="${am:-admin@${DOMAIN}}"
+
     local initial=""
-    [[ -f "$logf" ]] && initial="$(grep -aoE '初始密码: [^ ]+' "$logf" 2>/dev/null | tail -1 | awk '{print $2}')"
-    local env_pw
-    env_pw="$(grep -E '^ADMIN_PASSWORD=' "${PROJECT_DIR}/.env" 2>/dev/null | head -1 | cut -d'=' -f2-)"
+    [[ -f "${PROJECT_DIR}/server.log" ]] && initial="$(grep -aoE '初始密码: [^ ]+' "${PROJECT_DIR}/server.log" 2>/dev/null | tail -1 | awk '{print $2}')"
+
+    # 其它管理员（例如运行过菜单 2 建的账号）
+    local extras="" db
+    db="$(detect_db_path)"
+    if [[ -n "$db" && -f "$db" ]] && command -v sqlite3 >/dev/null 2>&1; then
+        extras="$(sqlite3 "$db" "select username||' <'||coalesce(email,'')||'>' from users where is_admin=1 and username <> '${au}' order by id;" 2>/dev/null)"
+    fi
 
     echo
-    echo -e "${CYAN}================ 管理员账号 ================${NC}"
-    if [[ -n "$admins" ]]; then
-        while IFS= read -r line; do echo -e "  已有管理员: ${line}"; done <<< "$admins"
-    else
-        echo -e "  ${YELLOW}当前还没有管理员账号${NC}"
-    fi
-    if [[ -n "$env_pw" ]]; then
-        echo -e "  密码: ${env_pw}（来自 .env 的 ADMIN_PASSWORD，每次启动都会按它重置，固定可用）"
+    echo -e "${GREEN}================== 登录信息 ==================${NC}"
+    echo -e "  前台地址:     ${scheme}://${DOMAIN}"
+    echo -e "  前台登录:     ${scheme}://${DOMAIN}/login"
+    echo -e "  管理后台:     ${scheme}://${DOMAIN}/admin"
+    echo -e "  管理员登录:   ${scheme}://${DOMAIN}/admin/login"
+    echo -e "${GREEN}----------------------------------------------${NC}"
+    echo -e "  管理员账号:   ${au}"
+    echo -e "  管理员邮箱:   ${am}"
+    if [[ -n "$ap" ]]; then
+        echo -e "  管理员密码:   ${GREEN}${ap}${NC}"
+        echo -e "  （密码由 .env 的 ADMIN_PASSWORD 固定：应用每次启动都会按它重置，重启后依然可用；"
+        echo -e "    如需修改：改 .env 后菜单 8 重启，或用菜单 2 重置）"
     elif [[ -n "$initial" ]]; then
-        echo -e "  ${YELLOW}首次启动生成的随机密码: ${initial}${NC}"
-        echo -e "  ${YELLOW}↑ 只打印这一次，请立刻登录并修改；日志轮转/清理后就找不回来了${NC}"
+        echo -e "  管理员密码:   ${YELLOW}${initial}${NC}（应用首次启动生成的随机密码，仅出现这一次）"
     else
-        echo -e "  ${YELLOW}未在 server.log 中找到初始密码（可能已被清理或账号已存在）${NC}"
-        echo -e "  用法: 菜单 2 创建/重置管理员账号（脚本会当场用新口令实测登录）"
-        echo -e "  建议: 在 .env 里设置 ADMIN_PASSWORD=<强密码>，即可固定密码并每次启动自动重置"
+        echo -e "  ${YELLOW}管理员密码: 未找到（.env 无 ADMIN_PASSWORD，日志里也没有初始密码）${NC}"
+        echo -e "    请用菜单 2 重置密码；或在 .env 里设置 ADMIN_PASSWORD 后菜单 8 重启"
     fi
-    echo -e "${CYAN}==========================================${NC}"
+    if [[ -n "$extras" ]]; then
+        echo -e "${GREEN}----------------------------------------------${NC}"
+        echo -e "  其它管理员账号（历史创建，密码请自行管理或删除）:"
+        while IFS= read -r line; do echo -e "    - ${line}"; done <<< "$extras"
+    fi
+    echo -e "${GREEN}==============================================${NC}"
+    echo
+
+    # 顺便做一次真实登录验证（确认显示的密码当前可用）
+    if [[ -n "$ap" ]]; then
+        local port; port="$(env_port)"
+        local resp
+        resp="$(curl -fsS --max-time 8 -X POST "http://127.0.0.1:${port}/api/v1/auth/login-json" \
+            -H 'Content-Type: application/json' \
+            -d "$(printf '{"username":"%s","password":"%s"}' "$au" "$ap")" 2>/dev/null)"
+        if [[ "$resp" == *access_token* ]]; then
+            log "✅ 已实测：用上面这个账号密码登录成功"
+        else
+            warn "⚠️  上面这个账号密码本地登录未成功（服务可能刚重启，稍等几秒再试；或用菜单 2 重置）"
+        fi
+    fi
 }
 
 # 启动并做业务健康检查（systemctl is-active 只说明进程在，不说明服务可用）
@@ -1248,7 +1311,7 @@ full_deploy() {
         return 1
     }
 
-    show_admin_credentials
+    print_access_info
     log "部署完成！日志文件: $LOG_FILE"
     log "服务状态: systemctl status cboard"
     log "查看日志: tail -n 200 -f ${PROJECT_DIR}/server.log"
@@ -1411,7 +1474,7 @@ manage_admin() {
         log "用户名: $admin_username"
         log "邮箱: $admin_email"
         [[ "$generated" == "yes" ]] && log "本次生成的密码: ${admin_pass}（请立即保存，之后不再显示）"
-        show_admin_credentials
+        print_access_info
         # 关键：写进库 ≠ 能登录。这里直接打本地登录接口实测一次，
         # 避免出现「提示创建成功，实际登不进去」却没人发现（端口写错/账号被锁/服务没起都会暴露）
         verify_admin_login "$admin_username" "$admin_pass" "$admin_email"
@@ -2752,7 +2815,7 @@ main() {
                     log "正在重启服务..."
                     stop_app_processes
                     restart_redis_with_timeout
-                    if start_and_verify_service; then show_admin_credentials; else error "服务重启后健康检查失败，请查看 ${PROJECT_DIR}/server.log"; fi
+                    if start_and_verify_service; then print_access_info; else error "服务重启后健康检查失败，请查看 ${PROJECT_DIR}/server.log"; fi
                 else
                     error "服务 cboard 不存在，请先部署"
                 fi
