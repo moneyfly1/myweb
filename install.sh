@@ -718,6 +718,40 @@ EOF
     log "已配置日志轮转: $f"
 }
 
+# 首次启动时应用会自动创建管理员，并在 server.log 打印一次「初始密码」。
+# 这个密码只出现一次，日志被清（菜单 4）或轮转后就找不回来了 —— 所以脚本主动把它捞出来显示。
+show_admin_credentials() {
+    local logf="${PROJECT_DIR}/server.log"
+    local db; db="$(detect_db_path)"
+    local admins=""
+    if [[ -n "$db" && -f "$db" ]] && command -v sqlite3 >/dev/null 2>&1; then
+        admins="$(sqlite3 "$db" "select username||' <'||email||'>' from users where is_admin=1 order by id;" 2>/dev/null)"
+    fi
+    local initial=""
+    [[ -f "$logf" ]] && initial="$(grep -aoE '初始密码: [^ ]+' "$logf" 2>/dev/null | tail -1 | awk '{print $2}')"
+    local env_pw
+    env_pw="$(grep -E '^ADMIN_PASSWORD=' "${PROJECT_DIR}/.env" 2>/dev/null | head -1 | cut -d'=' -f2-)"
+
+    echo
+    echo -e "${CYAN}================ 管理员账号 ================${NC}"
+    if [[ -n "$admins" ]]; then
+        while IFS= read -r line; do echo -e "  已有管理员: ${line}"; done <<< "$admins"
+    else
+        echo -e "  ${YELLOW}当前还没有管理员账号${NC}"
+    fi
+    if [[ -n "$env_pw" ]]; then
+        echo -e "  密码: ${env_pw}（来自 .env 的 ADMIN_PASSWORD，每次启动都会按它重置，固定可用）"
+    elif [[ -n "$initial" ]]; then
+        echo -e "  ${YELLOW}首次启动生成的随机密码: ${initial}${NC}"
+        echo -e "  ${YELLOW}↑ 只打印这一次，请立刻登录并修改；日志轮转/清理后就找不回来了${NC}"
+    else
+        echo -e "  ${YELLOW}未在 server.log 中找到初始密码（可能已被清理或账号已存在）${NC}"
+        echo -e "  用法: 菜单 2 创建/重置管理员账号（脚本会当场用新口令实测登录）"
+        echo -e "  建议: 在 .env 里设置 ADMIN_PASSWORD=<强密码>，即可固定密码并每次启动自动重置"
+    fi
+    echo -e "${CYAN}==========================================${NC}"
+}
+
 # 启动并做业务健康检查（systemctl is-active 只说明进程在，不说明服务可用）
 start_and_verify_service() {
     local port; port="$(env_port)"
@@ -1214,6 +1248,7 @@ full_deploy() {
         return 1
     }
 
+    show_admin_credentials
     log "部署完成！日志文件: $LOG_FILE"
     log "服务状态: systemctl status cboard"
     log "查看日志: tail -n 200 -f ${PROJECT_DIR}/server.log"
@@ -1376,6 +1411,7 @@ manage_admin() {
         log "用户名: $admin_username"
         log "邮箱: $admin_email"
         [[ "$generated" == "yes" ]] && log "本次生成的密码: ${admin_pass}（请立即保存，之后不再显示）"
+        show_admin_credentials
         # 关键：写进库 ≠ 能登录。这里直接打本地登录接口实测一次，
         # 避免出现「提示创建成功，实际登不进去」却没人发现（端口写错/账号被锁/服务没起都会暴露）
         verify_admin_login "$admin_username" "$admin_pass" "$admin_email"
@@ -2716,7 +2752,7 @@ main() {
                     log "正在重启服务..."
                     stop_app_processes
                     restart_redis_with_timeout
-                    start_and_verify_service || error "服务重启后健康检查失败，请查看 ${PROJECT_DIR}/server.log"
+                    if start_and_verify_service; then show_admin_credentials; else error "服务重启后健康检查失败，请查看 ${PROJECT_DIR}/server.log"; fi
                 else
                     error "服务 cboard 不存在，请先部署"
                 fi
