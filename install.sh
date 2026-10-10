@@ -396,20 +396,28 @@ configure_redis_cache() {
     fi
 
     # 移除旧的 Redis 配置（如果存在）
+    # 注意：删除必须"整块"删干净——历史上只删键行与注释行，留下的空行会每执行
+    # 一次菜单 12 就多一行，反复执行后 .env 里会堆积大量空行。现在用带标记的块 +
+    # 末尾空行归零，保证重复执行 .env 完全不变（幂等）。
     if [[ -f "$env_file" ]]; then
+        sed -i '/^# === CBoard Redis BEGIN ===$/,/^# === CBoard Redis END ===$/d' "$env_file"
         sed -i '/^REDIS_ADDR=/d' "$env_file"
         sed -i '/^REDIS_PASSWORD=/d' "$env_file"
-        sed -i '/^# Redis 配置/d' "$env_file"
+        sed -i '/^# Redis 配置（GeoIP 缓存加速）$/d' "$env_file"
+        # 去掉文件末尾多余空行（sed 的经典写法：只在最后一段连续空行上生效）
+        sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$env_file"
     fi
 
-    # 添加新的 Redis 配置
+    # 添加新的 Redis 配置（带标记块，便于下次整块替换）
     {
         echo ""
+        echo "# === CBoard Redis BEGIN ==="
         echo "# Redis 配置（GeoIP 缓存加速）"
         echo "REDIS_ADDR=${REDIS_ADDR}"
         if [[ -n "$REDIS_PASSWORD" ]]; then
             echo "REDIS_PASSWORD=${REDIS_PASSWORD}"
         fi
+        echo "# === CBoard Redis END ==="
     } >> "$env_file"
 
     log "✅ Redis 配置已保存到 .env 文件"
