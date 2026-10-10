@@ -1674,27 +1674,31 @@ self_check_and_repair() {
         grep -q EnvironmentFile /etc/systemd/system/cboard.service || { write_systemd_unit && fixed+=("unit 缺 EnvironmentFile → 已按标准模板重写"); }
     fi
 
-    # 6) 站点配置
+    # 6) 站点配置：统一交给 apply_site_config_desired 分派
+    #    （面板托管 → 合并注入；脚本模板 → 重渲染；其它手工配置 → 补块；有证书 → 启用 HTTPS）
     local conf; conf="$(site_conf_path)"
-    if [[ ! -f "$conf" ]]; then
-        detect_cert >/dev/null; local cert="$CERT_DIR"
-        if [[ -n "$cert" ]]; then render_site_config https "$cert"; else render_site_config http; fi
-        nginx_apply_or_rollback && fixed+=("站点配置缺失 → 已重新生成")
-    else
-        local before_hash; before_hash="$(md5sum "$conf" | cut -d' ' -f1)"
-        ensure_site_conf_blocks >/dev/null 2>&1
-        [[ "$before_hash" != "$(md5sum "$conf" | cut -d' ' -f1)" ]] && fixed+=("站点配置缺必需片段 → 已补齐")
+    local before_hash=""
+    [[ -f "$conf" ]] && before_hash="$(md5sum "$conf" | cut -d' ' -f1)"
+    apply_site_config_desired
+    if [[ -z "$before_hash" ]]; then
+        fixed+=("站点配置缺失 → 已生成")
+    elif [[ "$before_hash" != "$(md5sum "$conf" | cut -d' ' -f1)" ]]; then
+        fixed+=("站点配置已按目标状态刷新（注入/HTTPS/root 对齐）")
     fi
 
     # 7) nginx 可用性（-t 不过就换 http2 写法重试）
     if ! $NGINX_TEST_CMD >/dev/null 2>&1; then
-        warn "nginx -t 未通过，尝试自动修复..."
+        warn "nginx -t 未通过，尝试换 http2 写法自动修复..."
         if ver_ge "$(nginx_version)" "1.25.1"; then
-            if [[ -n "$CERT_DIR" ]]; then FORCE_OLD_HTTP2=yes render_site_config https "$CERT_DIR"; else FORCE_OLD_HTTP2=yes render_site_config http; fi
+            FORCE_OLD_HTTP2=yes apply_site_config_desired
         else
-            if [[ -n "$CERT_DIR" ]]; then FORCE_NEW_HTTP2=yes render_site_config https "$CERT_DIR"; else FORCE_NEW_HTTP2=yes render_site_config http; fi
+            FORCE_NEW_HTTP2=yes apply_site_config_desired
         fi
-        if nginx_apply_or_rollback; then fixed+=("nginx 配置语法错误 → 已换写法修复"); else problems+=("nginx 配置仍无法通过 -t，请查看 $conf"); fi
+        if $NGINX_TEST_CMD >/dev/null 2>&1; then
+            fixed+=("nginx 配置语法错误 → 已换写法修复")
+        else
+            problems+=("nginx 配置仍无法通过 -t，请查看 $conf")
+        fi
     else
         log "✅ nginx -t 通过"
     fi
@@ -1730,14 +1734,8 @@ self_check_and_repair() {
             || problems+=("证书申请失败（可检查 DNS 是否指向本机、80 端口是否可达）")
     fi
 
-    # 9.5) 目标状态对齐：有证书 → 站点必须是 HTTPS 配置。
-    # 回滚/面板重写都可能把配置退回旧的 HTTP 版本，这里显式拉回正确状态。
-    conf="$(site_conf_path)"
-    if [[ -n "$cert_dir" ]] && ! grep -q "listen 443" "$conf" 2>/dev/null; then
-        warn "检测到站点仍是 HTTP 配置，但证书已存在 → 切回 HTTPS"
-        render_site_config https "$cert_dir"
-        nginx_apply_or_rollback && fixed+=("证书存在但站点是 HTTP → 已切回 HTTPS")
-    fi
+    # 目标状态对齐（有证书就必须是 HTTPS）已由第 6 步的 apply_site_config_desired 统一处理：
+    # 面板托管配置走 443 块追加，脚本模板走重渲染 —— 不会再用整文件渲染覆盖面板配置。
 
     # 10) 服务可用性（用业务健康检查，不用 is-active）
     if ! start_and_verify_service; then
@@ -2163,7 +2161,9 @@ build_cboard_https_block() {
     local cert_dir="$1"
     local port; port="$(env_port)"
     local listen443="listen 443 ssl;" http2_line="    http2 on;"
-    if ! ver_ge "$(nginx_version)" "1.25.1"; then
+    if [[ "${FORCE_NEW_HTTP2:-}" == "yes" ]]; then
+        : # 强制新写法
+    elif [[ "${FORCE_OLD_HTTP2:-}" == "yes" ]] || ! ver_ge "$(nginx_version)" "1.25.1"; then
         listen443="listen 443 ssl http2;"; http2_line=""
     fi
     cat << BLK
