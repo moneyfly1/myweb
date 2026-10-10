@@ -1106,6 +1106,7 @@ tar czf backup-$(date +%F).tar.gz cboard.db uploads
 | **服务无法启动** | 端口被占用 / 配置错误 | `lsof -i :8000` 查占用；检查 `.env` 语法与 `DATABASE_URL` 路径；查看日志 `journalctl -u cboard -f` 或 `docker compose logs app` |
 | **502 Bad Gateway** | 后端未启动 / 端口不匹配 | 确认 8000 端口进程存在；检查 Nginx `proxy_pass` 端口与 `.env` 的 `PORT` 一致 |
 | **数据库"数据消失"** | 启动目录 / `DATABASE_URL` 变化导致连到新库 | 启动日志出现「⚠️ 即将创建全新数据库」即为信号；核对路径与卷挂载；旧文件未被删除，找到后改回路径即可 |
+| **脚本显示的邮箱登录报 401** | 已修：账号/邮箱以**数据库**为准（应用只在首次创建管理员时用 `.env` 的 `ADMIN_USERNAME`/`ADMIN_EMAIL`，后台改过之后 `.env` 不会跟着变）。脚本现在会打印实际生效的账号，并在与 `.env` 不一致时标注两者；密码仍以 `.env` 的 `ADMIN_PASSWORD` 为准（应用每次启动都会按它重置） |
 | **管理员无法登录** | 密码错误 / 账户被锁 / IP 被限流 | `go run scripts/admin_tool "新密码"` 重置；`go run scripts/unlock_user admin` 解锁；IP 限流等待 15 分钟 |
 | **邮件发送失败** | SMTP 配置错误 / 端口被墙 | 检查 SMTP_HOST/PORT/USERNAME/PASSWORD；QQ 邮箱需使用**授权码**而非登录密码；25 端口常被运营商屏蔽，改用 465/587 |
 | **GeoIP 功能未生效** | mmdb 文件缺失 | 系统会自动下载 `GeoLite2-City.mmdb`；手动下载：`https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb` |
