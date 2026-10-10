@@ -2365,6 +2365,65 @@ insert_block_before_spa() {
     ' "$conf" > "$tmp" && mv "$tmp" "$conf"
 }
 
+# 判定站点配置里是否已有 ACME challenge 放行段。
+# 踩坑记录（用户实测菜单 11 报错）：宝塔面板与本脚本注入的写法都是
+#     location ^~ /.well-known/acme-challenge/ { ... }
+# 中间带 `^~` 修饰符，而旧检查写的是 grep "location \.well-known/acme-challenge"
+# —— 要求 "location " 后面紧跟 "."，于是**明明已有放行段也匹配不上**，
+# 每次「同步升级」都误报「缺少 ACME 放行段」，用户按提示手工加还会加重复。
+site_conf_has_acme() {
+    local conf; conf="$(site_conf_path)"
+    [[ -f "$conf" ]] || return 1
+    # 认所有写法：^~ / = / ~ / 裸路径（只要出现 acme-challenge 就算已放行）
+    grep -q "acme-challenge" "$conf" && return 0
+    # 宝塔把证书验证目录 include 进来（well-known/<域名>.conf），里面有也算
+    local inc f
+    inc="$(grep -oE 'include[[:space:]]+[^;]*well-known[^;]*;' "$conf" 2>/dev/null | sed -e 's/include//' -e 's/;//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    for f in $inc; do
+        [[ -f "$f" ]] && grep -q "acme-challenge" "$f" 2>/dev/null && return 0
+    done
+    return 1
+}
+
+# 自动补上 ACME challenge 放行段（不再只提示让用户手工加）：
+# ① 面板托管配置 → 写进本脚本的注入标记块内（面板重写后可再补回，幂等）
+# ② 其它布局 → 插到 server 块第一个 listen 行之后
+repair_site_acme_block() {
+    local conf; conf="$(site_conf_path)"
+    [[ -f "$conf" ]] || return 1
+    local begin="${CB_BEGIN:-# === CBoard-INJECT-BEGIN ===}"
+    local acme="    location ^~ /.well-known/acme-challenge/ {
+        root ${PROJECT_DIR};
+        default_type text/plain;
+        try_files \$uri =404;
+    }"
+    local tmp; tmp="$(mktemp)"
+    if grep -qF "$begin" "$conf"; then
+        awk -v block="$acme" -v begin="$begin" '
+            { print }
+            $0 == begin && !done { print block; done = 1 }
+        ' "$conf" > "$tmp"
+    else
+        awk -v block="$acme" '
+            !done && /^[[:space:]]*listen[[:space:]]/ { print; print block; done = 1; next }
+            { print }
+        ' "$conf" > "$tmp"
+        grep -q "acme-challenge" "$tmp" || awk -v block="$acme" '
+            !done && /^[[:space:]]*server[[:space:]]*\{/ { print; print block; done = 1; next }
+            { print }
+        ' "$conf" > "$tmp"
+    fi
+    if ! grep -q "acme-challenge" "$tmp"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    LAST_CONF_BACKUP="${conf}.backup.$(date +%Y%m%d_%H%M%S)"
+    cp "$conf" "$LAST_CONF_BACKUP"
+    mv "$tmp" "$conf"
+    log "✅ 已自动补上 ACME challenge 放行段（root ${PROJECT_DIR}）"
+    return 0
+}
+
 # 幂等补齐站点配置里「必须有但历史上被漏掉」的几块：
 # /uploads/ 反代（否则附件被 SPA fallback 吞掉返回 HTML）、index.html 不缓存、
 # /assets/ 长缓存、client_max_body_size。只插入缺失的块，不动用户其它内容。
@@ -2413,9 +2472,13 @@ BLK
         insert_block_before_spa "$conf" "location /assets/" '    location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; }' && changed="yes"
     fi
 
-    if ! grep -q "location \.well-known/acme-challenge" "$conf"; then
+    if ! site_conf_has_acme; then
         warn "站点配置缺少 ACME challenge 放行段（/.well-known/acme-challenge/），证书自动续期可能失败"
-        warn "   若需要自动续期，请手动在 80 端口 server 块内加入：location ^~ /.well-known/acme-challenge/ { root ${PROJECT_DIR}; }"
+        if repair_site_acme_block; then
+            changed="yes"
+        else
+            warn "   自动补写失败，请手动在 80 端口 server 块内加入：location ^~ /.well-known/acme-challenge/ { root ${PROJECT_DIR}; }"
+        fi
     fi
 
     if [[ "$changed" == "yes" ]]; then
@@ -2781,11 +2844,9 @@ renew_cert() {
     local challenge_dir="${PROJECT_DIR}/.well-known/acme-challenge"
     mkdir -p "$challenge_dir"
 
-    if [[ -f "$conf" ]]; then
-        if ! grep -q "\\.well-known/acme-challenge" "$conf"; then
-            warn "当前 Nginx 配置未放行 ACME challenge，尝试幂等补块..."
-            ensure_site_conf_blocks
-        fi
+    if [[ -f "$conf" ]] && ! site_conf_has_acme; then
+        warn "当前 Nginx 配置未放行 ACME challenge，尝试幂等补块..."
+        ensure_site_conf_blocks
     fi
 
     # 先做一次配置检测，避免带着坏配置去续期
