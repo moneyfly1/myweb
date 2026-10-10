@@ -1704,26 +1704,33 @@ uninstall_full() {
     # 6) 残留扫描
     echo
     echo -e "${CYAN}================ 残留扫描 ================${NC}"
-    local residual=0
-    systemctl list-unit-files 2>/dev/null | grep -q "^cboard.service" && { warn "残留: systemd 单元 cboard.service"; residual=1; }
-    for c in "${conf_candidates[@]}"; do
-        [[ -f "$c" ]] && { warn "残留: 站点配置 $c"; residual=1; }
-        compgen -G "${c}.backup.*" >/dev/null 2>&1 && { warn "残留: 站点配置备份 ${c}.backup.*"; residual=1; }
+    # 用数组收集残留项：之前用 ${#residual} 判断（那是"字符串长度"而不是值），
+    # 结果无论有没有残留都走"请人工确认"分支 —— 真机复测时发现。
+    local -a residual_items=()
+    systemctl list-unit-files 2>/dev/null | grep -q "^cboard.service" && residual_items+=("systemd 单元 cboard.service")
+    local c2
+    for c2 in "${conf_candidates[@]}"; do
+        [[ -f "$c2" ]] && residual_items+=("站点配置 $c2")
+        compgen -G "${c2}.backup.*" >/dev/null 2>&1 && residual_items+=("站点配置备份 ${c2}.backup.*")
+        compgen -G "${c2}.uninstalled.*" >/dev/null 2>&1 && residual_items+=("站点配置副本 ${c2}.uninstalled.*")
     done
-    pgrep -f "^${PROJECT_DIR}/server( |$)" >/dev/null 2>&1 && { warn "残留: 进程仍在运行"; residual=1; }
-    ss -ltn 2>/dev/null | grep -q ":$(env_port) " && { warn "残留: 端口 $(env_port) 仍被监听"; residual=1; }
-    compgen -G "/tmp/cboard_install*" >/dev/null 2>&1 && { warn "残留: /tmp/cboard_install*"; residual=1; }
-    [[ -f /etc/logrotate.d/cboard ]] && { warn "残留: /etc/logrotate.d/cboard"; residual=1; }
-    [[ -e /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh ]] && { warn "残留: 证书续期钩子"; residual=1; }
-    [[ -f /etc/cron.d/certbot-renew ]] && { warn "残留: /etc/cron.d/certbot-renew"; residual=1; }
-    [[ -d "$PROJECT_DIR" ]] && log "说明: 项目目录 $PROJECT_DIR 仍在（按你的选择保留）"
-    if [[ ${#residual} -eq 0 ]]; then
+    pgrep -f "^${PROJECT_DIR}/server( |$)" >/dev/null 2>&1 && residual_items+=("进程仍在运行")
+    ss -ltn 2>/dev/null | grep -q ":$(env_port) " && residual_items+=("端口 $(env_port) 仍被监听")
+    compgen -G "/tmp/cboard_install*" >/dev/null 2>&1 && residual_items+=("/tmp/cboard_install*")
+    [[ -f /etc/logrotate.d/cboard ]] && residual_items+=("/etc/logrotate.d/cboard")
+    [[ -e /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh ]] && residual_items+=("证书续期钩子")
+    [[ -f /etc/cron.d/certbot-renew ]] && residual_items+=("/etc/cron.d/certbot-renew")
+    [[ -d "$PROJECT_DIR" ]] && log "说明: 项目目录 $PROJECT_DIR 仍在（按你的选择保留，不算残留）"
+    [[ -d "$DB_BACKUP_DIR" ]] && log "说明: 数据库备份目录 $DB_BACKUP_DIR 仍在（保留你的备份，不算残留）"
+    if [[ ${#residual_items[@]} -eq 0 ]]; then
         log "✅ 未发现残留（服务 / 站点配置 / 进程 / 端口 / 定时任务 / 轮转配置均已清理）"
-    else
-        warn "以上残留请人工确认（多为按你的选择保留的内容）"
+        log "卸载完成。删除前的配置副本在: $backup_dir"
+        return 0
     fi
+    warn "发现 ${#residual_items[@]} 项残留，请确认（如需彻底清理可删除下列路径）："
+    printf '    - %s\n' "${residual_items[@]}"
     log "卸载完成。删除前的配置副本在: $backup_dir"
-    [[ ${#residual} -eq 0 ]] && return 0 || return 1
+    return 1
 }
 
 # 只重建并重启（菜单 14）：不改 nginx、不改 unit，避免「只想重启」却把配置覆盖了
