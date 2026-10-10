@@ -754,46 +754,78 @@ tail -f /www/wwwroot/你的域名/server.log       # 应用日志
 
 ---
 
-### 🧱 方式三：宝塔面板建站 + 脚本部署（推荐宝塔用户）
+### 🧱 方式三：宝塔面板部署（推荐宝塔用户）
 
-**适用**：已装宝塔面板，希望在面板里管理站点、证书与日志。**先在面板建站，再跑脚本** —— 脚本会用面板创建的目录与宝塔 nginx。
+**适用**：已装或准备装宝塔面板，希望在面板里管理站点、证书与日志。
 
-#### 安装步骤
+> 📖 **完整逐步教程（含宝塔安装、nginx 编译等待、证书两种模式、常见坑）**：[`docs/部署/宝塔部署教程.md`](docs/部署/宝塔部署教程.md)
 
-1. **面板建站**：宝塔 → 网站 → 添加站点 → 域名填你的域名 → 根目录保持默认 `/www/wwwroot/你的域名`（PHP 选「纯静态」，无需建数据库/FTP）；
-2. **在站点目录里克隆代码**（目录名必须等于域名，脚本用目录名当域名）：
-   ```bash
-   cd /www/wwwroot/你的域名
-   rm -f index.html .user.ini          # 删掉面板生成的占位文件，避免与 SPA 冲突
-   git clone https://github.com/moneyfly1/myweb.git .
-   ```
-3. **运行脚本**（宝塔入口与通用脚本行为一致）：
-   ```bash
-   sudo bash bt-deploy.sh      # 宝塔入口：先提示宝塔环境与证书策略，再转交 install.sh
-   ```
-4. 菜单选 **1（一键全自动部署）**：脚本识别宝塔 nginx 与站点目录 → 补齐 `/uploads`、`index.html` 不缓存等片段 → 编译后端/构建前端 → 注册 systemd 服务 → 处理证书 → 健康检查；
-5. 证书策略二选一：**交给面板**（`CERT_MANAGER=panel bash bt-deploy.sh`，在面板「网站 → SSL → Let's Encrypt」申请，然后重跑脚本或菜单 16 自动接入 HTTPS）；**交给脚本**（默认，之后面板里只查看、别点申请/续签）。
+#### 快速步骤
+
+```bash
+# ① 还没有宝塔面板的先装（⚠️ 必须喂 yes：宝塔脚本在 stdin 关闭时会 99% CPU 空转）
+wget -O /root/bt_install.sh https://download.bt.cn/install/install_lts.sh && yes | bash /root/bt_install.sh
+cat /tmp/btpanel-install.log            # 记下面板地址/账号/密码
+
+# ② 面板 → 软件商店 → 安装 Nginx（源码编译，2 核约 25–40 分钟，属正常）
+# ③ 面板 → 网站 → 添加站点：域名填你的域名，根目录保持 /www/wwwroot/你的域名，PHP 选「纯静态」
+#    ⚠️ 目录名必须等于域名（脚本用目录名当域名）
+
+# ④ 进站点目录，只下载两个脚本（代码由脚本自己拉，支持非空目录）
+cd /www/wwwroot/你的域名
+rm -f index.html 404.html .user.ini
+curl -fsSLO https://raw.githubusercontent.com/moneyfly1/myweb/main/install.sh
+curl -fsSLO https://raw.githubusercontent.com/moneyfly1/myweb/main/bt-deploy.sh
+
+# ⑤ 一键部署（菜单选 1；没有 Redis 就答 n）；非交互：printf '1\nn\n' | bash bt-deploy.sh
+bash bt-deploy.sh
+```
+
+#### 证书二选一（别混用）
+
+| 方案 | 做法 | 续期由谁负责 |
+|------|------|-------------|
+| **A. 面板管（推荐）** | `CERT_MANAGER=panel bash bt-deploy.sh`（把 SSL 交还面板）→ 面板「网站 → SSL → Let's Encrypt」申请 | **面板自动续签**；脚本只复用、不重复签发 |
+| **B. 脚本管（默认）** | 直接按上面 ⑤ 跑 | `certbot.timer` 自动续期；此时**别在面板点申请/续签**（面板没有该证书订单），需要时用菜单 10 |
+
+> 为什么 A 要先"交还"：宝塔部署证书前会检查配置里是否已有 `ssl_certificate`，只要存在就认为"已开启 SSL"而跳过写它自己的证书 → 面板申请"成功"却没有证书、后续续签也找不到订单（表现为续签失败）。脚本的 `CERT_MANAGER=panel` 会清掉脚本写的证书段，让面板完整接管。
+
+#### 部署结束会打印登录信息
+
+```text
+================== 登录信息 ==================
+  前台登录:     https://你的域名/login
+  管理员登录:   https://你的域名/admin/login
+  管理员账号:   admin
+  管理员密码:   <16 位强随机>
+==============================================
+✅ 已实测：用上面这个账号密码登录成功
+```
+
+密码写进 `.env` 的 `ADMIN_PASSWORD`，应用每次启动都会按它重置 → **重启后依然可用**；想换：改 `.env` 后菜单 8，或用菜单 2 重置。
 
 #### 宝塔环境注意事项
 
 | 事项 | 说明 |
 |------|------|
-| 站点配置归属 | 脚本写 `/www/server/panel/vhost/nginx/<域名>.conf`；面板「保存设置 / 续签 SSL」可能重写它 → 重跑**菜单 16** 自动补回必需片段 |
-| `nginx -t` | 脚本校验的是**正在运行的**宝塔 nginx（`/www/server/nginx/sbin/nginx -t`），不会误测系统里另一个 nginx |
-| 证书复用 | 面板证书在 `/www/server/panel/vhost/cert/<域名>/`，脚本会复用并**跳过 certbot**；两套证书并存时会告警并指出当前用的是哪一套 |
-| 面板续期 | 面板自带 ACME（`acme_v2.py`，走 http-01/dns-01）+ 续期任务，面板里点「续签」即可；站点配置的 80 与 443 块都保留了 `/.well-known/acme-challenge/` 放行段，所以两条路都能校验通过 |
-| 防火墙 | 宝塔「安全」放行 80/443（脚本不改防火墙） |
-| 面板站点记录 | 脚本不在面板注册站点；如需面板管理站点，请按上面第 1 步在面板建站 |
+| 站点配置归属 | 脚本采用**合并模式**：保留面板的 `#SSL-START`/`#CERT-APPLY-CHECK` 标记与 include，只注入 `/api/`、`/uploads/`、SPA 回退、`index.html` 不缓存、ACME 放行段等必需片段 |
+| 面板重写配置后 | 面板「保存设置 / 续签 SSL」会重写 vhost → 跑**菜单 16** 自动补回（实测：注入块与 443 全恢复，面板标记完好） |
+| `nginx -t` | 校验的是**正在运行的**宝塔 nginx（`/www/server/nginx/sbin/nginx -t`）；宝塔 nginx 由 `/etc/init.d/nginx` 管理，脚本用 `pgrep` 判运行、不会误启系统 nginx 抢 80 |
+| 证书复用 | 面板证书在 `/www/server/panel/vhost/cert/<域名>/`，脚本识别来源为"宝塔面板"并**跳过 certbot**；两套并存会告警 |
+| 前端产物权限 | 宝塔 nginx 以 `www` 运行 → 脚本自动把 `frontend/dist`、`uploads`、`.well-known` 设为可读并 chown（否则 403 / ACME 校验失败） |
+| 面板站点记录 | 脚本不在面板注册站点；要在面板管理站点就必须按 ③ 在面板建站 |
+| 防火墙 | 宝塔「安全」里放行 80/443（脚本不改防火墙） |
 
 #### 安装后管理
 
 | 操作 | 方法 |
 |------|------|
-| 全套运维 | `sudo bash install.sh` 或 `sudo bash bt-deploy.sh`（菜单 2/3/11/13/16 等） |
-| 重启服务 | 菜单 8，或 `systemctl restart cboard` |
+| 全套运维 | `bash bt-deploy.sh` 或 `bash install.sh`（菜单 2/3/4/11/13/15/16 等） |
+| 升级 | 菜单 **11**（从 GitHub 同步并重建：先备份数据库 → 原子替换二进制 → 重启 + 健康检查） |
+| 回滚 | 菜单 **13** |
+| 自检修复 | 菜单 **16**（面板重写配置后用它补回片段） |
+| 完全卸载 | 菜单 **15**（含残留扫描） |
 | 查看日志 | 菜单 7，或 `tail -f /www/wwwroot/你的域名/server.log` |
-| 自检修复 | 菜单 16（面板重写配置后用它补回片段） |
-| 完全卸载 | 菜单 15（含残留扫描） |
 
 ---
 

@@ -717,31 +717,84 @@ systemctl status cboard
 tail -f /www/wwwroot/your-domain.com/server.log
 ```
 
-### 🪟 Method 2: BaoTa (宝塔) Panel — `install.sh`
+### 🪟 Method 2: BaoTa (宝塔) Panel — `bt-deploy.sh`
 
-1. In BaoTa: **Website → Add Site** → bind your domain (PHP type: "Pure Static"). Note the site root (e.g. `/www/wwwroot/example.com`).
-2. Place the code in the site root:
+**Use when** you have (or want) the BaoTa panel and want the panel to own the site, certificates and logs.
 
-```bash
-cd /www/wwwroot/example.com
-rm -f index.html
-git clone https://github.com/moneyfly1/myweb.git .
-```
+> 📖 **Full step-by-step guide** (panel installation, nginx compile wait, both certificate modes, verified pitfalls): [`docs/部署/宝塔部署教程.md`](docs/部署/宝塔部署教程.md)
 
-3. Run the installer and choose **option 1** (One-Click Full Auto Deployment):
+#### Quick steps
 
 ```bash
-chmod +x install.sh
-sudo ./install.sh
+# 1) Install the BaoTa panel if you don't have it yet.
+#    ⚠️ Always pipe `yes`: BT's own installer busy-loops at 99% CPU when stdin is closed (verified).
+wget -O /root/bt_install.sh https://download.bt.cn/install/install_lts.sh && yes | bash /root/bt_install.sh
+cat /tmp/btpanel-install.log          # panel URL / username / password
+
+# 2) Panel → App Store → install Nginx (compiled from source; 25–40 min on 2 vCPU is normal)
+
+# 3) Panel → Websites → Add site: domain = your domain, root kept at /www/wwwroot/<domain>, PHP = static
+#    ⚠️ The directory name MUST equal the domain (the script derives the domain from it)
+
+# 4) In the site directory, download just the two scripts (the script clones the repo itself)
+cd /www/wwwroot/your-domain.com
+rm -f index.html 404.html .user.ini
+curl -fsSLO https://raw.githubusercontent.com/moneyfly1/myweb/main/install.sh
+curl -fsSLO https://raw.githubusercontent.com/moneyfly1/myweb/main/bt-deploy.sh
+
+# 5) One-click deploy (choose menu 1; answer n if you have no Redis)
+bash bt-deploy.sh
 ```
 
-The script installs Go/Node.js, compiles the backend, builds the frontend, configures Nginx reverse proxy, applies Let's Encrypt SSL, registers the systemd service, and starts it.
+#### Certificates — pick ONE (never both)
 
-4. Verify: `https://yourdomain.com` (user), `https://yourdomain.com/admin/login` (admin), `https://yourdomain.com/health`.
+| Mode | How | Renewal owner |
+|------|-----|---------------|
+| **A. Panel-managed (recommended)** | `CERT_MANAGER=panel bash bt-deploy.sh` (hands SSL back to the panel) → panel → Website → SSL → Let's Encrypt → Apply | The **panel** renews automatically; the script only reuses |
+| **B. Script-managed (default)** | Just run step 5 | `certbot.timer`; do **not** click Apply/Renew in the panel (it has no order for that cert) — use menu 10 instead |
 
-> If GitHub cloning fails (mainland China), place the code in the site directory manually and re-run `install.sh`, answering **n** to "Delete and re-download?".
+Why mode A needs the hand-over: BaoTa checks whether `ssl_certificate` already exists in the config; if it does it
+assumes SSL is already on and **skips deploying its own certificate** — the panel then reports success but
+`vhost/cert/<domain>/` stays empty and later renewals have nothing to renew. `CERT_MANAGER=panel` clears the
+script-written certificate section so the panel can fully take over.
 
----
+#### Login details are printed when the deploy finishes
+
+```text
+================== 登录信息 ==================
+  前台登录:     https://your-domain.com/login
+  管理员登录:   https://your-domain.com/admin/login
+  管理员账号:   admin
+  管理员密码:   <16-char random>
+==============================================
+✅ 已实测：用上面这个账号密码登录成功
+```
+
+The password is written to `ADMIN_PASSWORD` in `.env` and the app resets that admin's password to it on every
+start, so it keeps working after restarts. Change it in `.env` + menu 8, or use menu 2.
+
+#### BaoTa-specific notes
+
+| Topic | Detail |
+|-------|--------|
+| Config ownership | The script uses **merge mode**: the panel's `#SSL-START` / `#CERT-APPLY-CHECK` markers and includes are preserved; only app-level fragments are injected (`/api/`, `/uploads/`, SPA fallback, `index.html` no-cache, ACME location, `client_max_body_size`), and `root` is pointed at `frontend/dist` |
+| Panel rewrites the vhost | "Save site settings" / "renew SSL" in the panel rewrites the file → run **menu 16** to re-inject (verified: injections and 443 restored, panel markers intact) |
+| `nginx -t` | The script validates the **running** BT nginx (`/www/server/nginx/sbin/nginx -t`); BT nginx is managed by `/etc/init.d/nginx`, so the script detects it with `pgrep` and never starts a second nginx on port 80 |
+| Certificates | Panel certs live in `/www/server/panel/vhost/cert/<domain>/`; the script detects them (source = baota) and **skips certbot**; coexistence of two certificate sets triggers a warning |
+| File permissions | BT nginx runs as `www`, so the script makes `frontend/dist`, `uploads`, `.well-known` readable and chowns them (otherwise 403 / ACME validation failures) |
+| Panel site record | The script does not register a site in the panel — create the site in the panel (step 3) if you want it managed there |
+| Firewall | Open 80/443 in the panel's firewall (the script does not modify firewalls) |
+
+#### Post-install operations
+
+| Task | How |
+|------|-----|
+| Everything | `bash bt-deploy.sh` or `bash install.sh` (menus 2/3/4/11/13/15/16 …) |
+| Upgrade | Menu **11** (sync from GitHub & rebuild: DB backed up first, atomic binary swap, health check) |
+| Rollback | Menu **13** |
+| Self-check & repair | Menu **16** (re-inject fragments after the panel rewrites the config) |
+| Full uninstall | Menu **15** (with residual scan) |
+| Logs | Menu 7, or `tail -f /www/wwwroot/your-domain.com/server.log` |
 
 ## 🎯 Where Admin & Domain Are Configured (all 3 methods)
 
