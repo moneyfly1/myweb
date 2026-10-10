@@ -501,7 +501,8 @@ export default {
         if (response && response.data) {
           if (response.data.success !== false) {
             const data = response.data.data || response.data
-            dashboardActivity.value = unwrapList(data).slice(0, 12)
+            // 后端按「业务事件优先」返回 20 条，列表本身可滚动，这里整批展示
+dashboardActivity.value = unwrapList(data).slice(0, 20)
             activityUpdatedAt.value = formatTimeAgo(Date.now())
           } else {
             dashboardActivity.value = []
@@ -577,11 +578,12 @@ export default {
         'recharge_paid': '充值到账'
       }
       const desc = actionMap[item.action_type] || (item.action_description || item.action_type)
-      // 订单/充值：金额信息拼到描述末尾
-      let suffix = ''
-      if ((item.source === 'order' || item.source === 'recharge') && item.action_description && !item.action_description.includes('¥')) {
-        suffix = ''
-      }
+      // 订单/充值的金额、订单号（后端 action_description 形如「¥198.00 · ORD2026…」）拼在文案后面，
+      // 否则管理员只看到"支付了订单"，看不到金额和单号
+      const extra = (item.source === 'order' || item.source === 'recharge')
+        ? String(item.action_description || '').trim()
+        : ''
+      const suffix = extra && !desc.includes(extra) ? ` · ${extra}` : ''
       return `${who}${desc}${suffix}`
     }
     const handleActivityClick = (item) => {
@@ -899,12 +901,9 @@ export default {
     }
     .table-container {
       padding: 12px;
-      max-height: 250px;
+      max-height: 260px;
       :deep(.el-table) {
         font-size: 0.8125rem;
-        .el-table__body-wrapper {
-          max-height: 200px;
-        }
         .el-table__cell {
           padding: 8px 4px;
         }
@@ -981,11 +980,18 @@ export default {
   border-bottom: 1px solid var(--el-border-color-lighter);
   background: var(--el-fill-color-extra-light);
 }
-.dashboard-card .el-card__body {
+/* 必须用 :deep()：.el-card__body 是 Element Plus 渲染的元素，没有本组件的 data-v 标记，
+   写普通后代选择器（.dashboard-card .el-card__body）在 scoped 样式里编译成
+   .dashboard-card .el-card__body[data-v-xxx]，永远匹配不到 —— 这正是「卡片内部滚不动」的根因链：
+   body 保持 EP 默认样式（flex-grow:1 + overflow:auto）成了真正的滚动容器，
+   而 .table-container 上的 overscroll-behavior:contain 又切断了滚轮向上冒泡的滚动链。 */
+.dashboard-card :deep(.el-card__body) {
   flex: 1;
+  min-height: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 .card-header {
   padding: 0 4px;
@@ -1009,17 +1015,19 @@ export default {
   color: #66b1ff;
 }
 .table-container {
-  flex: 1;
-  overflow: auto;
-  padding: 16px;
-  overscroll-behavior: contain;
-}
-.table-container .el-table {
-  height: 100%;
-}
-.table-container .el-table__body-wrapper {
-  max-height: 300px;
+  /* 卡片内部唯一的滚动容器：flex 收缩 + min-height:0，滚轮/触控都作用在这里。
+     注意不要再依赖父级（el-card__body）滚动——overscroll-behavior:contain
+     会阻止滚动链向上传递，浏览器就不会滚动父容器。 */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px;
+  /* 不用 overscroll-behavior: contain：卡片列表滚到底后应该继续带动整页滚动，
+     否则鼠标停在卡片上时页面会"卡住不动"（用户反馈的另一种滚轮失灵）。
+     滚轮能生效的前提已经是「这个容器自己就是滚动容器」（见上面的 min-height:0）。 */
+  overscroll-behavior: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .user-avatar {
   background-color: var(--el-color-primary, #409EFF);
@@ -1111,9 +1119,9 @@ export default {
 }
 
 /* ===== 实时动态卡片 ===== */
+/* 实时动态与其它卡片统一：.table-container 自己就是滚动容器，这里不再重复设 max-height */
 .activity-container {
-  max-height: 340px;
-  overflow-y: auto;
+  max-height: none;
 }
 .activity-list {
   display: flex;
@@ -1210,35 +1218,34 @@ export default {
   font-size: 11px;
   color: var(--el-text-color-secondary, #909399);
 }
-.table-container .el-table__row {
+.table-container :deep(.el-table__row) {
   height: 48px;
   cursor: pointer;
 }
-.table-container .el-table__row:hover {
+.table-container :deep(.el-table__row:hover) {
   background-color: var(--el-color-primary-light-9, #f0f9ff);
 }
 .clickable-row {
   cursor: pointer;
 }
-.table-container .el-tag {
+.table-container :deep(.el-tag) {
   border-radius: 8px;
   font-size: 11px;
   padding: 2px 8px;
   height: 20px;
   line-height: 16px;
 }
-.table-container .el-table__body-wrapper::-webkit-scrollbar {
-  width: 4px;
+.table-container::-webkit-scrollbar {
+  width: 6px;
 }
-.table-container .el-table__body-wrapper::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 2px;
+.table-container::-webkit-scrollbar-track {
+  background: transparent;
 }
-.table-container .el-table__body-wrapper::-webkit-scrollbar-thumb {
+.table-container::-webkit-scrollbar-thumb {
   background: #c1c1c1;
-  border-radius: 2px;
+  border-radius: 3px;
 }
-.table-container .el-table__body-wrapper::-webkit-scrollbar-thumb:hover {
+.table-container::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
 .expiring-card {
