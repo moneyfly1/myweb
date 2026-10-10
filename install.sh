@@ -1865,6 +1865,57 @@ self_check_and_repair() {
     return 0
 }
 
+# 通过宝塔面板自身接口删除站点记录。
+# 为什么必须删记录：宝塔会为"已注册的站点"自动重建站点目录（删掉后又会冒出一个只含
+# .user.ini 的空目录），不清记录就永远清不干净。
+remove_bt_panel_site() {
+    local py="/www/server/panel/pyenv/bin/python3"
+    [[ -x "$py" ]] || py="$(command -v python3 2>/dev/null)"
+    if [[ -z "$py" ]]; then
+        warn "找不到 python3，无法调用面板接口删除站点记录，请到面板里手动删除"
+        return 1
+    fi
+    local out
+    out="$("$py" - "$DOMAIN" <<'PY' 2>&1
+import sys
+sys.path.insert(0, "/www/server/panel/class")
+sys.path.insert(0, "/www/server/panel")
+try:
+    import sqlite3, panelSite
+except Exception as e:
+    print("导入面板模块失败: %s" % e)
+    raise SystemExit(1)
+
+class Get(dict):
+    def __getattr__(self, k):
+        try:
+            return self[k]
+        except KeyError:
+            raise AttributeError(k)
+    __setattr__ = dict.__setitem__
+
+domain = sys.argv[1]
+con = sqlite3.connect("/www/server/panel/data/db/site.db")
+con.row_factory = sqlite3.Row
+rows = con.execute("select id,name,path from sites where name=?", (domain,)).fetchall()
+if not rows:
+    print("面板中没有该站点的记录")
+    raise SystemExit(0)
+ps = panelSite.panelSite()
+for r in rows:
+    g = Get(); g.id = str(r["id"]); g.webname = r["name"]; g.path = r["path"]
+    print("面板返回: %s" % (ps.DeleteSite(g),))
+PY
+)" || true
+    printf '%s\n' "$out" | sed 's/^/    /'
+    if printf '%s' "$out" | grep -q "面板返回"; then
+        log "已通过面板接口删除站点记录（面板侧不会再自动重建站点目录）"
+        return 0
+    fi
+    warn "面板站点记录未删除（可到面板「网站」里手动删除）"
+    return 1
+}
+
 # 完全卸载（菜单 15）：删服务/配置/续期任务，并对残留做扫描；
 # 项目目录、数据库、以及脚本自动安装的软件（Go/Node/nginx/redis/certbot）都需显式确认才删。
 uninstall_full() {
@@ -1939,13 +1990,32 @@ uninstall_full() {
     local ans=""
     read -r -p "是否删除项目目录 ${PROJECT_DIR}（含数据库与 .env）？(yes/no，默认 no): " ans || ans="no"
     if [[ "$ans" == "yes" ]]; then
+        local ans2=""
         read -r -p "再确认一次：删除 ${PROJECT_DIR} 会连数据库一起删，确定？(yes/no): " ans2 || ans2="no"
         if [[ "$ans2" == "yes" ]]; then
+            # 宝塔会在站点目录放 .user.ini 并加 immutable（chattr +i），直接 rm -rf 会报
+            # "Operation not permitted" 而删不干净 —— 先解除保护再删（真机实测踩到）。
+            if command -v chattr >/dev/null 2>&1; then
+                find "$PROJECT_DIR" -maxdepth 3 -name ".user.ini" -exec chattr -i {} \; 2>/dev/null
+                chattr -i "$PROJECT_DIR" 2>/dev/null
+            fi
             rm -rf "$PROJECT_DIR"
-            log "已删除项目目录 $PROJECT_DIR"
+            if [[ -d "$PROJECT_DIR" ]]; then
+                warn "项目目录未能完全删除（可能仍有 immutable 文件）"
+                warn "   可手动执行: chattr -R -i ${PROJECT_DIR} && rm -rf ${PROJECT_DIR}"
+            else
+                log "已删除项目目录 $PROJECT_DIR"
+            fi
         else
             log "已保留项目目录"
         fi
+    fi
+
+    # 宝塔环境：可选删除面板里的站点记录（否则面板会自动重建站点目录）
+    if bt_panel_present; then
+        local del_bt=""
+        read -r -p "是否同时删除宝塔面板里的站点记录？（否则面板会自动重建站点目录）(yes/no，默认 no): " del_bt || del_bt="no"
+        [[ "$del_bt" == "yes" ]] && remove_bt_panel_site
     fi
 
     # 4.5) 证书文件（可选；不删的话重新部署会直接复用，避免重复签发）
@@ -1990,6 +2060,14 @@ uninstall_full() {
     [[ -f /etc/logrotate.d/cboard ]] && residual_items+=("/etc/logrotate.d/cboard")
     [[ -e /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh ]] && residual_items+=("证书续期钩子")
     [[ -f /etc/cron.d/certbot-renew ]] && residual_items+=("/etc/cron.d/certbot-renew")
+    if bt_panel_present && [[ -x /www/server/panel/pyenv/bin/python3 ]]; then
+        if /www/server/panel/pyenv/bin/python3 -c "
+import sqlite3, sys
+c = sqlite3.connect('/www/server/panel/data/db/site.db')
+sys.exit(0 if c.execute('select 1 from sites where name=?', ('${DOMAIN}',)).fetchone() else 1)" 2>/dev/null; then
+            residual_items+=("宝塔面板站点记录仍存在（面板会自动重建站点目录）")
+        fi
+    fi
     [[ -d "$PROJECT_DIR" ]] && log "说明: 项目目录 $PROJECT_DIR 仍在（按你的选择保留，不算残留）"
     [[ -d "$DB_BACKUP_DIR" ]] && log "说明: 数据库备份目录 $DB_BACKUP_DIR 仍在（保留你的备份，不算残留）"
     if [[ ${#residual_items[@]} -eq 0 ]]; then
