@@ -74,6 +74,17 @@ restart_redis_with_timeout() {
     fi
     log "正在重启 Redis 服务..."
 
+    # Docker 方式运行的 Redis：直接重启容器
+    if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/null | grep -qx redis; then
+        log "检测到 Docker 中的 redis 容器，正在重启..."
+        if docker restart redis >/dev/null 2>&1; then
+            sleep 2
+            redis_ping_ok "localhost:6379" && { log "✅ Redis 容器已重启"; return 0; }
+        fi
+        warn "Redis 容器重启失败，请检查: docker logs redis"
+        return 1
+    fi
+
     # 检测 Redis 服务名称
     local svc_name=""
     if systemctl list-units --type=service --all 2>/dev/null | grep -q "redis-server"; then
@@ -112,6 +123,107 @@ restart_redis_with_timeout() {
 }
 
 # --- Redis 缓存配置函数 ---
+# 自动安装 Docker（用户选 Docker 方式但机器上没有 Docker 时，脚本自己装好，而不是报错退出）
+install_docker() {
+    if command -v docker >/dev/null 2>&1; then
+        systemctl start docker >/dev/null 2>&1
+        docker info >/dev/null 2>&1 && return 0
+    fi
+    step "未检测到 Docker，正在自动安装（这一步会从官方源或发行版仓库安装，可能耗时 1-3 分钟）..."
+    if command -v apt-get >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq
+        if ! DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io; then
+            warn "发行版仓库安装 Docker 失败，尝试官方一键脚本 get.docker.com..."
+            curl -fsSL https://get.docker.com | sh
+        fi
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y docker || { curl -fsSL https://get.docker.com | sh; }
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y docker || { curl -fsSL https://get.docker.com | sh; }
+    else
+        curl -fsSL https://get.docker.com | sh
+    fi
+    systemctl enable --now docker >/dev/null 2>&1 || systemctl start docker >/dev/null 2>&1
+    sleep 3
+    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+        log "✅ Docker 已安装并启动: $(docker --version 2>/dev/null)"
+        return 0
+    fi
+    error "Docker 自动安装失败（可尝试手动安装，或改用系统包管理器方式安装 Redis）"
+    return 1
+}
+
+# Redis 探活：宿主机有 redis-cli 就用它；没有（例如 Redis 跑在 Docker 里）就用 docker exec
+redis_ping_ok() {
+    local target="${1:-localhost:6379}"
+    if command -v redis-cli >/dev/null 2>&1; then
+        redis-cli -h "${target%%:*}" -p "${target##*:}" ping 2>/dev/null | grep -q PONG && return 0
+    fi
+    if command -v docker >/dev/null 2>&1; then
+        docker exec redis redis-cli ping 2>/dev/null | grep -q PONG && return 0
+    fi
+    return 1
+}
+
+# 用 Docker 起 Redis（幂等：存在则复用/启动）；成功返回 0
+redis_up_by_docker() {
+    log "使用 Docker 安装 Redis（只绑定 127.0.0.1，避免无密码 Redis 暴露到公网）..."
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx redis; then
+        if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx redis; then
+            log "已存在运行中的 redis 容器，直接复用"
+        else
+            log "已存在停止的 redis 容器，正在启动..."
+            docker start redis >/dev/null 2>&1
+        fi
+    else
+        docker run -d --name redis --restart=always -p 127.0.0.1:6379:6379 redis:alpine >/dev/null 2>&1 \
+            || docker run -d --name redis --restart=always -p 127.0.0.1:6379:6379 redis >/dev/null 2>&1
+    fi
+    local i
+    for i in $(seq 1 10); do
+        sleep 2
+        if redis_ping_ok "localhost:6379"; then
+            log "✅ Redis 容器已就绪（docker 方式，仅监听 127.0.0.1:6379）"
+            return 0
+        fi
+    done
+    docker logs --tail 8 redis 2>/dev/null | sed 's/^/    /'
+    return 1
+}
+
+# 用系统包管理器装 Redis（apt/yum）；成功返回 0
+redis_install_system() {
+    if command -v apt-get >/dev/null 2>&1; then
+        log "使用 apt 安装 Redis..."
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq redis-server redis-tools
+        systemctl enable redis-server >/dev/null 2>&1
+        systemctl start redis-server >/dev/null 2>&1 || service redis-server start >/dev/null 2>&1
+    elif command -v dnf >/dev/null 2>&1; then
+        log "使用 dnf 安装 Redis..."
+        dnf install -y redis
+        systemctl enable redis >/dev/null 2>&1
+        systemctl start redis >/dev/null 2>&1
+    elif command -v yum >/dev/null 2>&1; then
+        log "使用 yum 安装 Redis..."
+        yum install -y redis
+        systemctl enable redis >/dev/null 2>&1
+        systemctl start redis >/dev/null 2>&1
+    else
+        error "不支持的系统（没有 apt/yum/dnf），请手动安装 Redis"
+        return 1
+    fi
+    local i
+    for i in $(seq 1 10); do
+        sleep 2
+        if redis_ping_ok "localhost:6379"; then
+            log "✅ Redis 服务已就绪（系统包方式，仅监听本机）"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # 参数：ask（默认，菜单 12 手动配置：一直等你回答）
 #       auto（部署流程：非交互自动跳过；交互下最多等 20 秒，超时按"跳过"处理，绝不卡住）
 configure_redis_cache() {
@@ -165,8 +277,12 @@ configure_redis_cache() {
         return 0
     fi
 
-    # 检查 Redis 是否已安装
-    if command -v redis-cli &> /dev/null; then
+    # 先探活：不管 Redis 跑在宿主机还是 Docker 容器里（容器方式宿主机可能没有 redis-cli），
+    # 只要能 PING 通就直接复用，避免重复安装、重复提问
+    if redis_ping_ok "localhost:6379"; then
+        log "✅ 检测到可用的 Redis（本机或 Docker 容器），直接复用"
+        REDIS_ADDR="localhost:6379"
+    elif command -v redis-cli &> /dev/null; then
         log "检测到 Redis 已安装"
 
         # 测试 Redis 连接
@@ -174,14 +290,11 @@ configure_redis_cache() {
             log "✅ Redis 服务运行正常"
             REDIS_ADDR="localhost:6379"
         else
-            warn "Redis 已安装但未运行，正在启动..."
-            systemctl start redis-server 2>/dev/null || systemctl start redis 2>/dev/null || service redis-server start 2>/dev/null || service redis start 2>/dev/null
-            sleep 2
-            if redis-cli ping &> /dev/null; then
-                log "✅ Redis 服务已启动"
+            warn "Redis 已安装但未运行，正在启动（兼容 systemd / init.d / Docker 容器）..."
+            if restart_redis_with_timeout; then
                 REDIS_ADDR="localhost:6379"
             else
-                warn "Redis 启动失败，将跳过缓存配置"
+                warn "Redis 启动失败，将跳过缓存配置（可手动启动后执行菜单 12）"
                 return 0
             fi
         fi
@@ -189,58 +302,36 @@ configure_redis_cache() {
         log "Redis 未安装，正在自动安装..."
         echo ""
         echo -e "${YELLOW}选择安装方式：${NC}"
-        echo "1) Docker 安装（推荐，快速简单）"
+        echo "1) Docker 安装（推荐，快速简单；若机器上没有 Docker，脚本会**自动安装**）"
         echo "2) 系统包管理器安装（apt/yum）"
         echo "3) 跳过安装（稍后手动安装）"
-        read -r -p "请选择 (1-3，默认: 1): " install_method
+        echo -en "${YELLOW}请选择 1-3 然后按回车（默认 1）: ${NC}"
+        if ! read -r install_method; then
+            echo ""
+            log "标准输入已关闭（非交互执行）→ 跳过 Redis 安装"
+            return 0
+        fi
         install_method=${install_method:-1}
 
         case $install_method in
             1)
-                # Docker 安装
-                if command -v docker &> /dev/null; then
-                    log "使用 Docker 安装 Redis（只绑定 127.0.0.1，避免无密码 Redis 暴露到公网）..."
-                    docker run -d --name redis --restart=always -p 127.0.0.1:6379:6379 redis:alpine
-                    sleep 3
-                    if docker ps | grep -q redis; then
-                        log "✅ Redis 容器已启动"
+                if install_docker; then
+                    if redis_up_by_docker; then
                         REDIS_ADDR="localhost:6379"
                     else
-                        error "Redis 容器启动失败"
-                        return 0
+                        warn "Docker 方式启动 Redis 失败，自动改用系统包管理器安装..."
+                        redis_install_system && REDIS_ADDR="localhost:6379"
                     fi
                 else
-                    error "Docker 未安装，请先安装 Docker 或选择其他安装方式"
-                    return 0
+                    warn "Docker 不可用（自动安装失败），自动改用系统包管理器安装 Redis..."
+                    redis_install_system && REDIS_ADDR="localhost:6379"
                 fi
                 ;;
             2)
-                # 系统包管理器安装
-                if command -v apt-get &> /dev/null; then
-                    log "使用 apt 安装 Redis..."
-                    apt-get update && apt-get install -y redis-server
-                    systemctl enable redis-server
-                    systemctl start redis-server
-                elif command -v yum &> /dev/null; then
-                    log "使用 yum 安装 Redis..."
-                    yum install -y redis
-                    systemctl enable redis
-                    systemctl start redis
-                else
-                    error "不支持的系统，请手动安装 Redis"
-                    return 0
-                fi
-                sleep 2
-                if redis-cli ping &> /dev/null; then
-                    log "✅ Redis 安装成功"
-                    REDIS_ADDR="localhost:6379"
-                else
-                    error "Redis 安装失败"
-                    return 0
-                fi
+                redis_install_system && REDIS_ADDR="localhost:6379"
                 ;;
             3)
-                log "跳过 Redis 安装"
+                log "跳过 Redis 安装（之后可再执行菜单 12）"
                 return 0
                 ;;
             *)
@@ -248,6 +339,13 @@ configure_redis_cache() {
                 return 0
                 ;;
         esac
+
+        if [[ -z "${REDIS_ADDR:-}" ]]; then
+            warn "Redis 自动安装未成功，已跳过缓存配置（不影响网站运行）"
+            warn "   排查建议: 手动安装 Redis（apt install redis-server 或 docker run redis）后，再执行菜单 12"
+            return 0
+        fi
+        log "✅ Redis 已就绪: ${REDIS_ADDR}"
     fi
 
     # 询问 Redis 密码
@@ -2881,8 +2979,8 @@ show_menu() {
     echo -e "  ${YELLOW}12.${NC} 配置 Redis 缓存（性能优化）"
     echo -e "  ${YELLOW}13.${NC} 回滚到升级前版本（二进制/数据库备份）"
     echo -e "  ${YELLOW}14.${NC} 只重新构建并重启（不改 nginx / unit）"
-    echo -e "  ${CYAN}16.${NC} 自检并自动修复（部署/运维问题自动补齐）"
     echo -e "  ${RED}15.${NC} 完全卸载（服务/配置/续期任务 + 残留扫描）"
+    echo -e "  ${CYAN}16.${NC} 自检并自动修复（部署/运维问题自动补齐）"
     echo -e "  ${RED}0.${NC} 退出脚本"
     echo -e "${BLUE}==========================================${NC}"
     # 每次先清空 choice：bash 的 read 在 EOF 时不修改变量，
