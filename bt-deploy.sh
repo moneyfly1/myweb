@@ -1082,13 +1082,22 @@ full_deploy() {
     render_site_config http
     nginx_apply_or_rollback || warn "Nginx 配置未通过检测，请检查后再继续"
 
-    # 6. SSL 证书
+    # 6. SSL 证书（归属策略见 CERT_MANAGER）
     step "检查 / 申请 SSL 证书..."
     local cert_dir; cert_dir="$(find_cert_dir)"
-    if [[ -n "$cert_dir" && "${CERT_SOURCE}" != "certbot" ]]; then
+    cert_conflict_check || true
+    if [[ "$CERT_MANAGER" == "certbot" ]]; then
+        : # 强制 certbot：即使面板已有证书也重新申请
+    elif [[ -n "$cert_dir" && "${CERT_SOURCE}" != "certbot" ]]; then
         # 宝塔面板或 acme.sh 已经签过这个域名 → 直接复用，不再跑 certbot（避免两个 ACME 客户端重复签发）
         log "✅ 复用已有证书（来源: $(cert_source_label)）: $cert_dir"
         log "   已跳过 certbot 申请，避免与宝塔/acme.sh 重复签发同一域名"
+        log "   续期由该来源负责（宝塔面板：网站 → SSL → 续签；acme.sh：其自带 cron）"
+    elif [[ "$CERT_MANAGER" == "panel" ]] && bt_panel_present; then
+        warn "CERT_MANAGER=panel：本次不主动签发证书，交给宝塔面板管理"
+        warn "   请在面板「网站 → ${DOMAIN} → SSL → Let's Encrypt」申请，然后重跑菜单 1 或菜单 16"
+        warn "   脚本会在检测到面板证书后自动把站点切到 HTTPS（并跳过 certbot，避免重复签发）"
+        cert_dir=""
     else
         ensure_certbot_autorenew
         if command -v certbot >/dev/null 2>&1; then
@@ -1160,6 +1169,33 @@ full_deploy() {
 # 「两个 ACME 客户端给同一个域名重复签发」：让 Let's Encrypt 的重复证书速率限制更容易触发，
 # 而且 vhost 里两个工具互相覆盖证书路径。所以：只要宝塔已有可用证书，就直接复用它、跳过 certbot。
 CERT_DIR=""; CERT_FULLCHAIN="fullchain.pem"; CERT_KEY="privkey.pem"; CERT_SOURCE=""
+
+# 证书由谁负责续期：auto（默认：已有证书就复用，没有就用 certbot 申请）
+#   auto      —— 复用已有（certbot/宝塔/acme.sh），没有则 certbot 申请并开启自动续期
+#   panel     —— 证书交给宝塔面板管理：脚本只检测复用，不主动签发；
+#                你在面板「网站 → SSL」申请后，重跑菜单 1 或菜单 16 会自动接入 HTTPS
+#   certbot   —— 强制用 certbot（即使面板已有证书也不复用）
+CERT_MANAGER="${CERT_MANAGER:-auto}"
+
+# 宝塔面板是否在场（决定证书归属建议与 vhost 目录）
+bt_panel_present() {
+    [[ -d /www/server/panel ]] && [[ -f /www/server/panel/data/port.pl ]]
+}
+
+# 双套证书冲突检测：同一个域名同时存在 certbot 与宝塔/acme.sh 的证书时给出告警
+cert_conflict_check() {
+    local have_certbot="no" have_bt="no"
+    [[ -f "${LETSENCRYPT_LIVE_DIR:-/etc/letsencrypt/live}/${DOMAIN}/fullchain.pem" ]] && have_certbot="yes"
+    [[ -f "/www/server/panel/vhost/cert/${DOMAIN}/fullchain.pem" ]] && have_bt="yes"
+    [[ -f "/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer" || -f "/root/.acme.sh/${DOMAIN}/fullchain.cer" ]] && have_bt="yes"
+    if [[ "$have_certbot" == "yes" && "$have_bt" == "yes" ]]; then
+        warn "检测到同一个域名同时存在 certbot 证书与宝塔/acme.sh 证书（两套续期机制）"
+        warn "   建议只保留一套：要么在宝塔面板管（脚本只复用），要么用 certbot（面板不要点申请/续签）"
+        warn "   当前站点使用的是: $(cert_source_label) → ${CERT_DIR:-未探测}"
+        return 1
+    fi
+    return 0
+}
 
 find_cert_dir() {
     CERT_DIR=""; CERT_SOURCE=""
@@ -1583,13 +1619,19 @@ self_check_and_repair() {
     # 8) 日志轮转
     [[ -f /etc/logrotate.d/cboard ]] || { ensure_logrotate && fixed+=("缺少 logrotate 配置 → 已补"); }
 
-    # 9) 证书与自动续期
+    # 9) 证书与自动续期（含"证书归谁管"的核对）
     local cert_dir; cert_dir="$(find_cert_dir)"
+    cert_conflict_check || problems+=("同一个域名存在两套证书（certbot + 宝塔/acme.sh），建议只保留一套")
     if [[ -n "$cert_dir" ]]; then
         log "✅ 证书存在: $cert_dir"
-        [[ -x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh ]] || { setup_cert_auto_renew_hook && fixed+=("缺少续期重载钩子 → 已补"); }
-        if ! systemctl is-active --quiet certbot.timer 2>/dev/null && [[ ! -f /etc/cron.d/certbot-renew ]]; then
-            ensure_certbot_autorenew && fixed+=("缺少自动续期任务 → 已补")
+        if [[ "${CERT_SOURCE}" == "certbot" ]]; then
+            [[ -x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh ]] || { setup_cert_auto_renew_hook && fixed+=("缺少续期重载钩子 → 已补"); }
+            if ! systemctl is-active --quiet certbot.timer 2>/dev/null && [[ ! -f /etc/cron.d/certbot-renew ]]; then
+                ensure_certbot_autorenew && fixed+=("缺少自动续期任务 → 已补")
+            fi
+            log "✅ 证书续期归属: certbot（certbot.timer + reload 钩子）"
+        else
+            log "✅ 证书续期归属: $(cert_source_label)（脚本不接管续期，只负责复用与接入 HTTPS）"
         fi
     else
         warn "未找到证书，尝试申请..."
