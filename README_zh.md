@@ -1113,6 +1113,9 @@ tar czf backup-$(date +%F).tar.gz cboard.db uploads
 | **订阅无法更新** | 客户端 UA 未知 / 订阅过期 | 检查节点订阅 URL 是否有效；UA 未知时返回通用格式；确认订阅未过期 |
 | **节点全部离线** | 心跳超时 / 自建节点脚本问题 | 自建节点心跳 30s/超时 3min；检查节点服务器 sing-box 进程与 `cboard-heartbeat` 服务 |
 | **Docker 端口冲突** | 8000 被占用 | 修改 `docker-compose.yml` 端口映射为 `"8001:8000"` |
+| **升级时提示「缺少 ACME challenge 放行段」** | 已修：旧版检查写的是 `grep "location \.well-known/acme-challenge"`，而实际配置是 `location ^~ /.well-known/acme-challenge/`（带 `^~` 修饰符）→ 明明有放行段也误报。现在认 `^~`/`=`/`~`/裸路径所有写法，真缺时会**自动补上**（写进注入块内，幂等） |
+| **宝塔开启了「强制 HTTPS」，续期会不会失败** | 会（这是真实的失败点）：宝塔的强制跳转是一段 server 级 `if + rewrite`，执行在 location 匹配**之前**，任何 location 都挡不住 → `http://域名/.well-known/acme-challenge/<token>` 一律 301。证书有效时 LE 跟随跳转能过；证书过期/不可用时跟随 HTTPS 就失败。脚本会自动装一对 `renewal-hooks/{pre,post}` 钩子：续期前临时注释掉该跳转并**轮询确认已生效**，续期后原样恢复（逐字节还原，`nginx -t` 失败立即回滚）。实测 `certbot renew --dry-run` 通过 |
+| **站点配置文件名和域名不一致**（如 `speedora.conf` 服务 `speedora.top`） | 脚本会按 `server_name` **认领真正在服务该域名的配置文件**（跳过 `.bak/.backup` 副本），不再另建一个同名文件造成两个 server_name 相同的 server 块 |
 | **Redis 装不上 / 起不来** | 环境限制（如 apt 版 redis-server 因 `libjemalloc.so.2` 映射失败起不来）/ 未装 Docker | 直接跑**菜单 12**：Docker 与系统包两条路会自动互相兜底，脚本还会打印 `journalctl -u redis-server` 的真实报错；两条都失败也只警告、不中断部署（网站照常运行）。手动排查：`journalctl -u redis-server -n 20`、`docker logs redis` |
 
 ### 日志位置
