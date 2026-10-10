@@ -507,7 +507,8 @@ ensure_nginx() {
     fi
     if command -v nginx >/dev/null 2>&1; then
         systemctl enable nginx >/dev/null 2>&1
-        systemctl start nginx >/dev/null 2>&1
+        detect_nginx_layout
+        nginx_start >/dev/null 2>&1
         # 安装后重新探测（二进制/配置目录/pid 都变了）
         detect_nginx_layout
         mkdir -p "$NGINX_VHOST_DIR"
@@ -1044,6 +1045,28 @@ nginx_apply_or_rollback() {
         $NGINX_RELOAD_CMD >/dev/null 2>&1
     fi
     return 1
+}
+
+# nginx 是否在运行 / 启动它：宝塔的 nginx 由 /etc/init.d/nginx 管理，
+# systemd 单元在宝塔机上通常是 inactive 或 failed —— 用 systemctl 判断会误判"没运行"，
+# 更糟的是 systemctl start nginx 可能把系统自带的另一个 nginx 拉起来抢 80 端口。
+nginx_is_running() {
+    pgrep -x nginx >/dev/null 2>&1
+}
+
+nginx_start() {
+    nginx_is_running && return 0
+    if [[ "${NGINX_BIN:-}" == /www/server/nginx/* ]] && [[ -x /etc/init.d/nginx ]]; then
+        /etc/init.d/nginx start >/dev/null 2>&1
+    elif [[ -x /etc/init.d/nginx ]]; then
+        /etc/init.d/nginx start >/dev/null 2>&1
+    elif command -v systemctl >/dev/null 2>&1 && [[ -n "${NGINX_BIN:-}" && "${NGINX_BIN}" != /www/server/* ]]; then
+        systemctl start nginx >/dev/null 2>&1
+    elif [[ -n "${NGINX_BIN:-}" ]]; then
+        "$NGINX_BIN" >/dev/null 2>&1
+    fi
+    sleep 1
+    nginx_is_running
 }
 
 reload_nginx_force() {
@@ -1675,7 +1698,11 @@ self_check_and_repair() {
     else
         log "✅ nginx -t 通过"
     fi
-    systemctl is-active --quiet nginx || { systemctl start nginx >/dev/null 2>&1 && fixed+=("nginx 未运行 → 已启动"); }
+    if ! nginx_is_running; then
+        nginx_start && fixed+=("nginx 未运行 → 已启动（$( [[ "${NGINX_BIN:-}" == /www/server/* ]] && echo 宝塔 init.d || echo systemd )）") || problems+=("nginx 启动失败")
+    else
+        log "✅ nginx 运行中（${NGINX_BIN:-未知路径}）"
+    fi
 
     # 8) 日志轮转
     [[ -f /etc/logrotate.d/cboard ]] || { ensure_logrotate && fixed+=("缺少 logrotate 配置 → 已补"); }
