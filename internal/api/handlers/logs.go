@@ -567,14 +567,18 @@ func formatLogForCSV(db *gorm.DB, log models.AuditLog) string {
 // ==========================================
 
 // GetDashboardActivity 返回仪表盘实时动态：只显示「真实用户」的行为，
-// 排除管理员操作与系统/未登录事件。合并 4 个数据源：
-//  1. audit_logs：user_id > 1（排除 admin=1 与 NULL）→ 登录/删设备/重置密码/自定义下单/邀请码等；
-//  2. subscription_logs：action_type IN (reset,update) 且 action_by_user_id > 1
-//     （排除管理员代操作）→ 用户主动重置/更新订阅；
-//  3. orders：用户下单（pending）与付款（paid）行为（排除管理员后台创建的订单）；
-//  4. recharge_records：用户充值到账（status=paid）。
+// 排除管理员操作与系统事件。合并 5 个数据源：
+//  1. audit_logs：user_id > 1 → 登录/删设备/重置密码/邀请码等（登录、签到属"环境事件"）；
+//  2. audit_logs 的注册事件（security_register_success）：这类日志 user_id 为空
+//     （注册那一刻还没有 user_id），历史上被 "user_id > 1" 过滤掉，导致注册动态永远不出现；
+//     这里按描述里的用户名反查用户 ID 后单独纳入；
+//  3. subscription_logs：用户主动重置/更新订阅（排除管理员代操作）；
+//  4. orders：待付款（pending）与已付款（paid，按 payment_time 计时）→ 下单 / 付款动态；
+//  5. recharge_records：用户充值到账（status=paid）。
 //
-// 各数据源按时间倒序合并，取最近 limit 条。
+// 排序与配额：登录/签到这类高频事件会挤掉"下单、付款、注册、充值"等真正有价值的业务动态，
+// 因此先按「业务事件」与「环境事件」分档，业务事件优先占位（3/4），其余名额给环境事件
+// （其中登录单独限额），最后整体按时间倒序输出。
 func GetDashboardActivity(c *gin.Context) {
 	limit := 20
 	if l := c.Query("limit"); l != "" {
@@ -592,20 +596,34 @@ func GetDashboardActivity(c *gin.Context) {
 		ActionType string `json:"action_type"`
 		ActionDesc string `json:"action_description"`
 		CreatedAt  string `json:"created_at"`
-		Source     string `json:"source"` // audit / subscription / order / recharge
+		Source     string `json:"source"` // audit / register / subscription / order / recharge
+
+		sortAt time.Time `json:"-"` // 排序用真实时间（显示用 CreatedAt 已格式化为北京时间）
+		// 0=业务事件（下单/付款/注册/充值/订阅/设备密码变更） 1=环境事件（登录/签到等高频）
+		priority int `json:"-"`
 	}
 
-	items := make([]activityItem, 0, limit*4)
+	business := make([]activityItem, 0, limit*2)
+	ambient := make([]activityItem, 0, limit*2)
 
 	// 1. 审计日志：真实用户（user_id > 1）的行为。
-	// 登录事件（login / security_login_success）成对出现且高频，
-	// 这里只保留其中一条（取 login 事件），避免刷屏挤占业务动态。
+	//    排除项：
+	//    - security_login_success / security_login_attempt：与 login 重复且更高频；
+	//    - security_auth_token_invalid：每分钟几十条的令牌噪声，无业务价值；
+	//    - business_subscription_pull_*、business_device_auto_revive：拉订阅/自动复活的高频例行日志；
+	//    - create_custom_order / create_order：与下面 orders 数据源重复（订单表信息更全，含金额）。
+	auditExclude := []string{
+		"security_login_success", "security_login_attempt", "security_auth_token_invalid",
+		"business_subscription_pull_not_found", "business_subscription_pull_device_kicked",
+		"business_device_auto_revive", "create_custom_order", "create_order", "order_created",
+	}
 	var auditLogs []models.AuditLog
 	if err := db.Preload("User").
 		Where("audit_logs.user_id > ?", 1).
-		Where("audit_logs.action_type NOT IN ?", []string{"security_login_success", "security_login_attempt"}).
+		Where("audit_logs.action_type NOT IN ?", auditExclude).
+		Where("audit_logs.action_type NOT LIKE ?", "scheduler_%").
 		Order("audit_logs.created_at DESC").
-		Limit(limit * 3).
+		Limit(limit * 5).
 		Find(&auditLogs).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取实时动态失败", err)
 		return
@@ -616,6 +634,7 @@ func GetDashboardActivity(c *gin.Context) {
 			ActionType: l.ActionType,
 			CreatedAt:  utils.FormatBeijingTime(l.CreatedAt),
 			Source:     "audit",
+			sortAt:     l.CreatedAt,
 		}
 		if l.UserID.Valid {
 			item.UserID = uint(l.UserID.Int64)
@@ -626,10 +645,63 @@ func GetDashboardActivity(c *gin.Context) {
 		if l.ActionDescription.Valid {
 			item.ActionDesc = l.ActionDescription.String
 		}
-		items = append(items, item)
+		// 登录/签到属于高频环境事件，其余（改密码、删设备、建邀请码…）算业务事件
+		if l.ActionType == "login" || l.ActionType == "business_user_checkin" {
+			item.priority = 1
+			ambient = append(ambient, item)
+		} else {
+			business = append(business, item)
+		}
 	}
 
-	// 2. 订阅日志：用户主动重置/更新订阅（action_by_user_id > 1，排除管理员代操作）
+	// 2. 注册事件：security_register_success 的 user_id 为空（注册瞬间还没有用户 ID），
+	//    从描述「注册成功: 用户 xxx (IP: ...)」里取出用户名，再批量反查用户 ID，
+	//    这样注册动态既能出现，也能点击跳到对应用户。
+	var registerLogs []models.AuditLog
+	if err := db.Where("audit_logs.action_type = ?", "security_register_success").
+		Order("audit_logs.created_at DESC").
+		Limit(limit * 2).
+		Find(&registerLogs).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取实时动态失败", err)
+		return
+	}
+	if len(registerLogs) > 0 {
+		nameSet := make(map[string]struct{})
+		parsed := make([]string, len(registerLogs))
+		for i, l := range registerLogs {
+			parsed[i] = parseRegisteredUsername(l.ActionDescription)
+			if parsed[i] != "" {
+				nameSet[parsed[i]] = struct{}{}
+			}
+		}
+		userIDByName := make(map[string]uint, len(nameSet))
+		if len(nameSet) > 0 {
+			names := make([]string, 0, len(nameSet))
+			for n := range nameSet {
+				names = append(names, n)
+			}
+			var users []models.User
+			if err := db.Select("id", "username").Where("username IN ?", names).Find(&users).Error; err == nil {
+				for _, u := range users {
+					userIDByName[u.Username] = u.ID
+				}
+			}
+		}
+		for i, l := range registerLogs {
+			name := parsed[i]
+			business = append(business, activityItem{
+				ID:         l.ID,
+				UserID:     userIDByName[name],
+				Username:   name,
+				ActionType: "user_register",
+				CreatedAt:  utils.FormatBeijingTime(l.CreatedAt),
+				Source:     "register",
+				sortAt:     l.CreatedAt,
+			})
+		}
+	}
+
+	// 3. 订阅日志：用户主动重置/更新订阅（action_by_user_id > 1，排除管理员代操作）
 	var subLogs []models.SubscriptionLog
 	if err := db.Preload("User").
 		Where("subscription_logs.action_type IN ?", []string{"reset", "update"}).
@@ -648,43 +720,50 @@ func GetDashboardActivity(c *gin.Context) {
 			ActionDesc: l.Description.String,
 			CreatedAt:  utils.FormatBeijingTime(l.CreatedAt),
 			Source:     "subscription",
+			sortAt:     l.CreatedAt,
 		}
 		if l.User.ID > 0 {
 			item.Username = l.User.Username
 		}
-		items = append(items, item)
+		business = append(business, item)
 	}
 
-	// 3. 订单：用户下单（pending）与付款（paid）。
-	// 用户端下单/付款都在 orders 表；管理员后台创建的订单量极少，
-	// 且从「用户获得服务」角度仍属用户相关行为，这里不做额外排除。
+	// 4. 订单：已付款（按 payment_time 计时，老数据回退 created_at）与待付款。
 	var orders []models.Order
 	if err := db.Preload("User").
 		Where("orders.status IN ?", []string{"paid", "pending"}).
 		Order("orders.created_at DESC").
-		Limit(limit).
+		Limit(limit * 2).
 		Find(&orders).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取实时动态失败", err)
 		return
 	}
 	for _, o := range orders {
+		eventAt := o.CreatedAt
+		if o.Status == "paid" && o.PaymentTime.Valid && !o.PaymentTime.Time.IsZero() {
+			// 付款动态按"到账时间"排序，否则一笔昨天下单、今天付款的订单会排到旧位置
+			eventAt = o.PaymentTime.Time
+		}
 		item := activityItem{
 			ID:         o.ID,
 			UserID:     o.UserID,
 			ActionType: "order_" + o.Status,
-			CreatedAt:  utils.FormatBeijingTime(o.CreatedAt),
+			CreatedAt:  utils.FormatBeijingTime(eventAt),
 			Source:     "order",
+			sortAt:     eventAt,
 		}
 		if o.User.ID > 0 {
 			item.Username = o.User.Username
 		}
-		// 订单金额用统一成交口径：余额支付订单的 final_amount 为 0，
-		// 直接用会在日志里显示"订单金额 ¥0.00"（历史 bug）
-		item.ActionDesc = fmt.Sprintf("订单金额 ¥%.2f", o.PaidAmount())
-		items = append(items, item)
+		// 订单金额用统一成交口径：余额支付订单的 final_amount 为 0
+		item.ActionDesc = fmt.Sprintf("¥%.2f", o.PaidAmount())
+		if o.OrderNo != "" {
+			item.ActionDesc += " · " + o.OrderNo
+		}
+		business = append(business, item)
 	}
 
-	// 4. 充值到账：真实用户（user_id > 1）的充值记录
+	// 5. 充值到账：真实用户（user_id > 1）的充值记录
 	var recharges []models.RechargeRecord
 	if err := db.Preload("User").
 		Where("recharge_records.status = ?", "paid").
@@ -700,45 +779,74 @@ func GetDashboardActivity(c *gin.Context) {
 			ID:         r.ID,
 			UserID:     r.UserID,
 			ActionType: "recharge_paid",
-			ActionDesc: fmt.Sprintf("充值金额 ¥%.2f", r.Amount),
+			ActionDesc: fmt.Sprintf("¥%.2f", r.Amount),
 			CreatedAt:  utils.FormatBeijingTime(r.CreatedAt),
 			Source:     "recharge",
+			sortAt:     r.CreatedAt,
 		}
 		if r.User.ID > 0 {
 			item.Username = r.User.Username
 		}
-		items = append(items, item)
+		business = append(business, item)
 	}
 
-	// 5. 按时间倒序合并，取最近 limit 条；
-	// 登录事件高频，限制其占比不超过 50%，保证订阅重置/下单/充值等业务动态可见
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].CreatedAt > items[j].CreatedAt
-	})
-	loginCap := limit / 2
-	if loginCap < 3 {
-		loginCap = 3
+	// 合并：业务事件优先占位（3/4），其余名额给登录/签到等环境事件（登录再单独限额 1/3），
+	// 避免高频登录把"下单/付款/注册/充值"挤掉；最后整体按时间倒序。
+	byTimeDesc := func(items []activityItem) {
+		sort.Slice(items, func(i, j int) bool { return items[i].sortAt.After(items[j].sortAt) })
+	}
+	byTimeDesc(business)
+	byTimeDesc(ambient)
+
+	businessCap := limit * 3 / 4
+	if businessCap > len(business) {
+		businessCap = len(business)
+	}
+	selected := make([]activityItem, 0, limit)
+	selected = append(selected, business[:businessCap]...)
+
+	ambientCap := limit - len(selected)
+	loginCap := ambientCap / 3
+	if loginCap < 2 {
+		loginCap = 2
 	}
 	loginCount := 0
-	filtered := make([]activityItem, 0, len(items))
-	for _, it := range items {
-		if it.ActionType == "login" || it.ActionType == "security_login_success" {
+	for _, it := range ambient {
+		if len(selected) >= limit || ambientCap <= 0 {
+			break
+		}
+		if it.ActionType == "login" {
 			if loginCount >= loginCap {
 				continue
 			}
 			loginCount++
 		}
-		filtered = append(filtered, it)
-		if len(filtered) >= limit {
-			break
-		}
+		selected = append(selected, it)
+		ambientCap--
 	}
-	if len(filtered) > limit {
-		filtered = filtered[:limit]
-	}
-	items = filtered
+	byTimeDesc(selected)
 
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"list": items})
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"list": selected})
+}
+
+// parseRegisteredUsername 从注册审计日志的描述里取出用户名。
+// 描述形如：「[INFO] 注册成功: 用户 星期七Lv (IP: 110.84.208.159)」。
+func parseRegisteredUsername(desc sql.NullString) string {
+	if !desc.Valid {
+		return ""
+	}
+	text := desc.String
+	marker := "用户 "
+	idx := strings.Index(text, marker)
+	if idx < 0 {
+		return ""
+	}
+	rest := text[idx+len(marker):]
+	// 用户名后面通常是 " (IP: ...)"，也可能直接结束
+	if end := strings.Index(rest, " ("); end >= 0 {
+		rest = rest[:end]
+	}
+	return strings.TrimSpace(rest)
 }
 
 func GetAuditLogs(c *gin.Context) {
