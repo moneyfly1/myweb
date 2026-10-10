@@ -1199,10 +1199,36 @@ manage_admin() {
         log "用户名: $admin_username"
         log "邮箱: $admin_email"
         [[ "$generated" == "yes" ]] && log "本次生成的密码: ${admin_pass}（请立即保存，之后不再显示）"
+        # 关键：写进库 ≠ 能登录。这里直接打本地登录接口实测一次，
+        # 避免出现「提示创建成功，实际登不进去」却没人发现（端口写错/账号被锁/服务没起都会暴露）
+        verify_admin_login "$admin_username" "$admin_pass" "$admin_email"
     else
         error "管理员账户创建/重置失败，请检查上方错误信息"
         return 1
     fi
+}
+
+# 用刚设置的口令打一次本地登录接口，确认账号真的可用
+verify_admin_login() {
+    local username="$1" password="$2" email="${3:-}"
+    local port; port="$(env_port)"
+    local payload resp
+    payload="$(printf '{"username":"%s","password":"%s"}' "$username" "$password")"
+    resp="$(curl -fsS --max-time 8 -X POST "http://127.0.0.1:${port}/api/v1/auth/login-json" \
+        -H 'Content-Type: application/json' -d "$payload" 2>/dev/null)"
+    if [[ "$resp" == *access_token* ]]; then
+        log "✅ 已实测登录成功（POST /api/v1/auth/login-json → 拿到 access_token）"
+        return 0
+    fi
+    if [[ -n "$email" ]]; then
+        payload="$(printf '{"email":"%s","password":"%s"}' "$email" "$password")"
+        resp="$(curl -fsS --max-time 8 -X POST "http://127.0.0.1:${port}/api/v1/auth/login" \
+            -H 'Content-Type: application/json' -d "$payload" 2>/dev/null)"
+        [[ "$resp" == *access_token* ]] && { log "✅ 已实测登录成功（邮箱方式）"; return 0; }
+    fi
+    error "⚠️ 账号已写入数据库，但本地登录实测失败 —— 请检查：服务是否运行（菜单 6）、"
+    error "   端口是否与 .env 的 PORT 一致、账号是否被锁定。接口返回：$(echo "$resp" | head -c 150)"
+    return 1
 }
 
 # 升级环境预检：Go 版本 / 磁盘空间。任何一项不满足立即中止（不影响现有服务）。
@@ -1393,8 +1419,10 @@ deep_clean() {
 
     # 只清应用自己的日志内容（保留文件，避免 systemd 追加写句柄异常）
     if [[ -f "$PROJECT_DIR/server.log" ]]; then
+        local before_size
+        before_size="$(du -h "$PROJECT_DIR/server.log" 2>/dev/null | cut -f1)"
         : > "$PROJECT_DIR/server.log"
-        log "已清空 server.log"
+        log "已清空 server.log（${before_size:-?} → 0；服务照常运行，之后写入的是新日志）"
     fi
 
     local tmp_count
@@ -1411,6 +1439,213 @@ deep_clean() {
     fi
 
     log "✅ 缓存清理完毕（前端 dist 与后端二进制均已保留）"
+}
+
+# 自检并自动修复（菜单 16）
+#
+# 目标：部署/运维过程中出现的问题，脚本自己能发现并修好，而不是靠人工去改服务器配置。
+# 只做「确定安全的修复」：缺文件/缺配置块/服务没起/证书续期没配 → 补齐；
+# 涉及数据（数据库缺失、库被清空）只报告不动手，避免"修复"出更大事。
+self_check_and_repair() {
+    step "自检并自动修复..."
+    local fixed=() problems=()
+    detect_nginx_layout
+
+    # 1) .env
+    if [[ ! -f "${PROJECT_DIR}/.env" ]]; then
+        ensure_env_file && fixed+=(".env 缺失 → 已重新生成")
+    else
+        local before_host; before_host="$(grep -E '^HOST=' "${PROJECT_DIR}/.env" | head -1)"
+        ensure_env_file
+        [[ "$before_host" != "$(grep -E '^HOST=' "${PROJECT_DIR}/.env" | head -1)" ]] && fixed+=(".env HOST 已修正")
+    fi
+
+    # 2) 数据库（只报告，不自动新建：静默建空库比报错更危险）
+    local db; db="$(detect_db_path)"
+    if [[ -z "$db" ]]; then
+        problems+=("DATABASE_URL 无法解析出数据库路径")
+    elif [[ ! -f "$db" ]]; then
+        problems+=("数据库文件不存在: $db（如需从备份恢复，请用菜单 13 或用 /www/backup/cboard 下的备份）")
+    else
+        log "✅ 数据库正常: $db"
+    fi
+
+    # 3) 目录
+    for d in "${PROJECT_DIR}/uploads" "${PROJECT_DIR}/.well-known/acme-challenge" "$NGINX_VHOST_DIR"; do
+        [[ -d "$d" ]] || { mkdir -p "$d" && fixed+=("创建目录 $d"); }
+    done
+
+    # 4) 可执行产物
+    [[ -x "${PROJECT_DIR}/server" ]] || { warn "后端二进制缺失，尝试重建"; build_backend && fixed+=("重新编译后端"); }
+    [[ -f "${PROJECT_DIR}/frontend/dist/index.html" ]] || { warn "前端产物缺失，尝试重建"; build_frontend && fixed+=("重新构建前端"); }
+
+    # 5) systemd 单元
+    if [[ ! -f /etc/systemd/system/cboard.service ]]; then
+        write_systemd_unit && fixed+=("systemd 单元缺失 → 已重建")
+    else
+        grep -q EnvironmentFile /etc/systemd/system/cboard.service || { write_systemd_unit && fixed+=("unit 缺 EnvironmentFile → 已按标准模板重写"); }
+    fi
+
+    # 6) 站点配置
+    local conf; conf="$(site_conf_path)"
+    if [[ ! -f "$conf" ]]; then
+        local cert; cert="$(find_cert_dir)"
+        if [[ -n "$cert" ]]; then render_site_config https "$cert"; else render_site_config http; fi
+        nginx_apply_or_rollback && fixed+=("站点配置缺失 → 已重新生成")
+    else
+        local before_hash; before_hash="$(md5sum "$conf" | cut -d' ' -f1)"
+        ensure_site_conf_blocks >/dev/null 2>&1
+        [[ "$before_hash" != "$(md5sum "$conf" | cut -d' ' -f1)" ]] && fixed+=("站点配置缺必需片段 → 已补齐")
+    fi
+
+    # 7) nginx 可用性（-t 不过就换 http2 写法重试）
+    if ! $NGINX_TEST_CMD >/dev/null 2>&1; then
+        warn "nginx -t 未通过，尝试自动修复..."
+        if ver_ge "$(nginx_version)" "1.25.1"; then
+            FORCE_OLD_HTTP2=yes render_site_config "$([[ -n "$(find_cert_dir)" ]] && echo https || echo http)" "$(find_cert_dir)"
+        else
+            FORCE_NEW_HTTP2=yes render_site_config "$([[ -n "$(find_cert_dir)" ]] && echo https || echo http)" "$(find_cert_dir)"
+        fi
+        if nginx_apply_or_rollback; then fixed+=("nginx 配置语法错误 → 已换写法修复"); else problems+=("nginx 配置仍无法通过 -t，请查看 $conf"); fi
+    else
+        log "✅ nginx -t 通过"
+    fi
+    systemctl is-active --quiet nginx || { systemctl start nginx >/dev/null 2>&1 && fixed+=("nginx 未运行 → 已启动"); }
+
+    # 8) 日志轮转
+    [[ -f /etc/logrotate.d/cboard ]] || { ensure_logrotate && fixed+=("缺少 logrotate 配置 → 已补"); }
+
+    # 9) 证书与自动续期
+    local cert_dir; cert_dir="$(find_cert_dir)"
+    if [[ -n "$cert_dir" ]]; then
+        log "✅ 证书存在: $cert_dir"
+        [[ -x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh ]] || { setup_cert_auto_renew_hook && fixed+=("缺少续期重载钩子 → 已补"); }
+        if ! systemctl is-active --quiet certbot.timer 2>/dev/null && [[ ! -f /etc/cron.d/certbot-renew ]]; then
+            ensure_certbot_autorenew && fixed+=("缺少自动续期任务 → 已补")
+        fi
+    else
+        warn "未找到证书，尝试申请..."
+        ensure_certbot_autorenew
+        certbot certonly --webroot -w "${PROJECT_DIR}" -d "${DOMAIN}" --email "admin@${DOMAIN}" \
+            --agree-tos --non-interactive --keep-until-expiring >/dev/null 2>&1 \
+            && { fixed+=("证书缺失 → 已申请"); cert_dir="$(find_cert_dir)"; render_site_config https "$cert_dir"; nginx_apply_or_rollback; } \
+            || problems+=("证书申请失败（可检查 DNS 是否指向本机、80 端口是否可达）")
+    fi
+
+    # 10) 服务可用性（用业务健康检查，不用 is-active）
+    if ! start_and_verify_service; then
+        warn "服务不健康，尝试重建后重启..."
+        backup_database
+        if build_backend && build_frontend && start_and_verify_service; then
+            fixed+=("服务不健康 → 重建后端/前端并重启后恢复")
+        else
+            problems+=("服务仍不健康，请查看 ${PROJECT_DIR}/server.log")
+        fi
+    else
+        log "✅ 服务健康检查通过"
+    fi
+
+    echo
+    echo -e "${CYAN}================ 自检结果 ================${NC}"
+    if [[ ${#fixed[@]} -eq 0 ]]; then
+        echo -e "  ${GREEN}✅ 未发现需要修复的问题${NC}"
+    else
+        echo -e "  ${GREEN}已自动修复 ${#fixed[@]} 项：${NC}"
+        printf '    - %s\n' "${fixed[@]}"
+    fi
+    if [[ ${#problems[@]} -gt 0 ]]; then
+        echo -e "  ${RED}需要人工处理 ${#problems[@]} 项：${NC}"
+        printf '    - %s\n' "${problems[@]}"
+        return 1
+    fi
+    return 0
+}
+
+# 完全卸载（菜单 15）：删服务/配置/续期任务，并对残留做扫描；
+# 项目目录、数据库、以及脚本自动安装的软件（Go/Node/nginx/redis/certbot）都需显式确认才删。
+uninstall_full() {
+    step "完全卸载 CBoard（脚本安装的所有内容）..."
+    local conf; conf="$(site_conf_path)"
+    local backup_dir="/root/cboard-uninstall-$(date +%Y%m%d_%H%M%S)"
+    warn "将删除：systemd 单元 cboard、站点配置 ${conf}、logrotate 配置、certbot 续期钩子/定时任务"
+    warn "默认保留：项目目录 ${PROJECT_DIR}、数据库、.env（后面会单独询问）"
+    local ok=""
+    read -r -p "确认卸载？(yes/no): " ok || ok="no"
+    [[ "$ok" == "yes" ]] || { log "已取消"; return 0; }
+    mkdir -p "$backup_dir"
+
+    # 1) 服务
+    stop_app_processes
+    systemctl disable cboard >/dev/null 2>&1
+    if [[ -f /etc/systemd/system/cboard.service ]]; then
+        cp /etc/systemd/system/cboard.service "$backup_dir/" 2>/dev/null
+        rm -f /etc/systemd/system/cboard.service
+        systemctl daemon-reload
+        systemctl reset-failed cboard >/dev/null 2>&1
+        log "已删除 systemd 单元（副本在 $backup_dir）"
+    fi
+
+    # 2) Nginx 站点配置
+    if [[ -f "$conf" ]]; then
+        cp "$conf" "$backup_dir/" 2>/dev/null
+        rm -f "$conf"
+        log "已删除站点配置 $conf（副本在 $backup_dir）"
+    fi
+    [[ -d "${NGINX_VHOST_DIR}/extension/${DOMAIN}" ]] && rm -rf "${NGINX_VHOST_DIR}/extension/${DOMAIN}" && log "已删除宝塔扩展配置目录"
+    systemctl is-active --quiet nginx && nginx_apply_or_rollback >/dev/null 2>&1
+
+    # 3) 日志轮转与证书续期任务（只删本项目的）
+    [[ -f /etc/logrotate.d/cboard ]] && { cp /etc/logrotate.d/cboard "$backup_dir/" 2>/dev/null; rm -f /etc/logrotate.d/cboard; log "已删除 logrotate 配置"; }
+    if [[ -f /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh ]]; then
+        cp /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh "$backup_dir/" 2>/dev/null
+        rm -f /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+        log "已删除证书续期重载钩子"
+    fi
+    if [[ -f /etc/cron.d/certbot-renew ]] && grep -q certbot /etc/cron.d/certbot-renew 2>/dev/null; then
+        cp /etc/cron.d/certbot-renew "$backup_dir/" 2>/dev/null
+        rm -f /etc/cron.d/certbot-renew
+        log "已删除 /etc/cron.d/certbot-renew"
+    fi
+
+    # 4) 项目目录 / 数据库 / .env（逐个询问）
+    local ans=""
+    read -r -p "是否删除项目目录 ${PROJECT_DIR}（含数据库与 .env）？(yes/no，默认 no): " ans || ans="no"
+    if [[ "$ans" == "yes" ]]; then
+        read -r -p "再确认一次：删除 ${PROJECT_DIR} 会连数据库一起删，确定？(yes/no): " ans2 || ans2="no"
+        if [[ "$ans2" == "yes" ]]; then
+            rm -rf "$PROJECT_DIR"
+            log "已删除项目目录 $PROJECT_DIR"
+        else
+            log "已保留项目目录"
+        fi
+    fi
+
+    # 5) 脚本自动安装的软件（可选清理，让机器回到干净状态）
+    local purge=""
+    read -r -p "是否卸载脚本自动安装的软件（Go/Node/nginx/redis/certbot）？(yes/no，默认 no): " purge || purge="no"
+    if [[ "$purge" == "yes" ]]; then
+        rm -rf /usr/local/go /usr/local/nodejs
+        rm -f /usr/local/bin/go /usr/local/bin/node /usr/local/bin/npm /usr/local/bin/npx
+        if command -v apt-get >/dev/null 2>&1; then
+            DEBIAN_FRONTEND=noninteractive apt-get remove -y -qq nginx nginx-common redis-server certbot >/dev/null 2>&1
+            DEBIAN_FRONTEND=noninteractive apt-get autoremove -y -qq >/dev/null 2>&1
+        fi
+        log "已卸载脚本安装的软件"
+    fi
+
+    # 6) 残留扫描
+    echo
+    echo -e "${CYAN}================ 残留扫描 ================${NC}"
+    local residual=0
+    systemctl list-unit-files 2>/dev/null | grep -q "^cboard.service" && { warn "残留: systemd 单元 cboard.service"; residual=1; }
+    [[ -f "$conf" ]] && { warn "残留: 站点配置 $conf"; residual=1; }
+    pgrep -f "^${PROJECT_DIR}/server( |$)" >/dev/null 2>&1 && { warn "残留: 进程仍在运行"; residual=1; }
+    ss -ltn 2>/dev/null | grep -q ":$(env_port) " && { warn "残留: 端口 $(env_port) 仍被监听"; residual=1; }
+    if compgen -G "/tmp/cboard_install*" >/dev/null 2>&1; then warn "残留: /tmp/cboard_install*"; residual=1; fi
+    [[ -f /var/lock/cboard-install.lock ]] && { warn "残留: 安装锁文件 /var/lock/cboard-install.lock（无进程运行时该文件可留在原处，不影响使用）"; }
+    [[ ${#residual} -eq 0 ]] && log "✅ 未发现残留（服务/配置/进程/端口均已清理）"
+    log "卸载完成。删除前的配置副本在: $backup_dir"
+    return 0
 }
 
 # 只重建并重启（菜单 14）：不改 nginx、不改 unit，避免「只想重启」却把配置覆盖了
@@ -1899,12 +2134,14 @@ show_menu() {
     echo -e "  ${YELLOW}12.${NC} 配置 Redis 缓存（性能优化）"
     echo -e "  ${YELLOW}13.${NC} 回滚到升级前版本（二进制/数据库备份）"
     echo -e "  ${YELLOW}14.${NC} 只重新构建并重启（不改 nginx / unit）"
+    echo -e "  ${CYAN}16.${NC} 自检并自动修复（部署/运维问题自动补齐）"
+    echo -e "  ${RED}15.${NC} 完全卸载（服务/配置/续期任务 + 残留扫描）"
     echo -e "  ${RED}0.${NC} 退出脚本"
     echo -e "${BLUE}==========================================${NC}"
     # 每次先清空 choice：bash 的 read 在 EOF 时不修改变量，
     # 若不重置，管道/关闭 stdin 的场景会一直重复执行上一次的选择
     choice=""
-    if ! read -r -p "请选择操作 [0-14]: " choice; then
+    if ! read -r -p "请选择操作 [0-16]: " choice; then
         log "检测到标准输入已关闭（非交互执行），退出。"
         exit 0
     fi
@@ -1968,6 +2205,8 @@ main() {
             11) sync_from_github ;;
             13) rollback_to_previous ;;
             14) rebuild_and_restart ;;
+            15) uninstall_full ;;
+            16) self_check_and_repair ;;
             12)
                 configure_redis_cache
                 # 重启服务以应用新配置（EOF 时视为不重启）
