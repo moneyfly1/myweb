@@ -1073,6 +1073,7 @@ The admin panel provides **Backup settings** (Settings → Backup): scheduled au
 | Service won't start | `journalctl -u cboard -f`; verify `.env`, port 8000 free (`ss -tlnp \| grep 8000`), disk space |
 | 502 Bad Gateway (behind Nginx) | `systemctl status cboard`; confirm `proxy_pass http://127.0.0.1:8000`; check `netstat -tlnp \| grep 8000` |
 | "⚠️ 未找到现有数据库文件，即将创建【全新】数据库" | `DATABASE_URL` points to a path where no DB exists — **do not restart blindly**; restore the real file or fix the path |
+| Email printed by the script fails to log in (401) | Fixed: username/e-mail are now read from the **database** (the app only uses `.env`'s `ADMIN_USERNAME`/`ADMIN_EMAIL` when the admin is first created; later changes in the panel are not written back to `.env`). The script prints the account that actually works and flags the difference from `.env`; the password still comes from `.env`'s `ADMIN_PASSWORD` (re-applied on every start) |
 | Admin password lost | `go run scripts/admin_tool 'NewPassword123!'`, or set `ADMIN_PASSWORD` in `.env` and restart |
 | Account locked after failed logins | `go run scripts/unlock_user <username-or-email>` |
 | Redis connection failed | `systemctl status redis`; `redis-cli ping` (expect `PONG`); ensure `REDIS_ADDR`/`REDIS_PASSWORD` match |
