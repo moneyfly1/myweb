@@ -354,6 +354,9 @@ ensure_env_file() {
             error "openssl 不可用，无法生成 SECRET_KEY（请先安装 openssl）"
             return 1
         fi
+        # 注意：umask 只能临时收紧，否则会"泄漏"到后面的构建/目录创建，
+        # 让 nginx（宝塔跑在 www 用户）读不到前端产物 → 站点 403、ACME 校验 Permission denied。
+        local _old_umask; _old_umask="$(umask)"
         umask 077
         cat > "$env_file" << EOF
 HOST=127.0.0.1
@@ -369,6 +372,7 @@ UPLOAD_DIR=uploads
 MAX_FILE_SIZE=10485760
 DISABLE_SCHEDULE_TASKS=false
 EOF
+        umask "$_old_umask"
         log "✅ .env 已创建（HOST=127.0.0.1，仅 nginx 可访问后端）"
     else
         cp "$env_file" "${env_file}.backup.$(date +%Y%m%d_%H%M%S)" 2>/dev/null
@@ -587,6 +591,40 @@ install_node_binary() {
     return 0
 }
 
+# 让 nginx 的 worker 用户能读取前端产物、uploads 与 ACME webroot。
+# 为什么需要：部署是 root 跑的，产物默认 root:root；宝塔 nginx 以 www 运行、Debian 的 nginx 以
+# www-data 运行，一旦目录/文件不是"其它用户可读可进入"，就会出现 403 Forbidden 或
+# ACME 校验 stat() Permission denied（真机验证宝塔部署时踩到）。
+fix_site_permissions() {
+    local target=""
+    local nginx_master
+    nginx_master="$(pgrep -x nginx 2>/dev/null | head -1)"
+    if [[ -n "$nginx_master" ]]; then
+        target="$(ps -o user= -p "$nginx_master" 2>/dev/null | tr -d ' ')"
+    fi
+    [[ -n "$target" ]] || target="www"
+    id "$target" >/dev/null 2>&1 || target="www-data"
+    id "$target" >/dev/null 2>&1 || target="root"
+
+    local group; group="$(id -gn "$target" 2>/dev/null)"
+    local changed="no"
+    local d
+    for d in "${PROJECT_DIR}/frontend/dist" "${PROJECT_DIR}/uploads" "${PROJECT_DIR}/.well-known"; do
+        [[ -e "$d" ]] || continue
+        chmod -R a+rX "$d" 2>/dev/null
+        [[ "$target" != "root" ]] && chown -R "${target}:${group}" "$d" 2>/dev/null
+        changed="yes"
+    done
+    # 站点目录本身要能被"进入"（o+x）
+    if [[ -d "$PROJECT_DIR" ]]; then
+        local mode
+        mode="$(stat -c %a "$PROJECT_DIR")"
+        [[ "${mode: -1}" =~ [1-7] ]] || { chmod o+x "$PROJECT_DIR" 2>/dev/null; changed="yes"; }
+    fi
+    [[ "$changed" == "yes" ]] && log "已修正站点文件权限（nginx 运行用户: ${target}）"
+    return 0
+}
+
 # 构建前端（依赖变更时强制重装：node_modules 存在但 package.json 变了会导致构建失败）
 build_frontend() {
     step "构建前端..."
@@ -608,6 +646,7 @@ build_frontend() {
     fi
     if npm run build; then
         cd "$PROJECT_DIR" || true
+        fix_site_permissions
         log "✅ 前端构建成功"
         return 0
     fi
@@ -1581,6 +1620,18 @@ self_check_and_repair() {
     for d in "${PROJECT_DIR}/uploads" "${PROJECT_DIR}/.well-known/acme-challenge" "$NGINX_VHOST_DIR"; do
         [[ -d "$d" ]] || { mkdir -p "$d" && fixed+=("创建目录 $d"); }
     done
+
+    # 3.5) nginx 是否能读到前端产物 / ACME webroot（权限不对会 403 或 ACME 校验失败）
+    if [[ -f "${PROJECT_DIR}/frontend/dist/index.html" ]]; then
+        local nginx_user
+        nginx_user="$(ps -o user= -p "$(pgrep -x nginx 2>/dev/null | head -1)" 2>/dev/null | tr -d ' ')"
+        [[ -n "$nginx_user" ]] || nginx_user="www"
+        if ! su -s /bin/sh -c "test -r '${PROJECT_DIR}/frontend/dist/index.html' && test -x '${PROJECT_DIR}'" "$nginx_user" 2>/dev/null; then
+            fix_site_permissions && fixed+=("nginx 用户(${nginx_user})读不到前端产物 → 已修正属主与权限")
+        else
+            log "✅ 前端产物对 nginx 用户(${nginx_user})可读"
+        fi
+    fi
 
     # 4) 可执行产物
     [[ -x "${PROJECT_DIR}/server" ]] || { warn "后端二进制缺失，尝试重建"; build_backend && fixed+=("重新编译后端"); }
