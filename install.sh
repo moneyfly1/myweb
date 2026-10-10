@@ -1142,7 +1142,39 @@ detect_nginx_layout() {
 }
 
 site_conf_path() {
-    echo "${NGINX_VHOST_DIR}/${DOMAIN}.conf"
+    local expected="${NGINX_VHOST_DIR}/${DOMAIN}.conf"
+    [[ -f "$expected" ]] && { echo "$expected"; return 0; }
+    # 兼容：配置文件名字与域名不一致的真实情况（生产实测：新站 speedora.top 的站点配置
+    # 是 /etc/nginx/conf.d/speedora.conf，由应用面板「订阅域名池」生成）。
+    # 旧逻辑只会去找 <域名>.conf，找不到就**新建一个**同名文件 → 出现两个 server_name
+    # 相同的 server 块（nginx 警告 "conflicting server name ... ignored"，谁生效取决于
+    # 加载顺序），脚本后续所有检查/修复也都在错的文件上做。这里按 server_name 认领真身。
+    local f
+    for f in "${NGINX_VHOST_DIR}"/*.conf "${NGINX_VHOST_DIR}"/*/*.conf; do
+        [[ -f "$f" ]] || continue
+        case "$f" in *.bak*|*.backup*|*uninstall*) continue ;; esac
+        grep -qE "^[[:space:]]*server_name[[:space:]][^;]*${DOMAIN//./\.}([[:space:];]|$)" "$f" 2>/dev/null && { echo "$f"; return 0; }
+    done
+    echo "$expected"
+}
+
+# 站点配置里 ACME 放行段的 root（certbot 校验文件必须落在这里）
+acme_root_in_conf() {
+    local conf="$1"
+    awk '
+        /location[^;]*acme-challenge/ { inb = 1 }
+        inb && /^[[:space:]]*root[[:space:]]/ {
+            gsub(/^[[:space:]]*root[[:space:]]+/, ""); gsub(/;.*$/, ""); print; exit
+        }
+        inb && /^[[:space:]]*}/ { inb = 0 }
+    ' "$conf" 2>/dev/null | head -1
+}
+
+# certbot 为该域名配置的 webroot（续期时校验文件写入的目录）
+certbot_webroot_for_domain() {
+    local rc="/etc/letsencrypt/renewal/${DOMAIN}.conf"
+    [[ -f "$rc" ]] || return 0
+    grep -E "^${DOMAIN//./\\.}[[:space:]]*=" "$rc" 2>/dev/null | head -1 | sed 's/^[^=]*=[[:space:]]*//; s/,[[:space:]]*$//'
 }
 
 # 站点配置文件路径（旧函数名保留，供历史调用点使用）
@@ -2591,6 +2623,45 @@ BLK
 
     if ! grep -q "location /assets/" "$conf"; then
         insert_block_before_spa "$conf" "location /assets/" '    location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; }' && changed="yes"
+    fi
+
+    # 放行段在、但 root 指向了别处 → 续期照样会 404（真实场景：站点目录搬迁后
+    # 配置里的 root 还停在旧目录）。certbot 负责续期时，两边必须指向同一个目录。
+    if site_conf_has_acme; then
+        local acme_root cb_webroot
+        acme_root="$(acme_root_in_conf "$conf")"
+        cb_webroot="$(certbot_webroot_for_domain)"
+        if [[ -n "$acme_root" && -n "$cb_webroot" && "$acme_root" != "$cb_webroot" ]]; then
+            warn "ACME 放行段 root（${acme_root}）与 certbot 的 webroot（${cb_webroot}）不一致，续期校验会 404"
+            if grep -qF "${CB_BEGIN:-# === CBoard-INJECT-BEGIN ===}" "$conf"; then
+                log "该配置由本脚本注入管理，自动把放行段 root 对齐到 certbot 的 webroot..."
+                local tmp_ar; tmp_ar="$(mktemp)"
+                if awk -v newroot="$cb_webroot" '
+                    /location[^;]*acme-challenge/ { inb = 1 }
+                    inb && !done && /^[[:space:]]*root[[:space:]]/ {
+                        match($0, /^[[:space:]]*/)
+                        print substr($0, 1, RLENGTH) "root " newroot ";"
+                        done = 1; changed = 1; next
+                    }
+                    inb && /^[[:space:]]*}/ { inb = 0 }
+                    { print }
+                    END { exit(changed ? 0 : 1) }
+                ' "$conf" > "$tmp_ar"; then
+                    LAST_CONF_BACKUP="${conf}.backup.$(date +%Y%m%d_%H%M%S)"
+                    cp "$conf" "$LAST_CONF_BACKUP"
+                    mv "$tmp_ar" "$conf"
+                    log "✅ 放行段 root 已对齐为 ${cb_webroot}"
+                    changed="yes"
+                else
+                    rm -f "$tmp_ar"
+                    warn "   自动对齐失败，请手动把放行段 root 改成 ${cb_webroot}"
+                fi
+            else
+                warn "   该配置不是本脚本生成的，未自动改动。修法二选一："
+                warn "     ① 把放行段 root 改成 ${cb_webroot}（与 certbot 一致）；或"
+                warn "     ② 让 certbot 改用当前 root 目录：certbot certonly --webroot -w ${acme_root} -d ${DOMAIN} --force-renewal"
+            fi
+        fi
     fi
 
     if ! site_conf_has_acme; then
