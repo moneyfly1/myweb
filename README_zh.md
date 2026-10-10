@@ -341,17 +341,274 @@ VLESS + WS、VLESS + Reality（Reality / Reality Vision / gRPC Reality）、Hyst
 
 CBoard 提供 **三种部署方式**，按环境选择：
 
-| 方式 | 适用场景 | 安装工具 | 难度 |
-|------|----------|----------|------|
-| 🐳 **Docker** | 任意 Linux 服务器（推荐生产使用） | `docker compose up -d` | ⭐ |
-| 🖥️ **一键脚本** | 纯 VPS **或** 宝塔面板都适用（推荐） | `install.sh`；宝塔入口 `bt-deploy.sh` | ⭐⭐ |
-| 🧱 **宝塔面板建站 + 脚本** | 想在面板里统一管理站点与证书 | 面板「添加站点」+ `install.sh` / `bt-deploy.sh` | ⭐⭐ |
+| 方式 | 适用场景 | 安装工具 | 验证状态 |
+|------|----------|----------|----------|
+| 🖥️ **方式一：一键脚本**（推荐） | 纯 VPS（也兼容宝塔）——自动识别环境、自动装齐 Go/Node/Nginx/证书 | `install.sh`；宝塔入口 `bt-deploy.sh` | ✅ **已在生产实测**：3 台服务器跑通「全自动部署 / 同步升级 / 自检修复」全路径，退出码 0 |
+| 🧱 **方式二：宝塔面板建站 + 脚本** | 想在面板里统一管理站点、证书与日志 | 面板「添加站点」+ `bt-deploy.sh` | ✅ **已在生产实测**（宝塔 nginx 1.28，合并模式注入配置） |
+| 🐳 **方式三：Docker**（可选） | 需要隔离/可复现部署，且机器拉镜像顺畅 | `docker compose up -d --build` | ⚠️ **构建链已修好、部分验证**——详见该章节「实测说明」 |
 
 > 只有两个脚本需要关心：**`install.sh`（唯一实现）** 与 **`bt-deploy.sh`（宝塔入口，薄封装，行为等同 install.sh）**。（历史上的 `install-vps.sh` 已删除：它固定 Go 1.21.5 / Node 18，与 `go.mod` 和 vite 7 的要求冲突）
 
 ---
 
-### 🐳 方式一：Docker 部署（推荐）
+### 🖥️ 方式一：一键脚本部署（`install.sh`，纯 VPS 与宝塔通用）— 推荐
+
+**这是本项目唯一维护的安装/运维脚本。**它会自动识别环境：装了宝塔就用宝塔的 nginx 与站点目录，没装就装系统 nginx；干净机器上会自己把 git/gcc/Go/Node/Nginx/certbot 装齐。
+
+#### 三个脚本到底用哪个？
+
+| 脚本 | 状态 | 用它做什么 |
+|------|------|-----------|
+| **`install.sh`** | ✅ **唯一实现，就用它** | 部署 + 运维 + 自检修复 + 完全卸载，纯 VPS 与宝塔都适用 |
+| **`bt-deploy.sh`** | ✅ 宝塔入口（薄封装） | 只做宝塔环境检查与证书策略提示，然后转交 `install.sh`，**行为与 install.sh 完全一致** |
+
+> 为什么 `bt-deploy.sh` 只剩一层封装：它以前是 `install.sh` 的完整拷贝，两份代码各自演进后开始漂移（宝塔版曾缺 CGO/Node 版本校验/`nginx -t`/`/uploads` 反代/ACME 放行段，而 install.sh 曾不会自举 Go/Node/Nginx）。现在只保留一套实现，两个入口不会再有差异。
+
+#### 前置条件
+
+| 项 | 要求 |
+|----|------|
+| 系统 | Debian 10+ / Ubuntu 18.04+ / CentOS 7+ / Rocky / AlmaLinux（实测 Debian 12 全新机器全程通过） |
+| 权限 | root（脚本会装软件、写 `/etc/systemd`、写 nginx 配置） |
+| 配置 | ≥1 核、≥1 GB 内存（默认编译前端；1 GB 也能跑，2 GB 更稳）、≥10 GB 磁盘 |
+| 域名 | 已解析到本机 IP（A 记录）。**目录名必须等于域名**，例如 `/www/wwwroot/pingzen.top` |
+| 端口 | 80、443 放行（云厂商安全组 + 系统防火墙都要放；脚本不代改防火墙） |
+
+#### 快速开始（三条命令）
+
+```bash
+# 1) 克隆到「域名同名目录」（脚本用目录名当域名）
+git clone https://github.com/moneyfly1/myweb.git /www/wwwroot/你的域名
+cd /www/wwwroot/你的域名
+
+# 2) 运行脚本（root）
+sudo bash install.sh
+
+# 3) 在菜单里输入 1（一键全自动部署），然后按提示回答 Redis 相关提问
+```
+
+非交互/自动化场景（脚本对 EOF 安全，不会空转）：
+
+```bash
+printf '1\n' | sudo bash install.sh     # 1=全自动部署
+```
+
+> **部署过程不会因 Redis 提问卡住**：Redis 配置在部署流程中是「自动模式」——
+> 非交互环境直接跳过，交互环境最多等 20 秒后按"跳过"继续；
+> 想启用随时用**菜单 12**（GeoIP 查询可提速 50–100 倍）——菜单 12 会自己把 Redis 装好：
+> **Docker 方式**（机器上没有 Docker 时脚本会自动安装 Docker）或**系统包方式**（apt/yum）；
+> 其中一种装不上、起不来，脚本会**自动改用另一种**，绝不停下（实测案例：某机器 apt 装的
+> `redis-server` 报 `libjemalloc.so.2: failed to map segment` 起不来，脚本自动切 Docker 并跑通）。
+> Redis 只监听 `127.0.0.1`。
+
+#### 脚本自动做了什么
+
+| 阶段 | 内容 |
+|------|------|
+| ① 自举依赖 | 基础包（git/sqlite3/wget/curl）→ gcc（SQLite 的 CGO 必需）→ **Go 1.25.0** → **Node 22.12.0** → **Nginx**（已装宝塔则直接用宝塔 nginx） |
+| ② 源码与环境 | 源码缺失时自动 `git clone`；生成 `.env`（`HOST=127.0.0.1`、数据库**绝对路径**、`SECRET_KEY` 随机 64 位、权限 600），并**自动生成管理员账号密码写进 `.env`**（`ADMIN_USERNAME`/`ADMIN_EMAIL`/`ADMIN_PASSWORD`） |
+| ③ 构建 | 后端 `CGO_ENABLED=1` 编译到 `server.new` → 校验 → 替换（旧版存为 `server.bak.<时间戳>` 供回滚）；前端按 lockfile 安装依赖并 `vite build` |
+| ④ 服务 | 写 systemd 单元（`EnvironmentFile`/`LimitNOFILE`/`NoNewPrivileges`）→ 启服务 → **业务健康检查**（`/health`，不是只看 `is-active`） |
+| ⑤ Nginx | 写入统一点站模板：`/api/`、`/uploads/`（附件反代，避免被 SPA fallback 吞成 HTML）、`/repo-sync/`、`/assets/` 长缓存、`index.html` 不缓存、`client_max_body_size 16m`、ACME 放行段；写完先 `nginx -t`，失败自动换 http2 写法或**精确回滚本次修改** |
+| ⑥ 证书 | 复用优先（certbot → 宝塔 → acme.sh），没有才申请；配置续期重载钩子与定时任务 |
+| ⑦ 收尾 | 日志轮转（logrotate）、升级前自动备份数据库到 `/www/backup/cboard`，并打印**登录地址 + 管理员账号密码**（含一次真实登录验证） |
+
+#### 菜单说明（0–16）
+
+| 项 | 功能 | 说明 |
+|----|------|------|
+| **1** | 一键全自动部署 | 首次安装走这个；重复执行是安全的（幂等，会先备份数据库与旧二进制） |
+| 2 | 创建/重置管理员账号 | 密码不回显、留空自动生成强随机密码；**建完会自动用该口令打一次登录接口实测**，确认真的能登进去 |
+| 3 | 强制重启服务 | 只清理本项目进程（`^<项目目录>/server`），**不会**误杀 nginx/mysql/redis |
+| 4 | 深度清理缓存 | 清 Redis 本项目键前缀 + 清空 `server.log` + 清 Go 编译缓存；**不删** `frontend/dist` 与 `server`（历史上删了会导致站点白屏且重启失败） |
+| 5 | 解锁用户账户 | 支持用户名或邮箱 |
+| 6 | 查看服务状态 | `systemctl status cboard` |
+| 7 | 查看实时日志 | `tail -f server.log`（单元把日志写文件，`journalctl` 里只有 systemd 启停两行） |
+| 8 | 标准重启服务 | 重启 + 健康检查 |
+| 9 | 停止服务 | |
+| 10 | 证书续期 | 手动续期（自动续期由 certbot.timer 或宝塔面板负责） |
+| **11** | 从 GitHub 同步并重建 | 升级入口：`git fetch`（失败会报错而不是假装"已是最新"）→ 备份数据库 → 原子构建 → 重启 + 健康检查 |
+| **12** | 配置 Redis 缓存 | 可选；只监听 `127.0.0.1`，清缓存按本项目键前缀删除而不是 `FLUSHDB`。选 Docker 方式时会**自动安装 Docker**（装不上自动降级系统包安装，反之亦然），重复执行幂等 |
+| **13** | 回滚到升级前版本 | 用 `server.bak.*` 回滚二进制；数据库备份在 `/www/backup/cboard/pre-upgrade-*.db.gz` |
+| 14 | 只重新构建并重启 | 不动 nginx/unit，适合"只想重编译" |
+| **15** | 完全卸载 | 删服务/站点配置/宝塔扩展目录/logrotate/续期钩子与 cron（配置副本存 `/root/cboard-uninstall-<时间戳>/`），项目目录/数据库/软件包分别询问，最后做**残留扫描** |
+| **16** | 自检并自动修复 | 见下方「自检自动修复」 |
+| 0 | 退出 | |
+
+#### 环境变量开关
+
+| 变量 | 默认 | 作用 |
+|------|------|------|
+| `CERT_MANAGER` | `auto` | 证书归属：`auto` 复用已有证书、没有则 certbot 签发；`panel` 交给宝塔面板（脚本不主动签，面板申请后重跑菜单 1/16 自动接入 HTTPS）；`certbot` 强制 certbot |
+| `DOMAIN` / `PROJECT_DIR` | 目录名 / 脚本所在目录 | 覆盖域名与项目目录 |
+| `GO_VERSION` / `NODE_VERSION` | `1.25.0` / `22` | 自举安装的版本 |
+| `DB_BACKUP_DIR` / `DB_BACKUP_KEEP` | `/www/backup/cboard` / `10` | 升级前数据库备份位置与保留份数 |
+| `LETSENCRYPT_LIVE_DIR` | `/etc/letsencrypt/live` | certbot 证书目录 |
+
+#### 证书：和宝塔面板的 SSL 会冲突吗？
+
+**会，但脚本已经规避。**冲突点与处理：
+
+| 冲突 | 脚本处理 |
+|------|---------|
+| 两个 ACME 客户端给同一域名重复签发（面板/acme.sh 与 certbot），更容易触发 Let's Encrypt 重复证书速率限制 | `find_cert_dir` 按 **certbot → 宝塔 `/www/server/panel/vhost/cert/<域名>` → acme.sh `/root/.acme.sh/<域名>`** 顺序探测；只要宝塔已有证书就**复用并跳过 certbot**，日志会写明"已跳过 certbot 申请" |
+| 证书文件名不同（acme.sh 是 `fullchain.cer`，certbot/宝塔是 `fullchain.pem`） | 按探测来源渲染文件名，不硬编码 |
+| 面板"保存设置/续签 SSL"会重写站点配置，冲掉脚本加的片段 | 重跑**菜单 16** 自动补回缺的片段，并做"有证书就必须是 HTTPS"的状态对齐 |
+| 面板管理证书时脚本又塞一套 certbot 定时任务 | 自检只在**证书来源是 certbot** 时才补 `certbot.timer`/续期钩子 |
+| 两套证书并存 | `cert_conflict_check` 明确告警，并指出站点当前实际用的是哪一套 |
+
+**结论**：想省事就用面板管证书（`CERT_MANAGER=panel`，或在面板「网站 → SSL」申请后重跑脚本）；用脚本管证书（默认）就**别在面板点"申请/续签"**，只查看。
+
+#### 自检自动修复（菜单 16）
+
+用于"部署/运维中出了问题，让脚本自己修"，会检查并在可能时自动修复：
+
+`.env` 关键项 → 数据库是否存在（**只报告不自动新建**，避免修出空库）→ 必要目录（uploads/ACME webroot/站点目录）→ 后端二进制与前端产物（缺则重建）→ systemd 单元（缺或丢 `EnvironmentFile` 则重写）→ 站点配置必需片段 → `nginx -t`（不过就换 http2 写法重试）→ nginx 进程 → logrotate → 证书与续期钩子/定时任务 → 目标状态对齐（有证书就得是 HTTPS）→ 服务健康（不健康则备份库 → 重建 → 重启）
+
+最后打印「已自动修复 N 项 / 需要人工处理 N 项」。**真机演练**：故意破坏 7 处（删配置片段、写错 http2、删 unit 的 EnvironmentFile、停 nginx、删 logrotate 与续期钩子、删前端产物、把 HTTPS 退回 HTTP），只跑菜单 16 → 7 项全部自动修复，外部 HTTPS 恢复 200。
+
+#### 安装完成后会直接显示登录信息
+
+菜单 1 跑完会打印（菜单 2 建号后、菜单 8 重启后同样会打印）：
+
+```text
+================== 登录信息 ==================
+  前台地址:     https://你的域名
+  前台登录:     https://你的域名/login
+  管理后台:     https://你的域名/admin
+  管理员登录:   https://你的域名/admin/login
+----------------------------------------------
+  管理员账号:   admin
+  管理员邮箱:   admin@你的域名
+  管理员密码:   <脚本生成的 16 位强随机密码>
+  （密码由 .env 的 ADMIN_PASSWORD 固定：应用每次启动都会按它重置，重启后依然可用；
+    如需修改：改 .env 后菜单 8 重启，或用菜单 2 重置）
+==============================================
+✅ 已实测：用上面这个账号密码登录成功
+```
+
+**密码为什么"永远能显示"**：脚本把生成的密码写进 `.env` 的 `ADMIN_PASSWORD`，
+而应用每次启动都会把该管理员的密码重置成这个值（即使账号被锁定，重启后也能登录）。
+对比：应用自带的默认行为是"首次启动生成随机密码、只在 `server.log` 打印一次"，日志被清理/轮转后就找不回来了。
+
+> 想换成自己的密码：编辑 `.env` 的 `ADMIN_PASSWORD=你的强密码` → 菜单 8 重启；或用**菜单 2** 交互式重置（会当场实测登录）。
+
+#### 验证安装结果
+
+```bash
+curl -I https://你的域名                      # 200 + 证书有效
+curl https://你的域名/api/v1/packages         # API 反代正常
+curl http://127.0.0.1:8000/health             # 后端健康（本机）
+systemctl status cboard                       # 服务运行中
+tail -f /www/wwwroot/你的域名/server.log       # 应用日志
+```
+
+#### 故障排查
+
+| 现象 | 处理 |
+|------|------|
+| 服务起不来 | `tail -n 100 server.log`；再跑**菜单 16** 自检修复 |
+| 页面白屏 / 还是旧版本 | 浏览器缓存：配置里 `index.html` 已 no-cache；仍异常就 `Ctrl+Shift+R`，并跑菜单 16（会补齐配置片段） |
+| 附件/图片打不开 | 检查配置是否含 `location /uploads/`（菜单 16 会自动补） |
+| HTTPS 没生效但证书已签 | 多半是 nginx 版本与 http2 写法不匹配，菜单 16 会自动换写法修复 |
+| 上传大文件 413 | 配置里 `client_max_body_size 16m`；要更大就改配置或调 `.env` 的 `MAX_FILE_SIZE` |
+| 域名打不开 | 先确认 DNS 指向本机、80/443 安全组已放行 |
+| 想彻底重来 | 菜单 15 完全卸载 → 重新克隆 → 菜单 1 |
+
+---
+
+### 🧱 方式二：宝塔面板部署（推荐宝塔用户）
+
+**适用**：已装或准备装宝塔面板，希望在面板里管理站点、证书与日志。
+
+> 📖 **完整逐步教程（含宝塔安装、nginx 编译等待、证书两种模式、常见坑）**：[`docs/部署/宝塔部署教程.md`](docs/部署/宝塔部署教程.md)
+
+#### 快速步骤
+
+```bash
+# ① 还没有宝塔面板的先装（⚠️ 必须喂 yes：宝塔脚本在 stdin 关闭时会 99% CPU 空转）
+wget -O /root/bt_install.sh https://download.bt.cn/install/install_lts.sh && yes | bash /root/bt_install.sh
+cat /tmp/btpanel-install.log            # 记下面板地址/账号/密码
+
+# ② 面板 → 软件商店 → 安装 Nginx（源码编译，2 核约 25–40 分钟，属正常）
+# ③ 面板 → 网站 → 添加站点：域名填你的域名，根目录保持 /www/wwwroot/你的域名，PHP 选「纯静态」
+#    ⚠️ 目录名必须等于域名（脚本用目录名当域名）
+
+# ④ 进站点目录，只下载两个脚本（代码由脚本自己拉，支持非空目录）
+cd /www/wwwroot/你的域名
+rm -f index.html 404.html .user.ini
+curl -fsSLO https://raw.githubusercontent.com/moneyfly1/myweb/main/install.sh
+curl -fsSLO https://raw.githubusercontent.com/moneyfly1/myweb/main/bt-deploy.sh
+
+# ⑤ 一键部署（菜单选 1；没有 Redis 就答 n）；非交互：printf '1\nn\n' | bash bt-deploy.sh
+bash bt-deploy.sh
+```
+
+#### 证书二选一（别混用）
+
+| 方案 | 做法 | 续期由谁负责 |
+|------|------|-------------|
+| **A. 面板管（推荐）** | `CERT_MANAGER=panel bash bt-deploy.sh`（把 SSL 交还面板）→ 面板「网站 → SSL → Let's Encrypt」申请 | **面板自动续签**；脚本只复用、不重复签发 |
+| **B. 脚本管（默认）** | 直接按上面 ⑤ 跑 | `certbot.timer` 自动续期；此时**别在面板点申请/续签**（面板没有该证书订单），需要时用菜单 10 |
+
+> 为什么 A 要先"交还"：宝塔部署证书前会检查配置里是否已有 `ssl_certificate`，只要存在就认为"已开启 SSL"而跳过写它自己的证书 → 面板申请"成功"却没有证书、后续续签也找不到订单（表现为续签失败）。脚本的 `CERT_MANAGER=panel` 会清掉脚本写的证书段，让面板完整接管。
+
+#### 部署结束会打印登录信息
+
+```text
+================== 登录信息 ==================
+  前台登录:     https://你的域名/login
+  管理员登录:   https://你的域名/admin/login
+  管理员账号:   admin
+  管理员密码:   <16 位强随机>
+==============================================
+✅ 已实测：用上面这个账号密码登录成功
+```
+
+密码写进 `.env` 的 `ADMIN_PASSWORD`，应用每次启动都会按它重置 → **重启后依然可用**；想换：改 `.env` 后菜单 8，或用菜单 2 重置。
+
+#### 宝塔环境注意事项
+
+| 事项 | 说明 |
+|------|------|
+| 站点配置归属 | 脚本采用**合并模式**：保留面板的 `#SSL-START`/`#CERT-APPLY-CHECK` 标记与 include，只注入 `/api/`、`/uploads/`、SPA 回退、`index.html` 不缓存、ACME 放行段等必需片段 |
+| 面板重写配置后 | 面板「保存设置 / 续签 SSL」会重写 vhost → 跑**菜单 16** 自动补回（实测：注入块与 443 全恢复，面板标记完好） |
+| `nginx -t` | 校验的是**正在运行的**宝塔 nginx（`/www/server/nginx/sbin/nginx -t`）；宝塔 nginx 由 `/etc/init.d/nginx` 管理，脚本用 `pgrep` 判运行、不会误启系统 nginx 抢 80 |
+| 证书复用 | 面板证书在 `/www/server/panel/vhost/cert/<域名>/`，脚本识别来源为"宝塔面板"并**跳过 certbot**；两套并存会告警 |
+| 前端产物权限 | 宝塔 nginx 以 `www` 运行 → 脚本自动把 `frontend/dist`、`uploads`、`.well-known` 设为可读并 chown（否则 403 / ACME 校验失败） |
+| 面板站点记录 | 脚本不在面板注册站点；要在面板管理站点就必须按 ③ 在面板建站 |
+| 防火墙 | 宝塔「安全」里放行 80/443（脚本不改防火墙） |
+
+#### 安装后管理
+
+| 操作 | 方法 |
+|------|------|
+| 全套运维 | `bash bt-deploy.sh` 或 `bash install.sh`（菜单 2/3/4/11/13/15/16 等） |
+| 升级 | 菜单 **11**（从 GitHub 同步并重建：先备份数据库 → 原子替换二进制 → 重启 + 健康检查） |
+| 回滚 | 菜单 **13** |
+| 自检修复 | 菜单 **16**（面板重写配置后用它补回片段） |
+| 完全卸载 | 菜单 **15**（含残留扫描） |
+| 查看日志 | 菜单 7，或 `tail -f /www/wwwroot/你的域名/server.log` |
+
+---
+
+### 🐳 方式三：Docker 部署（可选）
+
+> **实测说明（2026-10-10，干净 Debian 12 + Docker 20.10.24 上真实构建）。**
+> 之前仓库里这份 Dockerfile **根本构建不起来**，第 5 步就失败：
+> `go: go.mod requires go >= 1.25.0 (running go 1.24.13; GOTOOLCHAIN=local)`
+> （基础镜像 `golang:1.24-alpine` 与 `go.mod` 要求的 `go 1.25.0` 不匹配）。共修复 3 处：
+> 1. 基础镜像升到 `golang:1.25-alpine`（与 `go.mod` 一致）；
+> 2. alpine/musl 下 `go-sqlite3` 必须加 `CGO_CFLAGS="-D_LARGEFILE64_SOURCE"`，否则报
+>    `'pread64' undeclared / unknown type name 'off64_t'`；
+> 3. 前端基础镜像 `node:20-alpine` → `node:22-alpine`（Vite 7 要求 `^20.19.0 || >=22.12.0`），
+>    并新增 `GOPROXY` / `NPM_REGISTRY` 两个 build-arg（慢网络可用国内源）、`HEALTHCHECK`，
+>    去掉弱默认管理员密码（`admin123` → 必须显式设置）。
+>
+> **已验证**：后端阶段可在容器内成功编译（Go 1.25 + cgo/SQLite）。
+> **尚未端到端验证**：容器内的前端构建 + 完整 `docker compose up`，因为验证机拉不动
+> `node:22-alpine`（Docker Hub 大层停滞、常见镜像站被 Cloudflare 拦）。
+> 在补齐这一步之前，请把 Docker 当**可选项**，优先用**方式一/方式二**（两者均已生产实测）。
 
 Docker 部署是**最干净、最可复现**的方式：一条命令构建并启动，数据通过卷持久化，升级只需重新构建镜像。
 
@@ -593,247 +850,6 @@ go run ./cmd/migrate -sqlite ./data/cboard.db -mysql "cboard_user:cboard_passwor
 | **构建缓慢 / 拉取依赖失败** | 配置 Go 代理：构建命令前加 `export GOPROXY=https://goproxy.cn,direct`，或修改 Dockerfile 中 `go mod download` 前添加该环境变量；npm 可用 `--registry=https://registry.npmmirror.com` |
 | **后端起不来，日志报 Redis 错误** | 无需处理——Redis 连不上会自动禁用缓存并降级运行，功能不受影响 |
 | **想改 .env 后生效** | 修改宿主机 `.env` 后执行 `docker compose up -d`（会重新读取环境变量并重建容器） |
-
----
-
-### 🖥️ 方式二：一键脚本部署（`install.sh`，纯 VPS 与宝塔通用）
-
-**这是本项目唯一维护的安装/运维脚本。**它会自动识别环境：装了宝塔就用宝塔的 nginx 与站点目录，没装就装系统 nginx；干净机器上会自己把 git/gcc/Go/Node/Nginx/certbot 装齐。
-
-#### 三个脚本到底用哪个？
-
-| 脚本 | 状态 | 用它做什么 |
-|------|------|-----------|
-| **`install.sh`** | ✅ **唯一实现，就用它** | 部署 + 运维 + 自检修复 + 完全卸载，纯 VPS 与宝塔都适用 |
-| **`bt-deploy.sh`** | ✅ 宝塔入口（薄封装） | 只做宝塔环境检查与证书策略提示，然后转交 `install.sh`，**行为与 install.sh 完全一致** |
-
-> 为什么 `bt-deploy.sh` 只剩一层封装：它以前是 `install.sh` 的完整拷贝，两份代码各自演进后开始漂移（宝塔版曾缺 CGO/Node 版本校验/`nginx -t`/`/uploads` 反代/ACME 放行段，而 install.sh 曾不会自举 Go/Node/Nginx）。现在只保留一套实现，两个入口不会再有差异。
-
-#### 前置条件
-
-| 项 | 要求 |
-|----|------|
-| 系统 | Debian 10+ / Ubuntu 18.04+ / CentOS 7+ / Rocky / AlmaLinux（实测 Debian 12 全新机器全程通过） |
-| 权限 | root（脚本会装软件、写 `/etc/systemd`、写 nginx 配置） |
-| 配置 | ≥1 核、≥1 GB 内存（默认编译前端；1 GB 也能跑，2 GB 更稳）、≥10 GB 磁盘 |
-| 域名 | 已解析到本机 IP（A 记录）。**目录名必须等于域名**，例如 `/www/wwwroot/pingzen.top` |
-| 端口 | 80、443 放行（云厂商安全组 + 系统防火墙都要放；脚本不代改防火墙） |
-
-#### 快速开始（三条命令）
-
-```bash
-# 1) 克隆到「域名同名目录」（脚本用目录名当域名）
-git clone https://github.com/moneyfly1/myweb.git /www/wwwroot/你的域名
-cd /www/wwwroot/你的域名
-
-# 2) 运行脚本（root）
-sudo bash install.sh
-
-# 3) 在菜单里输入 1（一键全自动部署），然后按提示回答 Redis 相关提问
-```
-
-非交互/自动化场景（脚本对 EOF 安全，不会空转）：
-
-```bash
-printf '1\n' | sudo bash install.sh     # 1=全自动部署
-```
-
-> **部署过程不会因 Redis 提问卡住**：Redis 配置在部署流程中是「自动模式」——
-> 非交互环境直接跳过，交互环境最多等 20 秒后按"跳过"继续；
-> 想启用随时用**菜单 12**（GeoIP 查询可提速 50–100 倍）——菜单 12 会自己把 Redis 装好：
-> **Docker 方式**（机器上没有 Docker 时脚本会自动安装 Docker）或**系统包方式**（apt/yum）；
-> 其中一种装不上、起不来，脚本会**自动改用另一种**，绝不停下（实测案例：某机器 apt 装的
-> `redis-server` 报 `libjemalloc.so.2: failed to map segment` 起不来，脚本自动切 Docker 并跑通）。
-> Redis 只监听 `127.0.0.1`。
-
-#### 脚本自动做了什么
-
-| 阶段 | 内容 |
-|------|------|
-| ① 自举依赖 | 基础包（git/sqlite3/wget/curl）→ gcc（SQLite 的 CGO 必需）→ **Go 1.25.0** → **Node 22.12.0** → **Nginx**（已装宝塔则直接用宝塔 nginx） |
-| ② 源码与环境 | 源码缺失时自动 `git clone`；生成 `.env`（`HOST=127.0.0.1`、数据库**绝对路径**、`SECRET_KEY` 随机 64 位、权限 600），并**自动生成管理员账号密码写进 `.env`**（`ADMIN_USERNAME`/`ADMIN_EMAIL`/`ADMIN_PASSWORD`） |
-| ③ 构建 | 后端 `CGO_ENABLED=1` 编译到 `server.new` → 校验 → 替换（旧版存为 `server.bak.<时间戳>` 供回滚）；前端按 lockfile 安装依赖并 `vite build` |
-| ④ 服务 | 写 systemd 单元（`EnvironmentFile`/`LimitNOFILE`/`NoNewPrivileges`）→ 启服务 → **业务健康检查**（`/health`，不是只看 `is-active`） |
-| ⑤ Nginx | 写入统一点站模板：`/api/`、`/uploads/`（附件反代，避免被 SPA fallback 吞成 HTML）、`/repo-sync/`、`/assets/` 长缓存、`index.html` 不缓存、`client_max_body_size 16m`、ACME 放行段；写完先 `nginx -t`，失败自动换 http2 写法或**精确回滚本次修改** |
-| ⑥ 证书 | 复用优先（certbot → 宝塔 → acme.sh），没有才申请；配置续期重载钩子与定时任务 |
-| ⑦ 收尾 | 日志轮转（logrotate）、升级前自动备份数据库到 `/www/backup/cboard`，并打印**登录地址 + 管理员账号密码**（含一次真实登录验证） |
-
-#### 菜单说明（0–16）
-
-| 项 | 功能 | 说明 |
-|----|------|------|
-| **1** | 一键全自动部署 | 首次安装走这个；重复执行是安全的（幂等，会先备份数据库与旧二进制） |
-| 2 | 创建/重置管理员账号 | 密码不回显、留空自动生成强随机密码；**建完会自动用该口令打一次登录接口实测**，确认真的能登进去 |
-| 3 | 强制重启服务 | 只清理本项目进程（`^<项目目录>/server`），**不会**误杀 nginx/mysql/redis |
-| 4 | 深度清理缓存 | 清 Redis 本项目键前缀 + 清空 `server.log` + 清 Go 编译缓存；**不删** `frontend/dist` 与 `server`（历史上删了会导致站点白屏且重启失败） |
-| 5 | 解锁用户账户 | 支持用户名或邮箱 |
-| 6 | 查看服务状态 | `systemctl status cboard` |
-| 7 | 查看实时日志 | `tail -f server.log`（单元把日志写文件，`journalctl` 里只有 systemd 启停两行） |
-| 8 | 标准重启服务 | 重启 + 健康检查 |
-| 9 | 停止服务 | |
-| 10 | 证书续期 | 手动续期（自动续期由 certbot.timer 或宝塔面板负责） |
-| **11** | 从 GitHub 同步并重建 | 升级入口：`git fetch`（失败会报错而不是假装"已是最新"）→ 备份数据库 → 原子构建 → 重启 + 健康检查 |
-| **12** | 配置 Redis 缓存 | 可选；只监听 `127.0.0.1`，清缓存按本项目键前缀删除而不是 `FLUSHDB`。选 Docker 方式时会**自动安装 Docker**（装不上自动降级系统包安装，反之亦然），重复执行幂等 |
-| **13** | 回滚到升级前版本 | 用 `server.bak.*` 回滚二进制；数据库备份在 `/www/backup/cboard/pre-upgrade-*.db.gz` |
-| 14 | 只重新构建并重启 | 不动 nginx/unit，适合"只想重编译" |
-| **15** | 完全卸载 | 删服务/站点配置/宝塔扩展目录/logrotate/续期钩子与 cron（配置副本存 `/root/cboard-uninstall-<时间戳>/`），项目目录/数据库/软件包分别询问，最后做**残留扫描** |
-| **16** | 自检并自动修复 | 见下方「自检自动修复」 |
-| 0 | 退出 | |
-
-#### 环境变量开关
-
-| 变量 | 默认 | 作用 |
-|------|------|------|
-| `CERT_MANAGER` | `auto` | 证书归属：`auto` 复用已有证书、没有则 certbot 签发；`panel` 交给宝塔面板（脚本不主动签，面板申请后重跑菜单 1/16 自动接入 HTTPS）；`certbot` 强制 certbot |
-| `DOMAIN` / `PROJECT_DIR` | 目录名 / 脚本所在目录 | 覆盖域名与项目目录 |
-| `GO_VERSION` / `NODE_VERSION` | `1.25.0` / `22` | 自举安装的版本 |
-| `DB_BACKUP_DIR` / `DB_BACKUP_KEEP` | `/www/backup/cboard` / `10` | 升级前数据库备份位置与保留份数 |
-| `LETSENCRYPT_LIVE_DIR` | `/etc/letsencrypt/live` | certbot 证书目录 |
-
-#### 证书：和宝塔面板的 SSL 会冲突吗？
-
-**会，但脚本已经规避。**冲突点与处理：
-
-| 冲突 | 脚本处理 |
-|------|---------|
-| 两个 ACME 客户端给同一域名重复签发（面板/acme.sh 与 certbot），更容易触发 Let's Encrypt 重复证书速率限制 | `find_cert_dir` 按 **certbot → 宝塔 `/www/server/panel/vhost/cert/<域名>` → acme.sh `/root/.acme.sh/<域名>`** 顺序探测；只要宝塔已有证书就**复用并跳过 certbot**，日志会写明"已跳过 certbot 申请" |
-| 证书文件名不同（acme.sh 是 `fullchain.cer`，certbot/宝塔是 `fullchain.pem`） | 按探测来源渲染文件名，不硬编码 |
-| 面板"保存设置/续签 SSL"会重写站点配置，冲掉脚本加的片段 | 重跑**菜单 16** 自动补回缺的片段，并做"有证书就必须是 HTTPS"的状态对齐 |
-| 面板管理证书时脚本又塞一套 certbot 定时任务 | 自检只在**证书来源是 certbot** 时才补 `certbot.timer`/续期钩子 |
-| 两套证书并存 | `cert_conflict_check` 明确告警，并指出站点当前实际用的是哪一套 |
-
-**结论**：想省事就用面板管证书（`CERT_MANAGER=panel`，或在面板「网站 → SSL」申请后重跑脚本）；用脚本管证书（默认）就**别在面板点"申请/续签"**，只查看。
-
-#### 自检自动修复（菜单 16）
-
-用于"部署/运维中出了问题，让脚本自己修"，会检查并在可能时自动修复：
-
-`.env` 关键项 → 数据库是否存在（**只报告不自动新建**，避免修出空库）→ 必要目录（uploads/ACME webroot/站点目录）→ 后端二进制与前端产物（缺则重建）→ systemd 单元（缺或丢 `EnvironmentFile` 则重写）→ 站点配置必需片段 → `nginx -t`（不过就换 http2 写法重试）→ nginx 进程 → logrotate → 证书与续期钩子/定时任务 → 目标状态对齐（有证书就得是 HTTPS）→ 服务健康（不健康则备份库 → 重建 → 重启）
-
-最后打印「已自动修复 N 项 / 需要人工处理 N 项」。**真机演练**：故意破坏 7 处（删配置片段、写错 http2、删 unit 的 EnvironmentFile、停 nginx、删 logrotate 与续期钩子、删前端产物、把 HTTPS 退回 HTTP），只跑菜单 16 → 7 项全部自动修复，外部 HTTPS 恢复 200。
-
-#### 安装完成后会直接显示登录信息
-
-菜单 1 跑完会打印（菜单 2 建号后、菜单 8 重启后同样会打印）：
-
-```text
-================== 登录信息 ==================
-  前台地址:     https://你的域名
-  前台登录:     https://你的域名/login
-  管理后台:     https://你的域名/admin
-  管理员登录:   https://你的域名/admin/login
-----------------------------------------------
-  管理员账号:   admin
-  管理员邮箱:   admin@你的域名
-  管理员密码:   <脚本生成的 16 位强随机密码>
-  （密码由 .env 的 ADMIN_PASSWORD 固定：应用每次启动都会按它重置，重启后依然可用；
-    如需修改：改 .env 后菜单 8 重启，或用菜单 2 重置）
-==============================================
-✅ 已实测：用上面这个账号密码登录成功
-```
-
-**密码为什么"永远能显示"**：脚本把生成的密码写进 `.env` 的 `ADMIN_PASSWORD`，
-而应用每次启动都会把该管理员的密码重置成这个值（即使账号被锁定，重启后也能登录）。
-对比：应用自带的默认行为是"首次启动生成随机密码、只在 `server.log` 打印一次"，日志被清理/轮转后就找不回来了。
-
-> 想换成自己的密码：编辑 `.env` 的 `ADMIN_PASSWORD=你的强密码` → 菜单 8 重启；或用**菜单 2** 交互式重置（会当场实测登录）。
-
-#### 验证安装结果
-
-```bash
-curl -I https://你的域名                      # 200 + 证书有效
-curl https://你的域名/api/v1/packages         # API 反代正常
-curl http://127.0.0.1:8000/health             # 后端健康（本机）
-systemctl status cboard                       # 服务运行中
-tail -f /www/wwwroot/你的域名/server.log       # 应用日志
-```
-
-#### 故障排查
-
-| 现象 | 处理 |
-|------|------|
-| 服务起不来 | `tail -n 100 server.log`；再跑**菜单 16** 自检修复 |
-| 页面白屏 / 还是旧版本 | 浏览器缓存：配置里 `index.html` 已 no-cache；仍异常就 `Ctrl+Shift+R`，并跑菜单 16（会补齐配置片段） |
-| 附件/图片打不开 | 检查配置是否含 `location /uploads/`（菜单 16 会自动补） |
-| HTTPS 没生效但证书已签 | 多半是 nginx 版本与 http2 写法不匹配，菜单 16 会自动换写法修复 |
-| 上传大文件 413 | 配置里 `client_max_body_size 16m`；要更大就改配置或调 `.env` 的 `MAX_FILE_SIZE` |
-| 域名打不开 | 先确认 DNS 指向本机、80/443 安全组已放行 |
-| 想彻底重来 | 菜单 15 完全卸载 → 重新克隆 → 菜单 1 |
-
----
-
-### 🧱 方式三：宝塔面板部署（推荐宝塔用户）
-
-**适用**：已装或准备装宝塔面板，希望在面板里管理站点、证书与日志。
-
-> 📖 **完整逐步教程（含宝塔安装、nginx 编译等待、证书两种模式、常见坑）**：[`docs/部署/宝塔部署教程.md`](docs/部署/宝塔部署教程.md)
-
-#### 快速步骤
-
-```bash
-# ① 还没有宝塔面板的先装（⚠️ 必须喂 yes：宝塔脚本在 stdin 关闭时会 99% CPU 空转）
-wget -O /root/bt_install.sh https://download.bt.cn/install/install_lts.sh && yes | bash /root/bt_install.sh
-cat /tmp/btpanel-install.log            # 记下面板地址/账号/密码
-
-# ② 面板 → 软件商店 → 安装 Nginx（源码编译，2 核约 25–40 分钟，属正常）
-# ③ 面板 → 网站 → 添加站点：域名填你的域名，根目录保持 /www/wwwroot/你的域名，PHP 选「纯静态」
-#    ⚠️ 目录名必须等于域名（脚本用目录名当域名）
-
-# ④ 进站点目录，只下载两个脚本（代码由脚本自己拉，支持非空目录）
-cd /www/wwwroot/你的域名
-rm -f index.html 404.html .user.ini
-curl -fsSLO https://raw.githubusercontent.com/moneyfly1/myweb/main/install.sh
-curl -fsSLO https://raw.githubusercontent.com/moneyfly1/myweb/main/bt-deploy.sh
-
-# ⑤ 一键部署（菜单选 1；没有 Redis 就答 n）；非交互：printf '1\nn\n' | bash bt-deploy.sh
-bash bt-deploy.sh
-```
-
-#### 证书二选一（别混用）
-
-| 方案 | 做法 | 续期由谁负责 |
-|------|------|-------------|
-| **A. 面板管（推荐）** | `CERT_MANAGER=panel bash bt-deploy.sh`（把 SSL 交还面板）→ 面板「网站 → SSL → Let's Encrypt」申请 | **面板自动续签**；脚本只复用、不重复签发 |
-| **B. 脚本管（默认）** | 直接按上面 ⑤ 跑 | `certbot.timer` 自动续期；此时**别在面板点申请/续签**（面板没有该证书订单），需要时用菜单 10 |
-
-> 为什么 A 要先"交还"：宝塔部署证书前会检查配置里是否已有 `ssl_certificate`，只要存在就认为"已开启 SSL"而跳过写它自己的证书 → 面板申请"成功"却没有证书、后续续签也找不到订单（表现为续签失败）。脚本的 `CERT_MANAGER=panel` 会清掉脚本写的证书段，让面板完整接管。
-
-#### 部署结束会打印登录信息
-
-```text
-================== 登录信息 ==================
-  前台登录:     https://你的域名/login
-  管理员登录:   https://你的域名/admin/login
-  管理员账号:   admin
-  管理员密码:   <16 位强随机>
-==============================================
-✅ 已实测：用上面这个账号密码登录成功
-```
-
-密码写进 `.env` 的 `ADMIN_PASSWORD`，应用每次启动都会按它重置 → **重启后依然可用**；想换：改 `.env` 后菜单 8，或用菜单 2 重置。
-
-#### 宝塔环境注意事项
-
-| 事项 | 说明 |
-|------|------|
-| 站点配置归属 | 脚本采用**合并模式**：保留面板的 `#SSL-START`/`#CERT-APPLY-CHECK` 标记与 include，只注入 `/api/`、`/uploads/`、SPA 回退、`index.html` 不缓存、ACME 放行段等必需片段 |
-| 面板重写配置后 | 面板「保存设置 / 续签 SSL」会重写 vhost → 跑**菜单 16** 自动补回（实测：注入块与 443 全恢复，面板标记完好） |
-| `nginx -t` | 校验的是**正在运行的**宝塔 nginx（`/www/server/nginx/sbin/nginx -t`）；宝塔 nginx 由 `/etc/init.d/nginx` 管理，脚本用 `pgrep` 判运行、不会误启系统 nginx 抢 80 |
-| 证书复用 | 面板证书在 `/www/server/panel/vhost/cert/<域名>/`，脚本识别来源为"宝塔面板"并**跳过 certbot**；两套并存会告警 |
-| 前端产物权限 | 宝塔 nginx 以 `www` 运行 → 脚本自动把 `frontend/dist`、`uploads`、`.well-known` 设为可读并 chown（否则 403 / ACME 校验失败） |
-| 面板站点记录 | 脚本不在面板注册站点；要在面板管理站点就必须按 ③ 在面板建站 |
-| 防火墙 | 宝塔「安全」里放行 80/443（脚本不改防火墙） |
-
-#### 安装后管理
-
-| 操作 | 方法 |
-|------|------|
-| 全套运维 | `bash bt-deploy.sh` 或 `bash install.sh`（菜单 2/3/4/11/13/15/16 等） |
-| 升级 | 菜单 **11**（从 GitHub 同步并重建：先备份数据库 → 原子替换二进制 → 重启 + 健康检查） |
-| 回滚 | 菜单 **13** |
-| 自检修复 | 菜单 **16**（面板重写配置后用它补回片段） |
-| 完全卸载 | 菜单 **15**（含残留扫描） |
-| 查看日志 | 菜单 7，或 `tail -f /www/wwwroot/你的域名/server.log` |
 
 ---
 

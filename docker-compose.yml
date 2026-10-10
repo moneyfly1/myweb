@@ -1,23 +1,35 @@
-version: '3.8'
+# CBoard —— Docker Compose 部署（可选方式，详见 README「方式三：Docker」）
+#
+# 实测说明（2026-10-10，干净 Debian 12 + Docker 20.10.24 + Compose v2 验证通过）
+#   · 顶层 version 字段在 Compose v2 已废弃，写了会告警，故删除
+#   · 管理员密码不再给弱默认值（原来是 admin123）：未设置直接拒绝启动
+#   · 宿主端口可覆盖：APP_PORT=8080 docker compose up -d
+#   · 镜像自带 HEALTHCHECK（/health），compose 直接继承
+#
+# 用法：
+#   cp .env.example .env    # 至少填 SECRET_KEY 与 ADMIN_PASSWORD
+#   docker compose up -d --build
+#   curl -fsS http://127.0.0.1:8000/health
 
 services:
   app:
     build: .
     ports:
-      - "8000:8000"
+      - "${APP_PORT:-8000}:8000"
     environment:
       # 数据库：挂载目录 /root/data 下的 cboard.db（避免单文件挂载导致首次启动失败）
       - DATABASE_URL=sqlite:///./data/cboard.db
       # 必须设置强密钥！生成：openssl rand -hex 32
-      # 否则生产模式（ENV=production）会拒绝启动
       - SECRET_KEY=${SECRET_KEY:?请在 .env 中设置 SECRET_KEY（openssl rand -hex 32）}
       - HOST=0.0.0.0
       - PORT=8000
+      - TZ=${TZ:-Asia/Shanghai}
       - DEBUG=${DEBUG:-false}
-      # 管理员账户（首次启动自动创建；不设置则默认 admin/admin123）
+      # 管理员账户（首次启动自动创建；应用每次启动都会按 ADMIN_PASSWORD 重置该账号密码）
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      # 不提供弱默认密码：没设置就不启动，避免留下 admin/admin123 这种可被扫到的默认口令
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?请在 .env 中设置 ADMIN_PASSWORD（至少 6 位，例如 Sikeming001@）}
       # 邮件（可选，用于验证码/通知）
       - SMTP_HOST=${SMTP_HOST:-}
       - SMTP_PORT=${SMTP_PORT:-587}
@@ -26,7 +38,7 @@ services:
       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
       - SMTP_FROM_NAME=${SMTP_FROM_NAME:-CBoard Modern}
       - SMTP_ENCRYPTION=${SMTP_ENCRYPTION:-tls}
-      # Redis 缓存（可选，加速 GeoIP/订阅）
+      # Redis 缓存（可选，加速 GeoIP/订阅）；容器内访问宿主 Redis 用 host.docker.internal 或宿主内网 IP
       - REDIS_ADDR=${REDIS_ADDR:-}
       # 可信代理（部署在 Nginx/Cloudflare 后必配）
       - TRUSTED_PROXIES=${TRUSTED_PROXIES:-127.0.0.1,::1}
@@ -37,6 +49,7 @@ services:
       - ./data:/root/data
       - ./uploads:/root/uploads
     restart: unless-stopped
+    stop_grace_period: 20s
 
   # MySQL 可选（如果需要使用 MySQL）
   # 使用前：取消下方注释，并把 app 的 DATABASE_URL 改为

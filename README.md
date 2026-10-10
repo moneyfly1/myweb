@@ -60,7 +60,7 @@ The core problem chain that shaped the product:
 | ⚡ **Performance** | Go + Gin backend. **35–95 MB memory** (vs. 300–850 MB for Python panels), millisecond startup, optional Redis cache, goroutine-based async processing. |
 | 🔒 **Security** | JWT access/refresh tokens with blacklist, bcrypt password hashing, login rate limiting with brute-force lockout, sensitive-field masking, atomic verification codes, strict CORS policy, production-mode configuration enforcement. |
 | 🧩 **Completeness** | The full airport operation chain out of the box: 16 user pages + 26 admin pages, 371 API routes, 9+ client formats, 10+ payment gateways, 15 self-hosted protocols. |
-| 🐳 **Deployability** | SQLite by default (zero external dependencies), MySQL/PostgreSQL optional, Redis optional, one-command BaoTa panel installer, one-command VPS installer, and a production-ready two-stage Docker build. |
+| 🐳 **Deployability** | SQLite by default (zero external dependencies), MySQL/PostgreSQL optional, Redis optional, one-command BaoTa panel installer, one-command VPS installer, and an optional multi-stage Docker build. |
 
 ### Design Principles
 
@@ -85,7 +85,7 @@ The core problem chain that shaped the product:
 | 📊 **Analytics** | Dashboard, DAU/WAU/MAU, retention, churn prediction, revenue statistics, GeoIP-based user analytics. |
 | 🎫 **Operations** | Ticket system, knowledge base, announcements, email queue with per-email detail, audit logs, system logs, backup & repo sync (GitHub/Gitee), node health monitoring. |
 | 🎁 **Engagement** | Daily check-in with random rewards (0.1–1 CNY), promotions (flash sales, new-user offers, member days). |
-| 🐳 **Deployability** | BaoTa panel one-click script, bare-VPS one-click script, official multi-stage Docker image, systemd integration, Nginx/HTTPS automation. |
+| 🐳 **Deployability** | BaoTa panel one-click script, bare-VPS one-click script (both production-verified), optional multi-stage Docker image, systemd integration, Nginx/HTTPS automation. |
 | 🎨 **Modern Frontend** | Vue 3 + Element Plus + Vite + Pinia + ECharts, fully responsive with drawer components, dark-friendly theming. |
 
 ---
@@ -122,7 +122,7 @@ The core problem chain that shaped the product:
 |---|---|
 | Bare VPS (Ubuntu/Debian/CentOS) | ✅ `install.sh` one-click script (auto-detects the environment) |
 | BaoTa (宝塔) Panel | ✅ `install.sh`, or the BaoTa entry point `bt-deploy.sh` (thin wrapper, identical behaviour) |
-| Docker / docker-compose | ✅ Official two-stage Dockerfile + compose file |
+| Docker / docker-compose | ⚠️ Optional: multi-stage Dockerfile + compose file. Build chain **fixed and partially verified** — see "Docker verification notes" |
 | Reverse proxy | ✅ Nginx (script-configured) / any proxy in front of port 8000 |
 
 ---
@@ -381,19 +381,206 @@ VLESS + WebSocket (WS) · VLESS + Reality · VLESS + Reality + Vision · VLESS +
 
 CBoard offers **three officially supported installation methods**:
 
-| Method | Best for | Script | Effort |
+| Method | Best for | How | Verified |
 |---|---|---|---|
-| 🐳 **Docker** | Any Linux/macOS/Windows with Docker; isolated, reproducible, easy upgrades | `docker compose` | Low |
-| 🖥️ **One-Click Script** | Bare VPS **or** BaoTa panel — it detects the environment | `install.sh` (BaoTa entry: `bt-deploy.sh`) | Low (one command) |
-| 🪟 **BaoTa panel site + script** | You want the panel to own the site/certificates | panel "Add Site" + `install.sh` / `bt-deploy.sh` | Low (menu-driven) |
+| 🖥️ **Method 1 — One-Click Script** *(recommended)* | Bare VPS (or BaoTa) — detects the environment and bootstraps everything | `sudo bash install.sh` → menu `1` | ✅ **Production-verified** (3 servers: full deploy, upgrade, self-check all `exit 0`) |
+| 🪟 **Method 2 — BaoTa panel site + script** | You want the panel to own the site, certificates and logs | panel "Add Site" → `bt-deploy.sh` → menu `1` | ✅ **Production-verified** (BaoTa nginx 1.28, merge-mode config injection) |
+| 🐳 **Method 3 — Docker** *(optional)* | Isolated / reproducible deployments when the machine can pull images comfortably | `docker compose up -d --build` | ⚠️ **Build chain fixed & partially verified** — see "Docker verification notes" in that section |
 
 > ⚠️ **All methods require root/sudo access.** For production, always bind a domain and enable HTTPS.
 
 ---
 
-### 🐳 Method 3: Docker (Recommended for Isolated Deployments) — *Most Detailed*
+### 🖥️ Method 1: One-Click Script — `install.sh` (bare VPS **or** BaoTa)
 
-This is the officially supported container deployment. It uses a **three-stage Dockerfile** (backend build + frontend build + runtime) and a **docker-compose.yml** with bind-mounted **directories** so your data (SQLite + WAL logs + uploads) lives on the host.
+**This is the only maintained installer.** It auto-detects the environment (BaoTa nginx + panel vhost dir, or system nginx), and on a clean machine it bootstraps everything it needs: git/sqlite3, gcc, Go 1.25.0, Node 22.12.0, Nginx and certbot.
+
+#### Which of the three scripts should I use?
+
+| Script | Status | Purpose |
+|--------|--------|---------|
+| **`install.sh`** | ✅ **The only implementation — use this** | Deploy + operate + self-repair + full uninstall; works on bare VPS and BaoTa |
+| **`bt-deploy.sh`** | ✅ BaoTa entry point (thin wrapper) | Checks the BaoTa environment and certificate policy, then hands over to `install.sh` — behaviour is identical |
+
+#### Prerequisites
+
+| Item | Requirement |
+|------|-------------|
+| OS | Debian 10+ / Ubuntu 18.04+ / CentOS 7+ / Rocky / AlmaLinux (Debian 12 verified end-to-end) |
+| Privileges | root |
+| Resources | ≥1 vCPU, ≥1 GB RAM, ≥10 GB disk |
+| Domain | A record pointing at this server. **The project directory name must equal the domain**, e.g. `/www/wwwroot/pingzen.top` |
+| Ports | 80 and 443 open (cloud security group **and** host firewall; the script does not modify firewalls) |
+
+#### Quick start (three commands)
+
+```bash
+git clone https://github.com/moneyfly1/myweb.git /www/wwwroot/your-domain.com
+cd /www/wwwroot/your-domain.com
+sudo bash install.sh        # then choose menu option 1, then answer the Redis prompt
+```
+
+Non-interactive (the script is safe on EOF — it never busy-loops):
+
+```bash
+printf '1\n' | sudo bash install.sh     # 1 = full auto deploy
+```
+
+> **The deploy never blocks on the Redis question**: Redis setup runs in "auto" mode during deployment —
+> non-interactive runs skip it, interactive runs wait at most 20 seconds and then continue.
+> Enable it later any time with **menu 12** (GeoIP lookups get 50–100x faster) — menu 12 takes care of
+> installing Redis for you: **Docker** (Docker itself is installed automatically when missing) or
+> **apt/yum packages**, and if one route fails to bring Redis up the script automatically tries the other
+> (verified case: a host where apt's `redis-server` dies with `libjemalloc.so.2: failed to map segment`
+> — the script silently switches to Docker and finishes). Redis listens on `127.0.0.1` only.
+
+#### What the script does
+
+| Stage | Details |
+|-------|---------|
+| Bootstrap | base packages (git/sqlite3/wget/curl) → gcc (required by CGO/SQLite) → **Go 1.25.0** → **Node 22.12.0** → **Nginx** (reuses BaoTa's nginx when present) |
+| Source & env | clones the repo if the directory is empty; writes `.env` with `HOST=127.0.0.1`, an **absolute** database path, a random 64-char `SECRET_KEY`, mode 600 |
+| Build | backend built with `CGO_ENABLED=1` into `server.new`, health-checked, then swapped in (previous binary kept as `server.bak.<ts>`); frontend installed from lockfile and built with vite |
+| Service | systemd unit with `EnvironmentFile` / `LimitNOFILE` / `NoNewPrivileges`, then a **business health check** (`/health`, not just `is-active`) |
+| Nginx | one template: `/api/`, `/uploads/` (attachments — otherwise the SPA fallback returns HTML), `/repo-sync/`, `/assets/` long cache, `index.html` no-cache, `client_max_body_size 16m`, ACME challenge location; `nginx -t` first, auto-switch http2 syntax or **precisely roll back this change** on failure |
+| Certificates | reuse first (certbot → BaoTa panel → acme.sh), request only if none; installs the renewal reload hook and timer |
+| Finishing | logrotate for `server.log`; database backed up to `/www/backup/cboard` before every upgrade; prints the **login URLs + admin username/password** (with a live login check) |
+
+#### Menu reference (0–16)
+
+`1` full auto deploy · `2` create/reset admin (verifies login immediately) · `3` force restart (project processes only) · `4` deep cache clean (keeps `dist` and the binary) · `5` unlock user · `6` service status · `7` live log (`server.log`) · `8` restart · `9` stop · `10` renew certificate · `11` sync from GitHub & rebuild · `12` configure Redis (auto-installs Docker, falls back to apt/yum, never blocks) · `13` roll back to previous build · `14` rebuild & restart only · `15` full uninstall (with residual scan) · `16` self-check & auto-repair · `0` exit
+
+#### Certificates vs. BaoTa's own SSL
+
+They **do** conflict if both manage the same domain: two ACME clients re-issuing the same host (rate limits), different file names (`fullchain.cer` vs `fullchain.pem`), and the panel rewriting the vhost. The script handles it: it probes **certbot → BaoTa (`/www/server/panel/vhost/cert/<domain>`) → acme.sh (`/root/.acme.sh/<domain>`)** and **reuses an existing BaoTa certificate, skipping certbot**; it renders the right file names per source; it warns when two certificate sets coexist; menu 16 re-adds any config fragments the panel overwrote. Set `CERT_MANAGER=panel` to let the panel own issuance/renewal (apply in the panel, then re-run the script or menu 16 to switch the site to HTTPS), or keep the default and only *view* certificates in the panel.
+
+#### Login details are printed after install
+
+Menu 1 (and menu 2 / menu 8) prints the front-end and admin login URLs, the admin username/e-mail, and the password.
+The password is generated by the script and written to `ADMIN_PASSWORD` in `.env`, and the app **resets that admin's
+password to it on every start** — so the printed password keeps working after restarts (unlike the app's built-in
+"random password printed once in `server.log`" behaviour).
+
+```text
+================== 登录信息 ==================
+  前台登录:     https://your-domain.com/login
+  管理员登录:   https://your-domain.com/admin/login
+  管理员账号:   admin
+  管理员密码:   <16-char random>
+==============================================
+✅ 已实测：用上面这个账号密码登录成功
+```
+
+To use your own password: set `ADMIN_PASSWORD` in `.env` and restart (menu 8), or use menu 2 (interactive reset with a live login check).
+
+#### Verify
+
+```bash
+curl -I https://your-domain.com                 # 200 + valid certificate
+curl https://your-domain.com/api/v1/packages    # API proxy works
+systemctl status cboard
+tail -f /www/wwwroot/your-domain.com/server.log
+```
+
+### 🪟 Method 2: BaoTa (宝塔) Panel — `bt-deploy.sh`
+
+**Use when** you have (or want) the BaoTa panel and want the panel to own the site, certificates and logs.
+
+> 📖 **Full step-by-step guide** (panel installation, nginx compile wait, both certificate modes, verified pitfalls): [`docs/部署/宝塔部署教程.md`](docs/部署/宝塔部署教程.md)
+
+#### Quick steps
+
+```bash
+# 1) Install the BaoTa panel if you don't have it yet.
+#    ⚠️ Always pipe `yes`: BT's own installer busy-loops at 99% CPU when stdin is closed (verified).
+wget -O /root/bt_install.sh https://download.bt.cn/install/install_lts.sh && yes | bash /root/bt_install.sh
+cat /tmp/btpanel-install.log          # panel URL / username / password
+
+# 2) Panel → App Store → install Nginx (compiled from source; 25–40 min on 2 vCPU is normal)
+
+# 3) Panel → Websites → Add site: domain = your domain, root kept at /www/wwwroot/<domain>, PHP = static
+#    ⚠️ The directory name MUST equal the domain (the script derives the domain from it)
+
+# 4) In the site directory, download just the two scripts (the script clones the repo itself)
+cd /www/wwwroot/your-domain.com
+rm -f index.html 404.html .user.ini
+curl -fsSLO https://raw.githubusercontent.com/moneyfly1/myweb/main/install.sh
+curl -fsSLO https://raw.githubusercontent.com/moneyfly1/myweb/main/bt-deploy.sh
+
+# 5) One-click deploy (choose menu 1; answer n if you have no Redis)
+bash bt-deploy.sh
+```
+
+#### Certificates — pick ONE (never both)
+
+| Mode | How | Renewal owner |
+|------|-----|---------------|
+| **A. Panel-managed (recommended)** | `CERT_MANAGER=panel bash bt-deploy.sh` (hands SSL back to the panel) → panel → Website → SSL → Let's Encrypt → Apply | The **panel** renews automatically; the script only reuses |
+| **B. Script-managed (default)** | Just run step 5 | `certbot.timer`; do **not** click Apply/Renew in the panel (it has no order for that cert) — use menu 10 instead |
+
+Why mode A needs the hand-over: BaoTa checks whether `ssl_certificate` already exists in the config; if it does it
+assumes SSL is already on and **skips deploying its own certificate** — the panel then reports success but
+`vhost/cert/<domain>/` stays empty and later renewals have nothing to renew. `CERT_MANAGER=panel` clears the
+script-written certificate section so the panel can fully take over.
+
+#### Login details are printed when the deploy finishes
+
+```text
+================== 登录信息 ==================
+  前台登录:     https://your-domain.com/login
+  管理员登录:   https://your-domain.com/admin/login
+  管理员账号:   admin
+  管理员密码:   <16-char random>
+==============================================
+✅ 已实测：用上面这个账号密码登录成功
+```
+
+The password is written to `ADMIN_PASSWORD` in `.env` and the app resets that admin's password to it on every
+start, so it keeps working after restarts. Change it in `.env` + menu 8, or use menu 2.
+
+#### BaoTa-specific notes
+
+| Topic | Detail |
+|-------|--------|
+| Config ownership | The script uses **merge mode**: the panel's `#SSL-START` / `#CERT-APPLY-CHECK` markers and includes are preserved; only app-level fragments are injected (`/api/`, `/uploads/`, SPA fallback, `index.html` no-cache, ACME location, `client_max_body_size`), and `root` is pointed at `frontend/dist` |
+| Panel rewrites the vhost | "Save site settings" / "renew SSL" in the panel rewrites the file → run **menu 16** to re-inject (verified: injections and 443 restored, panel markers intact) |
+| `nginx -t` | The script validates the **running** BT nginx (`/www/server/nginx/sbin/nginx -t`); BT nginx is managed by `/etc/init.d/nginx`, so the script detects it with `pgrep` and never starts a second nginx on port 80 |
+| Certificates | Panel certs live in `/www/server/panel/vhost/cert/<domain>/`; the script detects them (source = baota) and **skips certbot**; coexistence of two certificate sets triggers a warning |
+| File permissions | BT nginx runs as `www`, so the script makes `frontend/dist`, `uploads`, `.well-known` readable and chowns them (otherwise 403 / ACME validation failures) |
+| Panel site record | The script does not register a site in the panel — create the site in the panel (step 3) if you want it managed there |
+| Firewall | Open 80/443 in the panel's firewall (the script does not modify firewalls) |
+
+#### Post-install operations
+
+| Task | How |
+|------|-----|
+| Everything | `bash bt-deploy.sh` or `bash install.sh` (menus 2/3/4/11/13/15/16 …) |
+| Upgrade | Menu **11** (sync from GitHub & rebuild: DB backed up first, atomic binary swap, health check) |
+| Rollback | Menu **13** |
+| Self-check & repair | Menu **16** (re-inject fragments after the panel rewrites the config) |
+| Full uninstall | Menu **15** (with residual scan) |
+| Logs | Menu 7, or `tail -f /www/wwwroot/your-domain.com/server.log` |
+
+### 🐳 Method 3: Docker (Optional — For Isolated Deployments)
+
+> **Docker verification notes (measured 2026-10-10 on a clean Debian 12 box, Docker 20.10.24).**
+> The Dockerfile shipped before was **not buildable** — the build died at step 5:
+> `go: go.mod requires go >= 1.25.0 (running go 1.24.13; GOTOOLCHAIN=local)` (base image `golang:1.24-alpine`
+> vs `go.mod` `go 1.25.0`). Three defects were found and fixed:
+> 1. base image bumped to `golang:1.25-alpine` (matches `go.mod`);
+> 2. `alpine`/musl needs `CGO_CFLAGS="-D_LARGEFILE64_SOURCE"`, otherwise `go-sqlite3` fails with
+>    `'pread64' undeclared / unknown type name 'off64_t'`;
+> 3. frontend base bumped `node:20-alpine` → `node:22-alpine` (Vite 7 wants `^20.19.0 || >=22.12.0`),
+>    plus `GOPROXY` / `NPM_REGISTRY` build args for slow networks, `HEALTHCHECK`, and no more weak
+>    default admin password (`admin123` → required).
+>
+> **Verified:** the backend stage builds successfully inside a container (Go 1.25 + cgo/SQLite).
+> **Not yet verified end-to-end:** the in-container frontend build + full `docker compose up`, because the
+> verification box cannot finish pulling `node:22-alpine` from Docker Hub (large layer stalls; the usual
+> mirrors are Cloudflare-blocked). Until that is completed, treat Docker as **optional** and prefer
+> Methods 1/2, which are verified in production.
+
+This is the **optional** container deployment. It uses a **three-stage Dockerfile** (backend build + frontend build + runtime) and a **docker-compose.yml** with bind-mounted **directories** so your data (SQLite + WAL logs + uploads) lives on the host.
 
 #### Prerequisites
 
@@ -633,176 +820,6 @@ go run ./cmd/migrate -sqlite ./data/cboard.db -mysql "cboard_user:cboard_passwor
 | **`.env` changes not applied** | Edit host `.env`, then `docker compose up -d` (re-reads env and recreates the container) |
 
 ---
-
-### 🖥️ Method 1: One-Click Script — `install.sh` (bare VPS **or** BaoTa)
-
-**This is the only maintained installer.** It auto-detects the environment (BaoTa nginx + panel vhost dir, or system nginx), and on a clean machine it bootstraps everything it needs: git/sqlite3, gcc, Go 1.25.0, Node 22.12.0, Nginx and certbot.
-
-#### Which of the three scripts should I use?
-
-| Script | Status | Purpose |
-|--------|--------|---------|
-| **`install.sh`** | ✅ **The only implementation — use this** | Deploy + operate + self-repair + full uninstall; works on bare VPS and BaoTa |
-| **`bt-deploy.sh`** | ✅ BaoTa entry point (thin wrapper) | Checks the BaoTa environment and certificate policy, then hands over to `install.sh` — behaviour is identical |
-
-#### Prerequisites
-
-| Item | Requirement |
-|------|-------------|
-| OS | Debian 10+ / Ubuntu 18.04+ / CentOS 7+ / Rocky / AlmaLinux (Debian 12 verified end-to-end) |
-| Privileges | root |
-| Resources | ≥1 vCPU, ≥1 GB RAM, ≥10 GB disk |
-| Domain | A record pointing at this server. **The project directory name must equal the domain**, e.g. `/www/wwwroot/pingzen.top` |
-| Ports | 80 and 443 open (cloud security group **and** host firewall; the script does not modify firewalls) |
-
-#### Quick start (three commands)
-
-```bash
-git clone https://github.com/moneyfly1/myweb.git /www/wwwroot/your-domain.com
-cd /www/wwwroot/your-domain.com
-sudo bash install.sh        # then choose menu option 1, then answer the Redis prompt
-```
-
-Non-interactive (the script is safe on EOF — it never busy-loops):
-
-```bash
-printf '1\n' | sudo bash install.sh     # 1 = full auto deploy
-```
-
-> **The deploy never blocks on the Redis question**: Redis setup runs in "auto" mode during deployment —
-> non-interactive runs skip it, interactive runs wait at most 20 seconds and then continue.
-> Enable it later any time with **menu 12** (GeoIP lookups get 50–100x faster) — menu 12 takes care of
-> installing Redis for you: **Docker** (Docker itself is installed automatically when missing) or
-> **apt/yum packages**, and if one route fails to bring Redis up the script automatically tries the other
-> (verified case: a host where apt's `redis-server` dies with `libjemalloc.so.2: failed to map segment`
-> — the script silently switches to Docker and finishes). Redis listens on `127.0.0.1` only.
-
-#### What the script does
-
-| Stage | Details |
-|-------|---------|
-| Bootstrap | base packages (git/sqlite3/wget/curl) → gcc (required by CGO/SQLite) → **Go 1.25.0** → **Node 22.12.0** → **Nginx** (reuses BaoTa's nginx when present) |
-| Source & env | clones the repo if the directory is empty; writes `.env` with `HOST=127.0.0.1`, an **absolute** database path, a random 64-char `SECRET_KEY`, mode 600 |
-| Build | backend built with `CGO_ENABLED=1` into `server.new`, health-checked, then swapped in (previous binary kept as `server.bak.<ts>`); frontend installed from lockfile and built with vite |
-| Service | systemd unit with `EnvironmentFile` / `LimitNOFILE` / `NoNewPrivileges`, then a **business health check** (`/health`, not just `is-active`) |
-| Nginx | one template: `/api/`, `/uploads/` (attachments — otherwise the SPA fallback returns HTML), `/repo-sync/`, `/assets/` long cache, `index.html` no-cache, `client_max_body_size 16m`, ACME challenge location; `nginx -t` first, auto-switch http2 syntax or **precisely roll back this change** on failure |
-| Certificates | reuse first (certbot → BaoTa panel → acme.sh), request only if none; installs the renewal reload hook and timer |
-| Finishing | logrotate for `server.log`; database backed up to `/www/backup/cboard` before every upgrade; prints the **login URLs + admin username/password** (with a live login check) |
-
-#### Menu reference (0–16)
-
-`1` full auto deploy · `2` create/reset admin (verifies login immediately) · `3` force restart (project processes only) · `4` deep cache clean (keeps `dist` and the binary) · `5` unlock user · `6` service status · `7` live log (`server.log`) · `8` restart · `9` stop · `10` renew certificate · `11` sync from GitHub & rebuild · `12` configure Redis (auto-installs Docker, falls back to apt/yum, never blocks) · `13` roll back to previous build · `14` rebuild & restart only · `15` full uninstall (with residual scan) · `16` self-check & auto-repair · `0` exit
-
-#### Certificates vs. BaoTa's own SSL
-
-They **do** conflict if both manage the same domain: two ACME clients re-issuing the same host (rate limits), different file names (`fullchain.cer` vs `fullchain.pem`), and the panel rewriting the vhost. The script handles it: it probes **certbot → BaoTa (`/www/server/panel/vhost/cert/<domain>`) → acme.sh (`/root/.acme.sh/<domain>`)** and **reuses an existing BaoTa certificate, skipping certbot**; it renders the right file names per source; it warns when two certificate sets coexist; menu 16 re-adds any config fragments the panel overwrote. Set `CERT_MANAGER=panel` to let the panel own issuance/renewal (apply in the panel, then re-run the script or menu 16 to switch the site to HTTPS), or keep the default and only *view* certificates in the panel.
-
-#### Login details are printed after install
-
-Menu 1 (and menu 2 / menu 8) prints the front-end and admin login URLs, the admin username/e-mail, and the password.
-The password is generated by the script and written to `ADMIN_PASSWORD` in `.env`, and the app **resets that admin's
-password to it on every start** — so the printed password keeps working after restarts (unlike the app's built-in
-"random password printed once in `server.log`" behaviour).
-
-```text
-================== 登录信息 ==================
-  前台登录:     https://your-domain.com/login
-  管理员登录:   https://your-domain.com/admin/login
-  管理员账号:   admin
-  管理员密码:   <16-char random>
-==============================================
-✅ 已实测：用上面这个账号密码登录成功
-```
-
-To use your own password: set `ADMIN_PASSWORD` in `.env` and restart (menu 8), or use menu 2 (interactive reset with a live login check).
-
-#### Verify
-
-```bash
-curl -I https://your-domain.com                 # 200 + valid certificate
-curl https://your-domain.com/api/v1/packages    # API proxy works
-systemctl status cboard
-tail -f /www/wwwroot/your-domain.com/server.log
-```
-
-### 🪟 Method 2: BaoTa (宝塔) Panel — `bt-deploy.sh`
-
-**Use when** you have (or want) the BaoTa panel and want the panel to own the site, certificates and logs.
-
-> 📖 **Full step-by-step guide** (panel installation, nginx compile wait, both certificate modes, verified pitfalls): [`docs/部署/宝塔部署教程.md`](docs/部署/宝塔部署教程.md)
-
-#### Quick steps
-
-```bash
-# 1) Install the BaoTa panel if you don't have it yet.
-#    ⚠️ Always pipe `yes`: BT's own installer busy-loops at 99% CPU when stdin is closed (verified).
-wget -O /root/bt_install.sh https://download.bt.cn/install/install_lts.sh && yes | bash /root/bt_install.sh
-cat /tmp/btpanel-install.log          # panel URL / username / password
-
-# 2) Panel → App Store → install Nginx (compiled from source; 25–40 min on 2 vCPU is normal)
-
-# 3) Panel → Websites → Add site: domain = your domain, root kept at /www/wwwroot/<domain>, PHP = static
-#    ⚠️ The directory name MUST equal the domain (the script derives the domain from it)
-
-# 4) In the site directory, download just the two scripts (the script clones the repo itself)
-cd /www/wwwroot/your-domain.com
-rm -f index.html 404.html .user.ini
-curl -fsSLO https://raw.githubusercontent.com/moneyfly1/myweb/main/install.sh
-curl -fsSLO https://raw.githubusercontent.com/moneyfly1/myweb/main/bt-deploy.sh
-
-# 5) One-click deploy (choose menu 1; answer n if you have no Redis)
-bash bt-deploy.sh
-```
-
-#### Certificates — pick ONE (never both)
-
-| Mode | How | Renewal owner |
-|------|-----|---------------|
-| **A. Panel-managed (recommended)** | `CERT_MANAGER=panel bash bt-deploy.sh` (hands SSL back to the panel) → panel → Website → SSL → Let's Encrypt → Apply | The **panel** renews automatically; the script only reuses |
-| **B. Script-managed (default)** | Just run step 5 | `certbot.timer`; do **not** click Apply/Renew in the panel (it has no order for that cert) — use menu 10 instead |
-
-Why mode A needs the hand-over: BaoTa checks whether `ssl_certificate` already exists in the config; if it does it
-assumes SSL is already on and **skips deploying its own certificate** — the panel then reports success but
-`vhost/cert/<domain>/` stays empty and later renewals have nothing to renew. `CERT_MANAGER=panel` clears the
-script-written certificate section so the panel can fully take over.
-
-#### Login details are printed when the deploy finishes
-
-```text
-================== 登录信息 ==================
-  前台登录:     https://your-domain.com/login
-  管理员登录:   https://your-domain.com/admin/login
-  管理员账号:   admin
-  管理员密码:   <16-char random>
-==============================================
-✅ 已实测：用上面这个账号密码登录成功
-```
-
-The password is written to `ADMIN_PASSWORD` in `.env` and the app resets that admin's password to it on every
-start, so it keeps working after restarts. Change it in `.env` + menu 8, or use menu 2.
-
-#### BaoTa-specific notes
-
-| Topic | Detail |
-|-------|--------|
-| Config ownership | The script uses **merge mode**: the panel's `#SSL-START` / `#CERT-APPLY-CHECK` markers and includes are preserved; only app-level fragments are injected (`/api/`, `/uploads/`, SPA fallback, `index.html` no-cache, ACME location, `client_max_body_size`), and `root` is pointed at `frontend/dist` |
-| Panel rewrites the vhost | "Save site settings" / "renew SSL" in the panel rewrites the file → run **menu 16** to re-inject (verified: injections and 443 restored, panel markers intact) |
-| `nginx -t` | The script validates the **running** BT nginx (`/www/server/nginx/sbin/nginx -t`); BT nginx is managed by `/etc/init.d/nginx`, so the script detects it with `pgrep` and never starts a second nginx on port 80 |
-| Certificates | Panel certs live in `/www/server/panel/vhost/cert/<domain>/`; the script detects them (source = baota) and **skips certbot**; coexistence of two certificate sets triggers a warning |
-| File permissions | BT nginx runs as `www`, so the script makes `frontend/dist`, `uploads`, `.well-known` readable and chowns them (otherwise 403 / ACME validation failures) |
-| Panel site record | The script does not register a site in the panel — create the site in the panel (step 3) if you want it managed there |
-| Firewall | Open 80/443 in the panel's firewall (the script does not modify firewalls) |
-
-#### Post-install operations
-
-| Task | How |
-|------|-----|
-| Everything | `bash bt-deploy.sh` or `bash install.sh` (menus 2/3/4/11/13/15/16 …) |
-| Upgrade | Menu **11** (sync from GitHub & rebuild: DB backed up first, atomic binary swap, health check) |
-| Rollback | Menu **13** |
-| Self-check & repair | Menu **16** (re-inject fragments after the panel rewrites the config) |
-| Full uninstall | Menu **15** (with residual scan) |
-| Logs | Menu 7, or `tail -f /www/wwwroot/your-domain.com/server.log` |
 
 ## 🎯 Where Admin & Domain Are Configured (all 3 methods)
 
