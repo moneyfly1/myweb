@@ -64,7 +64,12 @@ validate_domain() {
 
 # 校验版本号：ver_ge 1.25.0 1.24.9 → 0/1
 ver_ge() {
-    local a="${1#v}" b="${2#v}"
+    local a b
+    a="$(printf '%s' "${1#v}" | grep -oE '^[0-9]+(\.[0-9]+)*' | head -1)"
+    b="$(printf '%s' "${2#v}" | grep -oE '^[0-9]+(\.[0-9]+)*' | head -1)"
+    [[ -n "$a" ]] || a="0.0.0"
+    [[ -n "$b" ]] || b="0.0.0"
+    [[ "$a" == "$b" ]] && return 0
     [[ "$(printf '%s\n%s\n' "$a" "$b" | sort -V | head -1)" == "$b" ]]
 }
 
@@ -516,7 +521,12 @@ ensure_nginx() {
 nginx_version() {
     local bin="${NGINX_BIN:-$(command -v nginx)}"
     [[ -x "$bin" ]] || { echo "0.0.0"; return; }
-    "$bin" -v 2>&1 | sed -n 's|.*nginx/\([0-9.]*\).*||p' | head -1
+    # 用 grep 提版本号（不要用 sed 反向引用：脚本里曾因转义把 \1 写坏成控制字符，
+    # 导致版本号取到乱码、http2 写法判断反了，nginx -t 直接失败）
+    local v
+    v="$("$bin" -v 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+    [[ -n "$v" ]] || v="0.0.0"
+    echo "$v"
 }
 
 # 安装编译依赖（首次部署在最小化系统上必需；否则 CGO 会被静默关闭 → 二进制能编译但一碰 SQLite 就死）
@@ -856,7 +866,9 @@ render_site_config() {
     local listen443 listen_http2
     listen443="listen 443 ssl;"
     listen_http2="    http2 on;"
-    if ! ver_ge "$(nginx_version)" "1.25.1"; then
+    if [[ "${FORCE_NEW_HTTP2:-}" == "yes" ]]; then
+        : # 强制新写法
+    elif [[ "${FORCE_OLD_HTTP2:-}" == "yes" ]] || ! ver_ge "$(nginx_version)" "1.25.1"; then
         listen443="listen 443 ssl http2;"
         listen_http2=""
     fi
@@ -1071,9 +1083,27 @@ full_deploy() {
         warn "certbot 不可用，本次按 HTTP 部署（可稍后执行菜单 10 续期/签发）"
     fi
     local cert_dir; cert_dir="$(find_cert_dir)"
+    SITE_SCHEME="http"
     if [[ -n "$cert_dir" ]]; then
         render_site_config https "$cert_dir"
-        nginx_apply_or_rollback || warn "Nginx HTTPS 配置未通过检测"
+        if nginx_apply_or_rollback; then
+            SITE_SCHEME="https"
+        else
+            # 版本判断也可能出错（不同发行版 nginx 的 http2 写法不同），
+            # 这里按另一种写法重渲染再测一次，能起来就用，彻底避免"证书签好了却退回 HTTP"
+            warn "HTTPS 配置未通过 nginx -t，改用另一种 http2 写法重试..."
+            if ver_ge "$(nginx_version)" "1.25.1"; then
+                FORCE_OLD_HTTP2=yes render_site_config https "$cert_dir"
+            else
+                FORCE_NEW_HTTP2=yes render_site_config https "$cert_dir"
+            fi
+            if nginx_apply_or_rollback; then
+                SITE_SCHEME="https"
+                log "✅ 已用另一种 http2 写法启用 HTTPS（nginx $(nginx_version)）"
+            else
+                warn "HTTPS 配置仍失败，保持 HTTP；证书已签发，可稍后执行菜单 10 或重跑菜单 1"
+            fi
+        fi
         setup_cert_auto_renew_hook
     else
         warn "未找到证书目录，保持 HTTP 配置"
@@ -1094,11 +1124,11 @@ full_deploy() {
     log "查看日志: tail -n 200 -f ${PROJECT_DIR}/server.log"
     echo ""
     echo -e "${GREEN}========== 访问信息 ==========${NC}"
-    if [[ -n "$cert_dir" ]]; then
+    if [[ "${SITE_SCHEME:-http}" == "https" ]]; then
         echo -e "  前端地址:     https://${DOMAIN}"
         echo -e "  管理员后台:   https://${DOMAIN}/admin"
     else
-        echo -e "  前端地址:     http://${DOMAIN}（本次未启用 HTTPS）"
+        echo -e "  前端地址:     http://${DOMAIN}（本次未启用 HTTPS，原因见上方日志）"
         echo -e "  管理员后台:   http://${DOMAIN}/admin"
     fi
     echo -e "${GREEN}======================================${NC}"
