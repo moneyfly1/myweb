@@ -67,6 +67,11 @@ ver_ge() {
 
 # --- 带超时的 Redis 重启函数 ---
 restart_redis_with_timeout() {
+    # 未启用 Redis（.env 里没有 REDIS_ADDR）时静默跳过，避免每次部署都出现无意义的告警
+    if ! grep -q '^REDIS_ADDR=' "${PROJECT_DIR}/.env" 2>/dev/null && ! command -v redis-server >/dev/null 2>&1; then
+        log "未启用 Redis，跳过缓存服务重启"
+        return 0
+    fi
     log "正在重启 Redis 服务..."
 
     # 检测 Redis 服务名称
@@ -1062,13 +1067,14 @@ full_deploy() {
     write_systemd_unit
     ensure_logrotate
 
-    # 5. Nginx：先 HTTP（放行 ACME），申请证书后再切 HTTPS
-    render_site_config http
-    nginx_apply_or_rollback || warn "Nginx 配置未通过检测，请检查后再继续"
+    # 5. Nginx：把站点配置拉到目标状态
+    #    宝塔/面板托管的配置走「合并模式」（保留面板标记，只注入必需片段）；
+    #    本脚本生成的配置按模板重渲染；其它手工配置只补块。
+    apply_site_config_desired
 
     # 6. SSL 证书（归属策略见 CERT_MANAGER）
     step "检查 / 申请 SSL 证书..."
-    local cert_dir; cert_dir="$(find_cert_dir)"
+    detect_cert >/dev/null; local cert_dir="$CERT_DIR"
     cert_conflict_check || true
     if [[ "$CERT_MANAGER" == "certbot" ]]; then
         : # 强制 certbot：即使面板已有证书也重新申请
@@ -1093,10 +1099,16 @@ full_deploy() {
         else
             warn "certbot 不可用，本次按 HTTP 部署（可稍后执行菜单 10 续期/签发）"
         fi
-        cert_dir="$(find_cert_dir)"
+        detect_cert >/dev/null; cert_dir="$CERT_DIR"
     fi
     SITE_SCHEME="http"
     if [[ -n "$cert_dir" ]]; then
+        if site_conf_is_panel_managed; then
+            enable_https_panel_conf "$cert_dir"
+            if nginx_apply_or_rollback; then SITE_SCHEME="https"; else
+                SITE_SCHEME="http"; warn "面板站点配置启用 HTTPS 失败，保持 HTTP（可重跑菜单 16）"
+            fi
+        else
         render_site_config https "$cert_dir"
         if nginx_apply_or_rollback; then
             SITE_SCHEME="https"
@@ -1115,6 +1127,7 @@ full_deploy() {
             else
                 warn "HTTPS 配置仍失败，保持 HTTP；证书已签发，可稍后执行菜单 10 或重跑菜单 1"
             fi
+        fi
         fi
         setup_cert_auto_renew_hook
     else
@@ -1181,7 +1194,10 @@ cert_conflict_check() {
     return 0
 }
 
-find_cert_dir() {
+# 注意：必须**直接调用**（不能写成 dir=$(find_cert_dir)）——放在命令替换里会在子 shell 执行，
+# 函数里设置的 CERT_SOURCE / CERT_FULLCHAIN / CERT_KEY 全都传不回父 shell，
+# 结果就是"来源: 未知"、acme.sh 证书用错文件名（真机实测踩到）。
+detect_cert() {
     CERT_DIR=""; CERT_SOURCE=""
     # 1) certbot（本脚本默认签发方式）
     local live="${LETSENCRYPT_LIVE_DIR:-/etc/letsencrypt/live}"
@@ -1211,6 +1227,9 @@ find_cert_dir() {
     fi
     echo ""
 }
+
+# 兼容包装：需要目录字符串时用它（会同时把全局变量设在当前 shell —— 仅当不经命令替换调用）
+find_cert_dir() { detect_cert; }
 
 # 证书来源的中文名（日志用）
 cert_source_label() {
@@ -1577,7 +1596,7 @@ self_check_and_repair() {
     # 6) 站点配置
     local conf; conf="$(site_conf_path)"
     if [[ ! -f "$conf" ]]; then
-        local cert; cert="$(find_cert_dir)"
+        detect_cert >/dev/null; local cert="$CERT_DIR"
         if [[ -n "$cert" ]]; then render_site_config https "$cert"; else render_site_config http; fi
         nginx_apply_or_rollback && fixed+=("站点配置缺失 → 已重新生成")
     else
@@ -1590,9 +1609,9 @@ self_check_and_repair() {
     if ! $NGINX_TEST_CMD >/dev/null 2>&1; then
         warn "nginx -t 未通过，尝试自动修复..."
         if ver_ge "$(nginx_version)" "1.25.1"; then
-            FORCE_OLD_HTTP2=yes render_site_config "$([[ -n "$(find_cert_dir)" ]] && echo https || echo http)" "$(find_cert_dir)"
+            if [[ -n "$CERT_DIR" ]]; then FORCE_OLD_HTTP2=yes render_site_config https "$CERT_DIR"; else FORCE_OLD_HTTP2=yes render_site_config http; fi
         else
-            FORCE_NEW_HTTP2=yes render_site_config "$([[ -n "$(find_cert_dir)" ]] && echo https || echo http)" "$(find_cert_dir)"
+            if [[ -n "$CERT_DIR" ]]; then FORCE_NEW_HTTP2=yes render_site_config https "$CERT_DIR"; else FORCE_NEW_HTTP2=yes render_site_config http; fi
         fi
         if nginx_apply_or_rollback; then fixed+=("nginx 配置语法错误 → 已换写法修复"); else problems+=("nginx 配置仍无法通过 -t，请查看 $conf"); fi
     else
@@ -1604,7 +1623,7 @@ self_check_and_repair() {
     [[ -f /etc/logrotate.d/cboard ]] || { ensure_logrotate && fixed+=("缺少 logrotate 配置 → 已补"); }
 
     # 9) 证书与自动续期（含"证书归谁管"的核对）
-    local cert_dir; cert_dir="$(find_cert_dir)"
+    detect_cert >/dev/null; local cert_dir="$CERT_DIR"
     cert_conflict_check || problems+=("同一个域名存在两套证书（certbot + 宝塔/acme.sh），建议只保留一套")
     if [[ -n "$cert_dir" ]]; then
         log "✅ 证书存在: $cert_dir"
@@ -1622,7 +1641,7 @@ self_check_and_repair() {
         ensure_certbot_autorenew
         certbot certonly --webroot -w "${PROJECT_DIR}" -d "${DOMAIN}" --email "admin@${DOMAIN}" \
             --agree-tos --non-interactive --keep-until-expiring >/dev/null 2>&1 \
-            && { fixed+=("证书缺失 → 已申请"); cert_dir="$(find_cert_dir)"; render_site_config https "$cert_dir"; nginx_apply_or_rollback; } \
+            && { fixed+=("证书缺失 → 已申请"); detect_cert >/dev/null; cert_dir="$CERT_DIR"; render_site_config https "$cert_dir"; nginx_apply_or_rollback; } \
             || problems+=("证书申请失败（可检查 DNS 是否指向本机、80 端口是否可达）")
     fi
 
@@ -2196,7 +2215,7 @@ PY
 #   - 其它手工配置 → 只做幂等补块，不整文件覆盖
 apply_site_config_desired() {
     local conf; conf="$(site_conf_path)"
-    local cert_dir; cert_dir="$(find_cert_dir)"
+    detect_cert >/dev/null; local cert_dir="$CERT_DIR"
     if site_conf_is_panel_managed; then
         inject_into_panel_conf
         [[ -n "$cert_dir" ]] && enable_https_panel_conf "$cert_dir"
