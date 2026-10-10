@@ -221,7 +221,36 @@ redis_install_system() {
             return 0
         fi
     done
+    warn "系统包方式的 Redis 启动后仍无法 PING 通，最近日志（用于定位原因）："
+    { journalctl -u redis-server -n 5 --no-pager 2>/dev/null || tail -5 /var/log/redis/redis-server.log 2>/dev/null; } | sed 's/^/    /'
     return 1
+}
+
+# 双通道兜底：先按用户选择的方式装，失败自动换另一种方式重试（用户实测：
+# 某些机器上 apt 装出来的 redis-server 因系统限制起不来，
+# 例如 libjemalloc.so.2: failed to map segment from shared object；
+# 这时继续用 Docker 起 Redis 才是"不停下"的正确行为）
+redis_start_with_fallback() {
+    local first="$1" second
+    if [[ "$first" == "docker" ]]; then second="system"; else second="docker"; fi
+
+    if redis_try_method "$first"; then
+        return 0
+    fi
+    warn "「${first}」方式安装/启动 Redis 失败，自动改用「${second}」方式重试（不会中断部署）..."
+    if redis_try_method "$second"; then
+        return 0
+    fi
+    return 1
+}
+
+# 单通道尝试：docker=自动装 Docker + 起容器；system=apt/yum 装包
+redis_try_method() {
+    case "$1" in
+        docker) install_docker || return 1; redis_up_by_docker ;;
+        system) redis_install_system ;;
+        *) return 1 ;;
+    esac
 }
 
 # 参数：ask（默认，菜单 12 手动配置：一直等你回答）
@@ -294,8 +323,14 @@ configure_redis_cache() {
             if restart_redis_with_timeout; then
                 REDIS_ADDR="localhost:6379"
             else
-                warn "Redis 启动失败，将跳过缓存配置（可手动启动后执行菜单 12）"
-                return 0
+                # 起不来不等于放弃：直接换 Docker 方式跑一个（老机器/受限环境很常见）
+                warn "已有 Redis 服务启动失败，尝试用 Docker 方式启动一个 Redis（不会中断部署）..."
+                if redis_start_with_fallback docker; then
+                    REDIS_ADDR="localhost:6379"
+                else
+                    warn "两种方式都未能让 Redis 跑起来，已跳过缓存配置（不影响网站运行；可手动装好后执行菜单 12）"
+                    return 0
+                fi
             fi
         fi
     else
@@ -315,20 +350,12 @@ configure_redis_cache() {
 
         case $install_method in
             1)
-                if install_docker; then
-                    if redis_up_by_docker; then
-                        REDIS_ADDR="localhost:6379"
-                    else
-                        warn "Docker 方式启动 Redis 失败，自动改用系统包管理器安装..."
-                        redis_install_system && REDIS_ADDR="localhost:6379"
-                    fi
-                else
-                    warn "Docker 不可用（自动安装失败），自动改用系统包管理器安装 Redis..."
-                    redis_install_system && REDIS_ADDR="localhost:6379"
-                fi
+                # Docker 优先，失败自动降级系统包；两条路都走完才判定失败
+                redis_start_with_fallback docker && REDIS_ADDR="localhost:6379"
                 ;;
             2)
-                redis_install_system && REDIS_ADDR="localhost:6379"
+                # 系统包优先，失败自动降级 Docker
+                redis_start_with_fallback system && REDIS_ADDR="localhost:6379"
                 ;;
             3)
                 log "跳过 Redis 安装（之后可再执行菜单 12）"
