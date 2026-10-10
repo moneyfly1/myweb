@@ -124,25 +124,41 @@ configure_redis_cache() {
     echo -e "${CYAN}首次查询: 200-500ms → 缓存命中: 10-50ms${NC}"
     echo ""
 
+    # 明确告诉用户"要按什么键"：历史上这里只有一行 read -p，上面又是一大段说明，
+    # 很容易被当成纯提示信息而错过（用户实测反馈"它没提示我输入 y 确认"），
+    # 加上默认值是 y 且无限等待，看起来就像卡死。现在给出显式的按键说明框。
     local enable_redis=""
+    local _ask_redis_flag=""
     if [[ "$mode" == "auto" ]]; then
         # 部署流程里绝不阻塞：非交互环境直接跳过；交互环境给 20 秒，超时也跳过。
-        # （历史行为：默认值 y 且无限等待，自动化/走神时就会像"卡死"一样停在这里）
         if [[ ! -t 0 ]]; then
             log "非交互执行：跳过 Redis 配置（可稍后用菜单 12 启用）"
             return 0
         fi
-        echo -en "${CYAN}是否启用 Redis 缓存？(y/n，默认 n=跳过；20 秒无输入自动跳过，稍后可用菜单 12 启用): ${NC}"
+        _ask_redis_flag="（20 秒不输入将自动跳过）"
+    fi
+
+    echo -e "${CYAN}--------------------------------------------------------------${NC}"
+    echo -e "  ${YELLOW}需要启用 Redis 缓存吗？（可选，不是必须）${NC}"
+    echo -e "    ${GREEN}y${NC} + 回车 = 启用（脚本会自动安装并启动 Redis）"
+    echo -e "    ${GREEN}n${NC} + 回车 = 跳过（推荐；之后随时可用菜单 12 启用）"
+    echo -e "    直接回车 = 跳过${_ask_redis_flag}"
+    echo -e "${CYAN}--------------------------------------------------------------${NC}"
+
+    if [[ "$mode" == "auto" ]]; then
+        echo -en "${YELLOW}请输入 y 或 n 然后按回车（20 秒内不输入将自动跳过）: ${NC}"
         if ! read -t 20 -r enable_redis; then
             echo ""
-            log "20 秒内未输入 → 跳过 Redis 配置（不影响使用，随时可用菜单 12 启用）"
+            log "20 秒内未收到输入 → 已自动跳过 Redis 配置（不影响使用，随时可用菜单 12 启用）"
             return 0
         fi
         enable_redis="${enable_redis:-n}"
     else
-        read -r -p "是否启用 Redis 缓存？(y/n，默认: y): " enable_redis
-        enable_redis=${enable_redis:-y}
+        echo -en "${YELLOW}请输入 y 或 n 然后按回车（默认 y=启用）: ${NC}"
+        read -r enable_redis
+        enable_redis="${enable_redis:-y}"
     fi
+    echo ""
 
     if [[ "$enable_redis" != "y" && "$enable_redis" != "Y" ]]; then
         log "跳过 Redis 配置（系统仍可正常运行）"
