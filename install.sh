@@ -416,6 +416,101 @@ build_backend() {
     return 0
 }
 
+# 基础依赖：git（菜单 11 同步必需）、sqlite3（升级前可靠备份 .backup）、wget/curl
+ensure_base_packages() {
+    local need=()
+    command -v git >/dev/null 2>&1 || need+=(git)
+    command -v sqlite3 >/dev/null 2>&1 || need+=(sqlite3)
+    command -v wget >/dev/null 2>&1 || need+=(wget)
+    command -v curl >/dev/null 2>&1 || need+=(curl)
+    [[ ${#need[@]} -eq 0 ]] && return 0
+    step "安装基础依赖: ${need[*]}"
+    if command -v apt-get >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${need[@]}"
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y "${need[@]}"
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y "${need[@]}"
+    fi
+    for c in "${need[@]}"; do
+        command -v "$c" >/dev/null 2>&1 && log "✅ $c 已就绪" || warn "$c 安装失败（相关功能会降级）"
+    done
+    return 0
+}
+
+# 安装 Go（版本对齐 go.mod；干净机器上由脚本自己装，缺 Go 直接中止等于「一键部署」不可用）
+install_go() {
+    if command -v go >/dev/null 2>&1; then
+        local cur
+        cur="$(go version 2>/dev/null | awk '{print $3}' | tr -d 'go')"
+        if ver_ge "$cur" "$MIN_GO_VERSION"; then
+            log "✅ Go 已满足要求: $cur"
+            return 0
+        fi
+        warn "当前 Go $cur 低于 go.mod 要求的 ${MIN_GO_VERSION}，将安装 ${GO_VERSION}"
+    else
+        step "未检测到 Go，安装 Go ${GO_VERSION}..."
+    fi
+    local arch
+    case "$(uname -m)" in
+        x86_64) arch="amd64";;
+        aarch64|arm64) arch="arm64";;
+        *) error "不支持的架构: $(uname -m)"; return 1;;
+    esac
+    local tar="go${GO_VERSION}.linux-${arch}.tar.gz"
+    local tmp; tmp="$(mktemp -d)"
+    if ! wget -q "https://go.dev/dl/${tar}" -O "${tmp}/${tar}"; then
+        error "下载 Go 失败（请检查网络，或手动安装 Go >= ${MIN_GO_VERSION}）"
+        rm -rf "$tmp"; return 1
+    fi
+    if ! tar -C "$tmp" -xzf "${tmp}/${tar}"; then
+        error "Go 解压失败"; rm -rf "$tmp"; return 1
+    fi
+    # 旧版本改名备份再替换（不要 rm -rf，失败还能回去）
+    [[ -d /usr/local/go ]] && mv /usr/local/go "/usr/local/go.bak.$(date +%Y%m%d_%H%M%S)"
+    mv "${tmp}/go" /usr/local/go
+    ln -sf /usr/local/go/bin/go /usr/local/bin/go
+    rm -rf "$tmp"
+    export PATH="$PATH:/usr/local/go/bin"
+    command -v go >/dev/null 2>&1 && log "✅ Go 已安装: $(go version)" || { error "Go 安装失败"; return 1; }
+    return 0
+}
+
+# 安装 Nginx（纯 VPS 上脚本必须自己装：否则站点配置写进一个不存在的 web 服务器里）
+ensure_nginx() {
+    if command -v nginx >/dev/null 2>&1 || [[ -x /www/server/nginx/sbin/nginx ]]; then
+        return 0
+    fi
+    step "未检测到 Nginx，正在安装..."
+    if command -v apt-get >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nginx
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y nginx
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y nginx
+    fi
+    if command -v nginx >/dev/null 2>&1; then
+        systemctl enable nginx >/dev/null 2>&1
+        systemctl start nginx >/dev/null 2>&1
+        # 安装后重新探测（二进制/配置目录/pid 都变了）
+        detect_nginx_layout
+        mkdir -p "$NGINX_VHOST_DIR"
+        log "✅ Nginx 已安装: $(nginx -v 2>&1 | head -1)"
+        return 0
+    fi
+    error "Nginx 安装失败，请手动安装后重试"
+    return 1
+}
+
+# Nginx 版本（用于决定 http2 写法：`listen ... http2` 在 1.25.1+ 被废弃，`http2 on;` 在旧版不存在）
+nginx_version() {
+    local bin="${NGINX_BIN:-$(command -v nginx)}"
+    [[ -x "$bin" ]] || { echo "0.0.0"; return; }
+    "$bin" -v 2>&1 | sed -n 's|.*nginx/\([0-9.]*\).*||p' | head -1
+}
+
 # 安装编译依赖（首次部署在最小化系统上必需；否则 CGO 会被静默关闭 → 二进制能编译但一碰 SQLite 就死）
 install_build_deps() {
     if command -v apt-get >/dev/null 2>&1; then
@@ -749,6 +844,15 @@ render_site_config() {
     if [[ -f "$conf" ]]; then
         cp "$conf" "${conf}.backup.$(date +%Y%m%d_%H%M%S)"
     fi
+    # http2：>=1.25.1 用「listen 443 ssl; http2 on;」，旧版必须写在同一行，否则 nginx -t 直接失败
+    local listen443 listen_http2
+    listen443="listen 443 ssl;"
+    listen_http2="    http2 on;"
+    if ! ver_ge "$(nginx_version)" "1.25.1"; then
+        listen443="listen 443 ssl http2;"
+        listen_http2=""
+    fi
+
     if [[ "$mode" == "https" && -n "$cert_root" ]]; then
         cat > "$conf" << EOF
 # 由 CBoard 安装脚本生成（可重复生成，覆盖前会自动备份为 .backup.<时间戳>）
@@ -758,8 +862,8 @@ server {
 ${acme_block}    location / { return 301 https://\$host\$request_uri; }
 }
 server {
-    listen 443 ssl;
-    http2 on;
+    ${listen443}
+    ${listen_http2}
     server_name ${DOMAIN};
     ssl_certificate ${cert_root}/fullchain.pem;
     ssl_certificate_key ${cert_root}/privkey.pem;
@@ -897,21 +1001,34 @@ full_deploy() {
     CURRENT_STAGE="部署（full_deploy）"
     log "开始全自动部署流程..."
 
-    # 0. 运行环境探测与预检
+    # 0. 运行环境探测
     validate_domain "$DOMAIN" || exit 1
     detect_nginx_layout
+
+    # 1. 自举依赖：基础包 → C 编译器 → Go → Nginx → Node
+    #    （干净机器上「一键部署」必须能自己装齐；历史版本缺 Go/Node/Nginx 就直接中止）
+    ensure_base_packages
+    if ! command -v cc >/dev/null 2>&1 && ! command -v gcc >/dev/null 2>&1; then
+        step "安装编译依赖（SQLite 驱动需要 cgo）..."
+        install_build_deps || warn "编译依赖安装失败，构建阶段可能报 CGO 错误"
+    fi
+    install_go || return 1
+    ensure_nginx || return 1
+    ensure_node
+
+    # 2. 源码（目录为空时自动从 GitHub 获取）
+    ensure_source_code || return 1
+    cd "$PROJECT_DIR" || { error "无法进入项目目录"; exit 1; }
+
+    # 3. .env 与预检
     ensure_env_file || exit 1
     if ! preflight_environment; then
         error "环境预检未通过，部署已中止（现有服务不受影响）"
         return 1
     fi
 
-    # 1. 检查项目文件
-    if [ ! -f "$PROJECT_DIR/go.mod" ] || [ ! -f "$PROJECT_DIR/cmd/server/main.go" ]; then
-        error "项目目录缺少源码（$PROJECT_DIR/go.mod 或 cmd/server/main.go），请先执行菜单 11 从 GitHub 同步"
-        return 1
-    fi
-    cd "$PROJECT_DIR" || { error "无法进入项目目录"; exit 1; }
+    # 4. ACME webroot 与上传目录（certbot 校验文件与附件都落在这里）
+    mkdir -p "${PROJECT_DIR}/.well-known/acme-challenge" "${PROJECT_DIR}/uploads"
 
     # 2. 备份现有数据库（首次部署时会跳过）
     backup_database
@@ -1117,6 +1234,31 @@ preflight_environment() {
     return 0
 }
 
+
+# 源码获取：目录为空时自动 clone（新机器上很常见）
+ensure_source_code() {
+    if [[ -f "${PROJECT_DIR}/go.mod" ]] && [[ -f "${PROJECT_DIR}/cmd/server/main.go" ]]; then
+        return 0
+    fi
+    step "项目源码缺失，尝试从 GitHub 获取..."
+    mkdir -p "$PROJECT_DIR"
+    cd "$PROJECT_DIR" || return 1
+    if [[ -d .git ]]; then
+        git fetch origin && git reset --hard origin/main
+    else
+        if git clone "$GITHUB_REPO" "$PROJECT_DIR.tmp-clone" 2>/dev/null; then
+            cp -a "$PROJECT_DIR.tmp-clone/." "$PROJECT_DIR/" && rm -rf "$PROJECT_DIR.tmp-clone"
+        else
+            git init -q && git remote add origin "$GITHUB_REPO" && git fetch origin && git checkout -b main && git reset --hard origin/main
+        fi
+    fi
+    if [[ -f "${PROJECT_DIR}/go.mod" ]]; then
+        log "✅ 源码已就绪"
+        return 0
+    fi
+    error "无法获取源码，请手动把仓库放到 ${PROJECT_DIR}"
+    return 1
+}
 
 # 从 .env 推导 SQLite 数据库文件路径
 detect_db_path() {

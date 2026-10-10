@@ -2,14 +2,14 @@
 # ============================================
 # CBoard Go 一键安装 / 运维脚本 —— 宝塔面板版
 # ============================================
-# 与 install.sh（非宝塔版）共用同一套已修复的部署内核：
-#   * Nginx 环境自动探测（宝塔 / 系统 nginx 都能正确定位二进制、站点目录、pid）
-#   * 站点配置统一模板（含 /uploads 反代、index.html 不缓存、client_max_body_size、ACME 放行段）
-#   * 写配置后先 nginx -t，失败自动回滚；不再 pkill nginx / pkill -f "server|node"
-#   * 后端原子构建（server.new → 健康检查 → 替换 + 备份）、升级前自动备份数据库
-#   * Go / Node 版本按仓库实际要求安装（Go 1.25.0、Node 22.12.0，vite 7 需 ≥20.19）
+# 与 install.sh（非宝塔版）共用同一套已逐项验证的部署内核：
+#   * Nginx 环境自动探测（宝塔 / 系统 nginx 都能正确定位二进制、站点目录、pid 文件）
+#   * 站点配置统一模板（/uploads 反代、index.html 不缓存、client_max_body_size、ACME 放行段、http2 版本自适应）
+#   * 写配置后先 nginx -t，失败自动回滚；只清理本项目进程（不做 pkill nginx / pkill -f "server|node"）
+#   * 干净机器自举：基础包 → gcc → Go 1.25.0 → Node 22.12.0 → Nginx（宝塔已装则直接用宝塔的）
+#   * 后端原子构建（server.new → /health 健康检查 → 替换 + 保留 server.bak.* 可回滚）、升级前自动备份数据库
 #   * 运维 CLI 用绝对 DATABASE_URL 调用，避免写进 go run 的临时构建目录
-# 宝塔特有：优先使用宝塔的站点目录与 nginx，装完提示面板侧注意事项。
+# 宝塔特有：优先使用宝塔的站点目录与 nginx；额外提供「卸载网站配置」菜单项。
 
 set +e
 
@@ -17,7 +17,7 @@ set +e
 export GIT_PAGER=cat 
 
 # --- 基础配置 (自动检测) ---
-# 默认：脚本所在目录即项目目录（宝塔站点目录形如 /www/wwwroot/xxx.com）
+# 脚本所在目录即为项目目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${PROJECT_DIR_OVERRIDE:-${SCRIPT_DIR}}"
 # 自动从目录名提取域名（/www/wwwroot/xxx.com → xxx.com），可用 DOMAIN 环境变量覆盖
@@ -424,6 +424,101 @@ build_backend() {
     return 0
 }
 
+# 基础依赖：git（菜单 11 同步必需）、sqlite3（升级前可靠备份 .backup）、wget/curl
+ensure_base_packages() {
+    local need=()
+    command -v git >/dev/null 2>&1 || need+=(git)
+    command -v sqlite3 >/dev/null 2>&1 || need+=(sqlite3)
+    command -v wget >/dev/null 2>&1 || need+=(wget)
+    command -v curl >/dev/null 2>&1 || need+=(curl)
+    [[ ${#need[@]} -eq 0 ]] && return 0
+    step "安装基础依赖: ${need[*]}"
+    if command -v apt-get >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${need[@]}"
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y "${need[@]}"
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y "${need[@]}"
+    fi
+    for c in "${need[@]}"; do
+        command -v "$c" >/dev/null 2>&1 && log "✅ $c 已就绪" || warn "$c 安装失败（相关功能会降级）"
+    done
+    return 0
+}
+
+# 安装 Go（版本对齐 go.mod；干净机器上由脚本自己装，缺 Go 直接中止等于「一键部署」不可用）
+install_go() {
+    if command -v go >/dev/null 2>&1; then
+        local cur
+        cur="$(go version 2>/dev/null | awk '{print $3}' | tr -d 'go')"
+        if ver_ge "$cur" "$MIN_GO_VERSION"; then
+            log "✅ Go 已满足要求: $cur"
+            return 0
+        fi
+        warn "当前 Go $cur 低于 go.mod 要求的 ${MIN_GO_VERSION}，将安装 ${GO_VERSION}"
+    else
+        step "未检测到 Go，安装 Go ${GO_VERSION}..."
+    fi
+    local arch
+    case "$(uname -m)" in
+        x86_64) arch="amd64";;
+        aarch64|arm64) arch="arm64";;
+        *) error "不支持的架构: $(uname -m)"; return 1;;
+    esac
+    local tar="go${GO_VERSION}.linux-${arch}.tar.gz"
+    local tmp; tmp="$(mktemp -d)"
+    if ! wget -q "https://go.dev/dl/${tar}" -O "${tmp}/${tar}"; then
+        error "下载 Go 失败（请检查网络，或手动安装 Go >= ${MIN_GO_VERSION}）"
+        rm -rf "$tmp"; return 1
+    fi
+    if ! tar -C "$tmp" -xzf "${tmp}/${tar}"; then
+        error "Go 解压失败"; rm -rf "$tmp"; return 1
+    fi
+    # 旧版本改名备份再替换（不要 rm -rf，失败还能回去）
+    [[ -d /usr/local/go ]] && mv /usr/local/go "/usr/local/go.bak.$(date +%Y%m%d_%H%M%S)"
+    mv "${tmp}/go" /usr/local/go
+    ln -sf /usr/local/go/bin/go /usr/local/bin/go
+    rm -rf "$tmp"
+    export PATH="$PATH:/usr/local/go/bin"
+    command -v go >/dev/null 2>&1 && log "✅ Go 已安装: $(go version)" || { error "Go 安装失败"; return 1; }
+    return 0
+}
+
+# 安装 Nginx（纯 VPS 上脚本必须自己装：否则站点配置写进一个不存在的 web 服务器里）
+ensure_nginx() {
+    if command -v nginx >/dev/null 2>&1 || [[ -x /www/server/nginx/sbin/nginx ]]; then
+        return 0
+    fi
+    step "未检测到 Nginx，正在安装..."
+    if command -v apt-get >/dev/null 2>&1; then
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nginx
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y nginx
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y nginx
+    fi
+    if command -v nginx >/dev/null 2>&1; then
+        systemctl enable nginx >/dev/null 2>&1
+        systemctl start nginx >/dev/null 2>&1
+        # 安装后重新探测（二进制/配置目录/pid 都变了）
+        detect_nginx_layout
+        mkdir -p "$NGINX_VHOST_DIR"
+        log "✅ Nginx 已安装: $(nginx -v 2>&1 | head -1)"
+        return 0
+    fi
+    error "Nginx 安装失败，请手动安装后重试"
+    return 1
+}
+
+# Nginx 版本（用于决定 http2 写法：`listen ... http2` 在 1.25.1+ 被废弃，`http2 on;` 在旧版不存在）
+nginx_version() {
+    local bin="${NGINX_BIN:-$(command -v nginx)}"
+    [[ -x "$bin" ]] || { echo "0.0.0"; return; }
+    "$bin" -v 2>&1 | sed -n 's|.*nginx/\([0-9.]*\).*||p' | head -1
+}
+
 # 安装编译依赖（首次部署在最小化系统上必需；否则 CGO 会被静默关闭 → 二进制能编译但一碰 SQLite 就死）
 install_build_deps() {
     if command -v apt-get >/dev/null 2>&1; then
@@ -757,6 +852,15 @@ render_site_config() {
     if [[ -f "$conf" ]]; then
         cp "$conf" "${conf}.backup.$(date +%Y%m%d_%H%M%S)"
     fi
+    # http2：>=1.25.1 用「listen 443 ssl; http2 on;」，旧版必须写在同一行，否则 nginx -t 直接失败
+    local listen443 listen_http2
+    listen443="listen 443 ssl;"
+    listen_http2="    http2 on;"
+    if ! ver_ge "$(nginx_version)" "1.25.1"; then
+        listen443="listen 443 ssl http2;"
+        listen_http2=""
+    fi
+
     if [[ "$mode" == "https" && -n "$cert_root" ]]; then
         cat > "$conf" << EOF
 # 由 CBoard 安装脚本生成（可重复生成，覆盖前会自动备份为 .backup.<时间戳>）
@@ -766,8 +870,8 @@ server {
 ${acme_block}    location / { return 301 https://\$host\$request_uri; }
 }
 server {
-    listen 443 ssl;
-    http2 on;
+    ${listen443}
+    ${listen_http2}
     server_name ${DOMAIN};
     ssl_certificate ${cert_root}/fullchain.pem;
     ssl_certificate_key ${cert_root}/privkey.pem;
@@ -909,18 +1013,23 @@ full_deploy() {
     validate_domain "$DOMAIN" || exit 1
     detect_nginx_layout
     if [[ "$NGINX_VHOST_DIR" == /www/server/panel/vhost/nginx ]]; then
-        log "检测到宝塔环境：站点配置将写入 ${NGINX_VHOST_DIR}"
+        log "检测到宝塔环境：站点配置将写入 ${NGINX_VHOST_DIR}（由宝塔 nginx 提供）"
+    else
+        log "未检测到宝塔 nginx，将按系统 nginx 部署（宝塔面板装好后重跑本脚本可切回宝塔环境）"
     fi
 
-    # 1. 依赖环境：C 编译器（CGO/SQLite 必需）→ Go → Node
+    # 1. 自举依赖：基础包 → C 编译器 → Go → Nginx → Node
+    #    （干净机器上「一键部署」必须能自己装齐；历史版本缺 Go/Node/Nginx 就直接中止）
+    ensure_base_packages
     if ! command -v cc >/dev/null 2>&1 && ! command -v gcc >/dev/null 2>&1; then
         step "安装编译依赖（SQLite 驱动需要 cgo）..."
         install_build_deps || warn "编译依赖安装失败，构建阶段可能报 CGO 错误"
     fi
     install_go || return 1
+    ensure_nginx || return 1
     ensure_node
 
-    # 2. 源码
+    # 2. 源码（目录为空时自动从 GitHub 获取）
     ensure_source_code || return 1
     cd "$PROJECT_DIR" || { error "无法进入项目目录"; exit 1; }
 
@@ -930,6 +1039,9 @@ full_deploy() {
         error "环境预检未通过，部署已中止（现有服务不受影响）"
         return 1
     fi
+
+    # 4. ACME webroot 与上传目录（certbot 校验文件与附件都落在这里）
+    mkdir -p "${PROJECT_DIR}/.well-known/acme-challenge" "${PROJECT_DIR}/uploads"
 
     # 2. 备份现有数据库（首次部署时会跳过）
     backup_database
@@ -1136,43 +1248,7 @@ preflight_environment() {
 }
 
 
-# 安装/升级 Go 到仓库要求的版本（go.mod: go 1.25.0）
-install_go() {
-    if command -v go >/dev/null 2>&1; then
-        local cur
-        cur="$(go version 2>/dev/null | awk '{print $3}' | tr -d 'go')"
-        if ver_ge "$cur" "$MIN_GO_VERSION"; then
-            log "✅ Go 已满足要求: $cur"
-            return 0
-        fi
-        warn "当前 Go $cur 低于 go.mod 要求的 ${MIN_GO_VERSION}，将安装 ${GO_VERSION}"
-    fi
-    step "安装 Go ${GO_VERSION}..."
-    local arch
-    case "$(uname -m)" in
-        x86_64) arch="amd64";;
-        aarch64|arm64) arch="arm64";;
-        *) error "不支持的架构: $(uname -m)"; return 1;;
-    esac
-    local tar="go${GO_VERSION}.linux-${arch}.tar.gz"
-    local tmp; tmp="$(mktemp -d)"
-    if ! wget -q "https://go.dev/dl/${tar}" -O "${tmp}/${tar}"; then
-        error "下载 Go 失败（请检查网络，或手动安装 Go >= ${MIN_GO_VERSION}）"
-        rm -rf "$tmp"; return 1
-    fi
-    if ! tar -C "$tmp" -xzf "${tmp}/${tar}"; then
-        error "Go 解压失败"; rm -rf "$tmp"; return 1
-    fi
-    # 旧版本先改名备份，再替换（历史实现是直接 rm -rf /usr/local/go，失败就没得回滚）
-    [[ -d /usr/local/go ]] && mv /usr/local/go "/usr/local/go.bak.$(date +%Y%m%d_%H%M%S)"
-    mv "${tmp}/go" /usr/local/go
-    ln -sf /usr/local/go/bin/go /usr/local/bin/go
-    rm -rf "$tmp"
-    export PATH="$PATH:/usr/local/go/bin"
-    command -v go >/dev/null 2>&1 && log "✅ Go 已安装: $(go version)" || { error "Go 安装失败"; return 1; }
-}
-
-# 源码获取：宝塔版首次部署时目录通常是空的，这里自动 clone/初始化
+# 源码获取：目录为空时自动 clone（新机器上很常见）
 ensure_source_code() {
     if [[ -f "${PROJECT_DIR}/go.mod" ]] && [[ -f "${PROJECT_DIR}/cmd/server/main.go" ]]; then
         return 0
@@ -1320,9 +1396,9 @@ deep_clean() {
     log "✅ 缓存清理完毕（前端 dist 与后端二进制均已保留）"
 }
 
-# 卸载网站（宝塔版特有）：只删本项目的配置与服务，数据库/项目目录只询问后处理
+# 卸载网站（宝塔版特有）：只删本项目的配置与服务，项目目录/数据库只提示不删除
 uninstall_site() {
-    step "卸载网站配置（不会删除项目目录与数据库，除非你确认）..."
+    step "卸载网站配置（不会删除项目目录与数据库）..."
     local conf; conf="$(site_conf_path)"
     warn "将删除：${conf}、/etc/systemd/system/cboard.service"
     local ok=""
@@ -1332,18 +1408,21 @@ uninstall_site() {
     stop_app_processes
     systemctl disable cboard >/dev/null 2>&1
 
-    [[ -f "$conf" ]] && { cp "$conf" "${conf}.uninstalled.$(date +%Y%m%d_%H%M%S)" 2>/dev/null; rm -f "$conf"; log "已删除站点配置（已留副本）: $conf"; }
-    # 宝塔的扩展配置目录 / Apache 配置（若存在）
-    [[ -d "${NGINX_VHOST_DIR}/extension/${DOMAIN}" ]] && rm -rf "${NGINX_VHOST_DIR}/extension/${DOMAIN}" && log "已删除扩展配置目录"
+    if [[ -f "$conf" ]]; then
+        cp "$conf" "${conf}.uninstalled.$(date +%Y%m%d_%H%M%S)" 2>/dev/null
+        rm -f "$conf"
+        log "已删除站点配置（已留副本）: $conf"
+    fi
+    [[ -d "${NGINX_VHOST_DIR}/extension/${DOMAIN}" ]] && rm -rf "${NGINX_VHOST_DIR}/extension/${DOMAIN}" && log "已删除宝塔扩展配置目录"
     [[ -f "/www/server/panel/vhost/apache/${DOMAIN}.conf" ]] && rm -f "/www/server/panel/vhost/apache/${DOMAIN}.conf" && log "已删除 Apache 配置"
     if [[ -f /etc/systemd/system/cboard.service ]]; then
         rm -f /etc/systemd/system/cboard.service
         systemctl daemon-reload
         log "已删除 systemd 单元"
     fi
-    nginx_apply_or_rollback || warn "站点配置删除后 nginx -t 未通过，请手动检查"
+    nginx_apply_or_rollback || warn "删除站点配置后 nginx -t 未通过，请手动检查"
     warn "注意：项目目录 ${PROJECT_DIR}、数据库与 .env 均保留，如需彻底清理请手动删除"
-    warn "宝塔面板里若仍显示该站点，请在面板中手动删除（面板与脚本各自维护一份记录）"
+    warn "宝塔面板里若仍显示该站点，请在面板中手动删除（面板与脚本各维护一份记录）"
 }
 
 # 只重建并重启（菜单 14）：不改 nginx、不改 unit，避免「只想重启」却把配置覆盖了
