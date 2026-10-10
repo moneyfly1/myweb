@@ -2310,7 +2310,17 @@ apply_site_config_desired() {
     detect_cert >/dev/null; local cert_dir="$CERT_DIR"
     if site_conf_is_panel_managed; then
         inject_into_panel_conf
-        [[ -n "$cert_dir" ]] && enable_https_panel_conf "$cert_dir"
+        # CERT_MANAGER=panel：证书完全交给宝塔面板，脚本**不写** SSL 段。
+        # 真机取证：宝塔部署证书前会检查配置里是否已有 ssl_certificate，只要有就跳过写它自己的证书
+        # → 面板点"申请"会"成功"但 vhost/cert/<域名>/ 里没有证书，面板续签也随之没有可续订单（表现为续签失败）。
+        if [[ "$CERT_MANAGER" == "panel" ]]; then
+            if ! grep -q "ssl_certificate" "$conf"; then
+                warn "CERT_MANAGER=panel：本站点尚未开启 SSL，请在面板「网站 → SSL → Let's Encrypt」申请"
+                warn "   申请完成后面板会自行写入证书并把站点切到 HTTPS（脚本不再插手，只负责复用）"
+            fi
+        elif [[ -n "$cert_dir" ]]; then
+            enable_https_panel_conf "$cert_dir"
+        fi
     elif [[ -f "$conf" ]] && grep -q "由 CBoard 安装脚本生成" "$conf"; then
         if [[ -n "$cert_dir" ]]; then render_site_config https "$cert_dir"; else render_site_config http; fi
     elif [[ -f "$conf" ]]; then
