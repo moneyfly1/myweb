@@ -49,7 +49,7 @@ CBoard 最初源于一个非常实际的个人需求：**将多个机场的订�
 | ⚡ **高性能** | 采用 Go 语言构建，内存占用仅 35-95 MB（同类 Python 面板通常需要 300-850 MB），毫秒级启动 |
 | 🔒 **安全可靠** | JWT 双令牌认证、bcrypt 密码加密、登录限流与暴力破解检测、敏感字段脱敏、CORS/CSRF 防护 |
 | 🧩 **功能完整** | 覆盖机场运营全链路：注册认证、订阅分发、设备管控、套餐订单、支付、工单、邀请、营销、统计 |
-| 🐳 **易于部署** | 支持宝塔面板、无宝塔 VPS 一键脚本、Docker Compose 三种部署方式，开箱即用 |
+| 🐳 **易于部署** | 一套一键脚本（纯 VPS / 宝塔通用，自动识别环境）+ Docker Compose，开箱即用 |
 
 ---
 
@@ -62,7 +62,7 @@ CBoard 最初源于一个非常实际的个人需求：**将多个机场的订�
 - 🔒 **企业级安全**：JWT + 刷新令牌 + 黑名单、bcrypt 加密、登录限流、暴力破解检测、敏感字段脱敏、验证码原子消费、CORS/CSRF 防护
 - 📦 **功能完整**：371 个 API 路由，覆盖用户端 16 个页面 + 管理端 26 个页面
 - 🎨 **现代化前端**：Vue 3 + Element Plus 响应式设计，深色 / 浅色主题，移动端抽屉全屏适配
-- 🐳 **三种部署**：宝塔面板脚本 / 无宝塔 VPS 一键脚本 / Docker Compose
+- 🐳 **多种部署**：一键脚本（`install.sh`，纯 VPS 与宝塔通用；宝塔入口 `bt-deploy.sh`）/ Docker Compose
 
 ### 业务能力
 
@@ -121,7 +121,7 @@ CBoard 最初源于一个非常实际的个人需求：**将多个机场的订�
 |------|------|------|
 | Go | 1.21+ | 安装脚本会自动安装 |
 | Node.js | 16+ | 仅前端构建需要，安装脚本会自动安装 |
-| Nginx | 任意版本 | 宝塔环境由面板提供；无宝塔时由 `install-vps.sh` 自动安装 |
+| Nginx | 任意版本 | 宝塔环境用面板的 nginx；纯 VPS 由 `install.sh` 自动安装（http2 写法按版本自适应） |
 | 数据库 | SQLite（默认，零配置）或 MySQL / PostgreSQL | 高流量生产建议 MySQL / PostgreSQL |
 | Redis | 可选 | 不配置自动禁用缓存，功能不受影响 |
 
@@ -344,8 +344,10 @@ CBoard 提供 **三种部署方式**，按环境选择：
 | 方式 | 适用场景 | 安装工具 | 难度 |
 |------|----------|----------|------|
 | 🐳 **Docker** | 任意 Linux 服务器（推荐生产使用） | `docker compose up -d` | ⭐ |
-| 🖥️ **无宝塔 VPS** | 纯 VPS、未装宝塔 | `install-vps.sh` 一键脚本 | ⭐⭐ |
-| 🧱 **宝塔面板** | 已安装宝塔面板 | `install.sh` + 面板建站 | ⭐⭐ |
+| 🖥️ **一键脚本** | 纯 VPS **或** 宝塔面板都适用（推荐） | `install.sh`；宝塔入口 `bt-deploy.sh` | ⭐⭐ |
+| 🧱 **宝塔面板建站 + 脚本** | 想在面板里统一管理站点与证书 | 面板「添加站点」+ `install.sh` / `bt-deploy.sh` | ⭐⭐ |
+
+> 三个脚本只有两个需要关心：**`install.sh`（唯一实现）** 与 **`bt-deploy.sh`（宝塔入口，薄封装，行为等同 install.sh）**；`install-vps.sh` 已废弃，运行会被直接拦截。
 
 ---
 
@@ -594,98 +596,195 @@ go run ./cmd/migrate -sqlite ./data/cboard.db -mysql "cboard_user:cboard_passwor
 
 ---
 
-### 🖥️ 方式二：无宝塔（纯 VPS）一键部署
+### 🖥️ 方式二：一键脚本部署（`install.sh`，纯 VPS 与宝塔通用）
 
-**适用**：Ubuntu / Debian / CentOS，未安装宝塔。脚本自动安装 Nginx、Go、Node.js、Certbot 并完成全流程部署。
+**这是本项目唯一维护的安装/运维脚本。**它会自动识别环境：装了宝塔就用宝塔的 nginx 与站点目录，没装就装系统 nginx；干净机器上会自己把 git/gcc/Go/Node/Nginx/certbot 装齐。
+
+#### 三个脚本到底用哪个？
+
+| 脚本 | 状态 | 用它做什么 |
+|------|------|-----------|
+| **`install.sh`** | ✅ **唯一实现，就用它** | 部署 + 运维 + 自检修复 + 完全卸载，纯 VPS 与宝塔都适用 |
+| **`bt-deploy.sh`** | ✅ 宝塔入口（薄封装） | 只做宝塔环境检查与证书策略提示，然后转交 `install.sh`，**行为与 install.sh 完全一致** |
+| `install-vps.sh` | ❌ 已废弃 | 它把 Go 固定 1.21.5、Node 固定 18，与 `go.mod`(Go 1.25) 和 vite 7(Node ≥20.19) 不匹配，**运行必然在构建前端时失败**；脚本运行时会直接拦截退出（`FORCE_LEGACY=1` 可强制跑） |
+
+> 为什么 `bt-deploy.sh` 只剩一层封装：它以前是 `install.sh` 的完整拷贝，两份代码各自演进后开始漂移（宝塔版曾缺 CGO/Node 版本校验/`nginx -t`/`/uploads` 反代/ACME 放行段，而 install.sh 曾不会自举 Go/Node/Nginx）。现在只保留一套实现，两个入口不会再有差异。
 
 #### 前置条件
 
 | 项 | 要求 |
 |----|------|
-| 系统 | Ubuntu 18.04+ / Debian 10+ / CentOS 7+ |
-| 配置 | 至少 1 核 CPU、512 MB 内存、10 GB 磁盘 |
-| 域名 | 已绑定且 DNS 解析到本机 IP |
-| 端口 | 80、443 已开放 |
+| 系统 | Debian 10+ / Ubuntu 18.04+ / CentOS 7+ / Rocky / AlmaLinux（实测 Debian 12 全新机器全程通过） |
+| 权限 | root（脚本会装软件、写 `/etc/systemd`、写 nginx 配置） |
+| 配置 | ≥1 核、≥1 GB 内存（默认编译前端；1 GB 也能跑，2 GB 更稳）、≥10 GB 磁盘 |
+| 域名 | 已解析到本机 IP（A 记录）。**目录名必须等于域名**，例如 `/www/wwwroot/pingzen.top` |
+| 端口 | 80、443 放行（云厂商安全组 + 系统防火墙都要放；脚本不代改防火墙） |
 
-#### 安装步骤
-
-```bash
-# 1. 下载并运行脚本（需 root）
-curl -sL https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh -o install-vps.sh
-sudo bash install-vps.sh
-
-# 2. 按提示输入域名、项目目录（默认 /opt/cboard）、管理员信息
-# 3. 脚本自动完成：装依赖 → 拉代码 → 装 Go/Node → 编译后端/构建前端
-#    → 生成 .env → 配 Nginx → 申请 SSL → 创建 systemd 服务并启动
-```
-
-#### 验证
-
-- 前端：`https://你的域名`
-- 管理后台：`https://你的域名/admin/login`
-- 健康检查：`https://你的域名/health`
-
-#### 安装后管理
+#### 快速开始（三条命令）
 
 ```bash
-systemctl start/stop/restart/status cboard   # 服务管理
-journalctl -u cboard -f                       # 实时日志
-tail -f /opt/cboard/server.log                # 应用日志
-# 修改配置：编辑 /opt/cboard/.env 后 systemctl restart cboard
+# 1) 克隆到「域名同名目录」（脚本用目录名当域名）
+git clone https://github.com/moneyfly1/myweb.git /www/wwwroot/你的域名
+cd /www/wwwroot/你的域名
+
+# 2) 运行脚本（root）
+sudo bash install.sh
+
+# 3) 在菜单里输入 1（一键全自动部署），然后按提示回答 Redis 相关提问
 ```
 
-> ⚠️ 国内网络 GitHub 克隆失败时：先把代码手动放入安装目录（如 `/opt/cboard`），重新运行脚本并在「是否删除并重新下载」时选 **n**。
+非交互/自动化场景（脚本对 EOF 安全，不会空转）：
+
+```bash
+printf '1\nn\n' | sudo bash install.sh     # 1=全自动部署，n=不配置 Redis
+```
+
+#### 脚本自动做了什么
+
+| 阶段 | 内容 |
+|------|------|
+| ① 自举依赖 | 基础包（git/sqlite3/wget/curl）→ gcc（SQLite 的 CGO 必需）→ **Go 1.25.0** → **Node 22.12.0** → **Nginx**（已装宝塔则直接用宝塔 nginx） |
+| ② 源码与环境 | 源码缺失时自动 `git clone`；生成 `.env`（`HOST=127.0.0.1`、数据库**绝对路径**、`SECRET_KEY` 随机 64 位、权限 600） |
+| ③ 构建 | 后端 `CGO_ENABLED=1` 编译到 `server.new` → 校验 → 替换（旧版存为 `server.bak.<时间戳>` 供回滚）；前端按 lockfile 安装依赖并 `vite build` |
+| ④ 服务 | 写 systemd 单元（`EnvironmentFile`/`LimitNOFILE`/`NoNewPrivileges`）→ 启服务 → **业务健康检查**（`/health`，不是只看 `is-active`） |
+| ⑤ Nginx | 写入统一点站模板：`/api/`、`/uploads/`（附件反代，避免被 SPA fallback 吞成 HTML）、`/repo-sync/`、`/assets/` 长缓存、`index.html` 不缓存、`client_max_body_size 16m`、ACME 放行段；写完先 `nginx -t`，失败自动换 http2 写法或**精确回滚本次修改** |
+| ⑥ 证书 | 复用优先（certbot → 宝塔 → acme.sh），没有才申请；配置续期重载钩子与定时任务 |
+| ⑦ 收尾 | 日志轮转（logrotate）、升级前自动备份数据库到 `/www/backup/cboard` |
+
+#### 菜单说明（0–16）
+
+| 项 | 功能 | 说明 |
+|----|------|------|
+| **1** | 一键全自动部署 | 首次安装走这个；重复执行是安全的（幂等，会先备份数据库与旧二进制） |
+| 2 | 创建/重置管理员账号 | 密码不回显、留空自动生成强随机密码；**建完会自动用该口令打一次登录接口实测**，确认真的能登进去 |
+| 3 | 强制重启服务 | 只清理本项目进程（`^<项目目录>/server`），**不会**误杀 nginx/mysql/redis |
+| 4 | 深度清理缓存 | 清 Redis 本项目键前缀 + 清空 `server.log` + 清 Go 编译缓存；**不删** `frontend/dist` 与 `server`（历史上删了会导致站点白屏且重启失败） |
+| 5 | 解锁用户账户 | 支持用户名或邮箱 |
+| 6 | 查看服务状态 | `systemctl status cboard` |
+| 7 | 查看实时日志 | `tail -f server.log`（单元把日志写文件，`journalctl` 里只有 systemd 启停两行） |
+| 8 | 标准重启服务 | 重启 + 健康检查 |
+| 9 | 停止服务 | |
+| 10 | 证书续期 | 手动续期（自动续期由 certbot.timer 或宝塔面板负责） |
+| **11** | 从 GitHub 同步并重建 | 升级入口：`git fetch`（失败会报错而不是假装"已是最新"）→ 备份数据库 → 原子构建 → 重启 + 健康检查 |
+| 12 | 配置 Redis 缓存 | 可选；只监听 `127.0.0.1`，清缓存按本项目键前缀删除而不是 `FLUSHDB` |
+| **13** | 回滚到升级前版本 | 用 `server.bak.*` 回滚二进制；数据库备份在 `/www/backup/cboard/pre-upgrade-*.db.gz` |
+| 14 | 只重新构建并重启 | 不动 nginx/unit，适合"只想重编译" |
+| **15** | 完全卸载 | 删服务/站点配置/宝塔扩展目录/logrotate/续期钩子与 cron（配置副本存 `/root/cboard-uninstall-<时间戳>/`），项目目录/数据库/软件包分别询问，最后做**残留扫描** |
+| **16** | 自检并自动修复 | 见下方「自检自动修复」 |
+| 0 | 退出 | |
+
+#### 环境变量开关
+
+| 变量 | 默认 | 作用 |
+|------|------|------|
+| `CERT_MANAGER` | `auto` | 证书归属：`auto` 复用已有证书、没有则 certbot 签发；`panel` 交给宝塔面板（脚本不主动签，面板申请后重跑菜单 1/16 自动接入 HTTPS）；`certbot` 强制 certbot |
+| `DOMAIN` / `PROJECT_DIR` | 目录名 / 脚本所在目录 | 覆盖域名与项目目录 |
+| `GO_VERSION` / `NODE_VERSION` | `1.25.0` / `22` | 自举安装的版本 |
+| `DB_BACKUP_DIR` / `DB_BACKUP_KEEP` | `/www/backup/cboard` / `10` | 升级前数据库备份位置与保留份数 |
+| `LETSENCRYPT_LIVE_DIR` | `/etc/letsencrypt/live` | certbot 证书目录 |
+
+#### 证书：和宝塔面板的 SSL 会冲突吗？
+
+**会，但脚本已经规避。**冲突点与处理：
+
+| 冲突 | 脚本处理 |
+|------|---------|
+| 两个 ACME 客户端给同一域名重复签发（面板/acme.sh 与 certbot），更容易触发 Let's Encrypt 重复证书速率限制 | `find_cert_dir` 按 **certbot → 宝塔 `/www/server/panel/vhost/cert/<域名>` → acme.sh `/root/.acme.sh/<域名>`** 顺序探测；只要宝塔已有证书就**复用并跳过 certbot**，日志会写明"已跳过 certbot 申请" |
+| 证书文件名不同（acme.sh 是 `fullchain.cer`，certbot/宝塔是 `fullchain.pem`） | 按探测来源渲染文件名，不硬编码 |
+| 面板"保存设置/续签 SSL"会重写站点配置，冲掉脚本加的片段 | 重跑**菜单 16** 自动补回缺的片段，并做"有证书就必须是 HTTPS"的状态对齐 |
+| 面板管理证书时脚本又塞一套 certbot 定时任务 | 自检只在**证书来源是 certbot** 时才补 `certbot.timer`/续期钩子 |
+| 两套证书并存 | `cert_conflict_check` 明确告警，并指出站点当前实际用的是哪一套 |
+
+**结论**：想省事就用面板管证书（`CERT_MANAGER=panel`，或在面板「网站 → SSL」申请后重跑脚本）；用脚本管证书（默认）就**别在面板点"申请/续签"**，只查看。
+
+#### 自检自动修复（菜单 16）
+
+用于"部署/运维中出了问题，让脚本自己修"，会检查并在可能时自动修复：
+
+`.env` 关键项 → 数据库是否存在（**只报告不自动新建**，避免修出空库）→ 必要目录（uploads/ACME webroot/站点目录）→ 后端二进制与前端产物（缺则重建）→ systemd 单元（缺或丢 `EnvironmentFile` 则重写）→ 站点配置必需片段 → `nginx -t`（不过就换 http2 写法重试）→ nginx 进程 → logrotate → 证书与续期钩子/定时任务 → 目标状态对齐（有证书就得是 HTTPS）→ 服务健康（不健康则备份库 → 重建 → 重启）
+
+最后打印「已自动修复 N 项 / 需要人工处理 N 项」。**真机演练**：故意破坏 7 处（删配置片段、写错 http2、删 unit 的 EnvironmentFile、停 nginx、删 logrotate 与续期钩子、删前端产物、把 HTTPS 退回 HTTP），只跑菜单 16 → 7 项全部自动修复，外部 HTTPS 恢复 200。
+
+#### 验证安装结果
+
+```bash
+curl -I https://你的域名                      # 200 + 证书有效
+curl https://你的域名/api/v1/packages         # API 反代正常
+curl http://127.0.0.1:8000/health             # 后端健康（本机）
+systemctl status cboard                       # 服务运行中
+tail -f /www/wwwroot/你的域名/server.log       # 应用日志
+```
+
+#### 故障排查
+
+| 现象 | 处理 |
+|------|------|
+| 服务起不来 | `tail -n 100 server.log`；再跑**菜单 16** 自检修复 |
+| 页面白屏 / 还是旧版本 | 浏览器缓存：配置里 `index.html` 已 no-cache；仍异常就 `Ctrl+Shift+R`，并跑菜单 16（会补齐配置片段） |
+| 附件/图片打不开 | 检查配置是否含 `location /uploads/`（菜单 16 会自动补） |
+| HTTPS 没生效但证书已签 | 多半是 nginx 版本与 http2 写法不匹配，菜单 16 会自动换写法修复 |
+| 上传大文件 413 | 配置里 `client_max_body_size 16m`；要更大就改配置或调 `.env` 的 `MAX_FILE_SIZE` |
+| 域名打不开 | 先确认 DNS 指向本机、80/443 安全组已放行 |
+| 想彻底重来 | 菜单 15 完全卸载 → 重新克隆 → 菜单 1 |
 
 ---
 
-### 🧱 方式三：宝塔面板部署
+### 🧱 方式三：宝塔面板建站 + 脚本部署（推荐宝塔用户）
 
-**适用**：已安装宝塔面板的服务器，先建站再跑脚本。
+**适用**：已装宝塔面板，希望在面板里管理站点、证书与日志。**先在面板建站，再跑脚本** —— 脚本会用面板创建的目录与宝塔 nginx。
 
 #### 安装步骤
 
-1. **宝塔建站**：登录宝塔 → 网站 → 添加站点 → 填写域名，根目录如 `/www/wwwroot/example.com`（PHP 选纯静态即可，无需建数据库）；
-2. **放入代码**（任选其一）：
+1. **面板建站**：宝塔 → 网站 → 添加站点 → 域名填你的域名 → 根目录保持默认 `/www/wwwroot/你的域名`（PHP 选「纯静态」，无需建数据库/FTP）；
+2. **在站点目录里克隆代码**（目录名必须等于域名，脚本用目录名当域名）：
    ```bash
-   # SSH 方式
-   cd /www/wwwroot/example.com && rm -f index.html
+   cd /www/wwwroot/你的域名
+   rm -f index.html .user.ini          # 删掉面板生成的占位文件，避免与 SPA 冲突
    git clone https://github.com/moneyfly1/myweb.git .
    ```
-   或使用宝塔文件管理器 / 本地上传（SCP）；
-3. **运行安装脚本**：
+3. **运行脚本**（宝塔入口与通用脚本行为一致）：
    ```bash
-   cd /www/wwwroot/example.com
-   chmod +x install.sh
-   sudo ./install.sh
+   sudo bash bt-deploy.sh      # 宝塔入口：先提示宝塔环境与证书策略，再转交 install.sh
    ```
-4. 按提示输入项目目录、域名、管理员用户名/邮箱/密码，首次安装选菜单 **1（一键全自动部署）**；
-5. 脚本自动：装 Go/Node → 编译后端/构建前端 → 配置 Nginx 反代 → 申请 SSL → 创建 systemd 服务并启动。
+4. 菜单选 **1（一键全自动部署）**：脚本识别宝塔 nginx 与站点目录 → 补齐 `/uploads`、`index.html` 不缓存等片段 → 编译后端/构建前端 → 注册 systemd 服务 → 处理证书 → 健康检查；
+5. 证书策略二选一：**交给面板**（`CERT_MANAGER=panel bash bt-deploy.sh`，在面板「网站 → SSL → Let's Encrypt」申请，然后重跑脚本或菜单 16 自动接入 HTTPS）；**交给脚本**（默认，之后面板里只查看、别点申请/续签）。
+
+#### 宝塔环境注意事项
+
+| 事项 | 说明 |
+|------|------|
+| 站点配置归属 | 脚本写 `/www/server/panel/vhost/nginx/<域名>.conf`；面板「保存设置 / 续签 SSL」可能重写它 → 重跑**菜单 16** 自动补回必需片段 |
+| `nginx -t` | 脚本校验的是**正在运行的**宝塔 nginx（`/www/server/nginx/sbin/nginx -t`），不会误测系统里另一个 nginx |
+| 证书复用 | 面板证书在 `/www/server/panel/vhost/cert/<域名>/`，脚本会复用并**跳过 certbot**；两套证书并存时会告警并指出当前用的是哪一套 |
+| 面板续期 | 面板自带 ACME（`acme_v2.py`，走 http-01/dns-01）+ 续期任务，面板里点「续签」即可；站点配置的 80 与 443 块都保留了 `/.well-known/acme-challenge/` 放行段，所以两条路都能校验通过 |
+| 防火墙 | 宝塔「安全」放行 80/443（脚本不改防火墙） |
+| 面板站点记录 | 脚本不在面板注册站点；如需面板管理站点，请按上面第 1 步在面板建站 |
 
 #### 安装后管理
 
 | 操作 | 方法 |
 |------|------|
-| 重启服务 | `systemctl restart cboard` 或项目目录 `sudo ./install.sh` 选 8 |
-| 查看日志 | `journalctl -u cboard -f` 或 `tail -f 项目目录/server.log` |
-| Nginx | 宝塔 → 网站 → 站点 → 设置 → 配置文件（脚本已写入反代） |
-| 防火墙 | 宝塔「安全」中放行 80、443 |
-| 创建/重置管理员 | `sudo ./install.sh` 选 2 |
+| 全套运维 | `sudo bash install.sh` 或 `sudo bash bt-deploy.sh`（菜单 2/3/11/13/16 等） |
+| 重启服务 | 菜单 8，或 `systemctl restart cboard` |
+| 查看日志 | 菜单 7，或 `tail -f /www/wwwroot/你的域名/server.log` |
+| 自检修复 | 菜单 16（面板重写配置后用它补回片段） |
+| 完全卸载 | 菜单 15（含残留扫描） |
 
 ---
 
-## 🎯 三种部署方式：管理员与域名配置时机对比
+## 🎯 各部署方式的域名与管理员配置时机
 
 | 部署方式 | 域名在哪配置 | 管理员在哪配置 | 配置时机 |
 |---------|-------------|---------------|---------|
-| **宝塔（install.sh）** | **宝塔添加站点时**（域名 = 站点目录名，脚本自动取 `basename 项目目录`） | 运行脚本后选**菜单 2**「创建/重置管理员账号」交互填写（用户名/邮箱/密码） | 部署完成后随时可改 |
-| **无宝塔（install-vps.sh）** | **运行脚本时交互输入**（提示"域名 (如 example.com)"） | **运行脚本时交互输入**（脚本提示填写管理员用户名/邮箱/密码） | 安装过程中 |
-| **Docker** | `.env` 中 `PANEL_PUBLIC_URL`（仅自建节点回传需要；纯订阅无需域名） | `.env` 中 `ADMIN_USERNAME`/`ADMIN_EMAIL`/`ADMIN_PASSWORD`，首次启动自动创建 | 启动前配置 `.env` |
+| **一键脚本（`install.sh` / `bt-deploy.sh`）** | 由**项目目录名**决定（如 `/www/wwwroot/example.com`），也可用 `DOMAIN=example.com` 覆盖 | 跑脚本后选**菜单 2**（用户名/邮箱/密码交互填写，建完自动实测登录） | 部署后随时可改 |
+| **宝塔面板建站 + 脚本部署** | **面板添加站点时**确定域名与站点目录，脚本读取目录名 | 同上（菜单 2） | 部署后随时可改 |
+| **Docker** | `.env` 的 `PANEL_PUBLIC_URL`（仅自建节点回传需要；纯订阅无需域名） | `.env` 的 `ADMIN_USERNAME`/`ADMIN_EMAIL`/`ADMIN_PASSWORD`，首次启动自动创建 | 启动前配 `.env` |
 
 **关键说明：**
 
-- **宝塔**：域名不是填在 .env 里的，而是**宝塔建站时确定**（如站点目录 `/www/wwwroot/你的域名`），脚本用目录名做域名配置 Nginx。管理员用脚本菜单 2 管理。
-- **Docker**：管理员完全通过 `.env` 环境变量注入，首次启动自动创建；之后每次重启校验密码（管理员被锁也能自动解锁）。
-- **无宝塔**：域名和管理员都在 `install-vps.sh` 运行过程中交互输入，一步到位。
+- **一键脚本**：域名取自项目目录名（`/www/wwwroot/<域名>`），所以克隆时目录名要写对；宝塔环境下会优先使用宝塔的站点目录与 nginx。
+- **Docker**：管理员完全通过 `.env` 注入，首次启动自动创建；不设 `ADMIN_PASSWORD` 会生成随机密码并打印在 `server.log`。
+- **证书**：脚本默认自己用 certbot 管；若你更习惯面板，设 `CERT_MANAGER=panel`，在面板「网站 → SSL」申请后重跑脚本即可自动接入 HTTPS。
 
 ---
 
