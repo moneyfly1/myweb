@@ -643,12 +643,12 @@ printf '1\nn\n' | sudo bash install.sh     # 1=全自动部署，n=不配置 Red
 | 阶段 | 内容 |
 |------|------|
 | ① 自举依赖 | 基础包（git/sqlite3/wget/curl）→ gcc（SQLite 的 CGO 必需）→ **Go 1.25.0** → **Node 22.12.0** → **Nginx**（已装宝塔则直接用宝塔 nginx） |
-| ② 源码与环境 | 源码缺失时自动 `git clone`；生成 `.env`（`HOST=127.0.0.1`、数据库**绝对路径**、`SECRET_KEY` 随机 64 位、权限 600） |
+| ② 源码与环境 | 源码缺失时自动 `git clone`；生成 `.env`（`HOST=127.0.0.1`、数据库**绝对路径**、`SECRET_KEY` 随机 64 位、权限 600），并**自动生成管理员账号密码写进 `.env`**（`ADMIN_USERNAME`/`ADMIN_EMAIL`/`ADMIN_PASSWORD`） |
 | ③ 构建 | 后端 `CGO_ENABLED=1` 编译到 `server.new` → 校验 → 替换（旧版存为 `server.bak.<时间戳>` 供回滚）；前端按 lockfile 安装依赖并 `vite build` |
 | ④ 服务 | 写 systemd 单元（`EnvironmentFile`/`LimitNOFILE`/`NoNewPrivileges`）→ 启服务 → **业务健康检查**（`/health`，不是只看 `is-active`） |
 | ⑤ Nginx | 写入统一点站模板：`/api/`、`/uploads/`（附件反代，避免被 SPA fallback 吞成 HTML）、`/repo-sync/`、`/assets/` 长缓存、`index.html` 不缓存、`client_max_body_size 16m`、ACME 放行段；写完先 `nginx -t`，失败自动换 http2 写法或**精确回滚本次修改** |
 | ⑥ 证书 | 复用优先（certbot → 宝塔 → acme.sh），没有才申请；配置续期重载钩子与定时任务 |
-| ⑦ 收尾 | 日志轮转（logrotate）、升级前自动备份数据库到 `/www/backup/cboard` |
+| ⑦ 收尾 | 日志轮转（logrotate）、升级前自动备份数据库到 `/www/backup/cboard`，并打印**登录地址 + 管理员账号密码**（含一次真实登录验证） |
 
 #### 菜单说明（0–16）
 
@@ -703,6 +703,32 @@ printf '1\nn\n' | sudo bash install.sh     # 1=全自动部署，n=不配置 Red
 `.env` 关键项 → 数据库是否存在（**只报告不自动新建**，避免修出空库）→ 必要目录（uploads/ACME webroot/站点目录）→ 后端二进制与前端产物（缺则重建）→ systemd 单元（缺或丢 `EnvironmentFile` 则重写）→ 站点配置必需片段 → `nginx -t`（不过就换 http2 写法重试）→ nginx 进程 → logrotate → 证书与续期钩子/定时任务 → 目标状态对齐（有证书就得是 HTTPS）→ 服务健康（不健康则备份库 → 重建 → 重启）
 
 最后打印「已自动修复 N 项 / 需要人工处理 N 项」。**真机演练**：故意破坏 7 处（删配置片段、写错 http2、删 unit 的 EnvironmentFile、停 nginx、删 logrotate 与续期钩子、删前端产物、把 HTTPS 退回 HTTP），只跑菜单 16 → 7 项全部自动修复，外部 HTTPS 恢复 200。
+
+#### 安装完成后会直接显示登录信息
+
+菜单 1 跑完会打印（菜单 2 建号后、菜单 8 重启后同样会打印）：
+
+```text
+================== 登录信息 ==================
+  前台地址:     https://你的域名
+  前台登录:     https://你的域名/login
+  管理后台:     https://你的域名/admin
+  管理员登录:   https://你的域名/admin/login
+----------------------------------------------
+  管理员账号:   admin
+  管理员邮箱:   admin@你的域名
+  管理员密码:   <脚本生成的 16 位强随机密码>
+  （密码由 .env 的 ADMIN_PASSWORD 固定：应用每次启动都会按它重置，重启后依然可用；
+    如需修改：改 .env 后菜单 8 重启，或用菜单 2 重置）
+==============================================
+✅ 已实测：用上面这个账号密码登录成功
+```
+
+**密码为什么"永远能显示"**：脚本把生成的密码写进 `.env` 的 `ADMIN_PASSWORD`，
+而应用每次启动都会把该管理员的密码重置成这个值（即使账号被锁定，重启后也能登录）。
+对比：应用自带的默认行为是"首次启动生成随机密码、只在 `server.log` 打印一次"，日志被清理/轮转后就找不回来了。
+
+> 想换成自己的密码：编辑 `.env` 的 `ADMIN_PASSWORD=你的强密码` → 菜单 8 重启；或用**菜单 2** 交互式重置（会当场实测登录）。
 
 #### 验证安装结果
 

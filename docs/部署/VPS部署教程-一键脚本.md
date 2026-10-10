@@ -59,7 +59,7 @@ printf '1\nn\n' | sudo bash install.sh     # 1=全自动部署，n=不配置 Red
 | ④ 服务 | 写 systemd 单元（`EnvironmentFile`/`LimitNOFILE`/`NoNewPrivileges`）→ 启动 → **业务健康检查**（`/health`，不是只看 `is-active`） |
 | ⑤ Nginx | 写入/合并站点配置：`/api/`、`/uploads/`、`/repo-sync/`、`/assets/` 长缓存、`index.html` 不缓存、`client_max_body_size 16m`、ACME 放行段；写完先 `nginx -t`，失败自动换 http2 写法或精确回滚 |
 | ⑥ 证书 | 复用优先（certbot → 宝塔面板 → acme.sh），没有才申请；配置续期重载钩子与定时任务 |
-| ⑦ 收尾 | 日志轮转（logrotate）、每次升级前自动备份数据库到 `/www/backup/cboard` |
+| ⑦ 收尾 | 日志轮转（logrotate）、每次升级前自动备份数据库到 `/www/backup/cboard`，并打印**登录地址 + 管理员账号密码**（含一次真实登录验证） |
 
 **宝塔环境**下采用「合并模式」：保留面板的 `#SSL-START`/`#CERT-APPLY-CHECK` 标记与 include，
 只注入本应用必需的片段（面板重写配置后，跑菜单 16 会自动补回）。
@@ -74,8 +74,24 @@ systemctl status cboard                     # 服务运行中
 tail -f /www/wwwroot/你的域名/server.log     # 应用日志（菜单 7 同效）
 ```
 
-登录管理后台：`https://你的域名/admin` → 首次请用菜单 2 创建/重置管理员
-（脚本会用你设置的口令**实测登录一次**，确认真的能登进去）。
+**登录信息会在部署结束时直接打印出来**（脚本把生成的密码写进 `.env` 的 `ADMIN_PASSWORD`，
+应用每次启动都会按它重置该账号密码，所以这个密码重启后依然有效）：
+
+```text
+================== 登录信息 ==================
+  前台地址:     https://你的域名
+  前台登录:     https://你的域名/login
+  管理后台:     https://你的域名/admin
+  管理员登录:   https://你的域名/admin/login
+  管理员账号:   admin
+  管理员邮箱:   admin@你的域名
+  管理员密码:   <16 位强随机>
+==============================================
+✅ 已实测：用上面这个账号密码登录成功
+```
+
+想用自己设的密码：改 `.env` 的 `ADMIN_PASSWORD=` → 菜单 8 重启；或用**菜单 2** 交互式重置
+（脚本会用新口令实测登录一次，确认真的能登进去）。
 
 ## 五、日常运维（`sudo bash install.sh` 菜单）
 
