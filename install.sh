@@ -2151,9 +2151,17 @@ inject_into_panel_conf() {
     LAST_CONF_BACKUP="${conf}.backup.$(date +%Y%m%d_%H%M%S)"
     cp "$conf" "$LAST_CONF_BACKUP" 2>/dev/null
 
-    # 1) root 精确指向 SPA 产物目录（只改与站点目录完全相同的那一行）
-    if grep -q "root ${PROJECT_DIR};" "$conf"; then
-        sed -i "s|root ${PROJECT_DIR};|root ${PROJECT_DIR}/frontend/dist;|" "$conf"
+    # 1) root 精确指向 SPA 产物目录。
+    #    注意：只改「标记区域之外的第一处」—— 注入块里 ACME 的 root 必须保持指向站点目录，
+    #    否则 certbot/acme.sh 的 webroot 校验会跑到 dist 目录里去（真机验证时发现）。
+    if [[ "$(grep -c "root ${PROJECT_DIR};" "$conf" 2>/dev/null)" != "0" ]] && ! grep -q "root ${PROJECT_DIR}/frontend/dist;" "$conf"; then
+        local tmp; tmp="$(mktemp)"
+        awk -v old="root ${PROJECT_DIR};" -v new="root ${PROJECT_DIR}/frontend/dist;" -v cb="$CB_BEGIN" -v cbh="$CB_HTTPS_BEGIN" '
+            (index($0, cb) == 1 || index($0, cbh) == 1) { inside = 1 }
+            (!inside && !done && index($0, old) > 0) { sub(old, new); done = 1 }
+            { print }
+            (index($0, "# === CBoard-INJECT-END") == 1 || index($0, "# === CBoard-HTTPS-END") == 1) { inside = 0 }
+        ' "$conf" > "$tmp" && mv "$tmp" "$conf"
         log "已将站点 root 指向前端产物: ${PROJECT_DIR}/frontend/dist"
     fi
 
