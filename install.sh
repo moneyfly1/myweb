@@ -1994,54 +1994,56 @@ BLK
 }
 
 # 判定当前站点配置是否由宝塔面板（或其它面板）托管：
-# 面板生成的配置带 #SSL-START / #CERT-APPLY-CHECK 标记，并 include 面板自己的片段目录。
+# 面板生成的配置带 #SSL-START / #CERT-APPLY-CHECK 标记，或 include 面板自己的扩展目录。
 site_conf_is_panel_managed() {
     local conf; conf="$(site_conf_path)"
     [[ -f "$conf" ]] || return 1
     grep -qE "#SSL-START|#CERT-APPLY-CHECK|/www/server/panel/vhost/nginx/extension/" "$conf"
 }
 
-# 面板托管配置的「合并模式」：保留面板的标记、include 与错误页设置，只把本应用必需的片段注入进去。
-# 为什么不能直接覆盖：宝塔面板「网站 → SSL」申请/续签、面板"保存配置"都会重写这个文件，
-# 覆盖式写会把面板的 CERT-APPLY-CHECK/include 标记弄丢，导致面板后续 SSL 申请失败。
-# 幂等设计：每段都先 grep 判存在，重复执行不会重复插入。
-inject_into_panel_conf() {
-    local conf; conf="$(site_conf_path)"
-    [[ -f "$conf" ]] || { warn "站点配置不存在: $conf"; return 1; }
+# 我们注入/追加到站点配置里的区块标记（用于幂等与"面板重写后可补回"）
+CB_BEGIN="# === CBoard-INJECT-BEGIN ==="
+CB_END="# === CBoard-INJECT-END ==="
+CB_HTTPS_BEGIN="# === CBoard-HTTPS-BEGIN ==="
+CB_HTTPS_END="# === CBoard-HTTPS-END ==="
+
+# 替换配置里被标记包裹的区块（不存在则原样返回）
+replace_marked_region() {
+    local conf="$1" begin="$2" end="$3" block="$4"
+    local tmp; tmp="$(mktemp)"
+    awk -v b="$begin" -v e="$end" -v block="$block" '
+        index($0, b) == 1 { print block; skipping = 1; next }
+        index($0, e) == 1 { skipping = 0; next }
+        !skipping { print }
+    ' "$conf" > "$tmp" && mv "$tmp" "$conf"
+}
+
+# 生成要注入站点配置的区块（mode: spa=HTTP 下正常回退；redirect=HTTP 跳 HTTPS）
+build_cboard_inject_block() {
+    local mode="${1:-spa}"
     local port; port="$(env_port)"
-    local changed="no"
-
-    LAST_CONF_BACKUP="${conf}.backup.$(date +%Y%m%d_%H%M%S)"
-    cp "$conf" "$LAST_CONF_BACKUP" 2>/dev/null
-
-    # a) client_max_body_size
-    if ! grep -q "client_max_body_size" "$conf"; then
-        local tmp; tmp="$(mktemp)"
-        awk '!done && /^[[:space:]]*server[[:space:]]*\{/ { print; print "    client_max_body_size 16m;"; done=1; next } { print }' "$conf" > "$tmp" && mv "$tmp" "$conf"
-        changed="yes"
-    fi
-
-    # b) ACME 放行段（宝塔自己也有一份 regex 的 well-known 规则，这里再加一份 ^~ 前缀块，双保险）
-    if ! grep -q "location \^~ /\.well-known/acme-challenge/" "$conf"; then
-        local tmp; tmp="$(mktemp)"
-        awk -v proj="$PROJECT_DIR" '
-            !done && /^[[:space:]]*server[[:space:]]*\{/ {
-                print
-                print "    location ^~ /.well-known/acme-challenge/ {"
-                print "        root " proj ";"
-                print "        default_type text/plain;"
-                print "        try_files $uri =404;"
-                print "    }"
-                done=1; next
-            }
-            { print }
-        ' "$conf" > "$tmp" && mv "$tmp" "$conf"
-        changed="yes"
-    fi
-
-    local api_block uploads_block reposync_block
-    api_block="$(cat << BLK
-    # === CBoard-API-BEGIN ===
+    local spa_line="    location / { try_files \$uri \$uri/ /index.html; }"
+    [[ "$mode" == "redirect" ]] && spa_line="    location / { return 301 https://\$host\$request_uri; }"
+    cat << BLK
+${CB_BEGIN}
+    # 本区块由 CBoard 安装脚本注入（可重复生成）。宝塔面板「保存设置/续签 SSL」重写配置后，
+    # 用菜单 16 自检会自动补回本区块 —— 请勿手工删除这两行标记。
+    client_max_body_size 16m;
+    location ^~ /.well-known/acme-challenge/ {
+        root ${PROJECT_DIR};
+        default_type text/plain;
+        try_files \$uri =404;
+    }
+    # 附件/图片：必须转发给后端，否则会被 SPA 回退吞成 HTML
+    location /uploads/ {
+        proxy_pass http://127.0.0.1:${port};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        expires -1;
+    }
     location /api/ {
         proxy_pass http://127.0.0.1:${port};
         proxy_http_version 1.1;
@@ -2054,25 +2056,6 @@ inject_into_panel_conf() {
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
     }
-    # === CBoard-API-END ===
-BLK
-)"
-    uploads_block="$(cat << BLK
-    # === CBoard-UPLOADS-BEGIN ===
-    location /uploads/ {
-        proxy_pass http://127.0.0.1:${port};
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
-        expires -1;
-    }
-    # === CBoard-UPLOADS-END ===
-BLK
-)"
-    reposync_block="$(cat << BLK
-    # === CBoard-REPOSYNC-BEGIN ===
     location /repo-sync/ {
         proxy_pass http://127.0.0.1:${port};
         proxy_set_header Host \$host;
@@ -2080,80 +2063,48 @@ BLK
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
-    # === CBoard-REPOSYNC-END ===
-BLK
-)"
-    grep -q "location /api/" "$conf" || { insert_block_before_spa "$conf" "location /api/" "$api_block" && changed="yes"; }
-    grep -q "location /uploads/" "$conf" || { insert_block_before_spa "$conf" "location /uploads/" "$uploads_block" && changed="yes"; }
-    grep -q "location /repo-sync/" "$conf" || { insert_block_before_spa "$conf" "location /repo-sync/" "$reposync_block" && changed="yes"; }
-    grep -q "location /assets/" "$conf" || { insert_block_before_spa "$conf" "location /assets/" '    location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; }' && changed="yes"; }
-    grep -q "location = /index.html" "$conf" || { insert_block_before_spa "$conf" "location = /index.html" '    location = /index.html {
+    location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; }
+    location = /index.html {
         add_header Cache-Control "no-cache, no-store, must-revalidate";
         expires -1;
-    }' && changed="yes"; }
-
-    # c) SPA fallback：面板模板默认没有 location /，静态站点会 404
-    if ! grep -qE "^[[:space:]]*location[[:space:]]+/[[:space:]]*\{" "$conf"; then
-        grep -q "CBoard-SPA-BEGIN" "$conf" || cat >> "$conf" << 'SPAEOF'
-
-# === CBoard-SPA-BEGIN（由安装脚本追加：SPA 前端路由回退；面板重写配置后可用菜单 16 补回）===
-# 说明：/api/ 与 /uploads/ 是前缀 location，优先级高于本块，不受影响
-# === CBoard-SPA-END ===
-SPAEOF
-        local tmp; tmp="$(mktemp)"
-        awk '
-            /# === CBoard-SPA-BEGIN/ {
-                print "    location / { try_files $uri $uri/ /index.html; }"
-            }
-            { print }
-        ' "$conf" > "$tmp" && mv "$tmp" "$conf"
-        changed="yes"
-    fi
-
-    # d) root 指向前端产物目录（面板默认 root 是站点目录，而 SPA 产物在 frontend/dist）
-    local want_root="${PROJECT_DIR}/frontend/dist"
-    if ! grep -q "root ${want_root};" "$conf"; then
-        sed -i "s|^[[:space:]]*root [^;]*;|    root ${want_root};|" "$conf"
-        changed="yes"
-        log "已将站点 root 指向前端产物: ${want_root}"
-    fi
-
-    [[ "$changed" == "yes" ]] && log "已按合并模式注入必需片段（保留宝塔面板自己的标记与 include）"
-    return 0
+    }
+${spa_line}
+${CB_END}
+BLK
 }
 
-# 面板托管配置启用 HTTPS：在同一个文件里追加独立的 443 server 块（幂等、带标记），
-# 并把 80 端口的 SPA 回退改成跳转（保留 ACME 与面板的 well-known 规则，续期不受影响）。
-enable_https_panel_conf() {
-    local conf; conf="$(site_conf_path)" cert_dir="$1"
-    [[ -n "$cert_dir" ]] || return 1
+# 生成独立的 443 server 块（面板托管配置的 HTTPS）
+build_cboard_https_block() {
+    local cert_dir="$1"
     local port; port="$(env_port)"
     local listen443="listen 443 ssl;" http2_line="    http2 on;"
     if ! ver_ge "$(nginx_version)" "1.25.1"; then
         listen443="listen 443 ssl http2;"; http2_line=""
     fi
-    LAST_CONF_BACKUP="${conf}.backup.$(date +%Y%m%d_%H%M%S)"
-    cp "$conf" "$LAST_CONF_BACKUP" 2>/dev/null
-
-    if ! grep -q "CBoard-HTTPS-BEGIN" "$conf"; then
-        cat >> "$conf" << EOF
-
-# === CBoard-HTTPS-BEGIN（由安装脚本追加；面板重写配置后可用菜单 16 补回）===
-server {
+    cat << BLK
+${CB_HTTPS_BEGIN}
+server
+{
     ${listen443}
 ${http2_line}
     server_name ${DOMAIN};
     client_max_body_size 16m;
     root ${PROJECT_DIR}/frontend/dist;
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
     ssl_certificate ${cert_dir}/${CERT_FULLCHAIN};
     ssl_certificate_key ${cert_dir}/${CERT_KEY};
-
     location ^~ /.well-known/acme-challenge/ {
         root ${PROJECT_DIR};
         default_type text/plain;
         try_files \$uri =404;
+    }
+    location /uploads/ {
+        proxy_pass http://127.0.0.1:${port};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        expires -1;
     }
     location /api/ {
         proxy_pass http://127.0.0.1:${port};
@@ -2166,15 +2117,6 @@ ${http2_line}
         proxy_set_header Connection "upgrade";
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
-    }
-    location /uploads/ {
-        proxy_pass http://127.0.0.1:${port};
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
-        expires -1;
     }
     location /repo-sync/ {
         proxy_pass http://127.0.0.1:${port};
@@ -2190,22 +2132,65 @@ ${http2_line}
     }
     location / { try_files \$uri \$uri/ /index.html; }
 }
-# === CBoard-HTTPS-END ===
-EOF
-        log "已为面板站点追加 443 server 块（含 API/上传/SPA 与证书）"
+${CB_HTTPS_END}
+BLK
+}
+
+# 面板托管配置的「合并模式」：保留面板的标记 / include / 错误页，只注入本应用必需的片段。
+#
+# 关键点（真机踩过的坑）：
+#   * 宝塔模板把 server 与 { 写成两行，`server {` 或 `location / {` 这类锚点全都匹配不到；
+#     因此把注入块插在**第一个 listen 行之后** —— 一定在第一个 server 块内部，语法必然合法。
+#   * 注入内容整体用标记包裹，重复执行只做"区域替换"，不会堆积重复 location。
+#   * 面板默认 root 指向站点目录，而 SPA 产物在 frontend/dist，需要精确改这一行。
+#   * 已启用 HTTPS 时，注入块里的 location / 自动变成 301 跳转。
+inject_into_panel_conf() {
+    local conf; conf="$(site_conf_path)"
+    [[ -f "$conf" ]] || { warn "站点配置不存在: $conf"; return 1; }
+
+    LAST_CONF_BACKUP="${conf}.backup.$(date +%Y%m%d_%H%M%S)"
+    cp "$conf" "$LAST_CONF_BACKUP" 2>/dev/null
+
+    # 1) root 精确指向 SPA 产物目录（只改与站点目录完全相同的那一行）
+    if grep -q "root ${PROJECT_DIR};" "$conf"; then
+        sed -i "s|root ${PROJECT_DIR};|root ${PROJECT_DIR}/frontend/dist;|" "$conf"
+        log "已将站点 root 指向前端产物: ${PROJECT_DIR}/frontend/dist"
     fi
 
-    # 80 端口的 SPA 回退改成跳转（幂等：只在仍是 try_files 时替换）
-    if grep -qE "^[[:space:]]*location[[:space:]]+/[[:space:]]*\{[[:space:]]*try_files" "$conf"; then
-        python3 - "$conf" <<'PY' 2>/dev/null || sed -i 's|^\([[:space:]]*location / { \)try_files $uri $uri/ /index.html; \(}\)|return 301 https://$host$request_uri; |' "$conf"
-import sys
-p = sys.argv[1]
-t = open(p).read()
-t = t.replace("    location / { try_files $uri $uri/ /index.html; }",
-              "    location / { return 301 https://$host$request_uri; }")
-open(p, "w").write(t)
-PY
+    # 2) 注入块（已启用 HTTPS 时用跳转形态）
+    local mode="spa"
+    grep -q "$CB_HTTPS_BEGIN" "$conf" && mode="redirect"
+    local block; block="$(build_cboard_inject_block "$mode")"
+    if grep -q "$CB_BEGIN" "$conf"; then
+        replace_marked_region "$conf" "$CB_BEGIN" "$CB_END" "$block"
+    else
+        local tmp; tmp="$(mktemp)"
+        awk -v block="$block" '
+            !done && /^[[:space:]]*listen[[:space:]]/ { print; print block; done = 1; next }
+            { print }
+        ' "$conf" > "$tmp" && mv "$tmp" "$conf"
+        log "已按合并模式注入必需片段（保留宝塔面板自己的标记与 include）"
     fi
+    return 0
+}
+
+# 面板托管配置启用 HTTPS：追加独立 443 server 块（幂等），并把注入块切成跳转形态。
+enable_https_panel_conf() {
+    local conf; conf="$(site_conf_path)" cert_dir="$1"
+    [[ -n "$cert_dir" ]] || return 1
+    [[ -f "$conf" ]] || return 1
+    LAST_CONF_BACKUP="${conf}.backup.$(date +%Y%m%d_%H%M%S)"
+    cp "$conf" "$LAST_CONF_BACKUP" 2>/dev/null
+
+    local block; block="$(build_cboard_https_block "$cert_dir")"
+    if grep -q "$CB_HTTPS_BEGIN" "$conf"; then
+        replace_marked_region "$conf" "$CB_HTTPS_BEGIN" "$CB_HTTPS_END" "$block"
+    else
+        printf '\n%s\n' "$block" >> "$conf"
+        log "已为面板站点追加 443 server 块（含 API/上传/SPA 与证书）"
+    fi
+    # 注入块切换到跳转形态（HTTP → HTTPS），同时保留 ACME 放行段
+    inject_into_panel_conf
     return 0
 }
 
