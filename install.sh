@@ -1160,14 +1160,21 @@ site_conf_path() {
 
 # 站点配置里 ACME 放行段的 root（certbot 校验文件必须落在这里）
 acme_root_in_conf() {
-    local conf="$1"
-    awk '
+    local conf="$1" out=""
+    # ① 常规多行写法：location ... { 换行 root ...;
+    out="$(awk '
         /location[^;]*acme-challenge/ { inb = 1 }
         inb && /^[[:space:]]*root[[:space:]]/ {
             gsub(/^[[:space:]]*root[[:space:]]+/, ""); gsub(/;.*$/, ""); print; exit
         }
         inb && /^[[:space:]]*}/ { inb = 0 }
-    ' "$conf" 2>/dev/null | head -1
+    ' "$conf" 2>/dev/null | head -1)"
+    # ② 单行写法：location ... { root /x; }
+    if [[ -z "$out" ]]; then
+        out="$(grep -oE 'location[^;]*acme-challenge[^{]*\{[^}]*root[[:space:]]+[^;}]+' "$conf" 2>/dev/null \
+              | head -1 | sed -e 's/.*root[[:space:]][[:space:]]*//' -e 's/[[:space:]]*$//')"
+    fi
+    printf '%s' "$out"
 }
 
 # certbot 为该域名配置的 webroot（续期时校验文件写入的目录）
