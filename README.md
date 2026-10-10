@@ -671,7 +671,11 @@ printf '1\n' | sudo bash install.sh     # 1 = full auto deploy
 
 > **The deploy never blocks on the Redis question**: Redis setup runs in "auto" mode during deployment —
 > non-interactive runs skip it, interactive runs wait at most 20 seconds and then continue.
-> Enable it later any time with **menu 12** (GeoIP lookups get 50–100x faster).
+> Enable it later any time with **menu 12** (GeoIP lookups get 50–100x faster) — menu 12 takes care of
+> installing Redis for you: **Docker** (Docker itself is installed automatically when missing) or
+> **apt/yum packages**, and if one route fails to bring Redis up the script automatically tries the other
+> (verified case: a host where apt's `redis-server` dies with `libjemalloc.so.2: failed to map segment`
+> — the script silently switches to Docker and finishes). Redis listens on `127.0.0.1` only.
 
 #### What the script does
 
@@ -687,7 +691,7 @@ printf '1\n' | sudo bash install.sh     # 1 = full auto deploy
 
 #### Menu reference (0–16)
 
-`1` full auto deploy · `2` create/reset admin (verifies login immediately) · `3` force restart (project processes only) · `4` deep cache clean (keeps `dist` and the binary) · `5` unlock user · `6` service status · `7` live log (`server.log`) · `8` restart · `9` stop · `10` renew certificate · `11` sync from GitHub & rebuild · `12` configure Redis · `13` roll back to previous build · `14` rebuild & restart only · `15` full uninstall (with residual scan) · `16` self-check & auto-repair · `0` exit
+`1` full auto deploy · `2` create/reset admin (verifies login immediately) · `3` force restart (project processes only) · `4` deep cache clean (keeps `dist` and the binary) · `5` unlock user · `6` service status · `7` live log (`server.log`) · `8` restart · `9` stop · `10` renew certificate · `11` sync from GitHub & rebuild · `12` configure Redis (auto-installs Docker, falls back to apt/yum, never blocks) · `13` roll back to previous build · `14` rebuild & restart only · `15` full uninstall (with residual scan) · `16` self-check & auto-repair · `0` exit
 
 #### Certificates vs. BaoTa's own SSL
 
@@ -890,7 +894,19 @@ Configuration lives in **`.env`** (Viper reads the file, and real environment va
 | `REDIS_PASSWORD` | *(empty)* | Redis password if set |
 | `REDIS_DB` | `0` | Redis logical database |
 
-Quick Redis via Docker: `docker run -d --name redis -p 6379:6379 redis:alpine`
+Three ways to get Redis (menu 12 does all of this for you):
+
+| Route | What the script does |
+|---|---|
+| Docker (default) | installs Docker if missing (`apt/dnf/yum docker.io`, falling back to `get.docker.com`), then runs the `redis` container with `--restart=always -p 127.0.0.1:6379:6379` (never exposed publicly) |
+| System packages | `apt-get install redis-server redis-tools` (or `dnf`/`yum install redis`), `systemctl enable --now`, then waits for `PING` |
+| Skip | `.env` is left untouched and the app keeps running without cache |
+
+Manual equivalent: `docker run -d --name redis --restart=always -p 127.0.0.1:6379:6379 redis:alpine`
+
+> Both install routes verify `PING` before declaring success, and each one **falls back to the other** if it
+> fails — the deployment itself is never aborted by a Redis problem. Re-running menu 12 is idempotent
+> (a marked block in `.env` is replaced in place, no duplicated lines, existing container reused).
 
 ### Email / SMTP ✉️
 
@@ -1060,6 +1076,8 @@ The admin panel provides **Backup settings** (Settings → Backup): scheduled au
 | Admin password lost | `go run scripts/admin_tool 'NewPassword123!'`, or set `ADMIN_PASSWORD` in `.env` and restart |
 | Account locked after failed logins | `go run scripts/unlock_user <username-or-email>` |
 | Redis connection failed | `systemctl status redis`; `redis-cli ping` (expect `PONG`); ensure `REDIS_ADDR`/`REDIS_PASSWORD` match |
+| Redis won't install or won't start | Run **menu 12** — both routes (Docker / apt-yum) are tried automatically and each falls back to the other, so the deploy never stops on Redis. Debug manually with `journalctl -u redis-server -n 20` or `docker logs redis`; re-running menu 12 is idempotent (existing container reused, `.env` block replaced in place) |
+| Docker route says it needs Docker | It doesn't any more: menu 12 → `1` installs Docker itself (`apt/dnf/yum docker.io`, then `get.docker.com`), starts the daemon and only then runs the `redis` container |
 | SSL certificate failed | Domain must resolve to the server; port 80 must be open for Let's Encrypt |
 
 ### Docker-specific

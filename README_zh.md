@@ -640,7 +640,11 @@ printf '1\n' | sudo bash install.sh     # 1=全自动部署
 
 > **部署过程不会因 Redis 提问卡住**：Redis 配置在部署流程中是「自动模式」——
 > 非交互环境直接跳过，交互环境最多等 20 秒后按"跳过"继续；
-> 想启用随时用**菜单 12**（GeoIP 查询可提速 50–100 倍）。
+> 想启用随时用**菜单 12**（GeoIP 查询可提速 50–100 倍）——菜单 12 会自己把 Redis 装好：
+> **Docker 方式**（机器上没有 Docker 时脚本会自动安装 Docker）或**系统包方式**（apt/yum）；
+> 其中一种装不上、起不来，脚本会**自动改用另一种**，绝不停下（实测案例：某机器 apt 装的
+> `redis-server` 报 `libjemalloc.so.2: failed to map segment` 起不来，脚本自动切 Docker 并跑通）。
+> Redis 只监听 `127.0.0.1`。
 
 #### 脚本自动做了什么
 
@@ -669,7 +673,7 @@ printf '1\n' | sudo bash install.sh     # 1=全自动部署
 | 9 | 停止服务 | |
 | 10 | 证书续期 | 手动续期（自动续期由 certbot.timer 或宝塔面板负责） |
 | **11** | 从 GitHub 同步并重建 | 升级入口：`git fetch`（失败会报错而不是假装"已是最新"）→ 备份数据库 → 原子构建 → 重启 + 健康检查 |
-| 12 | 配置 Redis 缓存 | 可选；只监听 `127.0.0.1`，清缓存按本项目键前缀删除而不是 `FLUSHDB` |
+| **12** | 配置 Redis 缓存 | 可选；只监听 `127.0.0.1`，清缓存按本项目键前缀删除而不是 `FLUSHDB`。选 Docker 方式时会**自动安装 Docker**（装不上自动降级系统包安装，反之亦然），重复执行幂等 |
 | **13** | 回滚到升级前版本 | 用 `server.bak.*` 回滚二进制；数据库备份在 `/www/backup/cboard/pre-upgrade-*.db.gz` |
 | 14 | 只重新构建并重启 | 不动 nginx/unit，适合"只想重编译" |
 | **15** | 完全卸载 | 删服务/站点配置/宝塔扩展目录/logrotate/续期钩子与 cron（配置副本存 `/root/cboard-uninstall-<时间戳>/`），项目目录/数据库/软件包分别询问，最后做**残留扫描** |
@@ -985,11 +989,22 @@ REDIS_ADDR=localhost:6379
 # REDIS_PASSWORD=your_password_here
 ```
 
-快速启动 Redis：
+三种启用方式（菜单 12 全部自动完成）：
+
+| 方式 | 脚本实际做的事 |
+|---|---|
+| Docker（默认） | 没装 Docker 就自动装（`apt/dnf/yum docker.io`，失败回落 `get.docker.com`），再以 `--restart=always -p 127.0.0.1:6379:6379` 起名为 `redis` 的容器（**不暴露公网**） |
+| 系统包 | `apt-get install redis-server redis-tools`（或 `dnf`/`yum install redis`）→ `systemctl enable --now` → 轮询 `PING` 确认真的起来了 |
+| 跳过 | `.env` 不动，应用继续无缓存运行 |
+
+手动等价命令：
 
 ```bash
-docker run -d --name redis -p 6379:6379 redis:alpine
+docker run -d --name redis --restart=always -p 127.0.0.1:6379:6379 redis:alpine
 ```
+
+> 两种方式都以 `PING` 通为准判定成功，任一种失败会**自动换另一种重试**，不会中断部署；
+> 重复执行菜单 12 是幂等的（`.env` 里用带标记块整块替换，不会堆积重复行/空行，已有容器直接复用）。
 
 ### Nginx 反代参考
 
@@ -1098,6 +1113,7 @@ tar czf backup-$(date +%F).tar.gz cboard.db uploads
 | **订阅无法更新** | 客户端 UA 未知 / 订阅过期 | 检查节点订阅 URL 是否有效；UA 未知时返回通用格式；确认订阅未过期 |
 | **节点全部离线** | 心跳超时 / 自建节点脚本问题 | 自建节点心跳 30s/超时 3min；检查节点服务器 sing-box 进程与 `cboard-heartbeat` 服务 |
 | **Docker 端口冲突** | 8000 被占用 | 修改 `docker-compose.yml` 端口映射为 `"8001:8000"` |
+| **Redis 装不上 / 起不来** | 环境限制（如 apt 版 redis-server 因 `libjemalloc.so.2` 映射失败起不来）/ 未装 Docker | 直接跑**菜单 12**：Docker 与系统包两条路会自动互相兜底，脚本还会打印 `journalctl -u redis-server` 的真实报错；两条都失败也只警告、不中断部署（网站照常运行）。手动排查：`journalctl -u redis-server -n 20`、`docker logs redis` |
 
 ### 日志位置
 
