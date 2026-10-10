@@ -574,11 +574,25 @@ start, so it keeps working after restarts. Change it in `.env` + menu 8, or use 
 >    plus `GOPROXY` / `NPM_REGISTRY` build args for slow networks, `HEALTHCHECK`, and no more weak
 >    default admin password (`admin123` → required).
 >
-> **Verified:** the backend stage builds successfully inside a container (Go 1.25 + cgo/SQLite).
-> **Not yet verified end-to-end:** the in-container frontend build + full `docker compose up`, because the
-> verification box cannot finish pulling `node:22-alpine` from Docker Hub (large layer stalls; the usual
-> mirrors are Cloudflare-blocked). Until that is completed, treat Docker as **optional** and prefer
-> Methods 1/2, which are verified in production.
+**What has been verified in a container:**
+
+| Check | Result |
+|---|---|
+| Backend build with the Dockerfile's exact command (`golang:1.25-alpine` + `apk add gcc musl-dev` + `CGO_CFLAGS=-D_LARGEFILE64_SOURCE`) | ✅ builds a 41 MB binary |
+| Application runs in a container (`HOST=0.0.0.0`, mounted `./data` + `./uploads` + `frontend/dist`) | ✅ `/health` 200, `/` 200 (`<title>CBoard Modern</title>`), `/admin/login` 200, `/api/v1/packages` 200 |
+| Admin login inside the container | ✅ `POST /api/v1/auth/login-json` → 200 + `access_token` |
+| Data persistence across a container restart (the `./data` bind mount) | ✅ SQLite + WAL on the host, login still works after restart |
+
+**Not yet verified end-to-end:** the in-container *frontend* build and a literal `docker compose up`, because the
+verification box cannot finish pulling `node:22-alpine` from Docker Hub (large layer stalls; the usual mirrors are
+Cloudflare-blocked). Until that is completed, treat Docker as **optional** and prefer Methods 1/2, which are
+verified in production.
+
+> ⚠️ **The runtime image must contain `tzdata`.** The app appends `_loc=Asia%2FShanghai` to the SQLite DSN
+> (`internal/core/database/database.go`), so without the IANA timezone database it fails hard at startup with
+> `数据库初始化失败: Invalid _loc: Asia/Shanghai: unknown time zone Asia/Shanghai` — measured in a container that
+> lacked tzdata. The Dockerfile in this repo installs `tzdata` in the runtime stage; keep it if you slim the image
+> down (distroless/scratch users: copy `/usr/share/zoneinfo`).
 
 This is the **optional** container deployment. It uses a **three-stage Dockerfile** (backend build + frontend build + runtime) and a **docker-compose.yml** with bind-mounted **directories** so your data (SQLite + WAL logs + uploads) lives on the host.
 
@@ -816,6 +830,7 @@ go run ./cmd/migrate -sqlite ./data/cboard.db -mysql "cboard_user:cboard_passwor
 | **Wrong timezone** | Runtime image ships `TZ=Asia/Shanghai`; if you customise the Dockerfile, install `tzdata` and `ENV TZ=Asia/Shanghai` |
 | **DB "reset" (data gone)** | Check cwd and `DATABASE_URL`: SQLite relative path is based on container workdir `/root/`; confirm mount matches (`./data:/root/data`) |
 | **Slow build / dependency fetch failure** | `export GOPROXY=https://goproxy.cn,direct` before build; npm `--registry=https://registry.npmmirror.com` |
+| **Container exits with `Invalid _loc: Asia/Shanghai: unknown time zone`** | The runtime image is missing the IANA timezone database — keep `tzdata` in the image (or bind/copy `/usr/share/zoneinfo`). The app appends `_loc=Asia%2FShanghai` to the SQLite DSN |
 | **Redis errors at startup** | Ignore — Redis auto-disables and the app degrades gracefully |
 | **`.env` changes not applied** | Edit host `.env`, then `docker compose up -d` (re-reads env and recreates the container) |
 

@@ -605,10 +605,24 @@ bash bt-deploy.sh
 >    并新增 `GOPROXY` / `NPM_REGISTRY` 两个 build-arg（慢网络可用国内源）、`HEALTHCHECK`，
 >    去掉弱默认管理员密码（`admin123` → 必须显式设置）。
 >
-> **已验证**：后端阶段可在容器内成功编译（Go 1.25 + cgo/SQLite）。
-> **尚未端到端验证**：容器内的前端构建 + 完整 `docker compose up`，因为验证机拉不动
-> `node:22-alpine`（Docker Hub 大层停滞、常见镜像站被 Cloudflare 拦）。
-> 在补齐这一步之前，请把 Docker 当**可选项**，优先用**方式一/方式二**（两者均已生产实测）。
+**已在容器内验证的项：**
+
+| 验证项 | 结果 |
+|---|---|
+| 用 Dockerfile 里**完全相同**的命令编译后端（`golang:1.25-alpine` + `apk add gcc musl-dev` + `CGO_CFLAGS=-D_LARGEFILE64_SOURCE`） | ✅ 产出 41MB 二进制 |
+| 应用在容器里运行（`HOST=0.0.0.0`，挂载 `./data`、`./uploads`、`frontend/dist`） | ✅ `/health` 200、`/` 200（`<title>CBoard Modern</title>`）、`/admin/login` 200、`/api/v1/packages` 200 |
+| 容器内管理员登录 | ✅ `POST /api/v1/auth/login-json` → 200 + `access_token` |
+| 重启容器后数据仍在（等价 `./data` 目录挂载） | ✅ SQLite 与 WAL 落在宿主目录，重启后仍可登录 |
+
+**尚未端到端验证**：容器内的**前端构建**与完整 `docker compose up`——验证机拉不动
+`node:22-alpine`（Docker Hub 大层停滞、常见镜像站被 Cloudflare 拦）。
+在补齐这一步之前，请把 Docker 当**可选项**，优先用**方式一/方式二**（两者均已生产实测）。
+
+> ⚠️ **运行时镜像必须包含 `tzdata`。** 应用会无条件给 SQLite DSN 拼 `_loc=Asia%2FShanghai`
+> （`internal/core/database/database.go`），镜像里没有 IANA 时区库就会启动即失败：
+> `数据库初始化失败: Invalid _loc: Asia/Shanghai: unknown time zone Asia/Shanghai`（实测复现）。
+> 本仓库 Dockerfile 的运行时阶段已安装 `tzdata`；如果你要精简镜像（distroless/scratch），
+> 记得把 `/usr/share/zoneinfo` 复制进去。
 
 Docker 部署是**最干净、最可复现**的方式：一条命令构建并启动，数据通过卷持久化，升级只需重新构建镜像。
 
@@ -848,6 +862,7 @@ go run ./cmd/migrate -sqlite ./data/cboard.db -mysql "cboard_user:cboard_passwor
 | **时区不正确** | 运行镜像已内置 `TZ=Asia/Shanghai`；如自定义 Dockerfile，需安装 `tzdata` 并设置 `ENV TZ=Asia/Shanghai` |
 | **数据库被"重置"了（数据消失）** | 检查启动目录与 `DATABASE_URL`：SQLite 相对路径基于容器工作目录 `/root/`，确认卷挂载路径与 `DATABASE_URL` 一致（应为 `./data:/root/data`） |
 | **构建缓慢 / 拉取依赖失败** | 配置 Go 代理：构建命令前加 `export GOPROXY=https://goproxy.cn,direct`，或修改 Dockerfile 中 `go mod download` 前添加该环境变量；npm 可用 `--registry=https://registry.npmmirror.com` |
+| **容器启动即退出，报 `Invalid _loc: Asia/Shanghai: unknown time zone`** | 运行时镜像缺少 IANA 时区库——保留 `tzdata`（或把 `/usr/share/zoneinfo` 拷进镜像）。应用会给 SQLite DSN 拼 `_loc=Asia%2FShanghai` |
 | **后端起不来，日志报 Redis 错误** | 无需处理——Redis 连不上会自动禁用缓存并降级运行，功能不受影响 |
 | **想改 .env 后生效** | 修改宿主机 `.env` 后执行 `docker compose up -d`（会重新读取环境变量并重建容器） |
 
