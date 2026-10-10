@@ -644,7 +644,6 @@ go run ./cmd/migrate -sqlite ./data/cboard.db -mysql "cboard_user:cboard_passwor
 |--------|--------|---------|
 | **`install.sh`** | ✅ **The only implementation — use this** | Deploy + operate + self-repair + full uninstall; works on bare VPS and BaoTa |
 | **`bt-deploy.sh`** | ✅ BaoTa entry point (thin wrapper) | Checks the BaoTa environment and certificate policy, then hands over to `install.sh` — behaviour is identical |
-| `install-vps.sh` | ❌ Deprecated | It pins Go 1.21.5 / Node 18, which conflicts with `go.mod` (Go 1.25) and vite 7 (Node ≥ 20.19); **it will fail at the frontend build**. The script now refuses to run (`FORCE_LEGACY=1` overrides) |
 
 #### Prerequisites
 
