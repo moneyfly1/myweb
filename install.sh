@@ -2292,6 +2292,30 @@ inject_into_panel_conf() {
     return 0
 }
 
+# 把 SSL 交还给宝塔面板：清空 #SSL-START 段（保留它原本的空标记）并移除脚本加的 listen 443
+hand_over_ssl_to_panel() {
+    local conf="$1"
+    [[ -f "$conf" ]] || return 1
+    LAST_CONF_BACKUP="${conf}.backup.$(date +%Y%m%d_%H%M%S)"
+    cp "$conf" "$LAST_CONF_BACKUP" 2>/dev/null
+    local tmp; tmp="$(mktemp)"
+    awk '
+        index($0, "#SSL-START") > 0 {
+            print "    #SSL-START SSL相关配置，请勿删除或修改下一行带注释的404规则"
+            print "    #error_page 404/404.html;"
+            print "    #SSL-END"
+            skip = 1; next
+        }
+        index($0, "#SSL-END") > 0 { skip = 0; next }
+        skip { next }
+        /^[[:space:]]*listen[[:space:]]+443/ { next }
+        /^[[:space:]]*http2[[:space:]]+on;/ { next }
+        { print }
+    ' "$conf" > "$tmp" && mv "$tmp" "$conf"
+    log "已把 SSL 交还给宝塔面板（清空脚本写入的证书段与 listen 443），请在面板申请证书"
+    return 0
+}
+
 # 面板托管配置启用 HTTPS：按宝塔方式写进面板自己的 server 块
 enable_https_panel_conf() {
     local conf; conf="$(site_conf_path)" cert_dir="$1"
@@ -2314,9 +2338,16 @@ apply_site_config_desired() {
         # 真机取证：宝塔部署证书前会检查配置里是否已有 ssl_certificate，只要有就跳过写它自己的证书
         # → 面板点"申请"会"成功"但 vhost/cert/<域名>/ 里没有证书，面板续签也随之没有可续订单（表现为续签失败）。
         if [[ "$CERT_MANAGER" == "panel" ]]; then
+            if grep -q "ssl_certificate" "$conf" && grep -q "CBoard" "$conf"; then
+                # 把 SSL 交还给面板：清空我们写进 #SSL-START 的证书段并移除我们加的 listen 443。
+                # 必须清掉的原因（真机取证）：宝塔部署证书前会检查配置里是否已有 ssl_certificate，
+                # 只要存在就直接返回"已开启 SSL"并跳过写它自己的证书与 vhost/cert/<域名>/，
+                # 面板的"续签"随后也找不到可续订单 → 表现为续签失败。
+                hand_over_ssl_to_panel "$conf"
+            fi
             if ! grep -q "ssl_certificate" "$conf"; then
-                warn "CERT_MANAGER=panel：本站点尚未开启 SSL，请在面板「网站 → SSL → Let's Encrypt」申请"
-                warn "   申请完成后面板会自行写入证书并把站点切到 HTTPS（脚本不再插手，只负责复用）"
+                warn "CERT_MANAGER=panel：SSL 已交还给宝塔面板，请到面板「网站 → SSL → Let's Encrypt」点申请"
+                warn "   申请后面板会自行写入证书并把站点切到 HTTPS（脚本只负责复用，不再写 SSL）"
             fi
         elif [[ -n "$cert_dir" ]]; then
             enable_https_panel_conf "$cert_dir"
