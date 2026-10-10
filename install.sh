@@ -883,8 +883,8 @@ server {
     ${listen443}
     ${listen_http2}
     server_name ${DOMAIN};
-    ssl_certificate ${cert_root}/fullchain.pem;
-    ssl_certificate_key ${cert_root}/privkey.pem;
+    ssl_certificate ${cert_root}/${CERT_FULLCHAIN};
+    ssl_certificate_key ${cert_root}/${CERT_KEY};
     client_max_body_size 16m;
     root ${PROJECT_DIR}/frontend/dist;
     include /etc/nginx/mime.types;
@@ -1066,19 +1066,26 @@ full_deploy() {
     render_site_config http
     nginx_apply_or_rollback || warn "Nginx 配置未通过检测，请检查后再继续"
 
-    # 6. SSL 证书（缺少 certbot 时先安装；失败要能看到原因）
-    step "申请 SSL 证书..."
-    ensure_certbot_autorenew
-    if command -v certbot >/dev/null 2>&1; then
-        if ! certbot certonly --webroot -w "${PROJECT_DIR}" -d "${DOMAIN}" \
-                --email "admin@${DOMAIN}" --agree-tos --non-interactive \
-                --keep-until-expiring 2>&1 | tail -5; then
-            warn "SSL 证书申请失败（上方为 certbot 输出），本次按 HTTP 部署"
-        fi
-    else
-        warn "certbot 不可用，本次按 HTTP 部署（可稍后执行菜单 10 续期/签发）"
-    fi
+    # 6. SSL 证书
+    step "检查 / 申请 SSL 证书..."
     local cert_dir; cert_dir="$(find_cert_dir)"
+    if [[ -n "$cert_dir" && "${CERT_SOURCE}" != "certbot" ]]; then
+        # 宝塔面板或 acme.sh 已经签过这个域名 → 直接复用，不再跑 certbot（避免两个 ACME 客户端重复签发）
+        log "✅ 复用已有证书（来源: $(cert_source_label)）: $cert_dir"
+        log "   已跳过 certbot 申请，避免与宝塔/acme.sh 重复签发同一域名"
+    else
+        ensure_certbot_autorenew
+        if command -v certbot >/dev/null 2>&1; then
+            if ! certbot certonly --webroot -w "${PROJECT_DIR}" -d "${DOMAIN}" \
+                    --email "admin@${DOMAIN}" --agree-tos --non-interactive \
+                    --keep-until-expiring 2>&1 | tail -5; then
+                warn "SSL 证书申请失败（上方为 certbot 输出），本次按 HTTP 部署"
+            fi
+        else
+            warn "certbot 不可用，本次按 HTTP 部署（可稍后执行菜单 10 续期/签发）"
+        fi
+        cert_dir="$(find_cert_dir)"
+    fi
     SITE_SCHEME="http"
     if [[ -n "$cert_dir" ]]; then
         render_site_config https "$cert_dir"
@@ -1130,17 +1137,53 @@ full_deploy() {
     echo -e "${GREEN}======================================${NC}"
 }
 
-# 证书目录：优先直接判定 <live>/<domain>，避免 find 通配命中 xxx-0001 之类的旧 lineage
+# 证书来源探测：三种来源都认，顺序为 certbot → 宝塔面板 → acme.sh。
+#
+# 为什么必须这样：宝塔面板自己也申请/续签证书（存在 /www/server/panel/vhost/cert/<域名>/，
+# 由面板的 acme.sh 或面板 SSL 功能维护）。如果脚本无视它去再跑一次 certbot，就会出现
+# 「两个 ACME 客户端给同一个域名重复签发」：让 Let's Encrypt 的重复证书速率限制更容易触发，
+# 而且 vhost 里两个工具互相覆盖证书路径。所以：只要宝塔已有可用证书，就直接复用它、跳过 certbot。
+CERT_DIR=""; CERT_FULLCHAIN="fullchain.pem"; CERT_KEY="privkey.pem"; CERT_SOURCE=""
+
 find_cert_dir() {
+    CERT_DIR=""; CERT_SOURCE=""
+    # 1) certbot（本脚本默认签发方式）
     local live="${LETSENCRYPT_LIVE_DIR:-/etc/letsencrypt/live}"
     if [[ -f "${live}/${DOMAIN}/fullchain.pem" ]]; then
-        echo "${live}/${DOMAIN}"
-        return 0
+        CERT_DIR="${live}/${DOMAIN}"; CERT_FULLCHAIN="fullchain.pem"; CERT_KEY="privkey.pem"; CERT_SOURCE="certbot"
+        echo "$CERT_DIR"; return 0
     fi
+    # 2) 宝塔面板（面板 SSL 申请后会写到这里，vhost 里带 #SSL-START 标记）
+    local bt_cert="/www/server/panel/vhost/cert/${DOMAIN}"
+    if [[ -f "${bt_cert}/fullchain.pem" ]]; then
+        CERT_DIR="$bt_cert"; CERT_FULLCHAIN="fullchain.pem"; CERT_KEY="privkey.pem"; CERT_SOURCE="baota"
+        echo "$CERT_DIR"; return 0
+    fi
+    # 3) acme.sh（宝塔/手动 acme.sh 常见落地目录，文件名是 fullchain.cer）
+    local acme="/root/.acme.sh/${DOMAIN}_ecc"
+    [[ -f "${acme}/fullchain.cer" ]] || acme="/root/.acme.sh/${DOMAIN}"
+    if [[ -f "${acme}/fullchain.cer" ]]; then
+        CERT_DIR="$acme"; CERT_FULLCHAIN="fullchain.cer"; CERT_KEY="privkey.pem"; CERT_SOURCE="acme.sh"
+        echo "$CERT_DIR"; return 0
+    fi
+    # 4) certbot 的历史 lineage（xxx-0001 之类），仅当上面都没找到时兜底
     local found
     found="$(find "$live" -maxdepth 1 -type d -name "${DOMAIN}*" 2>/dev/null | head -1)"
-    [[ -n "$found" && -f "${found}/fullchain.pem" ]] && { echo "$found"; return 0; }
+    if [[ -n "$found" && -f "${found}/fullchain.pem" ]]; then
+        CERT_DIR="$found"; CERT_FULLCHAIN="fullchain.pem"; CERT_KEY="privkey.pem"; CERT_SOURCE="certbot"
+        echo "$CERT_DIR"; return 0
+    fi
     echo ""
+}
+
+# 证书来源的中文名（日志用）
+cert_source_label() {
+    case "${CERT_SOURCE:-${1:-}}" in
+        certbot) echo "certbot（/etc/letsencrypt）";;
+        baota)   echo "宝塔面板（/www/server/panel/vhost/cert）";;
+        acme.sh) echo "acme.sh（/root/.acme.sh）";;
+        *) echo "未知";;
+    esac
 }
 
 # --- 2. 运维管理功能 ---
