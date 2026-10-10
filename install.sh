@@ -591,20 +591,28 @@ install_node_binary() {
     return 0
 }
 
+# nginx 的 worker 运行用户：宝塔是 www、Debian 系包是 www-data；
+# 注意 master 进程是 root，要取 worker 的用户（真机上先取到 root 会让 chown 变成空操作）。
+nginx_worker_user() {
+    local u=""
+    u="$(ps -o user= -C nginx 2>/dev/null | tr -d ' ' | grep -v '^root$' | head -1)"
+    if [[ -z "$u" ]] && [[ -n "${NGINX_BIN:-}" ]]; then
+        local conf="${NGINX_BIN%/sbin/nginx}/conf/nginx.conf"
+        [[ -f "$conf" ]] && u="$(awk '/^[[:space:]]*user[[:space:]]+/{print $2}' "$conf" 2>/dev/null | tr -d ';' | head -1)"
+    fi
+    [[ -n "$u" ]] || u="www"
+    id "$u" >/dev/null 2>&1 || u="www-data"
+    id "$u" >/dev/null 2>&1 || u="root"
+    echo "$u"
+}
+
 # 让 nginx 的 worker 用户能读取前端产物、uploads 与 ACME webroot。
 # 为什么需要：部署是 root 跑的，产物默认 root:root；宝塔 nginx 以 www 运行、Debian 的 nginx 以
 # www-data 运行，一旦目录/文件不是"其它用户可读可进入"，就会出现 403 Forbidden 或
 # ACME 校验 stat() Permission denied（真机验证宝塔部署时踩到）。
 fix_site_permissions() {
-    local target=""
-    local nginx_master
-    nginx_master="$(pgrep -x nginx 2>/dev/null | head -1)"
-    if [[ -n "$nginx_master" ]]; then
-        target="$(ps -o user= -p "$nginx_master" 2>/dev/null | tr -d ' ')"
-    fi
-    [[ -n "$target" ]] || target="www"
-    id "$target" >/dev/null 2>&1 || target="www-data"
-    id "$target" >/dev/null 2>&1 || target="root"
+    local target
+    target="$(nginx_worker_user)"
 
     local group; group="$(id -gn "$target" 2>/dev/null)"
     local changed="no"
@@ -1624,8 +1632,7 @@ self_check_and_repair() {
     # 3.5) nginx 是否能读到前端产物 / ACME webroot（权限不对会 403 或 ACME 校验失败）
     if [[ -f "${PROJECT_DIR}/frontend/dist/index.html" ]]; then
         local nginx_user
-        nginx_user="$(ps -o user= -p "$(pgrep -x nginx 2>/dev/null | head -1)" 2>/dev/null | tr -d ' ')"
-        [[ -n "$nginx_user" ]] || nginx_user="www"
+        nginx_user="$(nginx_worker_user)"
         if ! su -s /bin/sh -c "test -r '${PROJECT_DIR}/frontend/dist/index.html' && test -x '${PROJECT_DIR}'" "$nginx_user" 2>/dev/null; then
             fix_site_permissions && fixed+=("nginx 用户(${nginx_user})读不到前端产物 → 已修正属主与权限")
         else
