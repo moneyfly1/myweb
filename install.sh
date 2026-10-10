@@ -2156,69 +2156,94 @@ ${CB_END}
 BLK
 }
 
-# 生成独立的 443 server 块（面板托管配置的 HTTPS）
-build_cboard_https_block() {
-    local cert_dir="$1"
-    local port; port="$(env_port)"
-    local listen443="listen 443 ssl;" http2_line="    http2 on;"
-    if [[ "${FORCE_NEW_HTTP2:-}" == "yes" ]]; then
-        : # 强制新写法
-    elif [[ "${FORCE_OLD_HTTP2:-}" == "yes" ]] || ! ver_ge "$(nginx_version)" "1.25.1"; then
-        listen443="listen 443 ssl http2;"; http2_line=""
+# 按宝塔自己的方式在面板托管的 server 块里启用 HTTPS。
+#
+# 为什么不能"另加一个独立 443 server 块"（上一版就是这么做的，真机验证失败）：
+#   宝塔的 SSL 状态是**写在它自己那个 server 块里**的 ——
+#   * listen 行上追加 `listen 443 ssl`
+#   * 证书指令写进 #SSL-START ... #SSL-END 标记区
+#   面板检查站点是否开启 SSL 就是看这个块里有没有 ssl_certificate。
+#   我们另起一个 443 块时，面板认为"该站点未开启 SSL"，它的申请/续签流程就会走到
+#   与我们的块冲突的路径上而失败（用户实测：面板里续签一直失败）。
+# 现在完全镜像宝塔的写法，面板与脚本的状态就一致了。
+write_bt_style_ssl_into_panel_conf() {
+    local conf="$1" cert_dir="$2"
+    [[ -n "$cert_dir" && -f "$conf" ]] || return 1
+
+    LAST_CONF_BACKUP="${conf}.backup.$(date +%Y%m%d_%H%M%S)"
+    cp "$conf" "$LAST_CONF_BACKUP" 2>/dev/null
+
+    # 1) 先移除我们上一版追加的独立 443 块（避免两个 server 块抢同一个 server_name）
+    if grep -q "$CB_HTTPS_BEGIN" "$conf"; then
+        local tmp; tmp="$(mktemp)"
+        awk -v b="$CB_HTTPS_BEGIN" -v e="$CB_HTTPS_END" '
+            index($0, b) == 1 { skip = 1 }
+            !skip { print }
+            index($0, e) == 1 { skip = 0 }
+        ' "$conf" > "$tmp" && mv "$tmp" "$conf"
+        log "已移除脚本早先追加的独立 443 块（改为按宝塔方式写进面板的 server 块）"
     fi
-    cat << BLK
-${CB_HTTPS_BEGIN}
-server
-{
-    ${listen443}
-${http2_line}
-    server_name ${DOMAIN};
-    client_max_body_size 16m;
-    root ${PROJECT_DIR}/frontend/dist;
-    ssl_certificate ${cert_dir}/${CERT_FULLCHAIN};
-    ssl_certificate_key ${cert_dir}/${CERT_KEY};
-    location ^~ /.well-known/acme-challenge/ {
-        root ${PROJECT_DIR};
-        default_type text/plain;
-        try_files \$uri =404;
+
+    # 2) listen 443 ssl（宝塔做法：在 listen 行上追加）；nginx >= 1.25.1 用 http2 on
+    local http2_suffix=""
+    ver_ge "$(nginx_version)" "1.25.1" && http2_suffix=" http2"
+    if ! grep -qE "^[[:space:]]*listen[[:space:]]+443" "$conf"; then
+        local tmp; tmp="$(mktemp)"
+        awk -v extra="listen 443 ssl${http2_suffix};" '
+            !done && /^[[:space:]]*listen[[:space:]]/ {
+                print
+                match($0, /^[[:space:]]*/); indent = substr($0, 1, RLENGTH)
+                print indent extra
+                done = 1; next
+            }
+            { print }
+        ' "$conf" > "$tmp" && mv "$tmp" "$conf"
+        log "已在面板 server 块上追加 listen 443 ssl${http2_suffix}"
+    fi
+    # nginx >= 1.25.1 时单独一行 http2 on;
+    if ver_ge "$(nginx_version)" "1.25.1" && ! grep -qE "^[[:space:]]*http2[[:space:]]+on;" "$conf"; then
+        local tmp; tmp="$(mktemp)"
+        awk '
+            !done && /^[[:space:]]*listen[[:space:]]+443/ { print; print "    http2 on;"; done = 1; next }
+            { print }
+        ' "$conf" > "$tmp" && mv "$tmp" "$conf"
+    fi
+
+    # 3) 证书指令写进 #SSL-START ... #SSL-END（镜像宝塔模板）
+    local ssl_section
+    ssl_section="$(cat << BLK
+    #SSL-START SSL相关配置，请勿删除或修改下一行带注释的404规则
+    #error_page 404/404.html;
+    ssl_certificate    ${cert_dir}/${CERT_FULLCHAIN};
+    ssl_certificate_key    ${cert_dir}/${CERT_KEY};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers EECDH+CHACHA20:EECDH+AES128:RSA+AES128:EECDH+AES256:RSA+AES256:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_tickets on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+    add_header Strict-Transport-Security "max-age=31536000";
+    error_page 497  https://\$host\$request_uri;
+    #HTTP_TO_HTTPS_START
+    if (\$server_port !~ 443){
+        rewrite ^(/.*)\$ https://\$host\$1 permanent;
     }
-    location /uploads/ {
-        proxy_pass http://127.0.0.1:${port};
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
-        expires -1;
-    }
-    location /api/ {
-        proxy_pass http://127.0.0.1:${port};
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 300s;
-        proxy_send_timeout 300s;
-    }
-    location /repo-sync/ {
-        proxy_pass http://127.0.0.1:${port};
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-    location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; }
-    location = /index.html {
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
-        expires -1;
-    }
-    location / { try_files \$uri \$uri/ /index.html; }
-}
-${CB_HTTPS_END}
+    #HTTP_TO_HTTPS_END
+    #SSL-END
 BLK
+)"
+    if grep -q "#SSL-START" "$conf"; then
+        local tmp; tmp="$(mktemp)"
+        awk -v block="$ssl_section" '
+            index($0, "#SSL-START") > 0 { print block; skip = 1; next }
+            index($0, "#SSL-END") > 0 { skip = 0; next }
+            !skip { print }
+        ' "$conf" > "$tmp" && mv "$tmp" "$conf"
+        log "已把证书指令写入面板的 #SSL-START/#SSL-END 标记区（面板能识别为已开启 SSL）"
+    fi
+
+    # 4) 我们注入块里的 location / 切成跳转形态由 inject_into_panel_conf 负责
+    return 0
 }
 
 # 面板托管配置的「合并模式」：保留面板的标记 / include / 错误页，只注入本应用必需的片段。
@@ -2267,22 +2292,11 @@ inject_into_panel_conf() {
     return 0
 }
 
-# 面板托管配置启用 HTTPS：追加独立 443 server 块（幂等），并把注入块切成跳转形态。
+# 面板托管配置启用 HTTPS：按宝塔方式写进面板自己的 server 块
 enable_https_panel_conf() {
     local conf; conf="$(site_conf_path)" cert_dir="$1"
     [[ -n "$cert_dir" ]] || return 1
-    [[ -f "$conf" ]] || return 1
-    LAST_CONF_BACKUP="${conf}.backup.$(date +%Y%m%d_%H%M%S)"
-    cp "$conf" "$LAST_CONF_BACKUP" 2>/dev/null
-
-    local block; block="$(build_cboard_https_block "$cert_dir")"
-    if grep -q "$CB_HTTPS_BEGIN" "$conf"; then
-        replace_marked_region "$conf" "$CB_HTTPS_BEGIN" "$CB_HTTPS_END" "$block"
-    else
-        printf '\n%s\n' "$block" >> "$conf"
-        log "已为面板站点追加 443 server 块（含 API/上传/SPA 与证书）"
-    fi
-    # 注入块切换到跳转形态（HTTP → HTTPS），同时保留 ACME 放行段
+    write_bt_style_ssl_into_panel_conf "$conf" "$cert_dir" || return 1
     inject_into_panel_conf
     return 0
 }
