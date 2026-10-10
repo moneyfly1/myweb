@@ -5,14 +5,14 @@
 # 与 install.sh（非宝塔版）共用同一套已逐项验证的部署内核：
 #   * Nginx 环境自动探测（宝塔 / 系统 nginx 都能正确定位二进制、站点目录、pid 文件）
 #   * 站点配置统一模板（/uploads 反代、index.html 不缓存、client_max_body_size、ACME 放行段、http2 版本自适应）
-#   * 写配置后先 nginx -t（失败自动换写法/回滚）；只清理本项目进程
+#   * 写配置后先 nginx -t（失败自动换写法 / 精确回滚本次修改）；只清理本项目进程
 #   * 干净机器自举：基础包 → gcc → Go → Node → Nginx（已装宝塔则直接用宝塔 nginx）
 #   * 原子构建 + /health 业务健康检查 + 升级前自动备份数据库 + 菜单 13 回滚
-#   * 菜单 16 自检并自动修复：部署/运维问题（缺配置块、nginx -t 不过、服务不健康、续期任务缺失）自动补齐
+#   * 菜单 16 自检并自动修复（含"有证书就必须是 HTTPS"的目标状态对齐）
 # 宝塔特有：
 #   * SSL 与宝塔不冲突：优先复用宝塔已有证书（/www/server/panel/vhost/cert/<域名>、
-#     /root/.acme.sh/<域名>_ecc），没有才用 certbot 申请；并避免两个 ACME 客户端重复签发。
-#   * 面板"保存设置/续签 SSL"可能重写 vhost → 本脚本可重复执行（菜单 1 或 16）自动补回片段。
+#     /root/.acme.sh/<域名>_ecc），没有才用 certbot 申请；避免两个 ACME 客户端重复签发。
+#   * 面板"保存设置/续签 SSL"可能重写 vhost → 重跑菜单 1 或菜单 16 可自动补回片段。
 
 set +e
 
@@ -842,6 +842,9 @@ bt_site_conf_path() { site_conf_path; }
 
 # 统一的站点配置渲染：只有这一份模板，避免「首版有 ACME、最终版没有」这类分支漂移。
 # 用法：render_site_config https|http [证书目录]
+# 最近一次写配置前的备份路径（供 nginx_apply_or_rollback 精确回滚）
+LAST_CONF_BACKUP=""
+
 render_site_config() {
     local mode="$1" cert_root="${2:-}"
     local app_port; app_port="$(env_port)"
@@ -863,7 +866,10 @@ render_site_config() {
         proxy_send_timeout 300s;"
     mkdir -p "$(dirname "$conf")"
     if [[ -f "$conf" ]]; then
-        cp "$conf" "${conf}.backup.$(date +%Y%m%d_%H%M%S)"
+        LAST_CONF_BACKUP="${conf}.backup.$(date +%Y%m%d_%H%M%S)"
+        cp "$conf" "$LAST_CONF_BACKUP"
+    else
+        LAST_CONF_BACKUP=""
     fi
     # http2：>=1.25.1 用「listen 443 ssl; http2 on;」，旧版必须写在同一行，否则 nginx -t 直接失败
     local listen443 listen_http2
@@ -986,11 +992,14 @@ nginx_apply_or_rollback() {
     fi
     error "Nginx 配置检测失败（$NGINX_TEST_CMD），已回滚本次修改"
     $NGINX_TEST_CMD 2>&1 | tail -5
-    local last_backup
-    last_backup="$(ls -1t "${conf}".backup.* 2>/dev/null | head -1)"
+    # 精确回滚：优先用「本次写配置前」的备份；只有拿不到时才退回到最新备份。
+    # 历史实现取「最新备份」，在连续操作（补块 + 重渲染）时可能回滚到上一个操作的版本，
+    # 结果把 HTTPS 配置悄悄退回到旧的 HTTP 版本（真机实测踩到过）。
+    local last_backup="${LAST_CONF_BACKUP}"
+    [[ -n "$last_backup" && -f "$last_backup" ]] || last_backup="$(ls -1t "${conf}".backup.* 2>/dev/null | head -1)"
     if [[ -n "$last_backup" ]]; then
         cp "$last_backup" "$conf"
-        log "已回滚站点配置: $conf ← $last_backup"
+        log "已回滚站点配置: $conf ← $(basename "$last_backup")"
         $NGINX_RELOAD_CMD >/dev/null 2>&1
     fi
     return 1
@@ -1548,6 +1557,15 @@ self_check_and_repair() {
             || problems+=("证书申请失败（可检查 DNS 是否指向本机、80 端口是否可达）")
     fi
 
+    # 9.5) 目标状态对齐：有证书 → 站点必须是 HTTPS 配置。
+    # 回滚/面板重写都可能把配置退回旧的 HTTP 版本，这里显式拉回正确状态。
+    conf="$(site_conf_path)"
+    if [[ -n "$cert_dir" ]] && ! grep -q "listen 443" "$conf" 2>/dev/null; then
+        warn "检测到站点仍是 HTTP 配置，但证书已存在 → 切回 HTTPS"
+        render_site_config https "$cert_dir"
+        nginx_apply_or_rollback && fixed+=("证书存在但站点是 HTTP → 已切回 HTTPS")
+    fi
+
     # 10) 服务可用性（用业务健康检查，不用 is-active）
     if ! start_and_verify_service; then
         warn "服务不健康，尝试重建后重启..."
@@ -1786,7 +1804,8 @@ ensure_site_conf_blocks() {
     local changed="no"
 
     if ! grep -q "client_max_body_size" "$conf"; then
-        cp "$conf" "${conf}.backup.$(date +%Y%m%d_%H%M%S)"
+        LAST_CONF_BACKUP="${conf}.backup.$(date +%Y%m%d_%H%M%S)"
+        cp "$conf" "$LAST_CONF_BACKUP"
         local tmp; tmp="$(mktemp)"
         awk -v line="    client_max_body_size 16m;" '
             !inserted && /^[[:space:]]*server[[:space:]]*\{/ { print; print line; inserted = 1; next }
