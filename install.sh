@@ -934,6 +934,24 @@ EOF
     log "已配置日志轮转: $f"
 }
 
+# 数据库里**真实**的管理员身份（用户名|邮箱）。
+# 为什么需要：应用只在**首次创建**管理员时使用 .env 的 ADMIN_USERNAME/ADMIN_EMAIL，
+# 之后你在后台改过用户名/邮箱，.env 不会跟着变。脚本以前直接打印 .env 的值，
+# 实测就出现过「显示的邮箱拿去登录返回 401」（数据库里实际是 3219904322@qq.com）。
+# 密码不受影响：.env 的 ADMIN_PASSWORD 应用每次启动都会重新应用，所以密码仍以 .env 为准。
+db_admin_identity() {
+    local db; db="$(detect_db_path)"
+    [[ -n "$db" && -f "$db" ]] || return 1
+    command -v sqlite3 >/dev/null 2>&1 || return 1
+    local row
+    row="$(sqlite3 -separator '|' "$db" \
+        "select username, coalesce(email,'') from users where is_admin=1 and is_active=1 order by id limit 1;" 2>/dev/null)"
+    [[ -n "$row" ]] || row="$(sqlite3 -separator '|' "$db" \
+        "select username, coalesce(email,'') from users where is_admin=1 order by id limit 1;" 2>/dev/null)"
+    [[ -n "$row" ]] || return 1
+    printf '%s' "$row"
+}
+
 # 安装完成后打印「登录地址 + 管理员账号密码」。
 #
 # 密码来源优先级：
@@ -955,6 +973,15 @@ print_access_info() {
     ap="$(grep -E '^ADMIN_PASSWORD=' "${PROJECT_DIR}/.env" 2>/dev/null | head -1 | cut -d'=' -f2-)"
     au="${au:-admin}"; am="${am:-admin@${DOMAIN}}"
 
+    # 以数据库里的真实身份为准（.env 只在首次创建时生效过）
+    local env_au="$au" env_am="$am" dbrow db_au="" db_am=""
+    dbrow="$(db_admin_identity 2>/dev/null)"
+    if [[ -n "$dbrow" ]]; then
+        db_au="${dbrow%%|*}"; db_am="${dbrow#*|}"
+        [[ -n "$db_au" ]] && au="$db_au"
+        [[ -n "$db_am" ]] && am="$db_am"
+    fi
+
     local initial=""
     [[ -f "${PROJECT_DIR}/server.log" ]] && initial="$(grep -aoE '初始密码: [^ ]+' "${PROJECT_DIR}/server.log" 2>/dev/null | tail -1 | awk '{print $2}')"
 
@@ -974,6 +1001,10 @@ print_access_info() {
     echo -e "${GREEN}----------------------------------------------${NC}"
     echo -e "  管理员账号:   ${au}"
     echo -e "  管理员邮箱:   ${am}"
+    if [[ "$env_au" != "$au" || "$env_am" != "$am" ]]; then
+        echo -e "  ${YELLOW}（以上取自数据库，是实际生效的账号；.env 里记录的是 ${env_au} / ${env_am}，"
+        echo -e "    应用只在首次创建管理员时用 .env，之后在后台改过就以数据库为准）${NC}"
+    fi
     if [[ -n "$ap" ]]; then
         echo -e "  管理员密码:   ${GREEN}${ap}${NC}"
         echo -e "  （密码由 .env 的 ADMIN_PASSWORD 固定：应用每次启动都会按它重置，重启后依然可用；"
@@ -1723,19 +1754,32 @@ verify_admin_login() {
     local username="$1" password="$2" email="${3:-}"
     local port; port="$(env_port)"
     local payload resp
-    payload="$(printf '{"username":"%s","password":"%s"}' "$username" "$password")"
+    local try_user="$username" try_email="$email"
+    # 数据库里的真实身份优先补一次（.env 可能已过期，见 db_admin_identity 注释）
+    local dbrow; dbrow="$(db_admin_identity 2>/dev/null)"
+    local db_au="" db_am=""
+    if [[ -n "$dbrow" ]]; then db_au="${dbrow%%|*}"; db_am="${dbrow#*|}"; fi
+
+    payload="$(printf '{"username":"%s","password":"%s"}' "$try_user" "$password")"
     resp="$(curl -fsS --max-time 8 -X POST "http://127.0.0.1:${port}/api/v1/auth/login-json" \
         -H 'Content-Type: application/json' -d "$payload" 2>/dev/null)"
     if [[ "$resp" == *access_token* ]]; then
         log "✅ 已实测登录成功（POST /api/v1/auth/login-json → 拿到 access_token）"
         return 0
     fi
-    if [[ -n "$email" ]]; then
-        payload="$(printf '{"email":"%s","password":"%s"}' "$email" "$password")"
+    if [[ -n "$db_au" && "$db_au" != "$try_user" ]]; then
+        payload="$(printf '{"username":"%s","password":"%s"}' "$db_au" "$password")"
+        resp="$(curl -fsS --max-time 8 -X POST "http://127.0.0.1:${port}/api/v1/auth/login-json" \
+            -H 'Content-Type: application/json' -d "$payload" 2>/dev/null)"
+        [[ "$resp" == *access_token* ]] && { log "✅ 已实测登录成功（用户名取自数据库: ${db_au}）"; return 0; }
+    fi
+    for try_email in "$db_am" "$email"; do
+        [[ -n "$try_email" ]] || continue
+        payload="$(printf '{"email":"%s","password":"%s"}' "$try_email" "$password")"
         resp="$(curl -fsS --max-time 8 -X POST "http://127.0.0.1:${port}/api/v1/auth/login" \
             -H 'Content-Type: application/json' -d "$payload" 2>/dev/null)"
-        [[ "$resp" == *access_token* ]] && { log "✅ 已实测登录成功（邮箱方式）"; return 0; }
-    fi
+        [[ "$resp" == *access_token* ]] && { log "✅ 已实测登录成功（邮箱方式: ${try_email}）"; return 0; }
+    done
     error "⚠️ 账号已写入数据库，但本地登录实测失败 —— 请检查：服务是否运行（菜单 6）、"
     error "   端口是否与 .env 的 PORT 一致、账号是否被锁定。接口返回：$(echo "$resp" | head -c 150)"
     return 1
