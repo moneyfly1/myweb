@@ -169,4 +169,4 @@ curl -fsS http://127.0.0.1:8000/health
 
 ## 许可证
 
-见 [LICENSE](LICENSE)。
+本项目采用 **MIT 许可证**，全文见 [LICENSE](LICENSE)。

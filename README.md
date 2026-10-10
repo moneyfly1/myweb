@@ -173,4 +173,4 @@ File: `<project>/.env` — apply changes with **menu 8**.
 
 ## License
 
-See [LICENSE](LICENSE).
+Released under the **MIT License** — see [LICENSE](LICENSE).
