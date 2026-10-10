@@ -70,10 +70,12 @@ docker compose up -d --build
 curl -fsS http://127.0.0.1:8000/health
 ```
 
-- 已实测：后端编译、容器内运行、后台登录、重启后数据持久化都正常。
-- **尚未端到端验证**：容器内的前端构建与完整 `docker compose up`（验证机网络拉不动 `node:22-alpine`）。
-  所以对生产环境**优先用方式 A / B**。
-- 运行时镜像**必须含 `tzdata`**（本仓库 Dockerfile 已装）；精简镜像要自己把 `/usr/share/zoneinfo` 拷进去，否则启动即报 `Invalid _loc: Asia/Shanghai`。
+- **已完整实测通过**（干净 Debian 12 + Docker 20.10 + Compose v2）：三阶段镜像构建成功（61MB）→
+  `docker compose up -d` 后容器 `healthy`，`/health`、首页、`/admin/login`、静态资源、`/api/v1/packages`
+  全部 200，后台 API 登录拿到 token；`docker compose restart` 后数据仍在（SQLite 落在宿主 `./data`）。
+- 换宿主端口：在 `.env` 里设 `APP_PORT=8080`；复用已构建镜像：`docker compose up -d --no-build`。
+- 国内构建慢可走镜像源：`docker build --build-arg NPM_REGISTRY=https://registry.npmmirror.com --build-arg GOPROXY=https://goproxy.cn,direct -t cboard .`
+- 运行时镜像**必须含 `tzdata`**（本仓库已装，实测容器内时区为 CST）；精简镜像要自己把 `/usr/share/zoneinfo` 拷进去，否则启动即报 `Invalid _loc: Asia/Shanghai`。
 
 ---
 

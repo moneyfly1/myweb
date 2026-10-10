@@ -13,6 +13,8 @@
 
 services:
   app:
+    # 给构建产物一个固定名字：docker compose build 后可用 docker compose up -d --no-build 复用
+    image: cboard:latest
     build: .
     ports:
       - "${APP_PORT:-8000}:8000"

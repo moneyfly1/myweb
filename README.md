@@ -73,11 +73,14 @@ docker compose up -d --build
 curl -fsS http://127.0.0.1:8000/health
 ```
 
-- Verified in a container: backend build, app running, admin login, and data persistence across a restart.
-- **Not yet verified end-to-end:** the in-container frontend build and a full `docker compose up` (the test box
-  cannot pull `node:22-alpine`). For production, prefer Options A / B.
-- The runtime image **must include `tzdata`** (this repo's Dockerfile does); slim images must copy
-  `/usr/share/zoneinfo`, otherwise startup fails with `Invalid _loc: Asia/Shanghai`.
+- **Fully verified** (clean Debian 12 + Docker 20.10 + Compose v2): the three-stage image builds (61 MB), then
+  `docker compose up -d` starts a container that reports `healthy` — `/health`, `/`, `/admin/login`, static assets
+  and `/api/v1/packages` all return 200, admin API login returns a token, and data survives `docker compose restart`
+  (SQLite lives in the host `./data`).
+- Change the host port with `APP_PORT=8080` in `.env`; reuse an existing build with `docker compose up -d --no-build`.
+- Slow networks: `docker build --build-arg NPM_REGISTRY=https://registry.npmmirror.com --build-arg GOPROXY=https://goproxy.cn,direct -t cboard .`
+- The runtime image **must include `tzdata`** (this repo does; verified CST inside the container) — slim images must
+  copy `/usr/share/zoneinfo`, otherwise startup fails with `Invalid _loc: Asia/Shanghai`.
 
 ---
 
