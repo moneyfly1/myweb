@@ -120,8 +120,8 @@ The core problem chain that shaped the product:
 
 | Target | Support |
 |---|---|
-| Bare VPS (Ubuntu/Debian/CentOS) | ✅ `install-vps.sh` one-click script |
-| BaoTa (宝塔) Panel | ✅ `install.sh` one-click script |
+| Bare VPS (Ubuntu/Debian/CentOS) | ✅ `install.sh` one-click script (auto-detects the environment) |
+| BaoTa (宝塔) Panel | ✅ `install.sh`, or the BaoTa entry point `bt-deploy.sh` (thin wrapper, identical behaviour) |
 | Docker / docker-compose | ✅ Official two-stage Dockerfile + compose file |
 | Reverse proxy | ✅ Nginx (script-configured) / any proxy in front of port 8000 |
 
@@ -384,8 +384,8 @@ CBoard offers **three officially supported installation methods**:
 | Method | Best for | Script | Effort |
 |---|---|---|---|
 | 🐳 **Docker** | Any Linux/macOS/Windows with Docker; isolated, reproducible, easy upgrades | `docker compose` | Low |
-| 🖥️ **Bare VPS** | New VPS without a panel; full automation incl. Nginx + HTTPS | `install-vps.sh` | Low (one command) |
-| 🪟 **BaoTa (宝塔) Panel** | Servers already running BaoTa Panel | `install.sh` | Low (menu-driven) |
+| 🖥️ **One-Click Script** | Bare VPS **or** BaoTa panel — it detects the environment | `install.sh` (BaoTa entry: `bt-deploy.sh`) | Low (one command) |
+| 🪟 **BaoTa panel site + script** | You want the panel to own the site/certificates | panel "Add Site" + `install.sh` / `bt-deploy.sh` | Low (menu-driven) |
 
 > ⚠️ **All methods require root/sudo access.** For production, always bind a domain and enable HTTPS.
 
@@ -634,28 +634,69 @@ go run ./cmd/migrate -sqlite ./data/cboard.db -mysql "cboard_user:cboard_passwor
 
 ---
 
-### 🖥️ Method 1: Bare VPS (No Panel) — `install-vps.sh`
+### 🖥️ Method 1: One-Click Script — `install.sh` (bare VPS **or** BaoTa)
 
-For Ubuntu/Debian/CentOS without any panel. The script automates: dependency install → code pull → Go/Node.js install → backend compile → frontend build → `.env` generation → Nginx + Let's Encrypt SSL → systemd service → start.
+**This is the only maintained installer.** It auto-detects the environment (BaoTa nginx + panel vhost dir, or system nginx), and on a clean machine it bootstraps everything it needs: git/sqlite3, gcc, Go 1.25.0, Node 22.12.0, Nginx and certbot.
+
+#### Which of the three scripts should I use?
+
+| Script | Status | Purpose |
+|--------|--------|---------|
+| **`install.sh`** | ✅ **The only implementation — use this** | Deploy + operate + self-repair + full uninstall; works on bare VPS and BaoTa |
+| **`bt-deploy.sh`** | ✅ BaoTa entry point (thin wrapper) | Checks the BaoTa environment and certificate policy, then hands over to `install.sh` — behaviour is identical |
+| `install-vps.sh` | ❌ Deprecated | It pins Go 1.21.5 / Node 18, which conflicts with `go.mod` (Go 1.25) and vite 7 (Node ≥ 20.19); **it will fail at the frontend build**. The script now refuses to run (`FORCE_LEGACY=1` overrides) |
+
+#### Prerequisites
+
+| Item | Requirement |
+|------|-------------|
+| OS | Debian 10+ / Ubuntu 18.04+ / CentOS 7+ / Rocky / AlmaLinux (Debian 12 verified end-to-end) |
+| Privileges | root |
+| Resources | ≥1 vCPU, ≥1 GB RAM, ≥10 GB disk |
+| Domain | A record pointing at this server. **The project directory name must equal the domain**, e.g. `/www/wwwroot/pingzen.top` |
+| Ports | 80 and 443 open (cloud security group **and** host firewall; the script does not modify firewalls) |
+
+#### Quick start (three commands)
 
 ```bash
-curl -sL https://raw.githubusercontent.com/moneyfly1/myweb/main/install-vps.sh -o install-vps.sh
-sudo bash install-vps.sh
+git clone https://github.com/moneyfly1/myweb.git /www/wwwroot/your-domain.com
+cd /www/wwwroot/your-domain.com
+sudo bash install.sh        # then choose menu option 1, then answer the Redis prompt
 ```
 
-Follow the prompts (domain, project directory default `/opt/cboard`, admin username/email/password). Verify:
+Non-interactive (the script is safe on EOF — it never busy-loops):
 
 ```bash
+printf '1\nn\n' | sudo bash install.sh     # 1 = full auto deploy, n = skip Redis
+```
+
+#### What the script does
+
+| Stage | Details |
+|-------|---------|
+| Bootstrap | base packages (git/sqlite3/wget/curl) → gcc (required by CGO/SQLite) → **Go 1.25.0** → **Node 22.12.0** → **Nginx** (reuses BaoTa's nginx when present) |
+| Source & env | clones the repo if the directory is empty; writes `.env` with `HOST=127.0.0.1`, an **absolute** database path, a random 64-char `SECRET_KEY`, mode 600 |
+| Build | backend built with `CGO_ENABLED=1` into `server.new`, health-checked, then swapped in (previous binary kept as `server.bak.<ts>`); frontend installed from lockfile and built with vite |
+| Service | systemd unit with `EnvironmentFile` / `LimitNOFILE` / `NoNewPrivileges`, then a **business health check** (`/health`, not just `is-active`) |
+| Nginx | one template: `/api/`, `/uploads/` (attachments — otherwise the SPA fallback returns HTML), `/repo-sync/`, `/assets/` long cache, `index.html` no-cache, `client_max_body_size 16m`, ACME challenge location; `nginx -t` first, auto-switch http2 syntax or **precisely roll back this change** on failure |
+| Certificates | reuse first (certbot → BaoTa panel → acme.sh), request only if none; installs the renewal reload hook and timer |
+| Finishing | logrotate for `server.log`; database backed up to `/www/backup/cboard` before every upgrade |
+
+#### Menu reference (0–16)
+
+`1` full auto deploy · `2` create/reset admin (verifies login immediately) · `3` force restart (project processes only) · `4` deep cache clean (keeps `dist` and the binary) · `5` unlock user · `6` service status · `7` live log (`server.log`) · `8` restart · `9` stop · `10` renew certificate · `11` sync from GitHub & rebuild · `12` configure Redis · `13` roll back to previous build · `14` rebuild & restart only · `15` full uninstall (with residual scan) · `16` self-check & auto-repair · `0` exit
+
+#### Certificates vs. BaoTa's own SSL
+
+They **do** conflict if both manage the same domain: two ACME clients re-issuing the same host (rate limits), different file names (`fullchain.cer` vs `fullchain.pem`), and the panel rewriting the vhost. The script handles it: it probes **certbot → BaoTa (`/www/server/panel/vhost/cert/<domain>`) → acme.sh (`/root/.acme.sh/<domain>`)** and **reuses an existing BaoTa certificate, skipping certbot**; it renders the right file names per source; it warns when two certificate sets coexist; menu 16 re-adds any config fragments the panel overwrote. Set `CERT_MANAGER=panel` to let the panel own issuance/renewal (apply in the panel, then re-run the script or menu 16 to switch the site to HTTPS), or keep the default and only *view* certificates in the panel.
+
+#### Verify
+
+```bash
+curl -I https://your-domain.com                 # 200 + valid certificate
+curl https://your-domain.com/api/v1/packages    # API proxy works
 systemctl status cboard
-curl -s https://yourdomain.com/health
-```
-
-Management:
-
-```bash
-systemctl start|stop|restart|status cboard
-journalctl -u cboard -f            # service logs
-tail -f /opt/cboard/server.log     # app logs
+tail -f /www/wwwroot/your-domain.com/server.log
 ```
 
 ### 🪟 Method 2: BaoTa (宝塔) Panel — `install.sh`
@@ -688,15 +729,15 @@ The script installs Go/Node.js, compiles the backend, builds the frontend, confi
 
 | Method | Domain configured | Admin configured | When |
 |--------|-------------------|------------------|------|
-| **BaoTa (`install.sh`)** | **In BaoTa when creating the site** (domain = site directory name; the script derives it via `basename PROJECT_DIR`) | Run the script and choose **menu 2** "Create/Reset Admin Account" (interactive username/email/password) | After deployment, anytime |
-| **Bare VPS (`install-vps.sh`)** | **Prompted during the script run** ("域名 (如 example.com)") | **Prompted during the script run** (username/email/password) | During installation |
+| **One-click script (`install.sh` / `bt-deploy.sh`)** | Derived from the **project directory name** (e.g. `/www/wwwroot/example.com`); override with `DOMAIN=example.com` | Run the script, choose **menu 2** (username/email/password; login is verified immediately) | After deployment, anytime |
+| **BaoTa panel site + script** | Determined **when adding the site in the panel** | Same (menu 2) | After deployment, anytime |
 | **Docker** | `.env` → `PANEL_PUBLIC_URL` (only needed for self-hosted node callbacks; not required for pure subscription) | `.env` → `ADMIN_USERNAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD`, auto-created at first boot | Before startup, in `.env` |
 
 **Key notes:**
 
 - **BaoTa**: the domain is NOT set in `.env` — it's determined when you create the site in BaoTa (e.g. site dir `/www/wwwroot/your-domain`); the script uses that name for Nginx. Manage the admin via script menu 2.
 - **Docker**: the admin comes entirely from `.env` env vars and is auto-created at first boot; every restart re-verifies the password (auto-unlocks a locked-out admin).
-- **Bare VPS**: domain and admin are entered interactively during `install-vps.sh`, one shot.
+- **One-click script**: the domain comes from the project directory name (`/www/wwwroot/<domain>`), so clone into a correctly named directory.
 
 ---
 
