@@ -635,8 +635,12 @@ sudo bash install.sh
 非交互/自动化场景（脚本对 EOF 安全，不会空转）：
 
 ```bash
-printf '1\nn\n' | sudo bash install.sh     # 1=全自动部署，n=不配置 Redis
+printf '1\n' | sudo bash install.sh     # 1=全自动部署
 ```
+
+> **部署过程不会因 Redis 提问卡住**：Redis 配置在部署流程中是「自动模式」——
+> 非交互环境直接跳过，交互环境最多等 20 秒后按"跳过"继续；
+> 想启用随时用**菜单 12**（GeoIP 查询可提速 50–100 倍）。
 
 #### 脚本自动做了什么
 

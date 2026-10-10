@@ -666,8 +666,12 @@ sudo bash install.sh        # then choose menu option 1, then answer the Redis p
 Non-interactive (the script is safe on EOF — it never busy-loops):
 
 ```bash
-printf '1\nn\n' | sudo bash install.sh     # 1 = full auto deploy, n = skip Redis
+printf '1\n' | sudo bash install.sh     # 1 = full auto deploy
 ```
+
+> **The deploy never blocks on the Redis question**: Redis setup runs in "auto" mode during deployment —
+> non-interactive runs skip it, interactive runs wait at most 20 seconds and then continue.
+> Enable it later any time with **menu 12** (GeoIP lookups get 50–100x faster).
 
 #### What the script does
 

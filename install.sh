@@ -112,7 +112,10 @@ restart_redis_with_timeout() {
 }
 
 # --- Redis 缓存配置函数 ---
+# 参数：ask（默认，菜单 12 手动配置：一直等你回答）
+#       auto（部署流程：非交互自动跳过；交互下最多等 20 秒，超时按"跳过"处理，绝不卡住）
 configure_redis_cache() {
+    local mode="${1:-ask}"
     log "========================================="
     log "Redis 缓存配置（可选，大幅提升性能）"
     log "========================================="
@@ -121,8 +124,25 @@ configure_redis_cache() {
     echo -e "${CYAN}首次查询: 200-500ms → 缓存命中: 10-50ms${NC}"
     echo ""
 
-    read -r -p "是否启用 Redis 缓存？(y/n，默认: y): " enable_redis
-    enable_redis=${enable_redis:-y}
+    local enable_redis=""
+    if [[ "$mode" == "auto" ]]; then
+        # 部署流程里绝不阻塞：非交互环境直接跳过；交互环境给 20 秒，超时也跳过。
+        # （历史行为：默认值 y 且无限等待，自动化/走神时就会像"卡死"一样停在这里）
+        if [[ ! -t 0 ]]; then
+            log "非交互执行：跳过 Redis 配置（可稍后用菜单 12 启用）"
+            return 0
+        fi
+        echo -en "${CYAN}是否启用 Redis 缓存？(y/n，默认 n=跳过；20 秒无输入自动跳过，稍后可用菜单 12 启用): ${NC}"
+        if ! read -t 20 -r enable_redis; then
+            echo ""
+            log "20 秒内未输入 → 跳过 Redis 配置（不影响使用，随时可用菜单 12 启用）"
+            return 0
+        fi
+        enable_redis="${enable_redis:-n}"
+    else
+        read -r -p "是否启用 Redis 缓存？(y/n，默认: y): " enable_redis
+        enable_redis=${enable_redis:-y}
+    fi
 
     if [[ "$enable_redis" != "y" && "$enable_redis" != "Y" ]]; then
         log "跳过 Redis 配置（系统仍可正常运行）"
@@ -1301,8 +1321,8 @@ full_deploy() {
         warn "未找到证书目录，保持 HTTP 配置"
     fi
 
-    # 7. Redis（可选）
-    configure_redis_cache
+    # 7. Redis（可选；auto 模式：非交互/超时自动跳过，绝不阻塞部署）
+    configure_redis_cache auto
     restart_redis_with_timeout
 
     # 8. 启动 + 健康检查
@@ -1312,6 +1332,9 @@ full_deploy() {
     }
 
     print_access_info
+    if ! grep -q '^REDIS_ADDR=' "${PROJECT_DIR}/.env" 2>/dev/null; then
+        log "提示: 本次未启用 Redis 缓存。需要时可执行菜单 12 配置（GeoIP 查询可提速 50-100 倍）"
+    fi
     log "部署完成！日志文件: $LOG_FILE"
     log "服务状态: systemctl status cboard"
     log "查看日志: tail -n 200 -f ${PROJECT_DIR}/server.log"
