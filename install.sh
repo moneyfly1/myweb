@@ -1989,6 +1989,7 @@ self_check_and_repair() {
         log "✅ 证书存在: $cert_dir"
         if [[ "${CERT_SOURCE}" == "certbot" ]]; then
             [[ -x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh ]] || { setup_cert_auto_renew_hook && fixed+=("缺少续期重载钩子 → 已补"); }
+            ensure_cert_http01_exempt_hooks >/dev/null 2>&1
             if ! systemctl is-active --quiet certbot.timer 2>/dev/null && [[ ! -f /etc/cron.d/certbot-renew ]]; then
                 ensure_certbot_autorenew && fixed+=("缺少自动续期任务 → 已补")
             fi
@@ -2147,6 +2148,13 @@ uninstall_full() {
 
     # 3) 日志轮转与证书续期任务（只删本项目的）
     [[ -f /etc/logrotate.d/cboard ]] && { cp /etc/logrotate.d/cboard "$backup_dir/" 2>/dev/null; rm -f /etc/logrotate.d/cboard; log "已删除 logrotate 配置"; }
+    for _h in /etc/letsencrypt/renewal-hooks/pre/cboard-acme-http-exempt.sh \
+              /etc/letsencrypt/renewal-hooks/post/cboard-acme-http-exempt.sh; do
+        [[ -f "$_h" ]] && { cp "$_h" "$backup_dir/" 2>/dev/null; rm -f "$_h"; }
+    done
+    # 续期豁免期间留下的备份/临时文件也一并清掉（避免残留 .acme-http-exempt.bak）
+    rm -f "$(site_conf_path).acme-http-exempt.bak" "$(site_conf_path).acme-tmp" 2>/dev/null
+    rm -f /run/cboard-acme-http-exempt 2>/dev/null
     if [[ -f /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh ]]; then
         cp /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh "$backup_dir/" 2>/dev/null
         rm -f /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
@@ -2231,6 +2239,8 @@ uninstall_full() {
     compgen -G "/tmp/cboard_install*" >/dev/null 2>&1 && residual_items+=("/tmp/cboard_install*")
     [[ -f /etc/logrotate.d/cboard ]] && residual_items+=("/etc/logrotate.d/cboard")
     [[ -e /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh ]] && residual_items+=("证书续期钩子")
+    [[ -e /etc/letsencrypt/renewal-hooks/pre/cboard-acme-http-exempt.sh ]] && residual_items+=("ACME 豁免钩子")
+    [[ -e "$(site_conf_path).acme-http-exempt.bak" ]] && residual_items+=("ACME 豁免备份文件")
     [[ -f /etc/cron.d/certbot-renew ]] && residual_items+=("/etc/cron.d/certbot-renew")
     if bt_panel_present && [[ -x /www/server/panel/pyenv/bin/python3 ]]; then
         if /www/server/panel/pyenv/bin/python3 -c "
@@ -2321,6 +2331,104 @@ HOOK
     fi
 }
 
+# 宝塔的「强制 HTTPS」是一段 server 级 if + rewrite（#HTTP_TO_HTTPS_START..END）：
+# 它在 rewrite 阶段执行，**优先于任何 location**，所以
+#     http://域名/.well-known/acme-challenge/<token>
+# 会被 301 跳到 https。证书有效时 Let's Encrypt 会跟随跳转，校验照样过；
+# 但证书一旦过期/不可用，跟随 HTTPS 就会失败 → 自续期失败（这才是「自动续期可能失败」
+# 的真实来源，而不是缺少放行段——放行段一直在）。
+# 因此这里写入一对 renewal-hooks/{pre,post} 钩子：续期前临时注释掉这段跳转，
+# 续期后原样恢复（备份 + 恢复 + nginx -t 校验，失败立即回滚，绝不留坏配置）。
+ensure_cert_http01_exempt_hooks() {
+    [[ -n "${NGINX_VHOST_DIR:-}" ]] || detect_nginx_layout >/dev/null 2>&1
+    local conf; conf="$(site_conf_path)"
+    [[ -f "$conf" ]] || return 0
+    # 只有真的存在「强制 HTTPS 跳转」时才需要这对钩子
+    grep -q "HTTP_TO_HTTPS_START" "$conf" 2>/dev/null || return 0
+    grep -qE "^[[:space:]]*rewrite .*permanent" "$conf" 2>/dev/null || return 0
+
+    local reload_cmd; reload_cmd="$(detect_nginx_reload_cmd)"
+    local pre_dir="/etc/letsencrypt/renewal-hooks/pre"
+    local post_dir="/etc/letsencrypt/renewal-hooks/post"
+    mkdir -p "$pre_dir" "$post_dir"
+    local pre="$pre_dir/cboard-acme-http-exempt.sh"
+    local post="$post_dir/cboard-acme-http-exempt.sh"
+
+    local tmp; tmp="$(mktemp)"
+    cat > "$tmp" << EOF
+#!/bin/bash
+# 由 CBoard 安装脚本生成：证书续期前，临时取消宝塔「强制 HTTPS」跳转，
+# 让 http-01 校验不会被 301 打断（证书过期时这一步是续期成败的关键）。
+set +e
+DOMAIN_EXPECT="${DOMAIN}"
+case " \${CERTBOT_DOMAIN:-} \${CERTBOT_ALL_DOMAINS:-} " in
+    *"\${DOMAIN_EXPECT}"*) ;;
+    *) exit 0 ;;
+esac
+CONF="${conf}"
+FLAG="/run/cboard-acme-http-exempt"
+BAK="\${CONF}.acme-http-exempt.bak"
+[ -f "\$CONF" ] || exit 0
+grep -q "HTTP_TO_HTTPS_START" "\$CONF" 2>/dev/null || exit 0
+grep -qE "^[[:space:]]*rewrite .*permanent" "\$CONF" 2>/dev/null || exit 0
+[ -f "\$BAK" ] || cp -a "\$CONF" "\$BAK"
+awk '
+    /#HTTP_TO_HTTPS_START/ { inb = 1 }
+    inb && /^[[:space:]]*rewrite[[:space:]].*permanent/ { print "# [cboard-acme] 续期期间临时关闭强制HTTPS: " \$0; next }
+    /#HTTP_TO_HTTPS_END/ { inb = 0 }
+    { print }
+' "\$CONF" > "\${CONF}.acme-tmp" && mv "\${CONF}.acme-tmp" "\$CONF"
+if ${NGINX_TEST_CMD:-nginx -t} >/dev/null 2>&1; then
+    ${reload_cmd} >/dev/null 2>&1
+    touch "\$FLAG"
+    logger -t cboard-acme "已临时关闭强制HTTPS跳转（http-01 校验期间）"
+    exit 0
+fi
+# 关掉跳转后配置反而不过 → 立刻还原，让续期以清晰的原因失败
+mv -f "\$BAK" "\$CONF"
+rm -f "\$FLAG"
+${reload_cmd} >/dev/null 2>&1
+logger -t cboard-acme "临时关闭强制HTTPS后 nginx 配置检测失败，已还原"
+exit 1
+EOF
+    chmod +x "$tmp"
+    if [[ ! -f "$pre" ]] || ! cmp -s "$tmp" "$pre"; then
+        mv "$tmp" "$pre"; chmod +x "$pre"
+        log "已安装 ACME 续期豁免钩子（续期期间临时关闭强制HTTPS跳转）: $pre"
+    else
+        rm -f "$tmp"
+    fi
+
+    tmp="$(mktemp)"
+    cat > "$tmp" << EOF
+#!/bin/bash
+# 由 CBoard 安装脚本生成：证书续期后，恢复宝塔「强制 HTTPS」跳转（原样还原配置）。
+set +e
+CONF="${conf}"
+FLAG="/run/cboard-acme-http-exempt"
+BAK="\${CONF}.acme-http-exempt.bak"
+[ -f "\$FLAG" ] || exit 0
+[ -f "\$BAK" ] || { rm -f "\$FLAG"; exit 0; }
+mv -f "\$BAK" "\$CONF"
+rm -f "\$FLAG"
+if ${NGINX_TEST_CMD:-nginx -t} >/dev/null 2>&1; then
+    ${reload_cmd} >/dev/null 2>&1
+else
+    ${reload_cmd} >/dev/null 2>&1
+fi
+logger -t cboard-acme "已恢复强制HTTPS跳转"
+exit 0
+EOF
+    chmod +x "$tmp"
+    if [[ ! -f "$post" ]] || ! cmp -s "$tmp" "$post"; then
+        mv "$tmp" "$post"; chmod +x "$post"
+        log "已安装 ACME 续期恢复钩子: $post"
+    else
+        rm -f "$tmp"
+    fi
+    return 0
+}
+
 # 确保 certbot 已安装且「定时自动续期」处于开启状态
 ensure_certbot_autorenew() {
     if ! command -v certbot >/dev/null 2>&1; then
@@ -2351,6 +2459,8 @@ CRON
         warn "未找到可用的定时机制，请自行配置 certbot 定时续期"
     fi
     setup_cert_auto_renew_hook
+    # 宝塔「强制HTTPS」会 301 掉 http-01 校验：装上 pre/post 豁免钩子
+    ensure_cert_http01_exempt_hooks
     return 0
 }
 
