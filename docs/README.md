@@ -24,7 +24,7 @@ This directory contains docs for deployment, migration, API, features, configura
 
 | 文档 | 说明 |
 |------|------|
-| [VPS 部署教程（无宝塔）](./部署/VPS部署教程-无宝塔.md) | 纯 VPS 一键部署步骤 |
+| [一键脚本部署教程（纯 VPS / 宝塔通用）](./部署/VPS部署教程-一键脚本.md) | install.sh 全流程与运维菜单 |
 | [迁移指南](./migration/MIGRATION_GUIDE.md) | 版本迁移与兼容性处理 |
 | [迁移快速开始](./migration/QUICK_START.md) | 迁移最短路径与命令 |
 | [安装问题排查指南](./故障排查/安装问题排查指南.md) | 常见安装与运行故障排查 |
@@ -131,7 +131,7 @@ This directory contains docs for deployment, migration, API, features, configura
 
 | Document | Description |
 |----------|-------------|
-| [VPS Deployment (No BT Panel)](./部署/VPS部署教程-无宝塔.md) | One-click VPS deployment |
+| [One-Click Script Deployment (VPS / BT)](./部署/VPS部署教程-一键脚本.md) | install.sh full guide |
 | [Migration Guide](./migration/MIGRATION_GUIDE.md) | Full migration workflow |
 | [Migration Quick Start](./migration/QUICK_START.md) | Fast migration path |
 | [Installation Troubleshooting](./故障排查/安装问题排查指南.md) | Common installation issues and solutions |

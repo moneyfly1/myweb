@@ -347,7 +347,7 @@ CBoard 提供 **三种部署方式**，按环境选择：
 | 🖥️ **一键脚本** | 纯 VPS **或** 宝塔面板都适用（推荐） | `install.sh`；宝塔入口 `bt-deploy.sh` | ⭐⭐ |
 | 🧱 **宝塔面板建站 + 脚本** | 想在面板里统一管理站点与证书 | 面板「添加站点」+ `install.sh` / `bt-deploy.sh` | ⭐⭐ |
 
-> 三个脚本只有两个需要关心：**`install.sh`（唯一实现）** 与 **`bt-deploy.sh`（宝塔入口，薄封装，行为等同 install.sh）**；`install-vps.sh` 已废弃，运行会被直接拦截。
+> 只有两个脚本需要关心：**`install.sh`（唯一实现）** 与 **`bt-deploy.sh`（宝塔入口，薄封装，行为等同 install.sh）**。（历史上的 `install-vps.sh` 已删除：它固定 Go 1.21.5 / Node 18，与 `go.mod` 和 vite 7 的要求冲突）
 
 ---
 
@@ -606,7 +606,6 @@ go run ./cmd/migrate -sqlite ./data/cboard.db -mysql "cboard_user:cboard_passwor
 |------|------|-----------|
 | **`install.sh`** | ✅ **唯一实现，就用它** | 部署 + 运维 + 自检修复 + 完全卸载，纯 VPS 与宝塔都适用 |
 | **`bt-deploy.sh`** | ✅ 宝塔入口（薄封装） | 只做宝塔环境检查与证书策略提示，然后转交 `install.sh`，**行为与 install.sh 完全一致** |
-| `install-vps.sh` | ❌ 已废弃 | 它把 Go 固定 1.21.5、Node 固定 18，与 `go.mod`(Go 1.25) 和 vite 7(Node ≥20.19) 不匹配，**运行必然在构建前端时失败**；脚本运行时会直接拦截退出（`FORCE_LEGACY=1` 可强制跑） |
 
 > 为什么 `bt-deploy.sh` 只剩一层封装：它以前是 `install.sh` 的完整拷贝，两份代码各自演进后开始漂移（宝塔版曾缺 CGO/Node 版本校验/`nginx -t`/`/uploads` 反代/ACME 放行段，而 install.sh 曾不会自举 Go/Node/Nginx）。现在只保留一套实现，两个入口不会再有差异。
 
