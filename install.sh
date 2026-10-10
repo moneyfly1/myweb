@@ -1974,22 +1974,246 @@ BLK
     return 0
 }
 
-# 站点配置刷新：
-#   - 本脚本生成的配置（带生成标记）→ 直接用当前模板重渲染（模板已包含全部必需片段）
-#   - 手工/面板维护的配置 → 只做幂等补块，绝不整文件覆盖
-refresh_site_config() {
+# 判定当前站点配置是否由宝塔面板（或其它面板）托管：
+# 面板生成的配置带 #SSL-START / #CERT-APPLY-CHECK 标记，并 include 面板自己的片段目录。
+site_conf_is_panel_managed() {
     local conf; conf="$(site_conf_path)"
-    if [[ -f "$conf" ]] && grep -q "由 CBoard 安装脚本生成" "$conf"; then
-        local cert_dir; cert_dir="$(find_cert_dir)"
-        if [[ -n "$cert_dir" ]]; then
-            render_site_config https "$cert_dir"
-        else
-            render_site_config http
-        fi
-        nginx_apply_or_rollback || warn "站点配置未通过 nginx -t，已回滚"
-    else
-        ensure_site_conf_blocks
+    [[ -f "$conf" ]] || return 1
+    grep -qE "#SSL-START|#CERT-APPLY-CHECK|/www/server/panel/vhost/nginx/extension/" "$conf"
+}
+
+# 面板托管配置的「合并模式」：保留面板的标记、include 与错误页设置，只把本应用必需的片段注入进去。
+# 为什么不能直接覆盖：宝塔面板「网站 → SSL」申请/续签、面板"保存配置"都会重写这个文件，
+# 覆盖式写会把面板的 CERT-APPLY-CHECK/include 标记弄丢，导致面板后续 SSL 申请失败。
+# 幂等设计：每段都先 grep 判存在，重复执行不会重复插入。
+inject_into_panel_conf() {
+    local conf; conf="$(site_conf_path)"
+    [[ -f "$conf" ]] || { warn "站点配置不存在: $conf"; return 1; }
+    local port; port="$(env_port)"
+    local changed="no"
+
+    LAST_CONF_BACKUP="${conf}.backup.$(date +%Y%m%d_%H%M%S)"
+    cp "$conf" "$LAST_CONF_BACKUP" 2>/dev/null
+
+    # a) client_max_body_size
+    if ! grep -q "client_max_body_size" "$conf"; then
+        local tmp; tmp="$(mktemp)"
+        awk '!done && /^[[:space:]]*server[[:space:]]*\{/ { print; print "    client_max_body_size 16m;"; done=1; next } { print }' "$conf" > "$tmp" && mv "$tmp" "$conf"
+        changed="yes"
     fi
+
+    # b) ACME 放行段（宝塔自己也有一份 regex 的 well-known 规则，这里再加一份 ^~ 前缀块，双保险）
+    if ! grep -q "location \^~ /\.well-known/acme-challenge/" "$conf"; then
+        local tmp; tmp="$(mktemp)"
+        awk -v proj="$PROJECT_DIR" '
+            !done && /^[[:space:]]*server[[:space:]]*\{/ {
+                print
+                print "    location ^~ /.well-known/acme-challenge/ {"
+                print "        root " proj ";"
+                print "        default_type text/plain;"
+                print "        try_files $uri =404;"
+                print "    }"
+                done=1; next
+            }
+            { print }
+        ' "$conf" > "$tmp" && mv "$tmp" "$conf"
+        changed="yes"
+    fi
+
+    local api_block uploads_block reposync_block
+    api_block="$(cat << BLK
+    # === CBoard-API-BEGIN ===
+    location /api/ {
+        proxy_pass http://127.0.0.1:${port};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+    # === CBoard-API-END ===
+BLK
+)"
+    uploads_block="$(cat << BLK
+    # === CBoard-UPLOADS-BEGIN ===
+    location /uploads/ {
+        proxy_pass http://127.0.0.1:${port};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        expires -1;
+    }
+    # === CBoard-UPLOADS-END ===
+BLK
+)"
+    reposync_block="$(cat << BLK
+    # === CBoard-REPOSYNC-BEGIN ===
+    location /repo-sync/ {
+        proxy_pass http://127.0.0.1:${port};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+    # === CBoard-REPOSYNC-END ===
+BLK
+)"
+    grep -q "location /api/" "$conf" || { insert_block_before_spa "$conf" "location /api/" "$api_block" && changed="yes"; }
+    grep -q "location /uploads/" "$conf" || { insert_block_before_spa "$conf" "location /uploads/" "$uploads_block" && changed="yes"; }
+    grep -q "location /repo-sync/" "$conf" || { insert_block_before_spa "$conf" "location /repo-sync/" "$reposync_block" && changed="yes"; }
+    grep -q "location /assets/" "$conf" || { insert_block_before_spa "$conf" "location /assets/" '    location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; }' && changed="yes"; }
+    grep -q "location = /index.html" "$conf" || { insert_block_before_spa "$conf" "location = /index.html" '    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        expires -1;
+    }' && changed="yes"; }
+
+    # c) SPA fallback：面板模板默认没有 location /，静态站点会 404
+    if ! grep -qE "^[[:space:]]*location[[:space:]]+/[[:space:]]*\{" "$conf"; then
+        grep -q "CBoard-SPA-BEGIN" "$conf" || cat >> "$conf" << 'SPAEOF'
+
+# === CBoard-SPA-BEGIN（由安装脚本追加：SPA 前端路由回退；面板重写配置后可用菜单 16 补回）===
+# 说明：/api/ 与 /uploads/ 是前缀 location，优先级高于本块，不受影响
+# === CBoard-SPA-END ===
+SPAEOF
+        local tmp; tmp="$(mktemp)"
+        awk '
+            /# === CBoard-SPA-BEGIN/ {
+                print "    location / { try_files $uri $uri/ /index.html; }"
+            }
+            { print }
+        ' "$conf" > "$tmp" && mv "$tmp" "$conf"
+        changed="yes"
+    fi
+
+    # d) root 指向前端产物目录（面板默认 root 是站点目录，而 SPA 产物在 frontend/dist）
+    local want_root="${PROJECT_DIR}/frontend/dist"
+    if ! grep -q "root ${want_root};" "$conf"; then
+        sed -i "s|^[[:space:]]*root [^;]*;|    root ${want_root};|" "$conf"
+        changed="yes"
+        log "已将站点 root 指向前端产物: ${want_root}"
+    fi
+
+    [[ "$changed" == "yes" ]] && log "已按合并模式注入必需片段（保留宝塔面板自己的标记与 include）"
+    return 0
+}
+
+# 面板托管配置启用 HTTPS：在同一个文件里追加独立的 443 server 块（幂等、带标记），
+# 并把 80 端口的 SPA 回退改成跳转（保留 ACME 与面板的 well-known 规则，续期不受影响）。
+enable_https_panel_conf() {
+    local conf; conf="$(site_conf_path)" cert_dir="$1"
+    [[ -n "$cert_dir" ]] || return 1
+    local port; port="$(env_port)"
+    local listen443="listen 443 ssl;" http2_line="    http2 on;"
+    if ! ver_ge "$(nginx_version)" "1.25.1"; then
+        listen443="listen 443 ssl http2;"; http2_line=""
+    fi
+    LAST_CONF_BACKUP="${conf}.backup.$(date +%Y%m%d_%H%M%S)"
+    cp "$conf" "$LAST_CONF_BACKUP" 2>/dev/null
+
+    if ! grep -q "CBoard-HTTPS-BEGIN" "$conf"; then
+        cat >> "$conf" << EOF
+
+# === CBoard-HTTPS-BEGIN（由安装脚本追加；面板重写配置后可用菜单 16 补回）===
+server {
+    ${listen443}
+${http2_line}
+    server_name ${DOMAIN};
+    client_max_body_size 16m;
+    root ${PROJECT_DIR}/frontend/dist;
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    ssl_certificate ${cert_dir}/${CERT_FULLCHAIN};
+    ssl_certificate_key ${cert_dir}/${CERT_KEY};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root ${PROJECT_DIR};
+        default_type text/plain;
+        try_files \$uri =404;
+    }
+    location /api/ {
+        proxy_pass http://127.0.0.1:${port};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+    location /uploads/ {
+        proxy_pass http://127.0.0.1:${port};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        expires -1;
+    }
+    location /repo-sync/ {
+        proxy_pass http://127.0.0.1:${port};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+    location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; }
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        expires -1;
+    }
+    location / { try_files \$uri \$uri/ /index.html; }
+}
+# === CBoard-HTTPS-END ===
+EOF
+        log "已为面板站点追加 443 server 块（含 API/上传/SPA 与证书）"
+    fi
+
+    # 80 端口的 SPA 回退改成跳转（幂等：只在仍是 try_files 时替换）
+    if grep -qE "^[[:space:]]*location[[:space:]]+/[[:space:]]*\{[[:space:]]*try_files" "$conf"; then
+        python3 - "$conf" <<'PY' 2>/dev/null || sed -i 's|^\([[:space:]]*location / { \)try_files $uri $uri/ /index.html; \(}\)|return 301 https://$host$request_uri; |' "$conf"
+import sys
+p = sys.argv[1]
+t = open(p).read()
+t = t.replace("    location / { try_files $uri $uri/ /index.html; }",
+              "    location / { return 301 https://$host$request_uri; }")
+open(p, "w").write(t)
+PY
+    fi
+    return 0
+}
+
+# 把站点配置拉到「目标状态」：
+#   - 宝塔/面板托管的配置 → 合并模式（保留面板标记，注入必需片段；有证书则追加 443 块）
+#   - 本脚本生成的配置（带生成标记）→ 用当前模板重渲染
+#   - 其它手工配置 → 只做幂等补块，不整文件覆盖
+apply_site_config_desired() {
+    local conf; conf="$(site_conf_path)"
+    local cert_dir; cert_dir="$(find_cert_dir)"
+    if site_conf_is_panel_managed; then
+        inject_into_panel_conf
+        [[ -n "$cert_dir" ]] && enable_https_panel_conf "$cert_dir"
+    elif [[ -f "$conf" ]] && grep -q "由 CBoard 安装脚本生成" "$conf"; then
+        if [[ -n "$cert_dir" ]]; then render_site_config https "$cert_dir"; else render_site_config http; fi
+    elif [[ -f "$conf" ]]; then
+        ensure_site_conf_blocks
+        [[ -n "$cert_dir" ]] && enable_https_panel_conf "$cert_dir"
+    else
+        if [[ -n "$cert_dir" ]]; then render_site_config https "$cert_dir"; else render_site_config http; fi
+    fi
+    nginx_apply_or_rollback || warn "站点配置未通过 nginx -t（nginx $(nginx_version)）"
+    return 0
+}
+
+refresh_site_config() {
+    apply_site_config_desired
 }
 
 ensure_repo_sync_nginx() {
