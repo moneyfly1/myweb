@@ -1583,7 +1583,17 @@ self_check_and_repair() {
 # 项目目录、数据库、以及脚本自动安装的软件（Go/Node/nginx/redis/certbot）都需显式确认才删。
 uninstall_full() {
     step "完全卸载 CBoard（脚本安装的所有内容）..."
+    # 必须先探测：不探测时 NGINX_VHOST_DIR 为空，site_conf_path 会得到错误路径，
+    # 于是"删站点配置"被静默跳过，留下 /etc/nginx/conf.d/<域名>.conf（真机实测踩到过）
+    detect_nginx_layout
     local conf; conf="$(site_conf_path)"
+    # 同一个域名可能在多处都有配置（系统 nginx / 宝塔 / sites-enabled），全部纳入处理
+    local -a conf_candidates=(
+        "${NGINX_VHOST_DIR:-/etc/nginx/conf.d}/${DOMAIN}.conf"
+        "/etc/nginx/conf.d/${DOMAIN}.conf"
+        "/etc/nginx/sites-enabled/${DOMAIN}.conf"
+        "/www/server/panel/vhost/nginx/${DOMAIN}.conf"
+    )
     local backup_dir="/root/cboard-uninstall-$(date +%Y%m%d_%H%M%S)"
     warn "将删除：systemd 单元 cboard、站点配置 ${conf}、logrotate 配置、certbot 续期钩子/定时任务"
     warn "默认保留：项目目录 ${PROJECT_DIR}、数据库、.env（后面会单独询问）"
@@ -1603,14 +1613,28 @@ uninstall_full() {
         log "已删除 systemd 单元（副本在 $backup_dir）"
     fi
 
-    # 2) Nginx 站点配置
-    if [[ -f "$conf" ]]; then
-        cp "$conf" "$backup_dir/" 2>/dev/null
-        rm -f "$conf"
-        log "已删除站点配置 $conf（副本在 $backup_dir）"
-    fi
-    [[ -d "${NGINX_VHOST_DIR}/extension/${DOMAIN}" ]] && rm -rf "${NGINX_VHOST_DIR}/extension/${DOMAIN}" && log "已删除宝塔扩展配置目录"
-    systemctl is-active --quiet nginx && nginx_apply_or_rollback >/dev/null 2>&1
+    # 2) Nginx 站点配置（含备份文件与宝塔扩展目录）
+    local removed_conf=0
+    local c
+    for c in "${conf_candidates[@]}"; do
+        if [[ -f "$c" ]]; then
+            cp "$c" "$backup_dir/" 2>/dev/null
+            rm -f "$c"
+            log "已删除站点配置 $c（副本在 $backup_dir）"
+            removed_conf=1
+            # 同目录下的自动备份/卸载副本一并清掉，避免"残留"
+            local f
+            for f in "${c}".backup.* "${c}".uninstalled.*; do
+                [[ -f "$f" ]] && { cp "$f" "$backup_dir/" 2>/dev/null; rm -f "$f"; }
+            done
+        fi
+    done
+    [[ "$removed_conf" == "0" ]] && warn "未找到站点配置（可能已删除过）"
+    for c in "${NGINX_VHOST_DIR:-/etc/nginx/conf.d}/extension/${DOMAIN}" "/www/server/panel/vhost/nginx/extension/${DOMAIN}"; do
+        [[ -d "$c" ]] && rm -rf "$c" && log "已删除扩展配置目录 $c"
+    done
+    [[ -f "/www/server/panel/vhost/apache/${DOMAIN}.conf" ]] && { cp "/www/server/panel/vhost/apache/${DOMAIN}.conf" "$backup_dir/" 2>/dev/null; rm -f "/www/server/panel/vhost/apache/${DOMAIN}.conf"; log "已删除 Apache 配置"; }
+    systemctl is-active --quiet nginx 2>/dev/null && nginx_apply_or_rollback >/dev/null 2>&1
 
     # 3) 日志轮转与证书续期任务（只删本项目的）
     [[ -f /etc/logrotate.d/cboard ]] && { cp /etc/logrotate.d/cboard "$backup_dir/" 2>/dev/null; rm -f /etc/logrotate.d/cboard; log "已删除 logrotate 配置"; }
@@ -1638,6 +1662,16 @@ uninstall_full() {
         fi
     fi
 
+    # 4.5) 证书文件（可选；不删的话重新部署会直接复用，避免重复签发）
+    local del_cert=""
+    read -r -p "是否删除本域名的证书文件（/etc/letsencrypt/{live,archive,renewal}/${DOMAIN}*）？(yes/no，默认 no): " del_cert || del_cert="no"
+    if [[ "$del_cert" == "yes" ]]; then
+        local ce
+        for ce in "/etc/letsencrypt/live/${DOMAIN}" "/etc/letsencrypt/archive/${DOMAIN}" /etc/letsencrypt/renewal/${DOMAIN}.conf /etc/letsencrypt/live/${DOMAIN}-*; do
+            [[ -e "$ce" ]] && rm -rf "$ce" && log "已删除证书文件: $ce"
+        done
+    fi
+
     # 5) 脚本自动安装的软件（可选清理，让机器回到干净状态）
     local purge=""
     read -r -p "是否卸载脚本自动安装的软件（Go/Node/nginx/redis/certbot）？(yes/no，默认 no): " purge || purge="no"
@@ -1656,14 +1690,24 @@ uninstall_full() {
     echo -e "${CYAN}================ 残留扫描 ================${NC}"
     local residual=0
     systemctl list-unit-files 2>/dev/null | grep -q "^cboard.service" && { warn "残留: systemd 单元 cboard.service"; residual=1; }
-    [[ -f "$conf" ]] && { warn "残留: 站点配置 $conf"; residual=1; }
+    for c in "${conf_candidates[@]}"; do
+        [[ -f "$c" ]] && { warn "残留: 站点配置 $c"; residual=1; }
+        compgen -G "${c}.backup.*" >/dev/null 2>&1 && { warn "残留: 站点配置备份 ${c}.backup.*"; residual=1; }
+    done
     pgrep -f "^${PROJECT_DIR}/server( |$)" >/dev/null 2>&1 && { warn "残留: 进程仍在运行"; residual=1; }
     ss -ltn 2>/dev/null | grep -q ":$(env_port) " && { warn "残留: 端口 $(env_port) 仍被监听"; residual=1; }
-    if compgen -G "/tmp/cboard_install*" >/dev/null 2>&1; then warn "残留: /tmp/cboard_install*"; residual=1; fi
-    [[ -f /var/lock/cboard-install.lock ]] && { warn "残留: 安装锁文件 /var/lock/cboard-install.lock（无进程运行时该文件可留在原处，不影响使用）"; }
-    [[ ${#residual} -eq 0 ]] && log "✅ 未发现残留（服务/配置/进程/端口均已清理）"
+    compgen -G "/tmp/cboard_install*" >/dev/null 2>&1 && { warn "残留: /tmp/cboard_install*"; residual=1; }
+    [[ -f /etc/logrotate.d/cboard ]] && { warn "残留: /etc/logrotate.d/cboard"; residual=1; }
+    [[ -e /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh ]] && { warn "残留: 证书续期钩子"; residual=1; }
+    [[ -f /etc/cron.d/certbot-renew ]] && { warn "残留: /etc/cron.d/certbot-renew"; residual=1; }
+    [[ -d "$PROJECT_DIR" ]] && log "说明: 项目目录 $PROJECT_DIR 仍在（按你的选择保留）"
+    if [[ ${#residual} -eq 0 ]]; then
+        log "✅ 未发现残留（服务 / 站点配置 / 进程 / 端口 / 定时任务 / 轮转配置均已清理）"
+    else
+        warn "以上残留请人工确认（多为按你的选择保留的内容）"
+    fi
     log "卸载完成。删除前的配置副本在: $backup_dir"
-    return 0
+    [[ ${#residual} -eq 0 ]] && return 0 || return 1
 }
 
 # 只重建并重启（菜单 14）：不改 nginx、不改 unit，避免「只想重启」却把配置覆盖了
