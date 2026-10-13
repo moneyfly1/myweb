@@ -1886,11 +1886,14 @@ detect_db_path() {
 
 # ===== 数据库安全守卫 =====
 # 原则：install.sh 不做任何数据库备份，也绝不把 GitHub 上的任何数据库文件带到生产环境。
-# db_guard_pre  ：同步前检查仓库没有跟踪数据库文件，并记录生产库指纹（仅内存，不产生文件）。
-# db_guard_post ：同步后校验生产库原封未动；任何异常立即中止，不进入构建/重启。
+# db_guard_pre  ：同步前检查仓库没有跟踪数据库文件，并记录生产库「身份」（仅内存，不产生文件）。
+# db_guard_post ：同步后校验生产库仍是**同一个库**（文件在 / 体积未骤减 / 关键表行数未归零）；
+#                 注意不能逐字节比对 md5 —— 应用运行中 WAL 持续写入，哈希必然变化，
+#                 那会把「活跃站点」的每一次升级都误判成数据库被覆盖（实测老站 100% 误报）。
 DB_GUARD_PATH=""
-DB_GUARD_HASH=""
 DB_GUARD_EXISTS="no"
+DB_GUARD_SIZE=0
+DB_GUARD_COUNTS=""
 
 db_guard_pre() {
     # 1) 仓库绝不允许跟踪任何数据库文件：
@@ -1903,40 +1906,71 @@ db_guard_pre() {
         echo "$tracked_db" | sed 's/^/    /'
         return 1
     fi
-    # 2) 记录生产库指纹（md5 只做比对，不留备份文件）
+    # 2) 记录生产库「身份」——注意不能用逐字节 md5：
+    #    应用正在运行且 SQLite 处于 WAL 模式，库文件随时在被写入，
+    #    同步前后 md5 必然不同 → 活跃站点每次升级都会误报「数据库完整性校验未通过」
+    #    （实测老站在有用户访问的时段 100% 失败，把升级整个挡住）。
+    #    真正要防的事故是「GitHub 上的库文件覆盖了生产库」，其典型特征是
+    #    文件变小/关键表行数归零，所以改为记录体积 + 关键表行数 + 文件存在性。
     DB_GUARD_PATH="$(detect_db_path)"
-    DB_GUARD_HASH=""
     DB_GUARD_EXISTS="no"
-    if [[ -n "$DB_GUARD_PATH" ]]; then
-        if [[ -f "$DB_GUARD_PATH" ]]; then
-            DB_GUARD_EXISTS="yes"
-            DB_GUARD_HASH="$(md5sum "$DB_GUARD_PATH" 2>/dev/null | cut -d' ' -f1)"
+    DB_GUARD_SIZE=0
+    DB_GUARD_COUNTS=""
+    if [[ -n "$DB_GUARD_PATH" && -f "$DB_GUARD_PATH" ]]; then
+        DB_GUARD_EXISTS="yes"
+        DB_GUARD_SIZE="$(stat -c %s "$DB_GUARD_PATH" 2>/dev/null || stat -f %z "$DB_GUARD_PATH" 2>/dev/null || echo 0)"
+        if command -v sqlite3 >/dev/null 2>&1; then
+            DB_GUARD_COUNTS="$(sqlite3 "$DB_GUARD_PATH" \
+                "select (select count(*) from users)||','||(select count(*) from subscriptions)||','||(select count(*) from devices);" 2>/dev/null)"
         fi
-        log "数据库指纹已记录: $DB_GUARD_PATH"
+        log "数据库指纹已记录: $DB_GUARD_PATH（$((DB_GUARD_SIZE/1024)) KB，关键表 用户/订阅/设备=${DB_GUARD_COUNTS:-未取到}）"
     fi
     return 0
 }
 
 db_guard_post() {
     [[ -z "$DB_GUARD_PATH" ]] && return 0
-    if [[ "$DB_GUARD_EXISTS" == "yes" ]]; then
-        if [[ ! -f "$DB_GUARD_PATH" ]]; then
-            error "【数据库安全】生产数据库文件丢失！同步操作可能误删了数据库，已中止升级（服务未重启，原进程仍在运行）。"
-            return 1
-        fi
-        local now_hash
-        now_hash="$(md5sum "$DB_GUARD_PATH" 2>/dev/null | cut -d' ' -f1)"
-        if [[ -n "$now_hash" && "$now_hash" != "$DB_GUARD_HASH" ]]; then
-            error "【数据库安全】生产数据库文件内容发生变化！同步操作可能覆盖了数据库，已中止升级（服务未重启）。"
-            return 1
-        fi
-        log "✅ 数据库完整性校验通过（git 同步未触碰生产库）"
-    else
+    if [[ "$DB_GUARD_EXISTS" != "yes" ]]; then
         # 同步前不存在（首次部署场景），同步后也不允许出现来自仓库的库文件
         if [[ -f "$DB_GUARD_PATH" ]]; then
             error "【数据库安全】同步后出现了数据库文件（$DB_GUARD_PATH），可能来自 GitHub，已中止升级。"
             return 1
         fi
+        return 0
+    fi
+
+    # 1) 文件必须还在
+    if [[ ! -f "$DB_GUARD_PATH" ]]; then
+        error "【数据库安全】生产数据库文件丢失！同步操作可能误删了数据库，已中止升级（服务未重启，原进程仍在运行）。"
+        return 1
+    fi
+
+    # 2) 体积骤减 = 被空库/仓库库覆盖的典型特征（活跃库只会增长）
+    local now_size
+    now_size="$(stat -c %s "$DB_GUARD_PATH" 2>/dev/null || stat -f %z "$DB_GUARD_PATH" 2>/dev/null || echo 0)"
+    if [[ "${DB_GUARD_SIZE:-0}" -gt 0 && "$now_size" -gt 0 && "$now_size" -lt $(( DB_GUARD_SIZE / 2 )) ]]; then
+        error "【数据库安全】数据库体积骤减（$((DB_GUARD_SIZE/1024))KB → $((now_size/1024))KB），疑似被覆盖，已中止升级（服务未重启）。"
+        return 1
+    fi
+
+    # 3) 关键表行数归零 = 被空库覆盖（应用运行中行数只增不减，不会误报）
+    if command -v sqlite3 >/dev/null 2>&1; then
+        local now_counts
+        now_counts="$(sqlite3 "$DB_GUARD_PATH" \
+            "select (select count(*) from users)||','||(select count(*) from subscriptions)||','||(select count(*) from devices);" 2>/dev/null)"
+        if [[ -n "$DB_GUARD_COUNTS" && -n "$now_counts" && "$now_counts" == "0,0,0" && "$DB_GUARD_COUNTS" != "0,0,0" ]]; then
+            error "【数据库安全】关键表行数归零（${DB_GUARD_COUNTS} → ${now_counts}），疑似被空库覆盖，已中止升级（服务未重启）。"
+            return 1
+        fi
+        # 4) quick_check 只做提示：应用在写 WAL，偶发 busy 不应阻止升级
+        local qc
+        qc="$(sqlite3 "$DB_GUARD_PATH" "pragma quick_check;" 2>/dev/null | head -1)"
+        if [[ "$qc" != "ok" ]]; then
+            warn "数据库 quick_check 返回: ${qc:-无输出}（应用运行中可能受写入影响，仅提示不阻止升级）"
+        fi
+        log "✅ 数据库完整性校验通过（文件在 / $((now_size/1024))KB / 用户·订阅·设备=${now_counts:-未取到} / quick_check=${qc:-skipped}）"
+    else
+        log "✅ 数据库完整性校验通过（无 sqlite3：已校验文件存在与体积未骤减）"
     fi
     return 0
 }
