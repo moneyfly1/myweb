@@ -169,7 +169,7 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 
 	if isExpired && !isSpecialValid {
 		baseURL := utils.GetBuildBaseURL(c.Request, db)
-		content, _, _ := config_update.NewConfigUpdateService().GenerateClientConfig(token, utils.GetRealClientIP(c), c.GetHeader("User-Agent"), subType)
+		content, _, _ := config_update.NewConfigUpdateService().GenerateClientConfig(token, utils.GetRealClientIP(c), c.GetHeader("User-Agent"), subType, extractMFHeaders(c))
 		if content != "" {
 			c.String(200, content)
 			return
@@ -252,13 +252,13 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 	configService := config_update.NewConfigUpdateService()
 	var config, contentType, fileName string
 	if excludedProtocols := parseExcludedProtocols(c.Query("exclude")); len(excludedProtocols) > 0 {
-		config, contentType, fileName = configService.GenerateClientConfigWithExcludedProtocols(token, clientIP, userAgent, subType, excludedProtocols)
+		config, contentType, fileName = configService.GenerateClientConfigWithExcludedProtocols(token, clientIP, userAgent, subType, excludedProtocols, mfHeaders)
 	} else {
-		config, contentType, fileName = configService.GenerateClientConfig(token, clientIP, userAgent, subType)
+		config, contentType, fileName = configService.GenerateClientConfig(token, clientIP, userAgent, subType, mfHeaders)
 	}
 
 	subscriptionName := configService.GenerateSubscriptionName(
-		configService.GetSubscriptionContext(token, clientIP, userAgent),
+		configService.GetSubscriptionContext(token, clientIP, userAgent, mfHeaders),
 	)
 	encodedName := url.QueryEscape(fileName)
 

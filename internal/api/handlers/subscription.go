@@ -2000,14 +2000,14 @@ func GetSubscriptionConfig(c *gin.Context) {
 
 	// 生成 Clash 配置
 	configService := config_update.NewConfigUpdateService()
-	config, err := configService.GenerateClashConfig(clashURL, clientIP, userAgent)
+	config, err := configService.GenerateClashConfig(clashURL, clientIP, userAgent, extractMFHeaders(c))
 	if err != nil {
 		c.String(200, generateErrorConfigBase64("错误", "生成配置失败", baseURL))
 		return
 	}
 
 	// 生成订阅名称（用于 HTTP 响应头）
-	ctx := configService.GetSubscriptionContext(clashURL, clientIP, userAgent)
+	ctx := configService.GetSubscriptionContext(clashURL, clientIP, userAgent, extractMFHeaders(c))
 	subscriptionName := configService.GenerateSubscriptionName(ctx)
 
 	// 生成文件名（格式：到期时间2026-02-XX 或 无限期订阅）
@@ -2076,7 +2076,7 @@ func UpdateSubscriptionConfig(c *gin.Context) {
 		return
 	}
 
-	config, err := config_update.NewConfigUpdateService().GenerateClashConfig(subscription.SubscriptionURL, clientIP, userAgent)
+	config, err := config_update.NewConfigUpdateService().GenerateClashConfig(subscription.SubscriptionURL, clientIP, userAgent, extractMFHeaders(c))
 	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "生成订阅配置失败", err)
 		return
@@ -2230,7 +2230,7 @@ func GetUniversalSubscription(c *gin.Context) {
 		}
 
 		// 正常生成配置
-		cfg, err := config_update.NewConfigUpdateService().GenerateUniversalConfig(uurl, deviceIP, deviceUA, "base64")
+		cfg, err := config_update.NewConfigUpdateService().GenerateUniversalConfig(uurl, deviceIP, deviceUA, "base64", mfHeaders2)
 		if err != nil {
 			c.String(200, generateErrorConfigBase64("错误", "生成配置失败", baseURL))
 			return
