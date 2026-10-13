@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -214,15 +215,13 @@ func formatDeviceList(devices []models.Device) []gin.H {
 		// 使用数据库中已存储的位置信息，避免实时查询 GeoIP
 		location := utils.FormatLocation(utils.GetStringValue(d.Location))
 
-		// 在线判定：最近活跃（LastSeen 优先，缺省用 LastAccess）距今 24h 内
-		// 视为在线 —— 与列表统计 total_online 口径一致。
-		// 不能直接拿 is_active：该字段只增不减（注册后保持 true），
-		// 会把已不活跃的设备永远显示为「在线」。
-		activeTime := d.LastAccess
-		if d.LastSeen != nil {
-			activeTime = *d.LastSeen
-		}
-		online := now.Sub(activeTime) <= 24*time.Hour
+		// 设备活跃判定：设备没有独立心跳，只能按「最近一次拉订阅时间」分三档
+		// （活跃 ≤1h / 近期用过 ≤24h / 离线 >24h，见 services/device.ActivityOf）。
+		// 历史缺陷：这里原来只有 online = 「24 小时内有活动」一个布尔值，
+		// 于是 20 小时前拉过一次的设备也被标成「在线」，用户根本分不清哪台还在用。
+		// 不能直接拿 is_active：该字段只增不减（注册后保持 true），会把不活跃设备永远显示为在线。
+		act := device.ActivityOf(d, now)
+		online := act.State == device.StateActiveDevice
 
 		list = append(list, gin.H{
 			"id":                 d.ID,
@@ -242,13 +241,18 @@ func formatDeviceList(devices []models.Device) []gin.H {
 			"is_active":          d.IsActive,
 			"is_allowed":         d.IsAllowed,
 			"online":             online,
-			"user_agent":         utils.GetStringValue(d.UserAgent),
-			"software_name":      utils.GetStringValue(d.SoftwareName),
-			"software_version":   utils.GetStringValue(d.SoftwareVersion),
-			"device_model":       utils.GetStringValue(d.DeviceModel),
-			"device_brand":       utils.GetStringValue(d.DeviceBrand),
-			"access_count":       d.AccessCount,
-			"remark":             utils.GetStringValue(d.Remark),
+			// 设备活跃状态（前端据此渲染标签 + 「X 分钟前」）
+			"activity_state":       act.State,
+			"activity_state_label": act.StateLabel,
+			"activity_ago_seconds": act.AgoSeconds,
+			"activity_basis":       act.Basis,
+			"user_agent":           utils.GetStringValue(d.UserAgent),
+			"software_name":        utils.GetStringValue(d.SoftwareName),
+			"software_version":     utils.GetStringValue(d.SoftwareVersion),
+			"device_model":         utils.GetStringValue(d.DeviceModel),
+			"device_brand":         utils.GetStringValue(d.DeviceBrand),
+			"access_count":         d.AccessCount,
+			"remark":               utils.GetStringValue(d.Remark),
 		})
 	}
 	return list
@@ -753,31 +757,70 @@ func GetUserSubscriptionDevices(c *gin.Context) {
 		return
 	}
 
+	// 状态筛选 / 统计 / 排序全部用**同一套 Go 判定**（services/device.ActivityOf）。
+	//
+	// 为什么不用 SQL 过滤：原先这里用 SQL 的 COALESCE(last_seen,last_access) 比较时间做筛选与统计，
+	// 实测出现了自相矛盾的结果 —— 逐台判定显示某台「活跃」，按 state=active 筛选却查不到它，
+	// 根因是 SQL 的时间比较依赖数据库里时间字符串的具体格式（写入方/时区/精度稍有差异就比错）。
+	// 设备数受设备数上限约束（通常个位数到几十），全量取出后在内存里判定最稳，
+	// 也就不会再出现「列表显示活跃、筛选说离线」这种让用户不信任的问题。
+	stateFilter := strings.TrimSpace(c.Query("state"))
+	now := utils.GetBeijingTime()
+
+	var allDevices []models.Device
+	if err := db.Where("subscription_id = ? AND is_active = ?", sub.ID, true).
+		Find(&allDevices).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "获取设备列表失败", err)
+		return
+	}
+
+	counts := device.CountByActivity(allDevices, now)
+
+	filtered := make([]models.Device, 0, len(allDevices))
+	for _, d := range allDevices {
+		if stateFilter != "" && device.ActivityOf(d, now).State != stateFilter {
+			continue
+		}
+		filtered = append(filtered, d)
+	}
+	// 最近活跃的排前面
+	sort.SliceStable(filtered, func(i, j int) bool {
+		return device.LastActiveAt(filtered[i]).After(device.LastActiveAt(filtered[j]))
+	})
+
 	page, size, offset := getPagination(c)
+	total := int64(len(filtered))
+	if offset > len(filtered) {
+		offset = len(filtered)
+	}
+	endIdx := offset + size
+	if endIdx > len(filtered) {
+		endIdx = len(filtered)
+	}
+	devices := filtered[offset:endIdx]
 
-	var total int64
-	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ?", sub.ID, true).Count(&total)
-
-	// 统计所有设备（不受分页影响；仅活跃设备 —— 被踢下线/停用的软删行不计）
-	oneDayAgo := time.Now().Add(-24 * time.Hour)
-	var totalOnline, totalMobile, totalDesktop int64
-	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ? AND last_access >= ?", sub.ID, true, oneDayAgo).Count(&totalOnline)
-	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ? AND device_type = ?", sub.ID, true, "mobile").Count(&totalMobile)
-	db.Model(&models.Device{}).Where("subscription_id = ? AND is_active = ? AND device_type = ?", sub.ID, true, "desktop").Count(&totalDesktop)
-
-	var devices []models.Device
-	db.Where("subscription_id = ? AND is_active = ?", sub.ID, true).
-		Order("last_access DESC").
-		Offset(offset).
-		Limit(size).
-		Find(&devices)
+	// 机型统计：全部在册设备，与分页/状态筛选无关
+	var totalMobile, totalDesktop int64
+	for _, d := range allDevices {
+		switch utils.GetStringValue(d.DeviceType) {
+		case "mobile":
+			totalMobile++
+		case "desktop":
+			totalDesktop++
+		}
+	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"devices":       formatDeviceList(devices),
-		"total":         total,
-		"page":          page,
-		"size":          size,
-		"total_online":  totalOnline,
+		"devices": formatDeviceList(devices),
+		"total":   total,
+		"page":    page,
+		"size":    size,
+		// total_online 是历史字段（24 小时内有拉取），保留兼容；
+		// 三档口径给设备管理页展示真实状态：活跃（1 小时内）/ 近期用过（1~24 小时）/ 离线（>24 小时）
+		"total_online":  counts.Active + counts.Recent,
+		"total_active":  counts.Active,
+		"total_recent":  counts.Recent,
+		"total_offline": counts.Offline,
 		"total_mobile":  totalMobile,
 		"total_desktop": totalDesktop,
 		// 是否允许用户删除设备（系统设置 → 用户与注册）。
@@ -786,7 +829,6 @@ func GetUserSubscriptionDevices(c *gin.Context) {
 		"allow_delete_device": UserDeviceDeleteAllowed(database.GetDB()),
 	})
 }
-
 func GetSubscriptionDevices(c *gin.Context) {
 	sub, ok := fetchSubscriptionAdmin(c, database.GetDB(), c.Param("id"))
 	if !ok {

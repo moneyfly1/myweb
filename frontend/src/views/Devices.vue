@@ -25,8 +25,18 @@
       <div class="stat-card">
         <div class="stat-icon">O</div>
         <div>
-          <div class="stat-value">{{ deviceStats.online }}</div>
-          <div class="stat-label">在线设备</div>
+          <el-tooltip placement="top" effect="dark">
+            <template #content>
+              <div style="line-height: 1.7; max-width: 280px">
+                <div><b>设备没有独立心跳</b>：它每次拉订阅时才会更新活跃时间。</div>
+                <div>活跃：1 小时内拉取过订阅（客户端仍在按周期回拉）</div>
+                <div>近期用过：24 小时内拉取过</div>
+                <div>离线：超过 24 小时没有拉取</div>
+              </div>
+            </template>
+            <div class="stat-value">{{ deviceStats.online }}</div>
+          </el-tooltip>
+          <div class="stat-label">活跃设备</div>
         </div>
       </div>
       <div class="stat-card">
@@ -74,7 +84,9 @@
           </el-form-item>
           <el-form-item label="在线状态">
             <el-select v-model="filters.online_status" placeholder="全部状态" clearable class="devices-filter-select" @change="applyDeviceFilters">
-              <el-option label="在线" value="online" />
+              <el-option label="活跃（1 小时内）" value="active" />
+              <el-option label="近期用过（24 小时内）" value="recent" />
+              <el-option label="离线（超过 24 小时）" value="offline" />
               <el-option label="离线" value="offline" />
             </el-select>
           </el-form-item>
@@ -182,9 +194,26 @@
                   </div>
                 </template>
               </el-table-column>
+              <el-table-column label="状态" width="110" align="center">
+                <template #default="{ row }">
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div style="line-height: 1.7">
+                        <div>{{ row.activity_basis || '按最近一次拉订阅时间判定' }}</div>
+                        <div>最后活跃：{{ formatTime(row.last_access) }}</div>
+                      </div>
+                    </template>
+                    <el-tag :type="deviceActivityColor(row.activity_state)" size="small" effect="light">
+                      {{ deviceActivityLabel(row.activity_state) }}
+                    </el-tag>
+                  </el-tooltip>
+                </template>
+              </el-table-column>
               <el-table-column prop="last_access" label="最后访问" :width="columnWidths.last_access" resizable>
                 <template #default="{ row }">
-                  <span>{{ formatTime(row.last_access) }}</span>
+                  <el-tooltip placement="top" effect="dark" :content="formatTime(row.last_access)">
+                    <span>{{ relativeTime(row.activity_ago_seconds, row.last_access) }}</span>
+                  </el-tooltip>
                 </template>
               </el-table-column>
               <el-table-column prop="user_agent" label="User Agent" :min-width="columnWidths.user_agent" :width="columnWidths.user_agent" resizable>
@@ -411,9 +440,11 @@ export default {
           return false
         }
         if (filters.online_status) {
-          const online = isOnline(device.last_access)
-          if (filters.online_status === 'online' && !online) return false
-          if (filters.online_status === 'offline' && online) return false
+          // 优先用后端给的状态；老接口没有该字段时回退到本地 24 小时判定
+          const state = device.activity_state || (isOnline(device.last_access) ? 'recent' : 'offline')
+          if (filters.online_status === 'active' && state !== 'active') return false
+          if (filters.online_status === 'recent' && state !== 'recent') return false
+          if (filters.online_status === 'offline' && state !== 'offline') return false
         }
         if (keyword) {
           const haystack = [
@@ -460,7 +491,9 @@ export default {
       try {
         const response = await subscriptionAPI.getDevices({
           page: currentPage.value,
-          size: pageSize.value
+          size: pageSize.value,
+          // 状态筛选走服务端：只按当前页过滤会导致分页与总数自相矛盾
+          state: filters.online_status || undefined
         })
         if (response && response.data) {
           const responseData = response.data
@@ -512,15 +545,19 @@ export default {
     }
     const updateDeviceStats = (data) => {
       if (data && typeof data.total === 'number') {
-        // 使用后端返回的全局统计数据
+        // 后端全局统计（不受分页影响）
         deviceStats.total = data.total || 0
-        deviceStats.online = data.total_online || 0
+        // 活跃设备优先用新口径 total_active（1 小时内）；
+        // 老接口只有 total_online（24 小时内）时退回，避免显示成"活跃"却按 24 小时统计
+        deviceStats.online = typeof data.total_active === 'number'
+          ? data.total_active
+          : (data.total_online || 0)
         deviceStats.mobile = data.total_mobile || 0
         deviceStats.desktop = data.total_desktop || 0
       } else {
         // 兼容旧格式：基于当前页设备计算
         deviceStats.total = devices.value.length
-        deviceStats.online = devices.value.filter(d => isOnline(d.last_access)).length
+        deviceStats.online = devices.value.filter(d => (d.activity_state || '') === 'active').length
         deviceStats.mobile = devices.value.filter(d => d.device_type === 'mobile').length
         deviceStats.desktop = devices.value.filter(d => d.device_type === 'desktop').length
       }
@@ -543,7 +580,11 @@ export default {
       fetchDevices()
     }
     const applyDeviceFilters = () => {
+      // 状态筛选是服务端过滤，必须重新拉取；关键词/类型仍是本地过滤当前页
       currentPage.value = 1
+      if (filters.online_status !== undefined) {
+        fetchDevices()
+      }
     }
     const resetDeviceFilters = () => {
       filters.keyword = ''
@@ -610,6 +651,30 @@ export default {
     }
     const truncateUserAgent = (ua) => {
       return truncateText(ua, 50)
+    }
+    // 设备状态文案/颜色：后端已算好 activity_state，这里只做展示映射。
+    // 早期版本前端自己按 24 小时算 isOnline，与后端判定不一致（且 20 小时前拉过也显示"在线"）。
+    const deviceActivityLabel = (state) => ({
+      active: '活跃',
+      recent: '近期用过',
+      offline: '离线'
+    }[state] || '离线')
+    const deviceActivityColor = (state) => ({
+      active: 'success',
+      recent: 'warning',
+      offline: 'info'
+    }[state] || 'info')
+    // 「3 分钟前 / 2 小时前 / 3 天前」——比绝对时间更直观；后端给了秒数就直接用，避免时区/时钟差
+    const relativeTime = (agoSeconds, fallbackTime) => {
+      if (typeof agoSeconds === 'number' && agoSeconds >= 0) {
+        const sec = agoSeconds
+        if (sec < 60) return '刚刚'
+        if (sec < 3600) return `${Math.floor(sec / 60)} 分钟前`
+        if (sec < 86400) return `${Math.floor(sec / 3600)} 小时前`
+        return `${Math.floor(sec / 86400)} 天前`
+      }
+      if (!fallbackTime) return '从未'
+      return dayjs(fallbackTime).tz('Asia/Shanghai').fromNow()
     }
     const isOnline = (lastAccess) => {
       if (!lastAccess) return false
