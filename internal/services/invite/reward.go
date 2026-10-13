@@ -82,16 +82,25 @@ func LoadRewards(db *gorm.DB) Rewards {
 	inviter, okI := readSetting(db, KeyInviterReward)
 	invitee, okE := readSetting(db, KeyInviteeReward)
 
-	// 当前键缺失或为 0 时，考虑旧键
+	// 旧键只在「当前键这一行根本不存在」时才兜底 —— 注意**不能**把显式配置的 0 当成"没配置"：
+	//
+	// 历史缺陷（用户实测反馈）：这里原先的条件是 `(!ok || value <= 0)`，于是管理员在后台把
+	// 「被邀请人奖励」设成 0（意思是只有邀请人拿奖励）时，代码读到的 0 被当作"未配置"，
+	// 继续回退到旧键的 20 → 系统照旧给被邀请人发 20 元；
+	// 而用户端页面读的是当前键（0），于是显示"没有被邀请人奖励"。
+	// 一显一隐，管理员怎么设都关不掉。现在：显式 0 = 明确关闭。
+	//
+	// 启动时 MigrateLegacySettings 已把旧键值补写成当前键行（幂等），
+	// 因此正常升级过的库不会再走到这里的兼容分支。
 	legacyI, legacyIOK := readSetting(db, LegacyKeyInviterReward)
 	legacyE, legacyEOK := readSetting(db, LegacyKeyInviteeReward)
 
 	source := "current"
-	if (!okI || inviter <= 0) && legacyIOK && legacyI > 0 {
+	if !okI && legacyIOK && legacyI > 0 {
 		inviter = legacyI
 		source = "legacy"
 	}
-	if (!okE || invitee <= 0) && legacyEOK && legacyE > 0 {
+	if !okE && legacyEOK && legacyE > 0 {
 		invitee = legacyE
 		source = "legacy"
 	}
@@ -99,14 +108,20 @@ func LoadRewards(db *gorm.DB) Rewards {
 		source = "none"
 	}
 	if source == "legacy" {
-		log.Printf("邀请奖励：当前键 %s/%s 未配置有效值，已沿用旧键 %s/%s 的值（邀请人 %.2f / 被邀请人 %.2f）",
+		log.Printf("邀请奖励：当前键 %s/%s 在库中不存在（未迁移），已沿用旧键 %s/%s 的值（邀请人 %.2f / 被邀请人 %.2f）",
 			KeyInviterReward, KeyInviteeReward, LegacyKeyInviterReward, LegacyKeyInviteeReward, inviter, invitee)
 	}
 	return Rewards{Inviter: inviter, Invitee: invitee, Source: source}
 }
 
-// MigrateLegacySettings 把旧键的值迁移到当前键（幂等）：
-// 仅当当前键缺失或 <= 0、且旧键有正值时写入，返回被迁移的键名。
+// MigrateLegacySettings 把旧键的值迁移到当前键（幂等）。
+//
+// 触发条件：**当前键这一行在库里根本不存在**，且旧键有正值。
+//
+// 注意不能写成「当前键 <= 0 就迁移」——那是同一类缺陷的另一个入口：
+// 管理员把「被邀请人奖励」显式设成 0（只想奖励邀请人）后，一旦服务重启，
+// 迁移就会拿旧键的 20 把这个 0 覆盖掉，于是"怎么设都关不掉"（用户实测反馈）。
+// 显式 0 是**有效配置**，不是"未配置"。
 func MigrateLegacySettings(db *gorm.DB) ([]string, error) {
 	if db == nil {
 		return nil, nil
@@ -122,9 +137,10 @@ func MigrateLegacySettings(db *gorm.DB) ([]string, error) {
 		if !oldOK || old <= 0 {
 			continue
 		}
-		if curOK && cur > 0 {
-			continue // 当前键已有有效值，不动
+		if curOK {
+			continue // 当前键已有配置（含显式 0 = 明确关闭），一律不动
 		}
+		_ = cur // cur 仅用于判断行是否存在
 		var cfg models.SystemConfig
 		err := db.Where("key = ? AND category = ?", p[0], CategoryInvite).First(&cfg).Error
 		if err == gorm.ErrRecordNotFound {

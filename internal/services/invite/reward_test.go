@@ -34,7 +34,20 @@ func setupInviteDB(t *testing.T) *gorm.DB {
 
 func setCfg(t *testing.T, db *gorm.DB, key, value string) {
 	t.Helper()
-	if err := db.Create(&models.SystemConfig{Key: key, Value: value, Category: CategoryInvite}).Error; err != nil {
+	// upsert：同一个 key 在测试里可能被写两次（先旧键、再显式改值），
+	// system_configs 对 (key, category) 有唯一约束，直接 Create 会冲突。
+	var cfg models.SystemConfig
+	if err := db.Where("key = ? AND category = ?", key, CategoryInvite).FirstOrInit(&cfg).Error; err != nil {
+		t.Fatalf("查询配置 %s 失败: %v", key, err)
+	}
+	cfg.Key = key
+	cfg.Value = value
+	cfg.Category = CategoryInvite
+	if cfg.Type == "" {
+		cfg.Type = "number"
+	}
+	cfg.DisplayName = key
+	if err := db.Save(&cfg).Error; err != nil {
 		t.Fatalf("写入配置 %s 失败: %v", key, err)
 	}
 }
@@ -92,23 +105,30 @@ func TestEffectiveRewardsCodeOverridesGlobal(t *testing.T) {
 	}
 }
 
-// 旧键迁移：当前键为 0 时沿用旧键值，并且是幂等的
+// 旧键迁移语义（已修正）：
+//
+//	· 当前键**整行缺失** → 从旧键迁移（老库平滑升级）
+//	· 当前键**存在但为 0** → 视为"管理员明确关闭"，不迁移
+//
+// 历史缺陷：本测试原来断言"当前键为 0 时也要被旧键覆盖成 20"，
+// 而那个行为正是用户实测反馈的问题 —— 管理员把被邀请人奖励设成 0 后，
+// 重启时迁移又把它改回 20，表现为"后台怎么设都关不掉"。
 func TestMigrateLegacySettings(t *testing.T) {
 	db := setupInviteDB(t)
-	setCfg(t, db, KeyInviterReward, "0")
+	setCfg(t, db, KeyInviterReward, "0") // 显式关闭：不该被迁移覆盖
 	setCfg(t, db, LegacyKeyInviterReward, "20")
-	setCfg(t, db, LegacyKeyInviteeReward, "30") // 当前键缺失
+	setCfg(t, db, LegacyKeyInviteeReward, "30") // 当前键缺失：应被迁移
 
 	migrated, err := MigrateLegacySettings(db)
 	if err != nil {
 		t.Fatalf("迁移失败: %v", err)
 	}
-	if len(migrated) != 2 {
-		t.Fatalf("期望迁移 2 个键，实际 %v", migrated)
+	if len(migrated) != 1 || migrated[0] != KeyInviteeReward {
+		t.Fatalf("只应迁移缺失的 invitee_reward，实际 %v", migrated)
 	}
 	r := LoadRewards(db)
-	if r.Inviter != 20 || r.Invitee != 30 {
-		t.Fatalf("迁移后取值不符: %+v", r)
+	if r.Inviter != 0 || r.Invitee != 30 {
+		t.Fatalf("迁移后取值不符（邀请人应保持显式 0）: %+v", r)
 	}
 
 	// 幂等：再跑一次不应有变化
@@ -301,3 +321,83 @@ func TestListRecordsShape(t *testing.T) {
 }
 
 func sqlNullInt(v int64) sql.NullInt64 { return sql.NullInt64{Int64: v, Valid: true} }
+
+// TestLoadRewardsExplicitZeroDoesNotFallBackToLegacy 覆盖用户实测反馈的缺陷：
+// 管理员把「被邀请人奖励」显式设为 0（只想奖励邀请人），旧键里还留着 20，
+// 旧实现把 0 当成"未配置"继续回退旧键 → 系统照旧给被邀请人发 20 元，且怎么设都关不掉。
+func TestLoadRewardsExplicitZeroDoesNotFallBackToLegacy(t *testing.T) {
+	db := setupInviteDB(t)
+
+	// 旧键有 20，当前键显式 0
+	setCfg(t, db, LegacyKeyInviterReward, "20")
+	setCfg(t, db, LegacyKeyInviteeReward, "20")
+	setCfg(t, db, KeyInviterReward, "20")
+	setCfg(t, db, KeyInviteeReward, "0")
+
+	got := LoadRewards(db)
+	if got.Invitee != 0 {
+		t.Fatalf("显式设 0 时必须为 0（不得回退旧键），实际 %.2f（来源 %s）", got.Invitee, got.Source)
+	}
+	if got.Inviter != 20 {
+		t.Fatalf("邀请人奖励应为 20，实际 %.2f", got.Inviter)
+	}
+	if got.Source == "legacy" {
+		t.Fatalf("不应标记为 legacy 来源: %s", got.Source)
+	}
+}
+
+// TestLoadRewardsFallsBackOnlyWhenKeyMissing 当前键"整行不存在"时才兼容旧键（迁移前的库）
+func TestLoadRewardsFallsBackOnlyWhenKeyMissing(t *testing.T) {
+	db := setupInviteDB(t)
+	setCfg(t, db, LegacyKeyInviterReward, "20")
+	setCfg(t, db, LegacyKeyInviteeReward, "15")
+
+	got := LoadRewards(db)
+	if got.Inviter != 20 || got.Invitee != 15 {
+		t.Fatalf("当前键缺失时应回退旧键，实际 %.2f / %.2f", got.Inviter, got.Invitee)
+	}
+	if got.Source != "legacy" {
+		t.Fatalf("来源应为 legacy，实际 %s", got.Source)
+	}
+}
+
+// TestEffectiveRewardsZeroGlobalKeepsZero 全局被邀请人奖励为 0 时，邀请码也应"不发"
+func TestEffectiveRewardsZeroGlobalKeepsZero(t *testing.T) {
+	db := setupInviteDB(t)
+	setCfg(t, db, KeyInviterReward, "20")
+	setCfg(t, db, KeyInviteeReward, "0")
+	code := models.InviteCode{InviterReward: 0, InviteeReward: 0}
+
+	got := EffectiveRewards(db, &code)
+	if got.Invitee != 0 {
+		t.Fatalf("全局 0 时被邀请人奖励应为 0，实际 %.2f", got.Invitee)
+	}
+	if got.Inviter != 20 {
+		t.Fatalf("邀请人奖励应沿用全局 20，实际 %.2f", got.Inviter)
+	}
+}
+
+// TestMigrateLegacyDoesNotResurrectExplicitZero 覆盖用户实测反馈的第二处入口：
+// 管理员显式把被邀请人奖励设为 0 后，旧键里还有 20 —— 重启时的迁移**不能**把它覆盖回 20，
+// 否则表现为"后台怎么设都关不掉被邀请人奖励"。
+func TestMigrateLegacyDoesNotResurrectExplicitZero(t *testing.T) {
+	db := setupInviteDB(t)
+	setCfg(t, db, LegacyKeyInviterReward, "20")
+	setCfg(t, db, LegacyKeyInviteeReward, "20")
+	setCfg(t, db, KeyInviterReward, "20")
+	setCfg(t, db, KeyInviteeReward, "0") // 显式关闭
+
+	migrated, err := MigrateLegacySettings(db)
+	if err != nil {
+		t.Fatalf("迁移报错: %v", err)
+	}
+	if len(migrated) != 0 {
+		t.Fatalf("显式 0 不应被迁移覆盖，实际迁移了 %v", migrated)
+	}
+	if v, _ := readSetting(db, KeyInviteeReward); v != 0 {
+		t.Fatalf("显式 0 被改写成了 %.2f", v)
+	}
+	if got := LoadRewards(db); got.Invitee != 0 {
+		t.Fatalf("迁移后仍应为 0，实际 %.2f", got.Invitee)
+	}
+}

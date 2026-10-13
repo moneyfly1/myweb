@@ -57,17 +57,6 @@ func main() {
 	// 是环境变量指定还是自动探测到的（过去这些路径写死在代码里，出问题只能靠猜）。
 	log.Printf("运行环境路径: %s", paths.SummaryLine())
 
-	// 邀请奖励设置：历史键名迁移（invite_inviter_reward → inviter_reward）。
-	// 2026-04 的重命名没有迁移数据，导致旧键里的奖励金额成了孤儿、新键为 0，
-	// 全站邀请奖励因此一封未发。这里幂等地把旧键值补进当前键。
-	if db := database.GetDB(); db != nil {
-		if migrated, err := invite.MigrateLegacySettings(db); err != nil {
-			log.Printf("邀请奖励设置迁移失败（不影响启动）: %v", err)
-		} else if len(migrated) > 0 {
-			log.Printf("邀请奖励设置已迁移旧键值到: %v", migrated)
-		}
-	}
-
 	// 初始化可信代理列表，必须在路由/限流使用 GetRealClientIP 之前调用。
 	// 取值顺序：配置（viper 读 .env，缺失时默认 127.0.0.1,::1）→ 环境变量兜底。
 	// 历史缺陷：此前只用 os.Getenv，而 start.sh 启动方式不 export .env，
@@ -97,6 +86,23 @@ func main() {
 
 	if err := database.AutoMigrate(); err != nil {
 		log.Fatalf("数据库迁移失败: %v", err)
+	}
+
+	// 邀请奖励设置：历史键名迁移（invite_inviter_reward → inviter_reward）。
+	//
+	// 2026-04 的重命名没有迁移数据，旧键里的 20 元成了孤儿、新键被初始化为 0，
+	// 全站邀请奖励因此一封未发；本函数幂等地把旧键值补进当前键。
+	//
+	// ⚠️ 必须放在 database.InitDatabase() + AutoMigrate() 之后：
+	// 这段代码原先写在 InitDatabase() 之前，那时 GetDB() 还是 nil，
+	// 判断 `if db != nil` 直接为假 → **每次启动都被静默跳过，从未执行过**
+	//（实测：库里始终只有旧键，迁移日志从未出现）。表结构也要先由 AutoMigrate 建好。
+	if db := database.GetDB(); db != nil {
+		if migrated, err := invite.MigrateLegacySettings(db); err != nil {
+			log.Printf("邀请奖励设置迁移失败（不影响启动）: %v", err)
+		} else if len(migrated) > 0 {
+			log.Printf("邀请奖励设置已迁移旧键值到: %v", migrated)
+		}
 	}
 
 	middleware.ReloadLoginRateLimiter()
