@@ -270,10 +270,10 @@
                         </div>
                       </el-tooltip>
                       <div class="device-separator">/</div>
-                      <el-tooltip content="允许最大设备数量" placement="top">
+                      <el-tooltip content="允许最大设备数量（0 表示不限制）" placement="top">
                         <div class="device-item total">
                           <el-icon class="device-icon total-icon"><Connection /></el-icon>
-                          <span class="device-count">{{ scope.row.subscription?.device_limit || 0 }}</span>
+                          <span class="device-count">{{ formatDeviceLimit(scope.row.subscription?.device_limit) }}</span>
                         </div>
                       </el-tooltip>
                     </div>
@@ -454,7 +454,7 @@
 
         <template #field-device_info="{ item }">
           <span class="mobile-device-summary" :class="{ 'device-overlimit-count': isDeviceOverlimit(item) }">
-            {{ item.online_devices || 0 }}/{{ item.subscription?.device_limit || 0 }}
+            {{ item.online_devices || 0 }}/{{ formatDeviceLimit(item.subscription?.device_limit) }}
           </span>
         </template>
 
@@ -602,17 +602,17 @@
         </el-form-item>
         <el-form-item :label="isMobile ? '' : '最大设备数'" prop="device_limit" v-if="!editingUser">
           <template v-if="isMobile">
-            <div class="form-mobile-label">最大设备数 <span class="required">*</span></div>
+            <div class="form-mobile-label">最大设备数</div>
           </template>
           <el-input-number
             v-model="userForm.device_limit"
             :min="0"
-            :max="100"
-            placeholder="请输入最大设备数量"
+            :max="999"
+            :placeholder="`留空使用系统默认（${settingsStore.defaultDeviceLimit === 0 ? '不限制' : settingsStore.defaultDeviceLimit}）`"
             controls-position="right"
             class="full-width-control"
           />
-          <div class="form-item-hint">允许用户同时使用的最大设备数量（0表示不限制）</div>
+          <div class="form-item-hint">允许用户同时使用的最大设备数量（0 表示不限制；留空则用系统设置里的默认设备数）</div>
         </el-form-item>
         <el-form-item :label="isMobile ? '' : '到期时间'" prop="expire_time" v-if="!editingUser">
           <template v-if="isMobile">
@@ -660,10 +660,10 @@
           <el-input-number
             v-model="userForm.device_limit"
             :min="0"
-            :max="100"
+            :max="999"
             class="full-width-control"
           />
-          <div class="form-item-hint">允许用户同时使用的最大设备数量（0表示不限制）</div>
+          <div class="form-item-hint">允许用户同时使用的最大设备数量（0 表示不限制）</div>
         </el-form-item>
         <el-form-item :label="isMobile ? '' : '到期时间'" prop="expire_time" v-if="editingUser">
           <template v-if="isMobile">
@@ -949,7 +949,8 @@ export default {
       username: '',
       password: '',
       status: 'active',
-      device_limit: 5,
+      // null = 不填 → 后端套用系统设置里的「默认设备数」（不在这里写死数字）
+      device_limit: null,
       expire_time: getDefaultExpireTime(),
       is_admin: false,
       is_verified: false,
@@ -985,8 +986,18 @@ export default {
         { required: true, message: '请选择状态', trigger: 'change' }
       ],
       device_limit: [
-        { required: true, message: '请输入最大设备数量', trigger: 'blur' },
-        { type: 'number', min: 0, max: 100, message: '设备数量应在0-100之间', trigger: 'blur' }
+        // 允许留空：留空 = 使用系统设置里的「默认设备数」，不在界面里写死数字。
+        // 上限放到 999（与订阅编辑页一致）：线上已有 500 这类"约等于不限制"的设置，
+        // 之前 max=100 会在打开编辑表单时把 500 夹成 100，保存后设备数被悄悄改小。
+        {
+          validator: (rule, value, callback) => {
+            if (value === null || value === undefined || value === '') return callback()
+            if (typeof value !== 'number' || Number.isNaN(value)) return callback(new Error('请输入数字'))
+            if (value < 0 || value > 999) return callback(new Error('设备数量应在 0-999 之间'))
+            callback()
+          },
+          trigger: ['blur', 'change']
+        }
       ],
       expire_time: [
         { required: true, message: '请选择到期时间', trigger: 'change' }
@@ -1030,7 +1041,8 @@ export default {
     const resetUserForm = () => {
       Object.assign(userForm, {
         email: '', username: '', password: '', status: 'active',
-        device_limit: 5, expire_time: getDefaultExpireTime(),
+        // 新建用户默认留空 → 由后端按系统设置「默认设备数」决定
+        device_limit: null, expire_time: getDefaultExpireTime(),
         is_admin: false, is_verified: false, note: '', balance: 0
       })
       if (userFormRef.value) {
@@ -1058,7 +1070,8 @@ export default {
           is_verified: Boolean(user.is_verified),
           note: user.notes || '', password: '',
           balance: user.balance || 0,
-          device_limit: user.subscription?.device_limit || 5,
+          // 用 ?? 而不是 ||：设备上限 0 是合法值（不限制），不能被 5 顶掉
+          device_limit: user.subscription?.device_limit ?? null,
           expire_time: user.subscription?.expire_time ? dayjs(user.subscription.expire_time).format('YYYY-MM-DDTHH:mm:ss') : ''
         })
 
@@ -1068,7 +1081,7 @@ export default {
           const userData = response?.data?.success ? response.data.data : (response?.success ? response.data : response.data)
           if (userData && userData.subscription) {
             const subscription = userData.subscription
-            userForm.device_limit = subscription.device_limit || 5
+            userForm.device_limit = subscription.device_limit ?? null
             if (subscription.expire_time) {
               userForm.expire_time = dayjs(subscription.expire_time).format('YYYY-MM-DDTHH:mm:ss')
             }
@@ -1092,7 +1105,8 @@ export default {
             is_admin: userForm.is_admin,
             notes: userForm.note || '',
             balance: userForm.balance,
-            device_limit: userForm.device_limit,
+            // 留空（null/undefined）表示"不改动"；填了 0 就是"不限制"
+            device_limit: userForm.device_limit ?? undefined,
             expire_time: userForm.expire_time,
             password: userForm.password || undefined
           })
@@ -1103,7 +1117,8 @@ export default {
             password: userForm.password,
             is_active: userForm.status === 'active',
             is_admin: false, is_verified: false,
-            device_limit: userForm.device_limit || 5,
+            // 留空 → 不发这个字段，由后端按系统设置「默认设备数」取值（含 0=不限制）
+            device_limit: userForm.device_limit ?? undefined,
             expire_time: userForm.expire_time || getDefaultExpireTime(),
             notes: userForm.note || ''
           })
@@ -1161,6 +1176,11 @@ export default {
       const onlineDevices = user.online_devices || 0
       const deviceLimit = user.subscription?.device_limit || 0
       return deviceLimit > 0 && onlineDevices >= deviceLimit
+    }
+    // 设备上限展示：0 表示不限制（与后台设置文案一致），没有订阅时显示 -
+    const formatDeviceLimit = (limit) => {
+      if (limit === null || limit === undefined) return '-'
+      return Number(limit) === 0 ? '不限制' : String(limit)
     }
     const getExpireTextType = (subscription) => {
       if (subscription.is_expired) return 'danger'
@@ -1949,6 +1969,8 @@ export default {
       batchSendSubEmail,
       batchSendExpireReminder,
       isDeviceOverlimit,
+      formatDeviceLimit,
+      settingsStore,
       mobileUserFields,
       handleUserSaved,
       saveNotes,

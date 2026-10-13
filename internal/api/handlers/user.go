@@ -1436,7 +1436,7 @@ func CreateUser(c *gin.Context) {
 		IsVerified  bool    `json:"is_verified"`
 		IsAdmin     bool    `json:"is_admin"`
 		Balance     float64 `json:"balance"`
-		DeviceLimit int     `json:"device_limit"` // 设备限制
+		DeviceLimit *int    `json:"device_limit"` // 设备限制；不传=用系统默认，传 0=不限制
 		ExpireTime  string  `json:"expire_time"`  // 到期时间，格式：YYYY-MM-DDTHH:mm:ss
 		Notes       string  `json:"notes"`        // 备注
 	}
@@ -1511,10 +1511,16 @@ func CreateUser(c *gin.Context) {
 		}
 	}(user, regLogIP, regLogUA)
 
-	deviceLimit := req.DeviceLimit
+	// 设备上限的取值优先级：请求里显式给了就用它（含显式的 0 = 不限制），
+	// 没给才回落到系统设置「默认设备数」。
+	//
+	// 历史实现用 int +「== 0 就套默认值」判断，导致管理员在后台表单里
+	// 明确填 0（想表示"不限制"）时被悄悄改成默认值，实际生效的数目
+	// 与后台设置不一致。现在用指针区分「未传」与「传了 0」。
 	defaultDeviceLimit, defaultDurationMonths := getDefaultSubscriptionSettings(db)
-	if deviceLimit == 0 {
-		deviceLimit = defaultDeviceLimit
+	deviceLimit := defaultDeviceLimit
+	if req.DeviceLimit != nil {
+		deviceLimit = *req.DeviceLimit
 	}
 
 	var expireTime time.Time

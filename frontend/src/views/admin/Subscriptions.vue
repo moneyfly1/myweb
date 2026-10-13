@@ -620,7 +620,7 @@
             <div class="sub-section-row">
               <span class="sub-section-icon"><el-icon><Monitor /></el-icon></span>
               <span class="sub-section-label">设备限制</span>
-              <span class="sub-section-value">{{ subscription.online_devices || 0 }} / {{ subscription.device_limit || 0 }}</span>
+              <span class="sub-section-value">{{ subscription.online_devices || 0 }} / {{ Number(subscription.device_limit) === 0 ? '不限制' : subscription.device_limit }}</span>
               <el-input-number
                 v-model="subscription.device_limit"
                 :min="0"
@@ -1130,6 +1130,12 @@ export default {
     }
     const addDeviceLimit = async (subscription, count) => {
       try {
+        // 上限 0 = 不限制，本身已比任何具体数字宽松；再"加设备数"只会把不限制
+        // 降级成具体数字（0+N=N），这里保持不变并提示，避免误操作收紧用户的额度
+        if (Number(subscription.device_limit) === 0) {
+          ElMessage.info('该订阅设备数已是不限制，无需增加')
+          return
+        }
         const newLimit = Math.max(0, (subscription.device_limit || 0) + count)
         subscription.device_limit = newLimit
         await updateDeviceLimit(subscription)
