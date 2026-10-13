@@ -1263,7 +1263,13 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrderTx(db *gorm.DB, node
 	return stats
 }
 
-func (s *ConfigUpdateService) GetSubscriptionContext(token, clientIP, userAgent string) *SubscriptionContext {
+func (s *ConfigUpdateService) GetSubscriptionContext(token, clientIP, userAgent string, mfHeaders ...map[string]string) *SubscriptionContext {
+	// mfHeaders 为可选参数（自研客户端的 X-MF-* 头）。变长参数是为了不破坏既有调用点，
+	// 但**公开订阅路径必须传**：设备数限制要用它做"这台设备是否已在名单里"的判断。
+	var headers map[string]string
+	if len(mfHeaders) > 0 {
+		headers = mfHeaders[0]
+	}
 	ctx := &SubscriptionContext{Status: StatusNotFound}
 	var sub models.Subscription
 
@@ -1314,7 +1320,14 @@ func (s *ConfigUpdateService) GetSubscriptionContext(token, clientIP, userAgent 
 		}
 
 		if sub.DeviceLimit > 0 && ctx.CurrentDevices >= sub.DeviceLimit {
-			_, exists, err := device.NewDeviceManager().FindExistingDevice(sub.ID, userAgent, clientIP)
+			// 用带请求头的查找：客户端上报了稳定设备 ID（X-MF-Device-Id）时按 ID 判断，
+			// 否则退化为 UA/指纹（与原行为一致）。
+			//
+			// 历史缺陷：这里原先调用不带 headers 的 FindExistingDevice，只按 UA 匹配 ——
+			// 自研客户端各台设备 UA 完全相同，于是"第 8 台"也会被当成已存在的老设备放行，
+			// 而第三方客户端（UA 各不相同）却会被拦。同一套限制在两客户端类型上表现不一致。
+			// 现在统一：谁超限谁被拦。
+			_, exists, err := device.NewDeviceManager().FindExistingDeviceWithHeaders(sub.ID, userAgent, clientIP, headers)
 			if err != nil || !exists {
 				ctx.Status = StatusDeviceOverLimit
 				return ctx
@@ -1458,13 +1471,13 @@ func (s *ConfigUpdateService) renderLinksPayload(nodes []*ProxyNode, useSSRForma
 	return base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n")))
 }
 
-func (s *ConfigUpdateService) GenerateClashConfig(token, clientIP, userAgent string) (string, error) {
+func (s *ConfigUpdateService) GenerateClashConfig(token, clientIP, userAgent string, mfHeaders ...map[string]string) (string, error) {
 	cache := &CacheService{}
 	if cached, ok := cache.GetSubscriptionConfigCache(token, "clash"); ok {
 		return cached, nil
 	}
 
-	ctx := s.GetSubscriptionContext(token, clientIP, userAgent)
+	ctx := s.GetSubscriptionContext(token, clientIP, userAgent, mfHeaders...)
 	var nodes []*ProxyNode
 	s.refreshSystemConfig()
 	if ctx.Status != StatusNormal {
@@ -1491,7 +1504,7 @@ func (s *ConfigUpdateService) GenerateClashConfig(token, clientIP, userAgent str
 	return config, nil
 }
 
-func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent, format string) (string, error) {
+func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent, format string, mfHeaders ...map[string]string) (string, error) {
 	cache, cacheFormat := &CacheService{}, "base64"
 	if format == "ssr" {
 		cacheFormat = "ssr"
@@ -1503,7 +1516,7 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent
 		return cached, nil
 	}
 
-	ctx := s.GetSubscriptionContext(token, clientIP, userAgent)
+	ctx := s.GetSubscriptionContext(token, clientIP, userAgent, mfHeaders...)
 	var nodes []*ProxyNode
 	s.refreshSystemConfig()
 	if ctx.Status != StatusNormal {
@@ -2683,11 +2696,11 @@ func (s *ConfigUpdateService) nodeToSSRLink(n *ProxyNode) string {
 
 // GenerateClientConfig 根据客户端类型生成对应的订阅配置
 // subType: clash, clashmeta, stash, surge, quantumultx, loon, singbox, shadowrocket, universal
-func (s *ConfigUpdateService) GenerateClientConfig(token, clientIP, userAgent, subType string) (responseData, contentType, fileName string) {
-	return s.generateClientConfig(token, clientIP, userAgent, subType, nil)
+func (s *ConfigUpdateService) GenerateClientConfig(token, clientIP, userAgent, subType string, mfHeaders ...map[string]string) (responseData, contentType, fileName string) {
+	return s.generateClientConfig(token, clientIP, userAgent, subType, nil, mfHeaders...)
 }
 
-func (s *ConfigUpdateService) GenerateClientConfigWithExcludedProtocols(token, clientIP, userAgent, subType string, excludedProtocols []string) (responseData, contentType, fileName string) {
+func (s *ConfigUpdateService) GenerateClientConfigWithExcludedProtocols(token, clientIP, userAgent, subType string, excludedProtocols []string, mfHeaders ...map[string]string) (responseData, contentType, fileName string) {
 	excluded := make(map[string]bool, len(excludedProtocols))
 	for _, protocol := range excludedProtocols {
 		protocol = strings.ToLower(strings.TrimSpace(protocol))
@@ -2695,13 +2708,13 @@ func (s *ConfigUpdateService) GenerateClientConfigWithExcludedProtocols(token, c
 			excluded[protocol] = true
 		}
 	}
-	return s.generateClientConfig(token, clientIP, userAgent, subType, excluded)
+	return s.generateClientConfig(token, clientIP, userAgent, subType, excluded, mfHeaders...)
 }
 
-func (s *ConfigUpdateService) generateClientConfig(token, clientIP, userAgent, subType string, excludedProtocols map[string]bool) (responseData, contentType, fileName string) {
+func (s *ConfigUpdateService) generateClientConfig(token, clientIP, userAgent, subType string, excludedProtocols map[string]bool, mfHeaders ...map[string]string) (responseData, contentType, fileName string) {
 	s.refreshSystemConfig()
 
-	ctx := s.GetSubscriptionContext(token, clientIP, userAgent)
+	ctx := s.GetSubscriptionContext(token, clientIP, userAgent, mfHeaders...)
 	var nodes []*ProxyNode
 	if ctx.Status != StatusNormal {
 		nodes = s.generateErrorNodes(ctx.Status, ctx)
