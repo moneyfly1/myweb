@@ -241,6 +241,20 @@ func (dm *DeviceManager) FindExistingDevice(subscriptionID uint, userAgent, ipAd
 func (dm *DeviceManager) FindExistingDeviceWithHeaders(subscriptionID uint, userAgent, ipAddress string, headers map[string]string) (*models.Device, bool, error) {
 	deviceHash := dm.GenerateDeviceHashWithHeaders(userAgent, ipAddress, "", headers)
 
+	// 客户端是否上报了**稳定设备 ID**（自研客户端 MoneyFly 的 X-MF-Device-Id）。
+	// 这个标记决定了下面能不能用"指纹/UA 兜底"去找设备：
+	//
+	// 实测缺陷（用户反馈"最大设备数 7，但自研客户端第 7 台不算数"）：
+	// MoneyFly 各台设备的 UA 完全相同（如都是 "MoneyFly/2.2.24 (Windows NT 10.0; Win64; x64)"），
+	// 而哈希没命中时会走「按 UA 匹配」的兜底 —— 于是 8 台不同设备（8 个不同 X-MF-Device-Id）
+	// 全部被当成同一台，库里只有 1 行、access_count 累加到 8，设备数限制对自研客户端形同失效。
+	// 结论：客户端既然给了稳定 ID，就以 ID 为权威身份；哈希没命中就是**新设备**，
+	// 不能再退化成 UA/机型指纹匹配（那是给「没上报 ID 的历史行」用的）。
+	explicitDeviceID := ""
+	if headers != nil {
+		explicitDeviceID = strings.TrimSpace(headers["X-MF-Device-Id"])
+	}
+
 	var device models.Device
 	err := dm.db.Where("device_hash = ? AND subscription_id = ?", deviceHash, subscriptionID).First(&device).Error
 	if err == nil {
@@ -264,6 +278,13 @@ func (dm *DeviceManager) FindExistingDeviceWithHeaders(subscriptionID uint, user
 		} else if err != gorm.ErrRecordNotFound {
 			return nil, false, err
 		}
+	}
+
+	// 有显式设备 ID 时到此即止：视为新设备。
+	// 下面的 UA/指纹/别名兜底都是"给没有稳定 ID 的历史数据认亲"用的，
+	// 对上报了 ID 的客户端只会造成误合并（同一 client 同版本 UA 一样）。
+	if explicitDeviceID != "" {
+		return nil, false, nil
 	}
 
 	if userAgent != "" {
