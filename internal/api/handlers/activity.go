@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"cboard-go/internal/services/activity"
@@ -23,14 +24,18 @@ func GetActivitySummary(c *gin.Context) {
 		"active": counts.Active,
 		"idle":   counts.Idle,
 		"windows": gin.H{
-			"online_seconds":  int(activity.OnlineTTL.Seconds()),
-			"active_minutes":  int(activity.ActiveWindow.Minutes()),
-			"idle_hours":      int(activity.IdleWindow.Hours()),
+			"online_seconds": int(activity.OnlineTTL.Seconds()),
+			"active_minutes": int(activity.ActiveWindow.Minutes()),
+			"idle_hours":     int(activity.IdleWindow.Hours()),
 		},
+		// 判定依据文案由窗口值**动态生成**：之前这里写死了"15 分钟"，
+		// 调整窗口后文案没跟着变，接口返回的口径与实际判定不一致（部署后核对时发现）。
 		"basis": gin.H{
-			"online": "节点侧按用户上报的活跃连接数 > 0（秒级，需要节点支持按用户区分）",
-			"active": "15 分钟内拉取过订阅（第三方客户端唯一可靠的活跃信号）或节点有上报",
-			"idle":   "24 小时内有过上述任一信号",
+			"online": fmt.Sprintf("节点侧按用户上报的活跃连接数 > 0（%d 秒内，需要节点支持按用户区分）",
+				int(activity.OnlineTTL.Seconds())),
+			"active": fmt.Sprintf("%d 分钟内拉取过订阅（第三方客户端唯一可靠的活跃信号）或节点有上报",
+				int(activity.ActiveWindow.Minutes())),
+			"idle": fmt.Sprintf("%d 小时内有过上述任一信号", int(activity.IdleWindow.Hours())),
 		},
 	})
 }
