@@ -6,6 +6,9 @@ export const useSettingsStore = defineStore('settings', {
     siteName: 'CBoard',
     siteFavicon: '',
     minPasswordLength: 8,
+    // 系统设置 → 默认设备数。后台文案规定「0 表示不限制」，所以这里也保留 0，
+    // 各表单引用它作为默认值，避免在界面里写死一个数字（如 5）与后台设置不一致。
+    defaultDeviceLimit: 0,
     defaultTheme: 'default',
     allowUserTheme: true,
     // 是否允许用户自行删除（踢下线）设备：由系统设置 → 用户与注册控制
@@ -41,6 +44,12 @@ export const useSettingsStore = defineStore('settings', {
                                   ? settings.minPasswordLength 
                                   : 8)
         this.minPasswordLength = typeof minPasswordValue === 'number' ? minPasswordValue : (parseInt(minPasswordValue) || 8)
+        // 默认设备数：0 是合法值（表示不限制），解析失败时保留原值以免误覆盖
+        const deviceLimitValue = settings.default_subscription_device_limit
+        if (deviceLimitValue !== undefined && deviceLimitValue !== null) {
+          const parsed = typeof deviceLimitValue === 'number' ? deviceLimitValue : parseInt(deviceLimitValue, 10)
+          if (!Number.isNaN(parsed) && parsed >= 0) this.defaultDeviceLimit = parsed
+        }
         this.defaultTheme = settings.default_theme || 'light'
         this.allowUserTheme = settings.allow_user_theme !== false
         this.allowUserDeleteDevice = settings.allow_user_delete_device !== false

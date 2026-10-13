@@ -214,7 +214,8 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 
 	shouldRecord := true
 	if !deviceExists && !user.SpecialNodeUnlimitedDevices {
-		if subscription.DeviceLimit == 0 || (subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit) {
+		// 上限 0 = 「不限制」，照常登记新设备
+		if subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit {
 			shouldRecord = false
 		}
 	}
