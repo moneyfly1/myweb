@@ -121,6 +121,9 @@ func CreateInviteCode(c *gin.Context) {
 	utils.CreateAuditLogSimple(c, "create_invite_code", "invite_code", inviteCode.ID, fmt.Sprintf("创建邀请码: %s", inviteCode.Code))
 	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 	inviteLink := baseURL + "/register?invite=" + code
+	// 新建的码如果没显式设置奖励，对外展示应按全局配置（与实际发放一致）
+	createdCopy := inviteCode
+	createdReward := invite.EffectiveRewards(db, &createdCopy)
 
 	utils.SuccessResponse(c, http.StatusCreated, "邀请码生成成功", gin.H{
 		"id":             inviteCode.ID,
@@ -130,8 +133,8 @@ func CreateInviteCode(c *gin.Context) {
 		"used_count":     inviteCode.UsedCount,
 		"expires_at":     inviteCode.ExpiresAt,
 		"reward_type":    inviteCode.RewardType,
-		"inviter_reward": inviteCode.InviterReward,
-		"invitee_reward": inviteCode.InviteeReward,
+		"inviter_reward": createdReward.Inviter,
+		"invitee_reward": createdReward.Invitee,
 		"is_active":      inviteCode.IsActive,
 		"created_at":     inviteCode.CreatedAt,
 	})
@@ -174,17 +177,21 @@ func GetInviteCodes(c *gin.Context) {
 		if isValid && code.MaxUses.Valid {
 			isValid = code.UsedCount < int(code.MaxUses.Int64)
 		}
+		codeCopy := code
+		effRewards := invite.EffectiveRewards(db, &codeCopy)
 
 		result = append(result, gin.H{
-			"id":             code.ID,
-			"code":           code.Code,
-			"invite_link":    inviteLink,
-			"max_uses":       maxUses,
-			"used_count":     code.UsedCount,
-			"expires_at":     expiresAt,
-			"reward_type":    code.RewardType,
-			"inviter_reward": code.InviterReward,
-			"invitee_reward": code.InviteeReward,
+			"id":          code.ID,
+			"code":        code.Code,
+			"invite_link": inviteLink,
+			"max_uses":    maxUses,
+			"used_count":  code.UsedCount,
+			"expires_at":  expiresAt,
+			"reward_type": code.RewardType,
+			// 展示"实际会发多少"：邀请码显式值(>0) > 全局配置（与发放逻辑同源）
+			"inviter_reward": effRewards.Inviter,
+			"invitee_reward": effRewards.Invitee,
+			"reward_source":  effRewards.Source,
 			"is_active":      code.IsActive,
 			"is_valid":       isValid,
 			"created_at":     utils.FormatBeijingTime(code.CreatedAt),
@@ -247,38 +254,38 @@ func GetRewardSettings(c *gin.Context) {
 
 	db := database.GetDB()
 
-	var configs []models.SystemConfig
-	db.Where("category = ? AND `key` IN (?)", "invite", []string{
-		"inviter_reward", "invitee_reward", "min_order_amount", "new_user_only",
-	}).Find(&configs)
+	// 奖励金额统一走 invite.LoadRewards —— 与「实际发放」用同一套解析，
+	// 避免页面显示的奖励和系统真正会发的奖励不一致。
+	// 历史缺陷：这里原先单独读 system_configs 的当前键，而发放逻辑在「当前键为 0」时会回退旧键，
+	// 于是管理员把「被邀请人奖励」设成 0（只想奖励邀请人）时：
+	//   页面 → 显示没有被邀请人奖励（读当前键 0）
+	//   实际 → 仍然按旧键给被邀请人发 20 元
+	// 现在发放侧的显式 0 已生效（不再回退旧键），这里也改为同源取值，两边永远一致。
+	rewards := invite.LoadRewards(db)
+	settings := map[string]interface{}{
+		"inviter_reward": rewards.Inviter,
+		"invitee_reward": rewards.Invitee,
+		// 取值来源（current / legacy / none / code），便于排障时确认到底读到了哪个键
+		"reward_source": rewards.Source,
+	}
 
-	settings := make(map[string]interface{})
+	// 其余展示项照旧读配置（与奖励金额无关，只影响文案提示）
+	var configs []models.SystemConfig
+	db.Where("category = ? AND `key` IN (?)", "invite", []string{"min_order_amount", "new_user_only"}).Find(&configs)
+	minOrderAmount := 0.0
+	newUserOnly := false
 	for _, cfg := range configs {
-		if cfg.Key == "inviter_reward" || cfg.Key == "invitee_reward" || cfg.Key == "min_order_amount" {
-			if val, err := strconv.ParseFloat(cfg.Value, 64); err == nil {
-				settings[cfg.Key] = val
-			} else {
-				settings[cfg.Key] = 0.0
+		switch cfg.Key {
+		case "min_order_amount":
+			if v, err := strconv.ParseFloat(strings.TrimSpace(cfg.Value), 64); err == nil {
+				minOrderAmount = v
 			}
-		} else if cfg.Key == "new_user_only" {
-			settings[cfg.Key] = cfg.Value == "true"
-		} else {
-			settings[cfg.Key] = cfg.Value
+		case "new_user_only":
+			newUserOnly = strings.TrimSpace(cfg.Value) == "true"
 		}
 	}
-
-	if _, ok := settings["inviter_reward"]; !ok {
-		settings["inviter_reward"] = 0.0
-	}
-	if _, ok := settings["invitee_reward"]; !ok {
-		settings["invitee_reward"] = 0.0
-	}
-	if _, ok := settings["min_order_amount"]; !ok {
-		settings["min_order_amount"] = 0.0
-	}
-	if _, ok := settings["new_user_only"]; !ok {
-		settings["new_user_only"] = false
-	}
+	settings["min_order_amount"] = minOrderAmount
+	settings["new_user_only"] = newUserOnly
 
 	utils.SuccessResponse(c, http.StatusOK, "", settings)
 }
@@ -315,14 +322,23 @@ func ValidateInviteCode(c *gin.Context) {
 		return
 	}
 
+	// 生效奖励（邀请码显式设置 > 全局配置）——与发放逻辑同源，保证注册页提示与实际一致
+	codeCopy := inviteCode
+	effReward := invite.EffectiveRewards(db, &codeCopy)
+
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"code":             inviteCode.Code,
-		"is_valid":         true,
-		"expires_at":       inviteCode.ExpiresAt,
-		"max_uses":         inviteCode.MaxUses,
-		"used_count":       inviteCode.UsedCount,
-		"invitee_reward":   inviteCode.InviteeReward,
-		"inviter_reward":   inviteCode.InviterReward,
+		"code":       inviteCode.Code,
+		"is_valid":   true,
+		"expires_at": inviteCode.ExpiresAt,
+		"max_uses":   inviteCode.MaxUses,
+		"used_count": inviteCode.UsedCount,
+		// 用「实际会发多少」而不是邀请码上冻结的历史值：
+		// 历史邀请码的奖励字段是 0（键名迁移事故期间创建的），直接回显会让注册页
+		// 提示"注册后可获得 0 元奖励"；反之若后台已把被邀请人奖励关掉（0），
+		// 也不能因为码上残留 20 而提示"可获得 20 元"。
+		"invitee_reward":   effReward.Invitee,
+		"inviter_reward":   effReward.Inviter,
+		"reward_source":    effReward.Source,
 		"reward_type":      inviteCode.RewardType,
 		"min_order_amount": inviteCode.MinOrderAmount,
 		"new_user_only":    inviteCode.NewUserOnly,

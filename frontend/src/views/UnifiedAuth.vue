@@ -88,7 +88,11 @@
               <el-form-item v-if="inviteCodeRequired" prop="inviteCode" required>
                 <el-input v-model="registerForm.inviteCode" placeholder="邀请码（必填）" size="large" :prefix-icon="Ticket" clearable />
                 <div v-if="inviteCodeInfo" class="invite-tip">
-                  <span v-if="inviteCodeInfo.is_valid || inviteCodeInfo.success" class="tip-ok">邀请码有效，注册后可获得 {{ inviteCodeInfo.invitee_reward || inviteCodeInfo.data?.invitee_reward || 0 }} 元奖励</span>
+                  <!-- 奖励金额完全按后台设置显示：
+                       后台把「被邀请人奖励」设为 0（只奖励邀请人）时，不能显示"可获得 0 元奖励"，
+                       也不能因为邀请码上残留的历史金额而误报 —— 所以先判 > 0 再决定文案。 -->
+                  <span v-if="(inviteCodeInfo.is_valid || inviteCodeInfo.success) && inviteeRewardOfInviteCode > 0" class="tip-ok">邀请码有效，注册后可获得 {{ inviteeRewardOfInviteCode }} 元奖励</span>
+                  <span v-else-if="inviteCodeInfo.is_valid || inviteCodeInfo.success" class="tip-ok">邀请码有效</span>
                   <span v-else class="tip-err">{{ inviteCodeInfo.message }}</span>
                 </div>
               </el-form-item>
@@ -226,6 +230,16 @@ const emailVerificationRequired = ref(true)
 // 统一取自 settings store（公开设置 min_password_length），不再本地 ref(8) 各抄一份
 const minPasswordLength = computed(() => settingsStore.minPasswordLength)
 const inviteCodeInfo = ref(null)
+
+// 被邀请人奖励（元）：**以后台设置为准**，取自邀请码校验接口返回的生效值
+// （后端已按「邀请码显式值 > 全局配置」解析，后台把被邀请人奖励设为 0 时这里就是 0）。
+// 0 表示后台没有开启被邀请人奖励 —— 此时注册页只提示"邀请码有效"，不显示金额，
+// 也不能因为邀请码上残留的历史金额而误报"可获得 X 元"。
+const inviteeRewardOfInviteCode = computed(() => {
+  const raw = inviteCodeInfo.value?.invitee_reward ?? inviteCodeInfo.value?.data?.invitee_reward ?? 0
+  const n = parseFloat(raw)
+  return Number.isFinite(n) && n > 0 ? n : 0
+})
 
 // 共享密码强度校验器 (避免 registerRules / forgotRules 重复定义)
 const passwordValidator = (rule, value, callback) => {
