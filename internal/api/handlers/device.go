@@ -50,6 +50,8 @@ func GetDevices(c *gin.Context) {
 			firstSeen = utils.FormatBeijingTime(*d.FirstSeen)
 		}
 
+		devAct := devicesvc.ActivityOf(d, utils.GetBeijingTime())
+
 		ipStr := utils.GetStringValue(d.IPAddress)
 		ipAddress := utils.FormatIP(ipStr)
 
@@ -57,29 +59,33 @@ func GetDevices(c *gin.Context) {
 		location := ""
 
 		deviceList = append(deviceList, gin.H{
-			"id":                 d.ID,
-			"subscription_id":    d.SubscriptionID,
-			"device_name":        utils.GetStringValue(d.DeviceName),
-			"device_type":        utils.GetStringValue(d.DeviceType),
-			"device_model":       utils.GetStringValue(d.DeviceModel),
-			"device_brand":       utils.GetStringValue(d.DeviceBrand),
-			"device_fingerprint": d.DeviceFingerprint,
-			"ip_address":         ipAddress,
-			"location":           location,
-			"user_agent":         utils.GetStringValue(d.UserAgent),
-			"software_name":      utils.GetStringValue(d.SoftwareName),
-			"software_version":   utils.GetStringValue(d.SoftwareVersion),
-			"os_name":            utils.GetStringValue(d.OSName),
-			"os_version":         utils.GetStringValue(d.OSVersion),
-			"subscription_type":  utils.GetStringValue(d.SubscriptionType),
-			"is_active":          d.IsActive,
-			"is_allowed":         d.IsAllowed,
-			"first_seen":         firstSeen,
-			"last_access":        utils.FormatBeijingTime(d.LastAccess),
-			"last_seen":          lastSeen,
-			"access_count":       d.AccessCount,
-			"created_at":         utils.FormatBeijingTime(d.CreatedAt),
-			"remark":             utils.GetStringValue(d.Remark),
+			"id":                   d.ID,
+			"subscription_id":      d.SubscriptionID,
+			"device_name":          utils.GetStringValue(d.DeviceName),
+			"device_type":          utils.GetStringValue(d.DeviceType),
+			"device_model":         utils.GetStringValue(d.DeviceModel),
+			"device_brand":         utils.GetStringValue(d.DeviceBrand),
+			"device_fingerprint":   d.DeviceFingerprint,
+			"ip_address":           ipAddress,
+			"location":             location,
+			"user_agent":           utils.GetStringValue(d.UserAgent),
+			"software_name":        utils.GetStringValue(d.SoftwareName),
+			"software_version":     utils.GetStringValue(d.SoftwareVersion),
+			"os_name":              utils.GetStringValue(d.OSName),
+			"os_version":           utils.GetStringValue(d.OSVersion),
+			"subscription_type":    utils.GetStringValue(d.SubscriptionType),
+			"is_active":            d.IsActive,
+			"is_allowed":           d.IsAllowed,
+			"activity_state":       devAct.State,
+			"activity_state_label": devAct.StateLabel,
+			"activity_ago_seconds": devAct.AgoSeconds,
+			"activity_basis":       devAct.Basis,
+			"first_seen":           firstSeen,
+			"last_access":          utils.FormatBeijingTime(d.LastAccess),
+			"last_seen":            lastSeen,
+			"access_count":         d.AccessCount,
+			"created_at":           utils.FormatBeijingTime(d.CreatedAt),
+			"remark":               utils.GetStringValue(d.Remark),
 		})
 	}
 

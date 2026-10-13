@@ -20,7 +20,8 @@ type KickGateResult struct {
 }
 
 // KickAutoReviveDisabled 允许用环境变量关掉「自动恢复」，回到严格黑名单语义。
-//   DEVICE_KICK_AUTO_REVIVE=false → 被删除的设备必须重新登录或找客服，不再自愈。
+//
+//	DEVICE_KICK_AUTO_REVIVE=false → 被删除的设备必须重新登录或找客服，不再自愈。
 func KickAutoReviveDisabled() bool {
 	v := strings.TrimSpace(strings.ToLower(os.Getenv("DEVICE_KICK_AUTO_REVIVE")))
 	return v == "false" || v == "0" || v == "no" || v == "off"
