@@ -1343,11 +1343,14 @@ func (s *ConfigUpdateService) GetSubscriptionContext(token, clientIP, userAgent 
 		devices, _ := device.CountActiveDevices(s.db, sub.ID)
 		ctx.CurrentDevices, ctx.DeviceLimit = int(devices), sub.DeviceLimit
 
-		// 设备数上限 0 = 「不限制」，与后台文案一致（系统设置默认设备数、套餐编辑、
-		// 用户编辑三处都写着「0 表示不限制」）。历史实现把 0 当成「禁止使用」，后果：
-		//   - 系统设置里默认设备数留 0（或该项缺失时 fallback 到 0）的新订阅，任何设备都拿不到节点；
-		//   - 套餐里填 0 想表达「不限设备」的管理员，反而把所有下单用户挡在门外。
-		// 现在 0 直接跳过设备数判定。上限值本身始终取订阅上的 device_limit，没有固定值。
+		// 设备数上限 0 = **拒绝**（不是"不限制"）：只下发错误节点，
+		// 客户端拿到「设备数量超限」提示，无法连接任何节点。
+		// 这是管理员的显式手段，用于彻底停掉某条订阅的设备使用。
+		if sub.DeviceLimit == 0 {
+			ctx.Status = StatusDeviceOverLimit
+			return ctx
+		}
+
 		if sub.DeviceLimit > 0 && ctx.CurrentDevices >= sub.DeviceLimit {
 			// 用带请求头的查找：客户端上报了稳定设备 ID（X-MF-Device-Id）时按 ID 判断，
 			// 否则退化为 UA/指纹（与原行为一致）。

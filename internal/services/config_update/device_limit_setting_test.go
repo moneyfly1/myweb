@@ -1,56 +1,60 @@
 package config_update
 
 import (
+	"strings"
 	"testing"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/services/device"
 )
 
-// 设备上限的取值语义（用户澄清：5 只是举例，真实允许数量**始终**取后台设置）：
+// 设备上限的取值语义（用户澄清两件事）：
 //
-//	① 上限 0 = 不限制（后台文案「0 表示不限制」）；历史实现把 0 当禁止，
-//	   导致默认设备数为 0 的订阅任何设备都拿不到节点；
-//	② 上限非 0 时，判定完全跟随订阅上的 device_limit —— 把同一个订阅的
-//	   上限从 3 改成 6，放行台数必须随之从 3 变到 6，代码里不许有固定值。
-func TestDeviceLimitZeroMeansUnlimited(t *testing.T) {
+//	① 上限 0 = **拒绝**（不是"不限制"）：只下发错误节点，任何设备都拿不到可用节点；
+//	② 上限非 0 时，允许数量**完全取后台设置**（订阅上的 device_limit），
+//	   代码里不许出现固定值 —— 把上限从 3 改成 6，放行台数必须随之从 3 变到 6。
+func TestDeviceLimitZeroMeansRefuse(t *testing.T) {
 	db, sub, user := setupLimitTestDB(t, "")
 	prevDB := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = prevDB })
 
-	// 后台把上限设成 0（= 不限制）
+	// 后台把上限设成 0（= 拒绝）
 	if err := db.Model(&sub).Update("device_limit", 0).Error; err != nil {
 		t.Fatalf("更新上限失败: %v", err)
 	}
 
 	mfUA := "MoneyFly/2.2.25 (Windows NT 10.0; Win64; x64)"
 	dm := device.NewDeviceManager()
-	for _, id := range []string{"dev-1", "dev-2", "dev-3"} {
-		if _, err := dm.RecordDeviceAccessWithHeaders(sub.ID, user.ID, mfUA, "10.0.0.1", "clash",
-			map[string]string{"X-MF-Device-Id": id}); err != nil {
-			t.Fatalf("记录设备 %s 失败: %v", id, err)
-		}
+	if _, err := dm.RecordDeviceAccessWithHeaders(sub.ID, user.ID, mfUA, "10.0.0.1", "clash",
+		map[string]string{"X-MF-Device-Id": "dev-1"}); err != nil {
+		t.Fatalf("记录设备失败: %v", err)
 	}
 
 	svc := &ConfigUpdateService{db: db}
 	svc.refreshSystemConfig()
 
-	// 第 4 台（新设备）在「不限制」下必须放行，并真的拿到可用节点
-	ctx := svc.GetSubscriptionContext(sub.SubscriptionURL, "10.0.0.4", mfUA,
-		map[string]string{"X-MF-Device-Id": "dev-4"})
-	if ctx.Status != StatusNormal {
-		t.Fatalf("上限 0 应视为不限制，第 4 台不该被拒，实际状态 %v", ctx.Status)
+	// 上限 0：即便这台设备早就登记过，也只给错误节点（没有任何可用节点）
+	ctx := svc.GetSubscriptionContext(sub.SubscriptionURL, "10.0.0.1", mfUA,
+		map[string]string{"X-MF-Device-Id": "dev-1"})
+	if ctx.Status != StatusDeviceOverLimit {
+		t.Fatalf("上限 0 应判为拒绝（超限），实际状态 %v", ctx.Status)
 	}
 	names := namesOf(svc.buildSubscriptionNodes(ctx))
-	hasReal := false
 	for _, n := range names {
 		if n == "可用节点A" {
-			hasReal = true
+			t.Fatalf("上限 0 时不得下发真实节点，实际: %v", names)
 		}
 	}
-	if !hasReal {
-		t.Fatalf("不限制时应返回真实节点，实际: %v", names)
+	// 必须带可见的错误原因（客户端据此提示「设备数量超限」）
+	hasReason := false
+	for _, n := range names {
+		if strings.Contains(n, "设备数量超限") {
+			hasReason = true
+		}
+	}
+	if !hasReason {
+		t.Fatalf("拒绝时必须带「设备数量超限」原因节点，实际: %v", names)
 	}
 	if ctx.DeviceLimit != 0 {
 		t.Fatalf("上下文里的上限应回传订阅上的 0，实际 %d", ctx.DeviceLimit)

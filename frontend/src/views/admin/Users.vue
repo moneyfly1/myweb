@@ -270,7 +270,7 @@
                         </div>
                       </el-tooltip>
                       <div class="device-separator">/</div>
-                      <el-tooltip content="允许最大设备数量（0 表示不限制）" placement="top">
+                      <el-tooltip content="允许最大设备数量（0 = 拒绝，客户端只拿到错误节点）" placement="top">
                         <div class="device-item total">
                           <el-icon class="device-icon total-icon"><Connection /></el-icon>
                           <span class="device-count">{{ formatDeviceLimit(scope.row.subscription?.device_limit) }}</span>
@@ -608,11 +608,11 @@
             v-model="userForm.device_limit"
             :min="0"
             :max="999"
-            :placeholder="`留空使用系统默认（${settingsStore.defaultDeviceLimit === 0 ? '不限制' : settingsStore.defaultDeviceLimit}）`"
+            :placeholder="`留空使用系统默认（${settingsStore.defaultDeviceLimit === 0 ? '0（拒绝）' : settingsStore.defaultDeviceLimit}）`"
             controls-position="right"
             class="full-width-control"
           />
-          <div class="form-item-hint">允许用户同时使用的最大设备数量（0 表示不限制；留空则用系统设置里的默认设备数）</div>
+          <div class="form-item-hint">允许用户同时使用的最大设备数量（0 = 拒绝该订阅的设备使用，客户端只拿到错误节点；留空则用系统设置里的默认设备数）</div>
         </el-form-item>
         <el-form-item :label="isMobile ? '' : '到期时间'" prop="expire_time" v-if="!editingUser">
           <template v-if="isMobile">
@@ -663,7 +663,7 @@
             :max="999"
             class="full-width-control"
           />
-          <div class="form-item-hint">允许用户同时使用的最大设备数量（0 表示不限制）</div>
+          <div class="form-item-hint">允许用户同时使用的最大设备数量（0 = 拒绝该订阅的设备使用，客户端只拿到错误节点）</div>
         </el-form-item>
         <el-form-item :label="isMobile ? '' : '到期时间'" prop="expire_time" v-if="editingUser">
           <template v-if="isMobile">
@@ -987,7 +987,7 @@ export default {
       ],
       device_limit: [
         // 允许留空：留空 = 使用系统设置里的「默认设备数」，不在界面里写死数字。
-        // 上限放到 999（与订阅编辑页一致）：线上已有 500 这类"约等于不限制"的设置，
+        // 上限放到 999（与订阅编辑页一致）：线上已有 500 这类"实际等于不限设备"的设置，
         // 之前 max=100 会在打开编辑表单时把 500 夹成 100，保存后设备数被悄悄改小。
         {
           validator: (rule, value, callback) => {
@@ -1070,7 +1070,7 @@ export default {
           is_verified: Boolean(user.is_verified),
           note: user.notes || '', password: '',
           balance: user.balance || 0,
-          // 用 ?? 而不是 ||：设备上限 0 是合法值（不限制），不能被 5 顶掉
+          // 用 ?? 而不是 ||：设备上限 0 是合法值（= 拒绝使用），不能被 5 顶掉
           device_limit: user.subscription?.device_limit ?? null,
           expire_time: user.subscription?.expire_time ? dayjs(user.subscription.expire_time).format('YYYY-MM-DDTHH:mm:ss') : ''
         })
@@ -1105,7 +1105,7 @@ export default {
             is_admin: userForm.is_admin,
             notes: userForm.note || '',
             balance: userForm.balance,
-            // 留空（null/undefined）表示"不改动"；填了 0 就是"不限制"
+            // 留空（null/undefined）表示"不改动"；填了 0 就是"拒绝该订阅使用设备"
             device_limit: userForm.device_limit ?? undefined,
             expire_time: userForm.expire_time,
             password: userForm.password || undefined
@@ -1117,7 +1117,7 @@ export default {
             password: userForm.password,
             is_active: userForm.status === 'active',
             is_admin: false, is_verified: false,
-            // 留空 → 不发这个字段，由后端按系统设置「默认设备数」取值（含 0=不限制）
+            // 留空 → 不发这个字段，由后端按系统设置「默认设备数」取值
             device_limit: userForm.device_limit ?? undefined,
             expire_time: userForm.expire_time || getDefaultExpireTime(),
             notes: userForm.note || ''
@@ -1177,10 +1177,10 @@ export default {
       const deviceLimit = user.subscription?.device_limit || 0
       return deviceLimit > 0 && onlineDevices >= deviceLimit
     }
-    // 设备上限展示：0 表示不限制（与后台设置文案一致），没有订阅时显示 -
+    // 设备上限展示：0 = 拒绝该订阅使用设备；没有订阅时显示 -
     const formatDeviceLimit = (limit) => {
       if (limit === null || limit === undefined) return '-'
-      return Number(limit) === 0 ? '不限制' : String(limit)
+      return Number(limit) === 0 ? '0（拒绝）' : String(limit)
     }
     const getExpireTextType = (subscription) => {
       if (subscription.is_expired) return 'danger'

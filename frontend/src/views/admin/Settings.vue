@@ -227,7 +227,7 @@
                 <div class="backup-fields-row">
                   <el-form-item label="默认设备数">
                     <el-input-number v-model="registrationSettings.default_subscription_device_limit" :min="0" size="small" class="input-full" />
-                    <div class="form-tip">0 表示无限制</div>
+                    <div class="form-tip">0 = 拒绝（新订阅不允许使用设备，客户端只拿到错误节点）</div>
                   </el-form-item>
                   <el-form-item label="默认时长(月)">
                     <el-input-number v-model="registrationSettings.default_subscription_duration_months" :min="0" size="small" class="input-full" />

@@ -1815,7 +1815,11 @@ func validateSubscription(subscription *models.Subscription, user *models.User, 
 		return "", int(count), subscription.DeviceLimit, true
 	}
 
-	// 设备数上限 0 = 「不限制」（与后台「0 表示不限制」的文案一致），直接放行
+	// 上限 0 = 拒绝（不是"不限制"）：不给任何设备放行，客户端只会拿到错误节点
+	if subscription.DeviceLimit == 0 {
+		return "设备数量限制为0，无法使用服务", int(count), subscription.DeviceLimit, false
+	}
+
 	if subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit {
 		currentDevice, isCurrentDeviceExists, err := device.NewDeviceManager().FindExistingDeviceWithHeaders(subscription.ID, userAgent, clientIP, mfHeaders)
 		if err != nil {
@@ -1932,10 +1936,11 @@ func GetSubscriptionConfig(c *gin.Context) {
 	count, _ := device.CountActiveDevices(db, subscription.ID)
 
 	// 检查设备限制（不拦截请求，交由 GenerateClashConfig 返回 YAML 格式错误节点）
-	// 上限 0 = 「不限制」：不限制就不该拦新设备，照常登记
+	// 上限 0 = 拒绝：不登记任何新设备（下发错误节点由配置生成环节完成）
 	shouldRecord := true
 	if !deviceExists && !user.SpecialNodeUnlimitedDevices {
-		if subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit {
+		if subscription.DeviceLimit == 0 ||
+			(subscription.DeviceLimit > 0 && int(count) >= subscription.DeviceLimit) {
 			shouldRecord = false
 		}
 	}
@@ -2196,8 +2201,9 @@ func GetUniversalSubscription(c *gin.Context) {
 
 		shouldRecord := true
 		if !deviceExists && !unlimitedDevices {
-			// 上限 0 = 「不限制」，照常登记新设备
-			if sub.DeviceLimit > 0 && int(count) >= sub.DeviceLimit {
+			// 上限 0 = 拒绝：不登记新设备
+			if sub.DeviceLimit == 0 ||
+				(sub.DeviceLimit > 0 && int(count) >= sub.DeviceLimit) {
 				shouldRecord = false
 			}
 		}
