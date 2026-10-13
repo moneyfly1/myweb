@@ -84,17 +84,26 @@ type SubscriptionContext struct {
 }
 
 type ConfigUpdateService struct {
-	db            *gorm.DB
-	isRunning     bool
-	runningMutex  sync.Mutex
-	siteURL       string
-	supportQQ     string
-	configMutex   sync.RWMutex
-	regionMatcher *RegionMatcher
-	parserPool    *ParserPool
-	sseManager    *SSEManager
-	logBuffer     []map[string]interface{}
-	logMutex      sync.RWMutex
+	db           *gorm.DB
+	isRunning    bool
+	runningMutex sync.Mutex
+	siteURL      string
+	supportQQ    string
+	// deviceLimitSoft 设备数超限时是否走"软限制"（默认 true）：
+	// true  = 仍然返回完整可用节点，只在最前面加一条提示节点（客户端据此提示用户升级设备，但照样能连）
+	// false = 硬限制：只返回错误节点，连不上（历史行为）
+	// 取值：system_configs (category=device, key=limit_mode)，值为 "hard" 时关闭软限制。
+	deviceLimitSoft bool
+	// deviceLimitModeLoaded 是否已从配置加载过该开关。
+	// 未加载时按**软限制**处理（新默认），避免某条生成路径漏调 refreshSystemConfig()
+	// 就悄悄退回"超限即断服务"的旧行为。
+	deviceLimitModeLoaded bool
+	configMutex           sync.RWMutex
+	regionMatcher         *RegionMatcher
+	parserPool            *ParserPool
+	sseManager            *SSEManager
+	logBuffer             []map[string]interface{}
+	logMutex              sync.RWMutex
 	// Clash 模板缓存
 	tplCache   []byte
 	tplPath    string
@@ -199,6 +208,16 @@ func (s *ConfigUpdateService) refreshSystemConfig() {
 	} else {
 		s.supportQQ = ""
 	}
+
+	// 设备数超限的处理方式，默认"软限制"（仍可连接 + 提示节点）。
+	// 历史行为是"硬限制"（只给错误节点 → 客户端显示请升级设备且连不上），
+	// 用户反馈这样不合理：超限应当仍然能连，只做提示。想恢复硬限制就把该配置值设为 hard。
+	s.deviceLimitSoft = true
+	var limitMode models.SystemConfig
+	if err := s.db.Where("key = ? AND category = ?", "limit_mode", "device").First(&limitMode).Error; err == nil {
+		s.deviceLimitSoft = strings.TrimSpace(strings.ToLower(limitMode.Value)) != "hard"
+	}
+	s.deviceLimitModeLoaded = true
 }
 
 // getProtocolFilter reads allowed protocols for a subscription type from DB.
@@ -1480,11 +1499,7 @@ func (s *ConfigUpdateService) GenerateClashConfig(token, clientIP, userAgent str
 	ctx := s.GetSubscriptionContext(token, clientIP, userAgent, mfHeaders...)
 	var nodes []*ProxyNode
 	s.refreshSystemConfig()
-	if ctx.Status != StatusNormal {
-		nodes = s.generateErrorNodes(ctx.Status, ctx)
-	} else {
-		nodes = s.addInfoNodes(ctx.Proxies, ctx)
-	}
+	nodes = s.buildSubscriptionNodes(ctx)
 
 	filtered := s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
 	// 内核自检（第二层）+ 纯结构校验（悬空引用/空分组/字段缺失），两者都不依赖客户端
@@ -1519,11 +1534,7 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent
 	ctx := s.GetSubscriptionContext(token, clientIP, userAgent, mfHeaders...)
 	var nodes []*ProxyNode
 	s.refreshSystemConfig()
-	if ctx.Status != StatusNormal {
-		nodes = s.generateErrorNodes(ctx.Status, ctx)
-	} else {
-		nodes = s.addInfoNodes(ctx.Proxies, ctx)
-	}
+	nodes = s.buildSubscriptionNodes(ctx)
 
 	nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("universal_protocols"))
 
@@ -1796,6 +1807,35 @@ func (s *ConfigUpdateService) generateDefaultClashYAML(proxies []*ProxyNode, pro
 
 	b.WriteString("\nrules:\n  - DOMAIN-SUFFIX,local,DIRECT\n  - IP-CIDR,127.0.0.0/8,DIRECT\n  - IP-CIDR,172.16.0.0/12,DIRECT\n  - IP-CIDR,192.168.0.0/16,DIRECT\n  - GEOIP,CN,DIRECT\n  - MATCH,🚀 节点选择\n")
 	return b.String()
+}
+
+// buildSubscriptionNodes 统一的"状态 → 节点列表"产出，三条生成路径共用一份，避免各自漂移。
+//
+// 设备数超限（StatusDeviceOverLimit）按**软限制**处理（默认）：
+// 仍然返回完整可用节点，只在最前面插一条提示节点 ——
+// 客户端（MoneyFly）会据此提示"设备数已达上限，请升级设备/删除闲置设备"，但用户照样能连接。
+// 这修正了此前的行为：超限直接把节点全换成错误节点，用户看到"请升级设备"且完全连不上，
+// 而这类超限往往只是换了台设备/重装客户端，直接断服务并不合理。
+func (s *ConfigUpdateService) buildSubscriptionNodes(ctx *SubscriptionContext) []*ProxyNode {
+	if ctx.Status == StatusNormal {
+		return s.addInfoNodes(ctx.Proxies, ctx)
+	}
+	soft := s.isDeviceLimitSoft()
+	if ctx.Status == StatusDeviceOverLimit && soft {
+		notice := s.createMessageNode(fmt.Sprintf("⚠️ 设备数已达上限 (%d/%d)｜请升级设备或删除闲置设备", ctx.CurrentDevices, ctx.DeviceLimit))
+		return append([]*ProxyNode{notice}, s.addInfoNodes(ctx.Proxies, ctx)...)
+	}
+	return s.generateErrorNodes(ctx.Status, ctx)
+}
+
+// isDeviceLimitSoft 设备数超限是否走软限制（未加载配置时默认软限制）
+func (s *ConfigUpdateService) isDeviceLimitSoft() bool {
+	s.configMutex.RLock()
+	defer s.configMutex.RUnlock()
+	if !s.deviceLimitModeLoaded {
+		return true
+	}
+	return s.deviceLimitSoft
 }
 
 func (s *ConfigUpdateService) addInfoNodes(proxies []*ProxyNode, ctx *SubscriptionContext) []*ProxyNode {
@@ -2716,11 +2756,7 @@ func (s *ConfigUpdateService) generateClientConfig(token, clientIP, userAgent, s
 
 	ctx := s.GetSubscriptionContext(token, clientIP, userAgent, mfHeaders...)
 	var nodes []*ProxyNode
-	if ctx.Status != StatusNormal {
-		nodes = s.generateErrorNodes(ctx.Status, ctx)
-	} else {
-		nodes = s.addInfoNodes(ctx.Proxies, ctx)
-	}
+	nodes = s.buildSubscriptionNodes(ctx)
 
 	subName := s.GenerateSubscriptionName(ctx)
 	siteURL := s.siteURL
