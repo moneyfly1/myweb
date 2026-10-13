@@ -1896,7 +1896,14 @@ func (s *ConfigUpdateService) generateErrorNodes(status SubscriptionStatus, ctx 
 	case StatusAccountAbnormal:
 		reason, solution = "账户异常", "您的账户状态异常或已被禁用，请联系客服"
 	case StatusDeviceOverLimit:
-		reason, solution = "设备数量超限", fmt.Sprintf("当前设备 %d/%d，请在官网删除不使用的设备", ctx.CurrentDevices, ctx.DeviceLimit)
+		reason = "设备数量超限"
+		if ctx.DeviceLimit == 0 {
+			// 上限 0 = 该订阅不开放设备使用（管理员的显式选择），
+			// 这时让用户"删除不使用的设备"没有意义，直接引导联系客服。
+			solution = "该订阅未开放设备使用（设备数上限为 0），请联系客服"
+		} else {
+			solution = fmt.Sprintf("当前设备 %d/%d，请在官网删除不使用的设备", ctx.CurrentDevices, ctx.DeviceLimit)
+		}
 	case StatusOldAddress:
 		reason, solution = "订阅地址已变更", "请登录官网获取最新的订阅地址"
 	case StatusNotFound:
