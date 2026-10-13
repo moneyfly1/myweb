@@ -43,8 +43,11 @@ const (
 var (
 	// OnlineTTL 节点侧上报连接数后，多久之内仍算「在线」
 	OnlineTTL = 90 * time.Second
-	// ActiveWindow 多久之内有信号算「活跃」
-	ActiveWindow = 15 * time.Minute
+	// ActiveWindow 多久之内有信号算「活跃」。
+	// 取 60 分钟是刻意的：第三方客户端按 Profile-Update-Interval 回拉订阅（面板默认下发 60 分钟），
+	// 窗口比更新周期短会系统性低估「在用人数」——例如 15 分钟窗口下，一小时前刚拉过订阅、
+	// 现在正在用的用户会被算成静默。真正的秒级在线由节点侧上报（OnlineTTL）负责。
+	ActiveWindow = 60 * time.Minute
 	// IdleWindow 多久之内有信号算「近期用过」（超过则静默）
 	IdleWindow = 24 * time.Hour
 	// persistThrottle 同一用户最快多久往数据库落一次快照

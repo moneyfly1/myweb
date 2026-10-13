@@ -112,7 +112,7 @@
           <el-select v-model="searchForm.activity" placeholder="在用情况" clearable class="status-filter-select" @change="searchUsers">
             <el-option label="全部" value="" />
             <el-option label="在线（节点实测）" value="online" />
-            <el-option label="活跃（15 分钟内）" value="active" />
+            <el-option label="活跃（1 小时内）" value="active" />
             <el-option label="近期用过（24 小时内）" value="idle" />
             <el-option label="静默（24 小时无信号）" value="silent" />
           </el-select>
@@ -1152,7 +1152,7 @@ export default {
     }[state] || 'info')
     const activityBasis = (state) => ({
       online: '节点侧上报有活跃连接（秒级，最可信）',
-      active: '15 分钟内拉取过订阅或节点有上报',
+      active: '1 小时内拉取过订阅或节点有上报（≈ 一个客户端更新周期）',
       idle: '24 小时内有信号，当前无动静',
       silent: '24 小时内无任何信号（含从未使用）'
     }[state] || '没有任何使用信号')
