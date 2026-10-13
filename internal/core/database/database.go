@@ -277,6 +277,7 @@ func AutoMigrate() error {
 		&models.InviteRelation{},
 		&models.Subscription{},
 		&models.Device{},
+		&models.UserUsageState{}, // 用户使用状态快照（订阅拉取 / 节点按用户上报）
 		&models.SubscriptionReset{},
 		&models.Order{},
 		&models.Package{},

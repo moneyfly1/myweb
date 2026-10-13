@@ -389,6 +389,9 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/users/abnormal/:id/mark-normal", handlers.MarkUserNormal)
 
 			admin.GET("/users", handlers.GetUsers)
+			// 使用状态：第三方客户端不会发心跳，这里聚合「订阅拉取 + 节点侧按用户上报」推断
+			admin.GET("/activity/summary", handlers.GetActivitySummary)
+			admin.GET("/users/:id/activity", handlers.GetUserActivity)
 			admin.POST("/users", handlers.CreateUser)
 			admin.GET("/users/:id", handlers.GetUser)
 			admin.GET("/users/:id/details", handlers.GetUserDetails)
