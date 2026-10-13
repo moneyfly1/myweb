@@ -145,3 +145,48 @@ func TestDeviceOverLimitHardModeCanBeRestored(t *testing.T) {
 		}
 	}
 }
+
+// 第三方客户端超限：必须**仍然返回错误信息**（只给错误节点），不受软限制影响。
+// 用户明确要求：上限 5 时第 6 台设备仍返回错误信息 —— 软限制只给自研客户端。
+func TestThirdPartyOverLimitStillGetsErrorNode(t *testing.T) {
+	db, sub, user := setupLimitTestDB(t, "")
+	prevDB := database.DB
+	database.DB = db
+	t.Cleanup(func() { database.DB = prevDB })
+
+	// 先用第三方客户端（无 X-MF-Device-Id）占掉唯一名额
+	dm := device.NewDeviceManager()
+	if _, err := dm.RecordDeviceAccessWithHeaders(sub.ID, user.ID, "ClashforWindows/0.20.39", "10.0.0.1", "clash", nil); err != nil {
+		t.Fatalf("记录设备失败: %v", err)
+	}
+
+	svc := &ConfigUpdateService{db: db}
+	ctx := svc.GetSubscriptionContext(sub.SubscriptionURL, "10.0.0.9", "Shadowrocket/2.2.17")
+	if ctx.Status != StatusDeviceOverLimit {
+		t.Fatalf("第三方新设备应判超限，实际 %v", ctx.Status)
+	}
+	if ctx.IsMoneyFlyClient {
+		t.Fatalf("第三方客户端不应被识别为自研客户端")
+	}
+	for _, n := range namesOf(svc.buildSubscriptionNodes(ctx)) {
+		if n == "可用节点A" {
+			t.Fatalf("第三方客户端超限时必须只给错误节点，实际返回了真实节点: %v", namesOf(svc.buildSubscriptionNodes(ctx)))
+		}
+	}
+	if len(namesOf(svc.buildSubscriptionNodes(ctx))) == 0 {
+		t.Fatalf("应至少返回错误节点")
+	}
+}
+
+// 自研客户端识别：带 X-MF-Device-Id 或 UA 含 MoneyFly 都算
+func TestMoneyFlyClientDetection(t *testing.T) {
+	if !isMoneyFlyRequest("ClashforWindows/0.20.39", map[string]string{"X-MF-Device-Id": "abc"}) {
+		t.Fatalf("带 X-MF-Device-Id 应识别为自研客户端")
+	}
+	if !isMoneyFlyRequest("MoneyFly/2.2.24 (Windows NT 10.0; Win64; x64)", nil) {
+		t.Fatalf("UA 含 MoneyFly 应识别为自研客户端")
+	}
+	if isMoneyFlyRequest("ClashforWindows/0.20.39", nil) {
+		t.Fatalf("第三方客户端不应被识别为自研客户端")
+	}
+}

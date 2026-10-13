@@ -81,6 +81,11 @@ type SubscriptionContext struct {
 	ResetRecord    *models.SubscriptionReset
 	CurrentDevices int
 	DeviceLimit    int
+	// IsMoneyFlyClient 本次请求是否来自**自研客户端 MoneyFly**。
+	// 用途：设备数超限时的处置要区分客户端 ——
+	//   自研客户端：软限制（仍给完整节点 + 一条提示，客户端据此引导升级设备）
+	//   第三方客户端：硬限制（只给错误节点，连不上）
+	IsMoneyFlyClient bool
 }
 
 type ConfigUpdateService struct {
@@ -1324,6 +1329,10 @@ func (s *ConfigUpdateService) GetSubscriptionContext(token, clientIP, userAgent 
 		return ctx
 	}
 
+	// 识别是否自研客户端：优先看它上报的稳定设备 ID（X-MF-Device-Id），
+	// 再兜底看 UA 里的 MoneyFly 标识（老版本客户端可能还没带该头）。
+	ctx.IsMoneyFlyClient = isMoneyFlyRequest(userAgent, headers)
+
 	now := utils.GetBeijingTime()
 	hasSpecialExpire := user.SpecialNodeExpiresAt.Valid
 	specialActive := hasSpecialExpire && utils.ToBeijingTime(user.SpecialNodeExpiresAt.Time).After(now)
@@ -1820,12 +1829,24 @@ func (s *ConfigUpdateService) buildSubscriptionNodes(ctx *SubscriptionContext) [
 	if ctx.Status == StatusNormal {
 		return s.addInfoNodes(ctx.Proxies, ctx)
 	}
-	soft := s.isDeviceLimitSoft()
+	// 只有**自研客户端**超限时才软限制（仍可连接 + 提示）；
+	// 第三方客户端保持硬限制：只给错误节点（用户明确要求：上限 5 时第 6 台仍返回错误信息）。
+	soft := s.isDeviceLimitSoft() && ctx.IsMoneyFlyClient
 	if ctx.Status == StatusDeviceOverLimit && soft {
 		notice := s.createMessageNode(fmt.Sprintf("⚠️ 设备数已达上限 (%d/%d)｜请升级设备或删除闲置设备", ctx.CurrentDevices, ctx.DeviceLimit))
 		return append([]*ProxyNode{notice}, s.addInfoNodes(ctx.Proxies, ctx)...)
 	}
 	return s.generateErrorNodes(ctx.Status, ctx)
+}
+
+// isMoneyFlyRequest 判断本次订阅请求是否来自自研客户端 MoneyFly。
+//  1. 优先看它上报的稳定设备 ID（X-MF-Device-Id）—— 自研客户端独有的请求头；
+//  2. 兜底看 UA 里的 MoneyFly 标识（老版本客户端可能还没带该头）。
+func isMoneyFlyRequest(userAgent string, headers map[string]string) bool {
+	if headers != nil && strings.TrimSpace(headers["X-MF-Device-Id"]) != "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(userAgent), "moneyfly")
 }
 
 // isDeviceLimitSoft 设备数超限是否走软限制（未加载配置时默认软限制）
