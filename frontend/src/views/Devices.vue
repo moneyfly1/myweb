@@ -28,10 +28,11 @@
           <el-tooltip placement="top" effect="dark">
             <template #content>
               <div style="line-height: 1.7; max-width: 280px">
-                <div><b>设备没有独立心跳</b>：它每次拉订阅时才会更新活跃时间。</div>
-                <div>活跃：1 小时内拉取过订阅（客户端仍在按周期回拉）</div>
-                <div>近期用过：24 小时内拉取过</div>
-                <div>离线：超过 24 小时没有拉取</div>
+                <div><b>设备没有独立心跳</b>：它每次回拉订阅时才会更新活跃时间。</div>
+                <div>活跃：距上次回拉 ≤ 该设备自身节奏（2 × 平均回拉间隔，钳制 1~24 小时）</div>
+                <div>近期用过：24 小时内回拉过</div>
+                <div>离线：超过 24 小时没回拉</div>
+                <div style="margin-top: 4px">注：多数客户端平均 4~15 小时才回拉一次，所以不会用固定 1 小时判定</div>
               </div>
             </template>
             <div class="stat-value">{{ deviceStats.online }}</div>
@@ -84,9 +85,9 @@
           </el-form-item>
           <el-form-item label="在线状态">
             <el-select v-model="filters.online_status" placeholder="全部状态" clearable class="devices-filter-select" @change="applyDeviceFilters">
-              <el-option label="活跃（1 小时内）" value="active" />
+              <el-option label="活跃（在其正常回拉节奏内）" value="active" />
               <el-option label="近期用过（24 小时内）" value="recent" />
-              <el-option label="离线（超过 24 小时）" value="offline" />
+              <el-option label="离线（超过 24 小时没回拉）" value="offline" />
               <el-option label="离线" value="offline" />
             </el-select>
           </el-form-item>
@@ -199,7 +200,9 @@
                   <el-tooltip placement="top" effect="dark">
                     <template #content>
                       <div style="line-height: 1.7">
-                        <div>{{ row.activity_basis || '按最近一次拉订阅时间判定' }}</div>
+                        <div style="max-width: 320px">{{ row.activity_basis || '按最近一次回拉订阅时间判定' }}</div>
+                        <div v-if="row.activity_avg_interval_sec">平均回拉间隔：{{ humanInterval(row.activity_avg_interval_sec) }}</div>
+                        <div v-if="row.activity_threshold_sec">判定阈值：{{ humanInterval(row.activity_threshold_sec) }}</div>
                         <div>最后活跃：{{ formatTime(row.last_access) }}</div>
                       </div>
                     </template>
@@ -664,6 +667,14 @@ export default {
       recent: 'warning',
       offline: 'info'
     }[state] || 'info')
+    // 把秒数写成「45 分钟 / 4.7 小时 / 2 天」（用于展示设备的平均回拉间隔与判定阈值）
+    const humanInterval = (sec) => {
+      if (typeof sec !== 'number' || sec <= 0) return '—'
+      if (sec < 60) return `${Math.round(sec)} 秒`
+      if (sec < 3600) return `${Math.round(sec / 60)} 分钟`
+      if (sec < 172800) return `${(sec / 3600).toFixed(1)} 小时`
+      return `${Math.round(sec / 86400)} 天`
+    }
     // 「3 分钟前 / 2 小时前 / 3 天前」——比绝对时间更直观；后端给了秒数就直接用，避免时区/时钟差
     const relativeTime = (agoSeconds, fallbackTime) => {
       if (typeof agoSeconds === 'number' && agoSeconds >= 0) {

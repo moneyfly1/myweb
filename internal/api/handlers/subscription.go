@@ -242,17 +242,19 @@ func formatDeviceList(devices []models.Device) []gin.H {
 			"is_allowed":         d.IsAllowed,
 			"online":             online,
 			// 设备活跃状态（前端据此渲染标签 + 「X 分钟前」）
-			"activity_state":       act.State,
-			"activity_state_label": act.StateLabel,
-			"activity_ago_seconds": act.AgoSeconds,
-			"activity_basis":       act.Basis,
-			"user_agent":           utils.GetStringValue(d.UserAgent),
-			"software_name":        utils.GetStringValue(d.SoftwareName),
-			"software_version":     utils.GetStringValue(d.SoftwareVersion),
-			"device_model":         utils.GetStringValue(d.DeviceModel),
-			"device_brand":         utils.GetStringValue(d.DeviceBrand),
-			"access_count":         d.AccessCount,
-			"remark":               utils.GetStringValue(d.Remark),
+			"activity_state":            act.State,
+			"activity_state_label":      act.StateLabel,
+			"activity_ago_seconds":      act.AgoSeconds,
+			"activity_avg_interval_sec": act.AvgIntervalSec,
+			"activity_threshold_sec":    act.ThresholdSec,
+			"activity_basis":            act.Basis,
+			"user_agent":                utils.GetStringValue(d.UserAgent),
+			"software_name":             utils.GetStringValue(d.SoftwareName),
+			"software_version":          utils.GetStringValue(d.SoftwareVersion),
+			"device_model":              utils.GetStringValue(d.DeviceModel),
+			"device_brand":              utils.GetStringValue(d.DeviceBrand),
+			"access_count":              d.AccessCount,
+			"remark":                    utils.GetStringValue(d.Remark),
 		})
 	}
 	return list
@@ -821,8 +823,10 @@ func GetUserSubscriptionDevices(c *gin.Context) {
 		"total_active":  counts.Active,
 		"total_recent":  counts.Recent,
 		"total_offline": counts.Offline,
-		"total_mobile":  totalMobile,
-		"total_desktop": totalDesktop,
+		// 判定窗口参数（前端据此渲染文案，避免写死后与后端漂移）
+		"activity_windows": device.Windows(),
+		"total_mobile":     totalMobile,
+		"total_desktop":    totalDesktop,
 		// 是否允许用户删除设备（系统设置 → 用户与注册）。
 		// 与 /settings/public-settings 里有同一开关，但那个接口前端缓存 1 小时，
 		// 管理端一改就要等缓存过期；这里随设备列表实时下发，页面始终按最新值渲染。
