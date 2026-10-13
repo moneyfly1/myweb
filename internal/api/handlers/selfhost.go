@@ -17,7 +17,10 @@ import (
 	"cboard-go/internal/services/selfhost"
 	"cboard-go/internal/utils"
 
+	"cboard-go/internal/services/activity"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+	"log"
 )
 
 // ============================================================
@@ -498,6 +501,20 @@ func AgentHeartbeat(c *gin.Context) {
 		Token       string `json:"token"`
 		TrafficUp   int64  `json:"traffic_up"`   // 上行流量增量（字节），可选
 		TrafficDown int64  `json:"traffic_down"` // 下行流量增量（字节），可选
+		// Users 节点侧**按用户**上报（可选）。这是「用户此刻是否真的在连」的唯一秒级信号：
+		// 第三方客户端不会给面板发心跳，只能靠节点侧从核心 API 采集（Xray statsquery /
+		// sing-box clash_api /connections 的 metadata.user）后随心跳带上来。
+		// 兼容性：数组缺省/为空时行为与旧版完全一致（自建节点目前是单凭据设计，
+		// 装完只有一套 UUID，所有用户共用，因此暂时无法按用户区分，面板也不会报错）。
+		Users []struct {
+			UserID   uint   `json:"user_id,omitempty"` // 面板已知用户 ID 时可直接给
+			Email    string `json:"email,omitempty"`   // 或用邮箱/用户名回查
+			Username string `json:"username,omitempty"`
+			UUID     string `json:"uuid,omitempty"` // 仅用于排障记录
+			Conns    int    `json:"conns"`          // 当前活跃连接数（>0 即判为在线）
+			Up       int64  `json:"up"`             // 累计/增量上行（字节）
+			Down     int64  `json:"down"`           // 累计/增量下行（字节）
+		} `json:"users"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "参数错误", err)
@@ -523,7 +540,86 @@ func AgentHeartbeat(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "心跳更新失败: "+err.Error(), err)
 		return
 	}
+	// 按用户上报（可选）：写入 Redis 在线集合 + 节流落库快照，用于后台显示「在线/活跃/静默」
+	if len(req.Users) > 0 {
+		activity.MarkNodeUsers(resolveHeartbeatUsers(db, req.Users))
+	}
 	utils.SuccessResponse(c, http.StatusOK, "ok", gin.H{"status": node.Status})
+}
+
+// resolveHeartbeatUsers 把节点上报的用户标识解析成面板用户 ID。
+// 支持三种标识（任选其一）：user_id / email / username；
+// 一次查询批量解析，避免 N 次往返；解析不到的条目直接丢弃（例如用户已被删除）。
+func resolveHeartbeatUsers(db *gorm.DB, in []struct {
+	UserID   uint   `json:"user_id,omitempty"`
+	Email    string `json:"email,omitempty"`
+	Username string `json:"username,omitempty"`
+	UUID     string `json:"uuid,omitempty"`
+	Conns    int    `json:"conns"`
+	Up       int64  `json:"up"`
+	Down     int64  `json:"down"`
+}) []activity.NodeUserStat {
+	ids := make([]uint, 0, len(in))
+	emails := make([]string, 0, len(in))
+	usernames := make([]string, 0, len(in))
+	for _, u := range in {
+		if u.UserID > 0 {
+			ids = append(ids, u.UserID)
+		}
+		if u.Email != "" {
+			emails = append(emails, u.Email)
+		}
+		if u.Username != "" {
+			usernames = append(usernames, u.Username)
+		}
+	}
+	resolved := make(map[string]uint)
+	if len(ids) > 0 || len(emails) > 0 || len(usernames) > 0 {
+		var users []models.User
+		q := db.Model(&models.User{}).Select("id, username, email")
+		switch {
+		case len(ids) > 0 && len(emails) > 0:
+			q = q.Where("id IN ? OR email IN ?", ids, emails)
+		case len(ids) > 0:
+			q = q.Where("id IN ?", ids)
+		default:
+			q = q.Where("email IN ?", emails)
+		}
+		if len(usernames) > 0 {
+			q = q.Or("username IN ?", usernames)
+		}
+		if err := q.Find(&users).Error; err != nil {
+			log.Printf("heartbeat: 解析用户失败: %v", err)
+		}
+		for _, u := range users {
+			resolved[fmt.Sprintf("id:%d", u.ID)] = u.ID
+			resolved["email:"+strings.ToLower(u.Email)] = u.ID
+			resolved["name:"+u.Username] = u.ID
+		}
+	}
+
+	out := make([]activity.NodeUserStat, 0, len(in))
+	for _, u := range in {
+		var uid uint
+		if u.UserID > 0 {
+			uid = resolved[fmt.Sprintf("id:%d", u.UserID)]
+			if uid == 0 {
+				// 节点直接给了 ID：即使本次查询没带出来也信任它（用户可能刚注册）
+				uid = u.UserID
+			}
+		}
+		if uid == 0 && u.Email != "" {
+			uid = resolved["email:"+strings.ToLower(u.Email)]
+		}
+		if uid == 0 && u.Username != "" {
+			uid = resolved["name:"+u.Username]
+		}
+		if uid == 0 {
+			continue
+		}
+		out = append(out, activity.NodeUserStat{UserID: uid, Conns: u.Conns, Up: u.Up, Down: u.Down})
+	}
+	return out
 }
 
 // resolvePanelBaseURL 从请求推导面板基础地址（安装脚本回传用）。

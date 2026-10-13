@@ -16,6 +16,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/activity"
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/utils"
@@ -277,6 +278,25 @@ func GetUsers(c *gin.Context) {
 			query = query.Where("is_admin = ?", true)
 		}
 	}
+	// 使用状态筛选（在线 / 活跃 / 静默）。数据在 Redis（秒级），SQL 只做 ID 集合过滤，
+	// 这样分页总数仍然准确 —— 不能取完一页再在内存里过滤，否则分页会乱。
+	if act := strings.TrimSpace(c.Query("activity")); act != "" {
+		switch act {
+		case activity.StateSilent:
+			// 静默 = 24 小时内没有任何信号
+			if seen := activity.SilentIDs(); len(seen) > 0 {
+				query = query.Where("users.id NOT IN ?", seen)
+			}
+		case activity.StateOnline, activity.StateActive, activity.StateIdle:
+			ids := activity.FilterIDs(act)
+			if len(ids) == 0 {
+				query = query.Where("1 = 0") // 该状态下没有任何用户
+			} else {
+				query = query.Where("users.id IN ?", ids)
+			}
+		}
+	}
+
 	// 注册时间区间筛选（含首尾两天）。
 	// 前端桌面端日期选择器历史上未设置 value-format，会把 Date 序列化成 RFC3339
 	// （如 2026-08-31T16:00:00.000Z），因此这里两种格式都要能解析；解析不了就忽略该参数
@@ -322,6 +342,8 @@ func GetUsers(c *gin.Context) {
 	for i, u := range users {
 		userIDs[i] = u.ID
 	}
+	// 使用状态（一次批量取，避免逐用户往返 Redis）
+	activityStates := activity.StatesFor(userIDs)
 
 	var subscriptions []models.Subscription
 	if len(userIDs) > 0 {
@@ -431,10 +453,33 @@ func GetUsers(c *gin.Context) {
 		if u.Notes.Valid {
 			notes = u.Notes.String
 		}
+		act := activityStates[u.ID]
+		lastSubAt := ""
+		if !act.LastSubAt.IsZero() {
+			lastSubAt = utils.FormatBeijingTime(act.LastSubAt)
+		}
+		lastNodeReportAt := ""
+		if !act.LastNodeReportAt.IsZero() {
+			lastNodeReportAt = utils.FormatBeijingTime(act.LastNodeReportAt)
+		}
+		activityInfo := gin.H{
+			"state":               act.State,
+			"online_conns":        act.OnlineConns,
+			"last_sub_at":         lastSubAt,
+			"last_sub_ua":         act.UA,
+			"last_sub_ip":         act.IP,
+			"last_sub_location":   act.Location,
+			"last_sub_format":     act.Format,
+			"last_sub_software":   act.Software,
+			"sub_fetch_count":     act.SubFetchCount,
+			"last_node_report_at": lastNodeReportAt,
+		}
+
 		list = append(list, gin.H{
 			"id":        u.ID,
 			"username":  u.Username,
 			"email":     u.Email,
+			"activity":  activityInfo,
 			"balance":   u.Balance,
 			"is_active": u.IsActive,
 			"is_admin":  u.IsAdmin,

@@ -94,6 +94,11 @@ curl -fsS http://127.0.0.1:8000/health
 
 > Everything else — users, plans, orders, nodes, subscriptions, tickets, invites, coupons, announcements,
 > themes, registration settings — is configured **by clicking in the admin panel**; no file editing needed.
+>
+> The admin **Users** list has a **Usage state** column (online / active / recently used / silent). Third-party
+> clients do not send heartbeats to the panel, so this state is *inferred* from subscription fetches plus
+> per-user reports from your nodes — see
+> [`docs/功能/用户使用状态与在线判定说明.md`](docs/功能/用户使用状态与在线判定说明.md).
 
 ---
 

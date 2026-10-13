@@ -19,6 +19,7 @@ import (
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/queue"
+	"cboard-go/internal/services/activity"
 	"cboard-go/internal/services/config_update"
 	"cboard-go/internal/services/device"
 	"cboard-go/internal/services/email"
@@ -180,6 +181,23 @@ func asyncSubscriptionLog(
 // ==========================================
 // 核心逻辑函数
 // ==========================================
+
+// markSubscriptionFetchAsync 记录「这个用户来拉订阅了」——第三方客户端唯一可靠的活跃信号。
+//
+// 为什么非阻塞：拉订阅是最高频的路径（客户端按 Profile-Update-Interval 回拉，默认 60 分钟），
+// 这里只写 Redis（微秒级）+ 节流落库，必须在后台协程里做，绝不能拖慢配置生成与返回。
+func markSubscriptionFetchAsync(userID uint, ua, ip, format string) {
+	if userID == 0 {
+		return
+	}
+	go func() {
+		software := ""
+		if dm := device.NewDeviceManager(); dm != nil {
+			software = dm.ParseUserAgent(ua).SoftwareName
+		}
+		activity.MarkSubscriptionFetch(userID, ua, ip, format, software)
+	}()
+}
 
 func formatDeviceList(devices []models.Device) []gin.H {
 	list := make([]gin.H, 0, len(devices))
@@ -1885,6 +1903,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
 
+			markSubscriptionFetchAsync(userID, ua, ip, "clash")
 			if _, err := deviceManager.RecordDeviceAccessWithHeaders(subID, userID, ua, ip, "clash", mfh); err != nil {
 				select {
 				case <-ctx.Done():
@@ -2141,6 +2160,7 @@ func GetUniversalSubscription(c *gin.Context) {
 		// 异步记录设备访问和更新计数（不阻塞配置返回）
 		if shouldRecord {
 			go func(subID, userID uint, ua, ip string, mfh map[string]string) {
+				markSubscriptionFetchAsync(userID, ua, ip, "universal")
 				if _, err := deviceManager.RecordDeviceAccessWithHeaders(subID, userID, ua, ip, "universal", mfh); err != nil {
 					log.Printf("failed to record device access: %v", err)
 				}

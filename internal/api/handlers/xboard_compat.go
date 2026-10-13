@@ -222,6 +222,8 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 	if shouldRecord {
 		go func(subID, userID uint, ua, ip string, mfh map[string]string) {
 			deviceManager.RecordDeviceAccessWithHeaders(subID, userID, ua, ip, subType, mfh)
+			// 使用状态（XBoard 兼容入口拉订阅 = 客户端仍然活着）
+			markSubscriptionFetchAsync(userID, ua, ip, subType)
 		}(subscription.ID, subscription.UserID, userAgent, clientIP, xbMfHeaders)
 
 		go func(subID uint) {

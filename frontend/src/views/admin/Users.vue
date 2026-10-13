@@ -108,6 +108,15 @@
             <el-option label="禁用" value="disabled" />
           </el-select>
         </el-form-item>
+        <el-form-item label="使用状态">
+          <el-select v-model="searchForm.activity" placeholder="在用情况" clearable class="status-filter-select" @change="searchUsers">
+            <el-option label="全部" value="" />
+            <el-option label="在线（节点实测）" value="online" />
+            <el-option label="活跃（15 分钟内）" value="active" />
+            <el-option label="近期用过（24 小时内）" value="idle" />
+            <el-option label="静默（24 小时无信号）" value="silent" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="注册时间">
           <el-date-picker
             v-model="searchForm.date_range"
@@ -291,6 +300,28 @@
                   <div v-else class="no-subscription">
                     <el-tag type="info" size="small" effect="plain">无订阅</el-tag>
                   </div>
+                </template>
+              </el-table-column>
+              <!-- 使用状态：第三方客户端不会给面板发心跳，这里展示的是被动推断结果，
+                   悬停可以看到判定依据（最后拉订阅时间/客户端/IP/次数/在线连接数） -->
+              <el-table-column label="使用状态" width="110" align="center">
+                <template #default="scope">
+                  <el-tooltip placement="top" effect="dark" :show-after="150">
+                    <template #content>
+                      <div style="line-height: 1.7">
+                        <div><b>{{ activityLabel(scope.row.activity?.state) }}</b>：{{ activityBasis(scope.row.activity?.state) }}</div>
+                        <div>最后拉订阅：{{ scope.row.activity?.last_sub_at || '从未' }}</div>
+                        <div>客户端：{{ scope.row.activity?.last_sub_software || '—' }}<span v-if="scope.row.activity?.last_sub_format">（{{ scope.row.activity.last_sub_format }}）</span></div>
+                        <div>订阅 UA：{{ scope.row.activity?.last_sub_ua || '—' }}</div>
+                        <div>来源 IP：{{ scope.row.activity?.last_sub_ip || '—' }}<span v-if="scope.row.activity?.last_sub_location"> · {{ scope.row.activity.last_sub_location }}</span></div>
+                        <div>累计拉取：{{ scope.row.activity?.sub_fetch_count || 0 }} 次</div>
+                        <div>在线连接：{{ scope.row.activity?.online_conns || 0 }}<span v-if="scope.row.activity?.last_node_report_at">（{{ scope.row.activity.last_node_report_at }}）</span></div>
+                      </div>
+                    </template>
+                    <el-tag :type="activityTagType(scope.row.activity?.state)" size="small" effect="light">
+                      {{ activityLabel(scope.row.activity?.state) }}
+                    </el-tag>
+                  </el-tooltip>
                 </template>
               </el-table-column>
               <el-table-column prop="created_at" label="注册时间" width="180" show-overflow-tooltip sortable="custom" :sort-orders="['ascending', 'descending', null]">
@@ -1098,6 +1129,7 @@ export default {
     const searchForm = reactive({
       keyword: '',
       status: '',
+      activity: '',
       date_range: '',
       start_date: '',
       end_date: '',
@@ -1105,6 +1137,25 @@ export default {
       order: ''
     })
     const getStatusFilterText = () => STATUS_FILTER_MAP[searchForm.status] || '状态筛选'
+    // 使用状态：第三方客户端不会给面板发心跳，只能被动推断，展示时要说清依据
+    const activityLabel = (state) => ({
+      online: '在线',
+      active: '活跃',
+      idle: '近期用过',
+      silent: '静默'
+    }[state] || '未使用')
+    const activityTagType = (state) => ({
+      online: 'success',
+      active: 'primary',
+      idle: 'warning',
+      silent: 'info'
+    }[state] || 'info')
+    const activityBasis = (state) => ({
+      online: '节点侧上报有活跃连接（秒级，最可信）',
+      active: '15 分钟内拉取过订阅或节点有上报',
+      idle: '24 小时内有信号，当前无动静',
+      silent: '24 小时内无任何信号（含从未使用）'
+    }[state] || '没有任何使用信号')
     const formatDate = (date) => formatDateTimeSafe(date, 'YYYY-MM-DD HH:mm:ss', '')
     const isDeviceOverlimit = (user) => {
       const onlineDevices = user.online_devices || 0
@@ -1169,7 +1220,8 @@ export default {
         page: currentPage.value,
         size: pageSize.value,
         keyword: searchForm.keyword,
-        status: searchForm.status
+        status: searchForm.status,
+        activity: searchForm.activity
       }
       if (searchForm.start_date && searchForm.end_date) {
         params.start_date = searchForm.start_date
@@ -1248,6 +1300,7 @@ export default {
       Object.assign(searchForm, { 
         keyword: '', 
         status: '', 
+        activity: '',
         date_range: '',
         start_date: '',
         end_date: ''
