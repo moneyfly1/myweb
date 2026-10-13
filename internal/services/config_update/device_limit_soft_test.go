@@ -66,11 +66,10 @@ func namesOf(nodes []*ProxyNode) []string {
 	return out
 }
 
-// 软限制（默认）：设备数超限仍然给**完整可用节点**，只在最前面加一条提示节点 ——
-// 用户反馈"设 1 台设备后换台设备就完全连不上、只提示升级设备"不合理，
-// 应当是"仍然能连，只是有提示"。
+// 软限制（需显式配置 limit_mode=soft）：设备数超限仍然给**完整可用节点** + 顶部提示节点。
+// 注意：线上默认是**硬限制**（第 6 台拒绝），软限制是可选逃生舱，且只对自研客户端生效。
 func TestDeviceOverLimitSoftModeKeepsNodesUsable(t *testing.T) {
-	db, sub, user := setupLimitTestDB(t, "") // 不写配置 → 默认软限制
+	db, sub, user := setupLimitTestDB(t, "soft") // 显式开启软限制
 	prevDB := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = prevDB })
@@ -83,6 +82,7 @@ func TestDeviceOverLimitSoftModeKeepsNodesUsable(t *testing.T) {
 	}
 
 	svc := &ConfigUpdateService{db: db}
+	svc.refreshSystemConfig() // 真实生成路径都会先加载配置（软限制开关来源于此）
 	// 第二台设备（不同 ID）→ 状态为超限，但节点必须仍可用
 	ctx := svc.GetSubscriptionContext(sub.SubscriptionURL, "10.0.0.2", mfUA,
 		map[string]string{"X-MF-Device-Id": "dev-B"})
@@ -115,9 +115,9 @@ func TestDeviceOverLimitSoftModeKeepsNodesUsable(t *testing.T) {
 	}
 }
 
-// 硬限制（配置 device/limit_mode=hard）：保留旧行为——只给错误节点，连不上
-func TestDeviceOverLimitHardModeCanBeRestored(t *testing.T) {
-	db, sub, user := setupLimitTestDB(t, "hard")
+// 硬限制（**默认**，无需任何配置）：只给错误节点，连不上
+func TestDeviceOverLimitHardModeIsDefault(t *testing.T) {
+	db, sub, user := setupLimitTestDB(t, "")
 	prevDB := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = prevDB })
@@ -130,9 +130,9 @@ func TestDeviceOverLimitHardModeCanBeRestored(t *testing.T) {
 	}
 
 	svc := &ConfigUpdateService{db: db}
-	svc.refreshSystemConfig() // 读入 hard
+	svc.refreshSystemConfig() // 未配置 → 默认硬限制
 	if svc.isDeviceLimitSoft() {
-		t.Fatalf("配置为 hard 时不应走软限制")
+		t.Fatalf("默认应为硬限制")
 	}
 	ctx := svc.GetSubscriptionContext(sub.SubscriptionURL, "10.0.0.2", mfUA,
 		map[string]string{"X-MF-Device-Id": "dev-B"})
@@ -149,7 +149,7 @@ func TestDeviceOverLimitHardModeCanBeRestored(t *testing.T) {
 // 第三方客户端超限：必须**仍然返回错误信息**（只给错误节点），不受软限制影响。
 // 用户明确要求：上限 5 时第 6 台设备仍返回错误信息 —— 软限制只给自研客户端。
 func TestThirdPartyOverLimitStillGetsErrorNode(t *testing.T) {
-	db, sub, user := setupLimitTestDB(t, "")
+	db, sub, user := setupLimitTestDB(t, "soft") // 即便开了软限制，第三方客户端也必须硬拦
 	prevDB := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = prevDB })

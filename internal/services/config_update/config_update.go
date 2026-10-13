@@ -94,10 +94,12 @@ type ConfigUpdateService struct {
 	runningMutex sync.Mutex
 	siteURL      string
 	supportQQ    string
-	// deviceLimitSoft 设备数超限时是否走"软限制"（默认 true）：
-	// true  = 仍然返回完整可用节点，只在最前面加一条提示节点（客户端据此提示用户升级设备，但照样能连）
-	// false = 硬限制：只返回错误节点，连不上（历史行为）
-	// 取值：system_configs (category=device, key=limit_mode)，值为 "hard" 时关闭软限制。
+	// deviceLimitSoft 设备数超限时是否走"软限制"（**默认 false = 硬限制**）：
+	// false = 硬限制（默认）：超限设备只拿到错误节点，连不上 —— 用户明确要求
+	//         "上限 5 台时第 6 台才拒绝"，所以默认必须是硬的；
+	// true  = 软限制：仍然返回完整可用节点 + 顶部提示节点，仅对**自研客户端**生效
+	//         （第三方客户端没有升级引导入口，放行等于限制失效）。
+	// 取值：system_configs (category=device, key=limit_mode)，值为 "soft" 时开启软限制。
 	deviceLimitSoft bool
 	// deviceLimitModeLoaded 是否已从配置加载过该开关。
 	// 未加载时按**软限制**处理（新默认），避免某条生成路径漏调 refreshSystemConfig()
@@ -214,13 +216,12 @@ func (s *ConfigUpdateService) refreshSystemConfig() {
 		s.supportQQ = ""
 	}
 
-	// 设备数超限的处理方式，默认"软限制"（仍可连接 + 提示节点）。
-	// 历史行为是"硬限制"（只给错误节点 → 客户端显示请升级设备且连不上），
-	// 用户反馈这样不合理：超限应当仍然能连，只做提示。想恢复硬限制就把该配置值设为 hard。
-	s.deviceLimitSoft = true
+	// 设备数超限的处理方式：**默认硬限制**（超限只给错误节点）。
+	// 只有显式配置 limit_mode=soft 时才启用"软限制"（仍可连 + 提示，且仅自研客户端）。
+	s.deviceLimitSoft = false
 	var limitMode models.SystemConfig
 	if err := s.db.Where("key = ? AND category = ?", "limit_mode", "device").First(&limitMode).Error; err == nil {
-		s.deviceLimitSoft = strings.TrimSpace(strings.ToLower(limitMode.Value)) != "hard"
+		s.deviceLimitSoft = strings.TrimSpace(strings.ToLower(limitMode.Value)) == "soft"
 	}
 	s.deviceLimitModeLoaded = true
 }
@@ -1849,12 +1850,12 @@ func isMoneyFlyRequest(userAgent string, headers map[string]string) bool {
 	return strings.Contains(strings.ToLower(userAgent), "moneyfly")
 }
 
-// isDeviceLimitSoft 设备数超限是否走软限制（未加载配置时默认软限制）
+// isDeviceLimitSoft 设备数超限是否走软限制（未加载配置时默认**硬限制**，与线上默认一致）
 func (s *ConfigUpdateService) isDeviceLimitSoft() bool {
 	s.configMutex.RLock()
 	defer s.configMutex.RUnlock()
 	if !s.deviceLimitModeLoaded {
-		return true
+		return false
 	}
 	return s.deviceLimitSoft
 }
