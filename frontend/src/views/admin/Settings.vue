@@ -240,13 +240,22 @@
             <div class="notification-panel">
               <div class="panel-header">
                 <h3>设备管理</h3>
+                <el-tag type="success" size="small" effect="plain">改动即时生效</el-tag>
               </div>
               <el-form :model="registrationSettings" label-position="top" class="compact-form">
                 <el-form-item label="允许用户删除设备">
-                  <el-switch v-model="registrationSettings.allow_user_delete_device" />
+                  <!-- 改动即保存（只提交这一个键），不再依赖上方卡片的「保存注册设置」
+                       —— 开关原本孤零零放在第三张卡片、卡里没有按钮，管理员根本不知道
+                       要不要保存、以为没有这个开关。 -->
+                  <el-switch
+                    v-model="registrationSettings.allow_user_delete_device"
+                    :loading="allowDeleteSaving"
+                    @change="saveAllowDeleteDevice"
+                  />
                   <div class="form-tip">
-                    关闭后用户端设备管理不再显示「移除」按钮（服务端同时拦截该接口），
-                    用户只能通过「升级设备数量」增加可用设备
+                    关闭后：用户端（网页 + 客户端）都不显示「管理设备 / 已删除」这类入口与字眼，
+                    服务端同时拦截删除接口，用户只能通过「升级设备数量」增加可用设备；
+                    打开后才显示删除相关入口。当前状态：<b>{{ registrationSettings.allow_user_delete_device ? '允许用户自己删除设备' : '不允许用户自己删除设备' }}</b>
                   </div>
                 </el-form-item>
               </el-form>
@@ -1225,6 +1234,7 @@ import {
   Setting, Link, User, Picture, Connection, Key, Lock, FolderOpened, Location, Delete
 } from '@element-plus/icons-vue'
 import { useApi, adminAPI, secureStorage } from '@/utils/api'
+import { apiCache } from '@/utils/apiCache'
 import { formatFileSize as formatFileSizeUtil } from '@/utils/format'
 import { copyToClipboard } from '@/utils/textSelection'
 import { useThemeStore } from '@/store/theme'
@@ -1423,6 +1433,28 @@ export default {
       subscription_domain: '', subscription_backup_domains: '',
       default_theme: 'default', support_qq: '', support_email: '', support_hours: '', unified_auth_enabled: false
     })
+    // 「允许用户删除设备」的独立保存状态与保存函数：
+    // 该开关改动即提交（只提交这一个键），避免"不知道要不要保存"
+    const allowDeleteSaving = ref(false)
+    const saveAllowDeleteDevice = async (val) => {
+      allowDeleteSaving.value = true
+      try {
+        await api.put('/admin/settings/registration', { allow_user_delete_device: !!val })
+        ElMessage.success(val
+          ? '已开启：用户端会显示删除（移除）设备的入口'
+          : '已关闭：用户端不再显示删除设备相关入口与字眼')
+        // 用户端读的是同一开关：主页/设备页已改为随请求实时取该值，
+        // 公开设置缓存（1 小时）只作为兜底，这里顺手清掉本站缓存让它更快生效
+        try { apiCache.delete('settings:public') } catch (_) {}
+      } catch (e) {
+        // 保存失败要把开关拨回去，否则界面显示与实际不符
+        registrationSettings.allow_user_delete_device = !val
+        ElMessage.error('保存失败: ' + (e?.response?.data?.message || e?.message || e))
+      } finally {
+        allowDeleteSaving.value = false
+      }
+    }
+
     const registrationSettings = reactive({
       registration_enabled: true, email_verification_required: true,
       min_password_length: 8, invite_code_required: false,
