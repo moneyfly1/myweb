@@ -1103,6 +1103,20 @@
                   <el-tag v-if="repoSyncStatus?.is_running || repoSyncStatus?.last_status" :type="repoSyncStatusType" size="small">{{ repoSyncStatusLabel }}</el-tag>
                 </div>
                 <div v-if="repoSyncStatus?.last_message" class="sync-status-message">{{ repoSyncStatus.last_message }}</div>
+                <!--
+                  库里保存的 Token 存在但无法还原成明文（例如历史上被写成 enc:v1: 密文，
+                  或 SECRET_KEY 变更过）。这种值发给 GitHub 只会得到 401 Bad credentials，
+                  界面上却与正常 Token 一样显示掩码 —— 必须显式提示重填。
+                -->
+                <el-alert
+                  v-if="repoSyncStatus?.token_state === 'unusable'"
+                  type="error"
+                  :closable="false"
+                  show-icon
+                  class="mt-2"
+                  title="已保存的 Personal Token 无法使用"
+                  description="它是以加密形态存储且当前密钥解不开的（可能是旧密钥或其它系统写入）。请在左侧「Personal Token」重新填写一个有 repo 读取权限的 Token，保存后再点「测试连接」。"
+                />
               </div>
 
               <div class="mt-3">

@@ -7,10 +7,47 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
+	"strings"
 
 	"cboard-go/internal/core/config"
 )
+
+// EncryptedSecretPrefix 是**历史遗留**的加密前缀：线上出现过把敏感配置值写成
+// "enc:v1:" + base64(AES-GCM) 的情况（2026-10-10 同一时刻 backup/smtp/github
+// 等 4 个 Token 被同批加密，密钥还不是当前 SECRET_KEY）。
+//
+// Go 面板自己从不写这个前缀，但读取侧必须兼容：否则会把密文当 Token 原样发给
+// GitHub，得到 `401 Bad credentials`，表面上像"Token 失效"，实际是存进去的值
+// 根本没被解密 —— 排查成本极高。这里统一做一次还原 + 明确报错。
+const EncryptedSecretPrefix = "enc:v1:"
+
+// ResolveConfigSecret 把配置里的敏感值还原成可直接使用的明文。
+//   - 空值 → 空串；
+//   - 普通明文 → 原样返回（绝大多数情况）；
+//   - "enc:v1:xxx" → 用 SECRET_KEY 解密；解不开时返回可读错误，
+//     由调用方提示"请重新填写"，绝不把密文当明文用。
+func ResolveConfigSecret(value string) (string, error) {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return "", nil
+	}
+	if !strings.HasPrefix(v, EncryptedSecretPrefix) {
+		return v, nil
+	}
+	plain, err := DecryptSecret(strings.TrimPrefix(v, EncryptedSecretPrefix))
+	if err != nil {
+		return "", fmt.Errorf("该配置项以 %s 加密存储，但用当前 SECRET_KEY 无法解密（可能由其它系统或旧密钥写入）：%w",
+			EncryptedSecretPrefix, err)
+	}
+	return plain, nil
+}
+
+// LooksEncryptedSecret 判断配置值是否为加密形态，供管理端提示"请重新填写"。
+func LooksEncryptedSecret(value string) bool {
+	return strings.HasPrefix(strings.TrimSpace(value), EncryptedSecretPrefix)
+}
 
 // EncryptSecret 用 SECRET_KEY 派生密钥对敏感数据（如 SSH 密码）做 AES-GCM 加密。
 // 返回 base64(随机nonce + 密文)。
@@ -65,8 +102,14 @@ func DecryptSecret(encrypted string) (string, error) {
 }
 
 // deriveSecretKey 从 SECRET_KEY 派生 32 字节 AES 密钥。
+//
+// 注意 AppConfig 可能为 nil（单测、或配置尚未加载时调用）：直接取字段会 panic
+// （用 nil 指针解引用崩在加解密路径上）。这里做 nil 防护并退回到默认密钥。
 func deriveSecretKey() []byte {
-	key := config.AppConfig.SecretKey
+	key := ""
+	if config.AppConfig != nil {
+		key = config.AppConfig.SecretKey
+	}
 	if key == "" {
 		key = "cboard-default-fallback-key-please-set-secret"
 	}

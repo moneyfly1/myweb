@@ -12,6 +12,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/ghrelease"
+	"cboard-go/internal/utils"
 )
 
 // cfgCategory 云盘配置存储分类（沿用旧库分类名，避免迁移；与 123 云盘已无任何关联）
@@ -147,7 +148,13 @@ func LoadGitHubToken() string {
 	if err := db.Where("key = ? AND category = ?", "backup_github_token", "backup").First(&conf).Error; err != nil {
 		return ""
 	}
-	return strings.TrimSpace(conf.Value)
+	// 兼容 "enc:v1:密文"：解不开就当作没配置（匿名调用，限额较低但不报 401）
+	token, err := utils.ResolveConfigSecret(conf.Value)
+	if err != nil {
+		utils.LogWarn("软件同步使用的 GitHub Token 无法还原: %v", err)
+		return ""
+	}
+	return strings.TrimSpace(token)
 }
 
 func loadProxyPrefixes() []string {

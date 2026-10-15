@@ -21,10 +21,42 @@ func UpdateRepoSyncSettings(c *gin.Context) {
 	updateSettingsCommon(c, repo_sync.Category)
 }
 
-// GetRepoSyncStatus 获取同步状态与本地文件列表
+// GetRepoSyncStatus 获取同步状态与本地文件列表。
+//
+// 额外下发 token_state：管理端读配置接口对敏感键一律返回掩码（******），
+// 好坏 Token 长得一样 —— 于是「库里存的是解不开的密文」在界面上完全看不出来，
+// 只能从同步失败里看到 GitHub 的 401。这里显式给出三态，让界面直接提示重填。
 func GetRepoSyncStatus(c *gin.Context) {
 	svc := repo_sync.NewService()
-	utils.SuccessResponse(c, http.StatusOK, "", svc.GetStatus())
+	status := svc.GetStatus()
+
+	state := "missing"
+	var saved models.SystemConfig
+	if err := database.GetDB().Where("key = ? AND category = ?", repo_sync.KeyToken, repo_sync.Category).
+		First(&saved).Error; err == nil && strings.TrimSpace(saved.Value) != "" {
+		if _, err := utils.ResolveConfigSecret(saved.Value); err != nil {
+			state = "unusable"
+		} else {
+			state = "ok"
+		}
+	}
+	status["token_state"] = state
+	utils.SuccessResponse(c, http.StatusOK, "", status)
+}
+
+// repoSyncErrText 把同步/连接的失败原因整理成一句能直接给管理员看的话。
+// 太长会撑爆管理端提示框，这里截断到 240 字节（按 rune 截，避免中文被切坏），
+// 完整内容仍在日志里（ErrorResponse 会把 err 写日志）。
+func repoSyncErrText(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := strings.TrimSpace(err.Error())
+	const limit = 240
+	if len([]rune(msg)) <= limit {
+		return msg
+	}
+	return string([]rune(msg)[:limit]) + "…（详见服务端日志）"
 }
 
 // TestRepoSyncConnection 测试 GitHub 连接并列出远程目录文件
@@ -48,7 +80,11 @@ func TestRepoSyncConnection(c *gin.Context) {
 	svc := repo_sync.NewService()
 	files, err := svc.TestConnectionWith(req.Token, req.Owner, req.Repo, req.Path)
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "连接失败", err)
+		// 原因必须进 message：ErrorResponse 只把 err 写日志、不回前端，
+		// 管理端此前只能看到一句「连接失败」。而这里最需要传出去的恰恰是
+		// 「Token 无效/已过期，请重新填写」这类可执行结论（原始 GitHub 响应
+		// 只说明 Bad credentials，看不出是 Token 失效还是本机存的 Token 没解密）。
+		utils.ErrorResponse(c, http.StatusBadRequest, "连接失败: "+repoSyncErrText(err), err)
 		return
 	}
 
