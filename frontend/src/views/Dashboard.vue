@@ -403,14 +403,23 @@
                 <div class="device-summary-label">在线设备 / 可用设备</div>
               </div>
             </div>
+            <!--
+              后台关闭「允许用户删除设备」时，用户点进设备管理也删不掉，
+              因此这里不出现"管理设备"这类会把用户引向删除的入口与字眼
+              （用户明确要求：开关打开后才显示删除相关入口）。
+            -->
             <div v-if="isDeviceOverlimit" class="notice danger device-notice">
-              设备数量超过限制，请管理设备或升级设备数量。
+              {{ allowUserDeleteDevice
+                ? '设备数量超过限制，请管理设备或升级设备数量。'
+                : '设备数量超过限制，请升级设备数量或联系客服。' }}
             </div>
             <div v-else class="notice success device-notice">
-              当前设备数量正常，可以进入设备管理查看在线设备。
+              {{ allowUserDeleteDevice
+                ? '当前设备数量正常，可以进入设备管理查看在线设备。'
+                : '当前设备数量正常。' }}
             </div>
             <div class="button-row device-actions-row">
-              <router-link to="/devices">
+              <router-link v-if="allowUserDeleteDevice" to="/devices">
                 <el-button type="primary">
                   <el-icon><Cellphone /></el-icon>
                   管理设备
@@ -580,6 +589,7 @@ import {
   WarningFilled
 } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
+import { useSettingsStore } from '@/store/settings'
 import AppDialog from '@/components/AppDialog.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import SkeletonLoader from '@/components/SkeletonLoader.vue'
@@ -601,6 +611,11 @@ import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
 import { createQRCodeDataURL } from '@/utils/qrcode'
 import { buildAlipayAppUrl, createPaymentQRCode } from '@/utils/payment'
 const router = useRouter()
+// 「允许用户删除设备」开关（系统设置 → 用户与注册）。关闭时本页不出现
+// 「管理设备」入口与"去管理设备"这类字眼（用户点进去也删不掉，只白跑一趟）；
+// 用户明确要求：开关打开后才显示删除相关入口。
+const settingsStore = useSettingsStore()
+const allowUserDeleteDevice = computed(() => settingsStore.allowUserDeleteDevice !== false)
 const api = useApi()
 const sanitizeHtml = sanitizeBasicHtml
 const createEmptyUserInfo = () => ({

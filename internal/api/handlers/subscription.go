@@ -755,7 +755,14 @@ func GetUserSubscriptionDevices(c *gin.Context) {
 	db := database.GetDB()
 	var sub models.Subscription
 	if err := db.Where("user_id = ?", user.ID).Order("created_at DESC").First(&sub).Error; err != nil {
-		utils.SuccessResponse(c, http.StatusOK, "", []gin.H{})
+		// 没有订阅时也要保持**同一响应结构**：此前提前 return `[]`，客户端
+		// （MoneyFly / 网页）拿不到 allow_delete_device 字段 → 只能按"不可删除"兜底，
+		// 管理员打开开关后这类用户仍看不到删除入口，看起来像"开关没生效"。
+		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+			"devices":             []gin.H{},
+			"total":               0,
+			"allow_delete_device": UserDeviceDeleteAllowed(db),
+		})
 		return
 	}
 

@@ -149,6 +149,10 @@ func GetUserDashboard(c *gin.Context) {
 		"special_node_count":             specialNodeCount,
 		"special_node_subscription_type": user.SpecialNodeSubscriptionType,
 		"special_node_unlimited_devices": user.SpecialNodeUnlimitedDevices,
+		// 「允许用户删除设备」开关随仪表盘实时下发：公开设置接口前端有 1 小时缓存，
+		// 管理端一改，用户端主页的「管理设备」入口会迟迟不跟着变（用户明确要求：
+		// 开关关闭时主页不得出现删除相关入口，开关打开才显示）。
+		"allow_delete_device": UserDeviceDeleteAllowed(db),
 		"subscription": gin.H{
 			"status":                         subStatus,
 			"remaining_days":                 remainingDays,
