@@ -281,7 +281,7 @@ func (c *GitClient) UploadFileWithProgress(filePath, remotePath string, progress
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("上传文件失败: %s, 响应: %s", resp.Status, string(body))
+		return fmt.Errorf("上传文件失败: %s", c.apiErrorMessage(resp.Status, resp.StatusCode, body))
 	}
 
 	if progressCallback != nil {
@@ -355,6 +355,29 @@ func (c *GitClient) UploadBackupWithProgress(filePath string, progressCallback P
 }
 
 // TestConnection 测试连接
+// apiErrorMessage 把 Git 平台返回的错误体整理成人能直接照做的提示。
+//
+// 之前 401 只回显 GitHub 的原始 JSON（"Bad credentials"），管理端看到的就是
+// 一句英文 JSON，无法判断是「Token 失效」还是「本机存的 Token 没被解密」。
+// 这里按状态码给出结论 + 下一步动作，原始响应仍附在末尾（便于排查）。
+func (c *GitClient) apiErrorMessage(status string, code int, body []byte) string {
+	raw := strings.TrimSpace(string(body))
+	switch code {
+	case http.StatusUnauthorized:
+		return fmt.Sprintf("%s 认证失败：Token 无效、已过期，或本机保存的 Token 无法使用"+
+			"（请在「系统设置 → 仓库文件同步」重新填写 Personal Token；私有仓库需 repo 读取权限）。"+
+			" 原始响应: %s", c.getPlatformName(), raw)
+	case http.StatusForbidden:
+		return fmt.Sprintf("%s 拒绝访问：Token 权限不足（私有仓库需 repo 读取权限）或触发了限流。"+
+			" 原始响应: %s", c.getPlatformName(), raw)
+	case http.StatusNotFound:
+		return fmt.Sprintf("%s 仓库不存在或 Token 无权访问：请核对仓库所有者/名称（私有仓库必须有有效 Token）。"+
+			" 原始响应: %s", c.getPlatformName(), raw)
+	default:
+		return fmt.Sprintf("请求失败: %s, 响应: %s", status, raw)
+	}
+}
+
 func (c *GitClient) TestConnection() error {
 	apiURL := c.getAPIURL("")
 
@@ -377,7 +400,7 @@ func (c *GitClient) TestConnection() error {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("测试连接失败: %s, 响应: %s", resp.Status, string(body))
+		return fmt.Errorf("测试连接失败: %s", c.apiErrorMessage(resp.Status, resp.StatusCode, body))
 	}
 
 	return nil
@@ -491,7 +514,7 @@ func (c *GitClient) ListContents(path string) ([]RemoteEntry, error) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("请求失败: %s, 响应: %s", resp.Status, string(body))
+		return nil, fmt.Errorf("%s", c.apiErrorMessage(resp.Status, resp.StatusCode, body))
 	}
 
 	var items []struct {

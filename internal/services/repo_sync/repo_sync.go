@@ -55,6 +55,11 @@ type Config struct {
 	Repo            string
 	Path            string
 	IntervalMinutes int
+
+	// TokenError 非空表示库里的 Token 存在但无法还原成明文（例如被写成
+	// "enc:v1:密文" 且当前 SECRET_KEY 解不开）。此时必须直接报错并提示重新填写，
+	// 绝不能拿密文去请求 GitHub —— 那会得到误导性的 401 Bad credentials。
+	TokenError string
 }
 
 // SyncResult 一次同步的结果
@@ -102,7 +107,12 @@ func NewService() *Service {
 	return &Service{db: database.GetDB()}
 }
 
-// LoadConfig 从 system_configs 读取同步配置
+// LoadConfig 从 system_configs 读取同步配置。
+//
+// Token 走 ResolveConfigSecret：线上出现过该键存的是 "enc:v1:密文"（外部系统/
+// 旧密钥写入）而面板不解密的情况，表现为 GitHub 返回 `401 Bad credentials`，
+// 看起来像"Token 失效"，实际是密文被当明文发出去了。解不开时写入 cfg.TokenError，
+// 由同步入口直接报可读原因，不再拿密文去撞 GitHub。
 func (s *Service) LoadConfig() Config {
 	getValue := func(key, defaultVal string) string {
 		var cfg models.SystemConfig
@@ -113,11 +123,16 @@ func (s *Service) LoadConfig() Config {
 	}
 
 	cfg := Config{
-		Token:           getValue(KeyToken, ""),
 		Owner:           getValue(KeyOwner, ""),
 		Repo:            getValue(KeyRepo, ""),
 		Path:            getValue(KeyPath, ""),
 		IntervalMinutes: DefaultIntervalMinutes,
+	}
+	if token, err := utils.ResolveConfigSecret(getValue(KeyToken, "")); err == nil {
+		cfg.Token = token
+	} else {
+		cfg.TokenError = err.Error()
+		utils.LogWarn("仓库文件同步 Token 无法使用: %v", err)
 	}
 	cfg.Enabled = getValue(KeyEnabled, "false") == "true"
 
@@ -286,6 +301,11 @@ func (s *Service) StartSyncAsync() (bool, error) {
 // 调用方必须已持有进程级同步锁（SyncNow / StartSyncAsync 负责）。
 func (s *Service) syncNowLocked() (*SyncResult, error) {
 	cfg := s.LoadConfig()
+	if cfg.TokenError != "" {
+		err := fmt.Errorf("Token 无法使用：%s。请到「系统设置 → 仓库文件同步」重新填写 Personal Token", cfg.TokenError)
+		s.saveStatus("failed", err.Error(), 0)
+		return nil, err
+	}
 	if cfg.Token == "" || cfg.Owner == "" || cfg.Repo == "" {
 		err := errors.New("请先配置 GitHub Token、仓库所有者和仓库名称")
 		s.saveStatus("failed", err.Error(), 0)
@@ -354,7 +374,15 @@ func (s *Service) syncNowLocked() (*SyncResult, error) {
 func (s *Service) TestConnectionWith(token, owner, repo, path string) ([]git.RemoteEntry, error) {
 	cfg := s.LoadConfig()
 	if token != "" {
-		cfg.Token = token
+		// 显式传入的 Token（管理端刚填的）优先，且同样做一次还原：
+		// 防止有人把 "enc:v1:密文" 直接粘进来
+		if resolved, err := utils.ResolveConfigSecret(token); err == nil {
+			cfg.Token = resolved
+		} else {
+			return nil, fmt.Errorf("Token 无法使用：%v", err)
+		}
+	} else if cfg.TokenError != "" {
+		return nil, fmt.Errorf("Token 无法使用：%s。请在下方重新填写 Personal Token 后再测试", cfg.TokenError)
 	}
 	if owner != "" {
 		cfg.Owner = owner

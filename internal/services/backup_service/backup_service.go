@@ -80,7 +80,14 @@ func LoadRemoteBackupConfig(db *gorm.DB) RemoteBackupConfig {
 
 	var tokenConfig models.SystemConfig
 	if err := db.Where("key = ? AND category = ?", tokenKey, "backup").First(&tokenConfig).Error; err == nil {
-		cfg.Token = tokenConfig.Value
+		// 与仓库文件同步同一处理：库里可能存着 "enc:v1:密文"（外部系统/旧密钥写入），
+		// 不解密就上传会得到 401 Bad credentials 这类误导性错误
+		token, err := utils.ResolveConfigSecret(tokenConfig.Value)
+		if err != nil {
+			utils.LogWarn("备份 Token(%s) 无法还原: %v", tokenKey, err)
+			token = ""
+		}
+		cfg.Token = token
 	}
 
 	var ownerConfig models.SystemConfig
@@ -102,7 +109,14 @@ func LoadPlatformConfig(db *gorm.DB, target string) PlatformBackupConfig {
 
 	var tokenConfig models.SystemConfig
 	if err := db.Where("key = ? AND category = ?", tokenKey, "backup").First(&tokenConfig).Error; err == nil {
-		cfg.Token = tokenConfig.Value
+		// 与仓库文件同步同一处理：库里可能存着 "enc:v1:密文"（外部系统/旧密钥写入），
+		// 不解密就上传会得到 401 Bad credentials 这类误导性错误
+		token, err := utils.ResolveConfigSecret(tokenConfig.Value)
+		if err != nil {
+			utils.LogWarn("备份 Token(%s) 无法还原: %v", tokenKey, err)
+			token = ""
+		}
+		cfg.Token = token
 	}
 	var ownerConfig models.SystemConfig
 	if err := db.Where("key = ? AND category = ?", ownerKey, "backup").First(&ownerConfig).Error; err == nil && ownerConfig.Value != "" {
