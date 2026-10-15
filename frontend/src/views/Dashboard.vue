@@ -873,8 +873,10 @@ const loadRecentOrders = async () => {
 const loadUserInfo = async () => {
   dashboardLoading.value = true
   try {
-    // 使用缓存的 API，减少重复请求
-    const dashboardResponse = await cachedAPI.getUserInfo()
+    // 不用 5 分钟缓存：主页显示设备数量/上限与「管理设备」入口，
+    // 管理员在后台改设备上限或「允许用户删除设备」开关后，用户刷新本页
+    // 必须立刻看到最新值（此前最长滞后 5 分钟，用户以为"后台改了没生效"）。
+    const dashboardResponse = await userAPI.getUserInfo()
     if (dashboardResponse.data && dashboardResponse.data.success) {
       const dashboardData = dashboardResponse.data.data
       userInfo.value = {

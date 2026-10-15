@@ -420,11 +420,18 @@ export default {
       DEVICE_COLUMN_KEYS
     )
     // 「允许用户删除设备」开关（系统设置 → 用户与注册）：关闭后不显示移除按钮，
-    // 用户只能通过「升级设备数量」增加可用设备。未配置/加载失败时按允许处理。
+    // 用户只能通过「升级设备数量」增加可用设备。
+    //
+    // 取值口径（关键）：**设备列表接口每次请求实时下发的 allow_delete_device 优先**，
+    // 公开设置里的同一个开关只做兜底 —— 公开设置前端缓存 1 小时，管理员把开关
+    // 从"关"改成"开"以后，若以它为准，用户在最长 1 小时内仍然看不到移除按钮，
+    // 表现就是"开关不生效"。
     const settingsStore = useSettingsStore()
-    // 设备列表接口实时下发开关（公开设置接口有 1 小时前端缓存，不能作为唯一依据）
-    const listAllowsDelete = ref(true)
-    const canDeleteDevice = computed(() => listAllowsDelete.value && settingsStore.allowUserDeleteDevice !== false)
+    // null = 列表还没返回（此时才用公开设置兜底）
+    const listAllowsDelete = ref(null) // null = 列表未返回，未拿到实时值
+    const canDeleteDevice = computed(() => listAllowsDelete.value !== null
+      ? listAllowsDelete.value
+      : settingsStore.allowUserDeleteDevice !== false)
     const deviceStats = reactive({
       total: 0,
       online: 0,
@@ -509,8 +516,12 @@ export default {
             if (responseData.data.devices && Array.isArray(responseData.data.devices)) {
               devices.value = responseData.data.devices
               total.value = responseData.data.total || 0
-              // 开关随列表实时下发：只有明确 false 才隐藏删除按钮
-              listAllowsDelete.value = responseData.data.allow_delete_device !== false
+              // 开关随列表实时下发：只有明确 false 才隐藏删除按钮；
+              // 字段缺失（旧后端）保持 null → 用公开设置兜底
+              const flag = responseData.data.allow_delete_device
+              listAllowsDelete.value = (flag === undefined || flag === null)
+                ? null
+                : flag !== false
               updateDeviceStats(responseData.data)
             } else if (Array.isArray(responseData.data)) {
               devices.value = responseData.data
