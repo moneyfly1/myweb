@@ -325,3 +325,109 @@ func TestKickGateReviveThenAdoptSingleRow(t *testing.T) {
 		t.Fatalf("名额已满必须拦截，得到 %+v", blocked)
 	}
 }
+
+// 用户最关心的问题：**系统升级 / 软件升级会不会被算成多台设备？**
+// 结论必须是"不会"，而且要做到两层保证：
+//  1. 软件升级（安装实例 ID 不变）→ device_hash 只由安装 ID 派生（不含版本号），
+//     直接命中同一行；
+//  2. 软件升级时安装 ID 万一丢了（旧安装包删数据/用户清数据）→ 硬件指纹认亲，
+//     仍然复用同一行；系统大版本升级（机型/系统名都变了、UA 也变了）也一样。
+func TestOsAndAppUpgradeNeverAddsDevice(t *testing.T) {
+	db, dm, subID := setupAdoptionDB(t)
+
+	const (
+		installID = "stableinstall00000000000000000"
+		hwFP      = "mach-uuid-osupgrade-0001"
+	)
+	uaOld := "MoneyFly/2.2.30 (Windows NT 10.0; Win64; x64)"
+	uaNew := "MoneyFly/2.3.0 (Windows NT 10.0; Win64; x64)"   // 软件升级
+	uaWin11 := "MoneyFly/2.3.0 (Windows NT 11.0; Win64; x64)" // 软件 + 系统一起升级
+
+	hdrsOld := map[string]string{
+		"X-MF-Device-Id": installID, "X-MF-Device-Fp": hwFP,
+		"X-MF-Device-Model": "Windows 10 Pro", "X-MF-Device-Brand": "PC",
+		"X-MF-OS": "Windows 10", "X-MF-Device-Type": "desktop",
+	}
+
+	first, err := dm.RecordDeviceAccessWithHeaders(subID, 1, uaOld, "1.1.1.1", "clash", hdrsOld)
+	if err != nil {
+		t.Fatalf("首次登记失败: %v", err)
+	}
+
+	countRows := func() int64 {
+		var n int64
+		db.Model(&models.Device{}).Where("subscription_id = ?", subID).Count(&n)
+		return n
+	}
+	baseCount := countRows()
+	if baseCount != 1 {
+		t.Fatalf("前置条件：首次应只有 1 行，实际 %d", baseCount)
+	}
+
+	// ② 软件升级：同名同机、版本号变化 → 必须还是同一行
+	hdrsAppUpg := map[string]string{}
+	for k, v := range hdrsOld {
+		hdrsAppUpg[k] = v
+	}
+	got, err := dm.RecordDeviceAccessWithHeaders(subID, 1, uaNew, "2.2.2.2", "clash", hdrsAppUpg)
+	if err != nil {
+		t.Fatalf("软件升级后登记失败: %v", err)
+	}
+	if got.ID != first.ID {
+		t.Fatalf("软件升级后必须复用同一行（%d），实际 %d", first.ID, got.ID)
+	}
+	if n := countRows(); n != baseCount {
+		t.Fatalf("软件升级不得新增设备行，实际 %d 行", n)
+	}
+
+	// ③ 软件 + 系统一起升级（UA、系统名、机型全变）→ 仍然同一行
+	hdrsWin11 := map[string]string{
+		"X-MF-Device-Id": installID, "X-MF-Device-Fp": hwFP,
+		"X-MF-Device-Model": "Windows 11 Pro", "X-MF-Device-Brand": "PC",
+		"X-MF-OS": "Windows 11", "X-MF-Device-Type": "desktop",
+	}
+	got2, err := dm.RecordDeviceAccessWithHeaders(subID, 1, uaWin11, "3.3.3.3", "clash", hdrsWin11)
+	if err != nil {
+		t.Fatalf("系统升级后登记失败: %v", err)
+	}
+	if got2.ID != first.ID {
+		t.Fatalf("系统升级后必须复用同一行（%d），实际 %d", first.ID, got2.ID)
+	}
+	if n := countRows(); n != baseCount {
+		t.Fatalf("系统升级不得新增设备行，实际 %d 行", n)
+	}
+
+	// ④ 订阅刷新（正常拉取）只累加访问次数，不新增设备
+	for i := 0; i < 3; i++ {
+		if _, err := dm.RecordDeviceAccessWithHeaders(subID, 1, uaWin11, "3.3.3.3", "clash", hdrsWin11); err != nil {
+			t.Fatalf("刷新登记失败: %v", err)
+		}
+	}
+	if n := countRows(); n != baseCount {
+		t.Fatalf("订阅刷新不得新增设备行，实际 %d 行", n)
+	}
+	var after models.Device
+	db.First(&after, first.ID)
+	if after.AccessCount < 5 {
+		t.Fatalf("刷新应累加访问次数，实际 %d", after.AccessCount)
+	}
+
+	// ⑤ 最坏情况：软件升级**把安装 ID 弄丢了**（旧安装包删数据）+ 系统大版本升级
+	//    → 硬件指纹认亲必须把这一行认回来，仍然只有一行
+	const newInstallID = "reinstalled000000000000000000000"
+	hdrsLost := map[string]string{
+		"X-MF-Device-Id": newInstallID, "X-MF-Device-Fp": hwFP,
+		"X-MF-Device-Model": "Windows 11 Pro", "X-MF-Device-Brand": "PC",
+		"X-MF-OS": "Windows 11", "X-MF-Device-Type": "desktop",
+	}
+	got3, err := dm.RecordDeviceAccessWithHeaders(subID, 1, uaWin11, "4.4.4.4", "clash", hdrsLost)
+	if err != nil {
+		t.Fatalf("重装后登记失败: %v", err)
+	}
+	if got3.ID != first.ID {
+		t.Fatalf("安装 ID 丢失后应靠硬件指纹认回 %d，实际 %d", first.ID, got3.ID)
+	}
+	if n := countRows(); n != baseCount {
+		t.Fatalf("安装 ID 丢失也不得新增设备行（幽灵设备回归），实际 %d 行", n)
+	}
+}

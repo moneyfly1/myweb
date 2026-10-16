@@ -194,7 +194,84 @@ func SubscriptionBaseURLs(c *http.Request, db *gorm.DB) []string {
 	} else {
 		add(configValueOf(db, "domain_name"))
 	}
+	return promoteRequestHost(out, c)
+}
+
+// promoteRequestHost 把「客户端本次请求实际用的域名」提到第 2 位。
+//
+// 为什么：客户端能连上这个域名（它刚刚就通过它拿到了订阅信息），说明**在当前
+// 网络下它是可达的**。第三方客户端（Shadowrocket/Clash 等）只会用列表里的第一个
+// 地址，不会像自研客户端那样按设置选线路；把可达域名提前，能直接减少
+// 「订阅地址打不开 → 更新失败」。
+//
+// ⚠️ 安全前提：**只提升已经在列表里的域名**（即配置过的订阅域名/备用域名/网站
+// 域名）。绝不把请求头里的任意 Host 插进列表 —— 否则任何人构造一个
+// `Host: evil.com` 就能让别人的客户端去拉自己服务器的内容（DNS/Host 注入）。
+// 只提升到第 2 位、主订阅域名始终排第一，保证列表顺序仍然"主域名优先"。
+func promoteRequestHost(bases []string, c *http.Request) []string {
+	if c == nil || len(bases) < 3 {
+		return bases
+	}
+	host := requestHost(c)
+	if host == "" {
+		return bases
+	}
+	promote := -1
+	for i := 1; i < len(bases); i++ {
+		if hostOfBase(bases[i]) == host {
+			promote = i
+			break
+		}
+	}
+	if promote <= 1 {
+		return bases // 没命中（未知域名）或本来就在第 2 位 → 原样返回
+	}
+	out := make([]string, 0, len(bases))
+	out = append(out, bases[0], bases[promote])
+	out = append(out, bases[1:promote]...)
+	out = append(out, bases[promote+1:]...)
 	return out
+}
+
+// requestHost 取客户端实际用的主机名（优先 X-Forwarded-Host，反代场景下
+// r.Host 是回源地址），去端口、转小写。
+func requestHost(c *http.Request) string {
+	if c == nil {
+		return ""
+	}
+	raw := strings.TrimSpace(c.Header.Get("X-Forwarded-Host"))
+	if raw == "" {
+		raw = strings.TrimSpace(c.Host)
+	}
+	if raw == "" {
+		return ""
+	}
+	if i := strings.Index(raw, ","); i >= 0 { // 多级代理：取第一个
+		raw = strings.TrimSpace(raw[:i])
+	}
+	if h, _, err := net.SplitHostPort(raw); err == nil {
+		raw = h
+	}
+	return strings.ToLower(strings.TrimSuffix(raw, "."))
+}
+
+// hostOfBase 从 "https://host[:port]" 里取主机名（不含端口）
+func hostOfBase(base string) string {
+	v := strings.TrimSpace(base)
+	if v == "" {
+		return ""
+	}
+	if i := strings.Index(v, "://"); i >= 0 {
+		v = v[i+3:]
+	}
+	v = strings.TrimPrefix(v, "//")
+	if i := strings.IndexAny(v, "/?#"); i >= 0 {
+		v = v[:i]
+	}
+	if h, _, err := net.SplitHostPort(v); err == nil {
+		v = h
+	}
+	return strings.ToLower(strings.TrimSuffix(v, "."))
 }
 
 func GetDomainFromDB(db *gorm.DB) string {
