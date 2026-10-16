@@ -85,7 +85,11 @@ func TestSubscriptionBaseURLsPool(t *testing.T) {
 	setCfg(t, db, "domain_name", "dy.moneyfly.top")
 	setCfg(t, db, SubscriptionDomainKey, "https://sub.moneyfly.dpdns.org")
 	setCfg(t, db, SubscriptionBackupDomainsKey, "moneyfly.dpdns.org,\n https://sub.moneyfly.dpdns.org ;\nicandoit.eu.org")
-	req := httptest.NewRequest("GET", "https://dy.moneyfly.top/x", nil)
+	// 用「不在配置内」的请求域名，钉住"没有提升时的基础顺序"。
+	// （请求域名命中配置内域名时会被提到第 2 位，见
+	//   TestSubscriptionBaseURLsPromotesRequestHost）
+	req := httptest.NewRequest("GET", "https://unknown.example/x", nil)
+	req.Host = "unknown.example"
 
 	got := SubscriptionBaseURLs(req, db)
 	want := []string{
@@ -144,5 +148,80 @@ func TestSubscriptionBaseURLsKeepsEverySelectableLine(t *testing.T) {
 	}
 	if len(got) > subDomainPoolCap {
 		t.Errorf("域名数量 %d 超过上限 %d", len(got), subDomainPoolCap)
+	}
+}
+
+// 客户端这次请求用的是哪个域名，就把那个域名提到第 2 位（主域名仍排第一）：
+// 第三方客户端只会用列表里的第一个地址，把"刚被证明可达"的域名提前能减少
+// 「订阅地址打不开 → 更新失败」。
+func TestSubscriptionBaseURLsPromotesRequestHost(t *testing.T) {
+	db := setupSubDomainDB(t)
+	setCfg(t, db, "domain_name", "dy.moneyfly.top")
+	setCfg(t, db, SubscriptionDomainKey, "https://dy.moneyfly.top")
+	setCfg(t, db, SubscriptionBackupDomainsKey, "moneyfly.dpdns.org, sub.moneyfly.dpdns.org, fastora.top")
+	// 客户端是通过 fastora.top 访问的（说明它在当前网络可达）
+	req := httptest.NewRequest("GET", "https://fastora.top/api/v1/user/subscribe", nil)
+	req.Host = "fastora.top"
+
+	got := SubscriptionBaseURLs(req, db)
+	if len(got) < 3 {
+		t.Fatalf("前置条件：至少有 3 个域名，实际 %v", got)
+	}
+	if got[0] != "https://dy.moneyfly.top" {
+		t.Errorf("主订阅域名必须仍排第一，实际 %v", got)
+	}
+	if !strings.Contains(got[1], "fastora.top") {
+		t.Errorf("请求所用域名应被提到第 2 位，实际 %v", got)
+	}
+	// 其余域名一个都不能丢
+	for _, want := range []string{"moneyfly.dpdns.org", "sub.moneyfly.dpdns.org", "fastora.top"} {
+		found := false
+		for _, b := range got {
+			if strings.Contains(b, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("域名 %s 不该被丢掉，实际 %v", want, got)
+		}
+	}
+}
+
+// 安全：请求头里的**任意域名**绝不能被插进列表（防 Host 注入 —— 否则任何人都能
+// 让别人客户端去拉自己服务器的内容）。只有配置过的域名才会被提前。
+func TestSubscriptionBaseURLsNeverInjectsUnknownHost(t *testing.T) {
+	db := setupSubDomainDB(t)
+	setCfg(t, db, "domain_name", "dy.moneyfly.top")
+	setCfg(t, db, SubscriptionDomainKey, "https://dy.moneyfly.top")
+	setCfg(t, db, SubscriptionBackupDomainsKey, "moneyfly.dpdns.org, fastora.top")
+	req := httptest.NewRequest("GET", "https://evil.example/x", nil)
+	req.Host = "evil.example"
+	req.Header.Set("X-Forwarded-Host", "evil.example")
+
+	got := SubscriptionBaseURLs(req, db)
+	for _, b := range got {
+		if strings.Contains(b, "evil.example") {
+			t.Fatalf("未知域名绝不能进列表（Host 注入），实际 %v", got)
+		}
+	}
+	if got[0] != "https://dy.moneyfly.top" {
+		t.Errorf("主域名应仍排第一，实际 %v", got)
+	}
+}
+
+// 请求用的就是主域名时顺序不变（不需要提升）
+func TestSubscriptionBaseURLsKeepOrderWhenRequestUsesPrimary(t *testing.T) {
+	db := setupSubDomainDB(t)
+	setCfg(t, db, "domain_name", "dy.moneyfly.top")
+	setCfg(t, db, SubscriptionDomainKey, "https://dy.moneyfly.top")
+	setCfg(t, db, SubscriptionBackupDomainsKey, "moneyfly.dpdns.org, fastora.top")
+	req := httptest.NewRequest("GET", "https://dy.moneyfly.top/x", nil)
+	req.Host = "dy.moneyfly.top"
+
+	got := SubscriptionBaseURLs(req, db)
+	want := []string{"https://dy.moneyfly.top", "https://moneyfly.dpdns.org", "https://fastora.top"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("主域名请求时顺序不应变化，got %v want %v", got, want)
 	}
 }
