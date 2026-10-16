@@ -280,10 +280,20 @@ func (dm *DeviceManager) FindExistingDeviceWithHeaders(subscriptionID uint, user
 		}
 	}
 
-	// 有显式设备 ID 时到此即止：视为新设备。
-	// 下面的 UA/指纹/别名兜底都是"给没有稳定 ID 的历史数据认亲"用的，
-	// 对上报了 ID 的客户端只会造成误合并（同一 client 同版本 UA 一样）。
+	// 有显式设备 ID 时先尝试**硬件指纹认亲**，再判定为新设备。
+	//
+	// 为什么需要：安装实例 ID（device_hash）只在"重装 App / 清数据 / 桌面安装包
+	// 升级时把数据目录删了"之后会变，而这几件事都会让同一台物理机被当成新设备
+	// 重复登记（用户实测 susanzhang1230：一台 Windows 2.2.25→2.2.28 升级后
+	// 变成两行，白占一个名额）。硬件指纹（MachineGuid / IOPlatformUUID /
+	// ANDROID_ID）跨重装不变，用它在同一订阅下把老行认回来，
+	// 并把 device_hash 改写成新的安装实例哈希（身份仍以安装实例为准）。
 	if explicitDeviceID != "" {
+		if adopted, err := dm.adoptRowByHardwareFingerprint(subscriptionID, headers, deviceHash); err != nil {
+			return nil, false, err
+		} else if adopted != nil {
+			return adopted, true, nil
+		}
 		return nil, false, nil
 	}
 
@@ -318,6 +328,59 @@ func (dm *DeviceManager) FindExistingDeviceWithHeaders(subscriptionID uint, user
 	return nil, false, nil
 }
 
+// HardwareFingerprintOf 取出客户端上报的硬件指纹（X-MF-Device-Fp）。
+// 客户端没上报（旧版本/第三方客户端）时返回空串，匹配逻辑保持原样。
+func HardwareFingerprintOf(headers map[string]string) string {
+	if headers == nil {
+		return ""
+	}
+	return strings.TrimSpace(headers["X-MF-Device-Fp"])
+}
+
+// adoptRowByHardwareFingerprint 用硬件指纹在同一订阅下认回老行。
+//
+// 命中条件：同一订阅 + device_hw_fp 相同 + **当前活跃**。
+// 认回后：
+//   - device_hash 改写成**当前安装实例**的哈希（之后按安装 ID 直接命中，快路径）；
+//   - device_hw_fp 补齐（老行可能没写过）。
+//
+// 只看活跃行是刻意的：被「踢下线」的软删行（is_active=false + kicked_at 非空）
+// 绝不能在这里被悄悄复活 —— 那等于绕过用户"删除设备"的意图。踢下线语义由
+// FindKickedDeviceWithHeaders / ResolveKickGate 统一裁决（它同样按硬件指纹找，
+// 所以重装后仍然会命中闸门，要么按现有规则自动恢复、要么明确拒绝）。
+//
+// 只在客户端**确实上报了硬件指纹**时才会命中；没上报的历史行不受影响。
+func (dm *DeviceManager) adoptRowByHardwareFingerprint(
+	subscriptionID uint, headers map[string]string, newInstallHash string) (*models.Device, error) {
+	hwFP := HardwareFingerprintOf(headers)
+	if hwFP == "" {
+		return nil, nil
+	}
+
+	var device models.Device
+	err := dm.db.Where("subscription_id = ? AND device_hw_fp = ? AND is_active = ? AND kicked_at IS NULL",
+		subscriptionID, hwFP, true).
+		Order("last_access DESC").
+		First(&device).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// 同一台物理机的新安装实例：沿用老行（名额不变），只更新身份与指纹
+	if err := dm.db.Model(&models.Device{}).Where("id = ?", device.ID).Updates(map[string]any{
+		"device_hash":  newInstallHash,
+		"device_hw_fp": hwFP,
+	}).Error; err != nil {
+		return nil, err
+	}
+	device.DeviceHash = &newInstallHash
+	device.DeviceHwFp = &hwFP
+	return &device, nil
+}
+
 // FindKickedDevice 查找被「踢下线」的设备（软删行：is_active=false 且
 // KickedAt 非空）。命中说明该设备此前被设备所有者从设备列表删除，当前正在
 // 尝试重新拉取订阅 —— 订阅接口应拒绝并提示「已被移除/踢下线」，
@@ -338,6 +401,23 @@ func (dm *DeviceManager) FindKickedDeviceWithHeaders(subscriptionID uint, userAg
 			hash, subscriptionID, false).First(&device).Error
 		if err == nil {
 			return &device, nil
+		}
+		if err != gorm.ErrRecordNotFound {
+			return nil, err
+		}
+	}
+
+	if hwFP := HardwareFingerprintOf(headers); hwFP != "" {
+		// 硬件指纹命中软删行：同一台机器重装/升级（install_id 变了）后仍要命中
+		// 踢下线判定，否则「删除设备」的意图会被一次重装绕过。
+		// ⚠️ 只读，绝不改写行 —— 改写会让后续指纹兜底失效、闸门误放行（线上 sub 638 实测）。
+		var byHwFp models.Device
+		err := dm.db.Where("subscription_id = ? AND device_hw_fp = ? AND is_active = ? AND kicked_at IS NOT NULL",
+			subscriptionID, hwFP, false).
+			Order("last_access DESC").
+			First(&byHwFp).Error
+		if err == nil {
+			return &byHwFp, nil
 		}
 		if err != gorm.ErrRecordNotFound {
 			return nil, err
@@ -1421,6 +1501,12 @@ func (dm *DeviceManager) RecordDeviceAccessWithHeaders(subscriptionID uint, user
 	if existingDevice, exists, err := dm.FindExistingDeviceWithHeaders(subscriptionID, userAgent, ipAddress, headers); err != nil {
 		return nil, err
 	} else if exists {
+		// 老行补齐硬件指纹：首次由新版客户端访问时把 MachineGuid/IOPlatformUUID/
+		// ANDROID_ID 落库，之后同一台机器重装/升级就能靠它认回这一行（不再多占名额）。
+		// updateExistingDeviceAccess 内部是 db.Save(device)，整体落盘，这里改结构体即可。
+		if hwFP := HardwareFingerprintOf(headers); hwFP != "" && (existingDevice.DeviceHwFp == nil || *existingDevice.DeviceHwFp != hwFP) {
+			existingDevice.DeviceHwFp = &hwFP
+		}
 		if err := dm.updateExistingDeviceAccess(existingDevice, deviceInfo, deviceHash, userAgent, ipAddress, subscriptionType); err != nil {
 			return nil, err
 		}
@@ -1441,11 +1527,18 @@ func (dm *DeviceManager) RecordDeviceAccessWithHeaders(subscriptionID uint, user
 			}
 		}
 
+		hwFPSet := HardwareFingerprintOf(headers)
+		var hwFPPtr *string
+		if hwFPSet != "" {
+			hwFPPtr = &hwFPSet
+		}
+
 		device := models.Device{
 			UserID:            &userIDInt64,
 			SubscriptionID:    subscriptionID,
 			DeviceFingerprint: deviceHash,
 			DeviceHash:        &deviceHash,
+			DeviceHwFp:        hwFPPtr,
 			DeviceUA:          &userAgent,
 			DeviceName:        &deviceInfo.DeviceName,
 			DeviceType:        &deviceInfo.DeviceType,

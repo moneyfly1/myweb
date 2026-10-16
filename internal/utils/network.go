@@ -146,17 +146,27 @@ func SubscriptionBaseURL(c *http.Request, db *gorm.DB) string {
 	return GetBuildBaseURL(c, db)
 }
 
-// SubscriptionBaseURLs 返回订阅地址可用的全部域名：主域名在前，其后是备用域名（去重、封顶 5 个）。
+// subDomainPoolCap 下发给客户端的订阅域名上限（含主域名与网站域名兜底）。
+// 与客户端 SubscribeUrlFailover.maxAttempts 对齐：客户端最多试 8 个地址。
+const subDomainPoolCap = 8
+
+// SubscriptionBaseURLs 返回订阅地址可用的全部域名：主域名在前，其后是备用域名（去重、封顶 8 个）。
 // 备用域名由 subscription_backup_domains 配置（逗号/换行/分号分隔），客户端可逐个尝试。
+//
+// 为什么是 8 而不是 5：客户端「服务器线路」里可选的就是这一批域名，用户在设置里
+// 切到第 6 条线路后，如果这个列表把它截断（旧上限 5：主域名 + 4 个备用 + 网站域名
+// 兜底互相争抢名额），后端下发的订阅地址里根本没有用户刚选的那条线路 →
+// 客户端只能继续撞旧域名，表现为「换了线路还是拉取失败」。客户端自身最多尝试 8 个
+// （SubscribeUrlFailover.maxAttempts），这里对齐到 8，保证「选得到的线路一定在列表里」。
 func SubscriptionBaseURLs(c *http.Request, db *gorm.DB) []string {
 	primary := SubscriptionBaseURL(c, db)
-	out := make([]string, 0, 5)
+	out := make([]string, 0, subDomainPoolCap)
 	// 按「主机名」去重（而不是整串 URL）：同一域名同时出现 https://x 和 http://x 时只保留先到的
 	// （列表顺序固定为 主域名 → 备用 → 网站域名，先到的基本都是带 https 的那条）。
-	seenHost := make(map[string]bool, 5)
+	seenHost := make(map[string]bool, subDomainPoolCap)
 	add := func(v string) {
 		v = normalizeBaseURLValue(v)
-		if v == "" || len(out) >= 5 {
+		if v == "" || len(out) >= subDomainPoolCap {
 			return
 		}
 		host := v

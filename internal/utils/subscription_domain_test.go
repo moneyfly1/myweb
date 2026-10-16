@@ -113,3 +113,36 @@ func TestSubscriptionBaseURLWithoutRequest(t *testing.T) {
 		t.Errorf("未配置订阅域名时应回退网站域名，got %q", got)
 	}
 }
+
+// 用户「服务器线路」里能选到的域名必须**全部**下发，不能被上限截断：
+// 线上配置是 主域名 + 5 个备用 + 网站域名兜底，旧上限 5 会把最后一条（例如
+// 某站点）悄悄丢掉 —— 用户在设置里正好切到那条线路时，后端下发的订阅地址
+// 里根本没有它，客户端只能继续撞旧域名（「换了线路还是拉取失败」）。
+func TestSubscriptionBaseURLsKeepsEverySelectableLine(t *testing.T) {
+	db := setupSubDomainDB(t)
+	setCfg(t, db, "domain_name", "某站点")
+	setCfg(t, db, SubscriptionDomainKey, "https://某站点")
+	setCfg(t, db, SubscriptionBackupDomainsKey,
+		"某站点, 某站点, 某站点, sub.某站点, 某站点")
+	req := httptest.NewRequest("GET", "https://某站点/x", nil)
+
+	got := SubscriptionBaseURLs(req, db)
+	for _, host := range []string{
+		"某站点", "某站点", "某站点",
+		"某站点", "sub.某站点", "某站点",
+	} {
+		found := false
+		for _, base := range got {
+			if strings.Contains(base, host) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("域名 %s 应出现在订阅域名池里（用户能在设置里选到它），实际 %v", host, got)
+		}
+	}
+	if len(got) > subDomainPoolCap {
+		t.Errorf("域名数量 %d 超过上限 %d", len(got), subDomainPoolCap)
+	}
+}

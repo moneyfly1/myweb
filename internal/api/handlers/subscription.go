@@ -253,8 +253,12 @@ func formatDeviceList(devices []models.Device) []gin.H {
 			"software_version":          utils.GetStringValue(d.SoftwareVersion),
 			"device_model":              utils.GetStringValue(d.DeviceModel),
 			"device_brand":              utils.GetStringValue(d.DeviceBrand),
-			"access_count":              d.AccessCount,
-			"remark":                    utils.GetStringValue(d.Remark),
+			// 硬件指纹哈希（客户端上报 X-MF-Device-Fp）：客户端用它精确标出
+			// 「本机」——同型号两台电脑的 device_model/brand 完全相同，
+			// 只靠机型会把别人的机器误标成本机（删本机的引导流程就会走错）。
+			"device_hw_fp": utils.GetStringValue(d.DeviceHwFp),
+			"access_count": d.AccessCount,
+			"remark":       utils.GetStringValue(d.Remark),
 		})
 	}
 	return list
