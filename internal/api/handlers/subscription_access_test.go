@@ -107,3 +107,22 @@ func TestBlockDisabled(t *testing.T) {
 		t.Fatal("开关关闭时不应拦截")
 	}
 }
+
+// 硬件指纹头（X-MF-Device-Fp）必须被 extractMFHeaders 透传：
+// 设备身份去重依赖它（同一台电脑重装/升级后认回老行，不再多占设备名额）。
+// 漏掉这个 key 的话后端收不到指纹，重装就会重新登记成新设备（幽灵设备）。
+func TestExtractMFHeadersIncludesHardwareFingerprint(t *testing.T) {
+	c := newAccessContext("MoneyFly/2.2.29 (Windows NT 10.0; Win64; x64)", map[string]string{
+		"X-MF-Device-Id":    "install-id-1",
+		"X-MF-Device-Fp":    "hw-fp-abcdef0123456789",
+		"X-MF-Device-Model": "Windows 10 Pro",
+	})
+
+	hdrs := extractMFHeaders(c)
+	if got := hdrs["X-MF-Device-Fp"]; got != "hw-fp-abcdef0123456789" {
+		t.Fatalf("X-MF-Device-Fp 必须透传，实际 %q（全部头：%v）", got, hdrs)
+	}
+	if got := hdrs["X-MF-Device-Id"]; got != "install-id-1" {
+		t.Fatalf("X-MF-Device-Id 必须透传，实际 %q", got)
+	}
+}

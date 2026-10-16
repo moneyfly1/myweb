@@ -113,3 +113,36 @@ func TestSubscriptionBaseURLWithoutRequest(t *testing.T) {
 		t.Errorf("未配置订阅域名时应回退网站域名，got %q", got)
 	}
 }
+
+// 用户「服务器线路」里能选到的域名必须**全部**下发，不能被上限截断：
+// 线上配置是 主域名 + 5 个备用 + 网站域名兜底，旧上限 5 会把最后一条（例如
+// fastora.top）悄悄丢掉 —— 用户在设置里正好切到那条线路时，后端下发的订阅地址
+// 里根本没有它，客户端只能继续撞旧域名（「换了线路还是拉取失败」）。
+func TestSubscriptionBaseURLsKeepsEverySelectableLine(t *testing.T) {
+	db := setupSubDomainDB(t)
+	setCfg(t, db, "domain_name", "dy.moneyfly.top")
+	setCfg(t, db, SubscriptionDomainKey, "https://dy.moneyfly.top")
+	setCfg(t, db, SubscriptionBackupDomainsKey,
+		"sub.moneyfly.dpdns.org, moneyfly.dpdns.org, new.moneyfly.dpdns.org, sub.fastora.top, fastora.top")
+	req := httptest.NewRequest("GET", "https://dy.moneyfly.top/x", nil)
+
+	got := SubscriptionBaseURLs(req, db)
+	for _, host := range []string{
+		"dy.moneyfly.top", "sub.moneyfly.dpdns.org", "moneyfly.dpdns.org",
+		"new.moneyfly.dpdns.org", "sub.fastora.top", "fastora.top",
+	} {
+		found := false
+		for _, base := range got {
+			if strings.Contains(base, host) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("域名 %s 应出现在订阅域名池里（用户能在设置里选到它），实际 %v", host, got)
+		}
+	}
+	if len(got) > subDomainPoolCap {
+		t.Errorf("域名数量 %d 超过上限 %d", len(got), subDomainPoolCap)
+	}
+}
