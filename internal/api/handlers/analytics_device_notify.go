@@ -227,8 +227,9 @@ func NotifyClientUpgrade(c *gin.Context) {
 		queued++
 	}
 
-	// 邮件配置是否可用（SMTP 未配置时提示管理员，避免"发了但发不出去"）
-	smtpConfigured := isSMTPConfigured(db)
+	// 邮件配置是否可用（SMTP 未配置时提示管理员，避免"发了但发不出去"）。
+	// 同时回显主机与脱敏账号 —— 管理员能一眼看出"是不是配置丢了"。
+	smtpConfigured, smtpHost, smtpUser := smtpStatus(db)
 
 	out := gin.H{
 		"dry_run":              dryRun,
@@ -240,6 +241,8 @@ func NotifyClientUpgrade(c *gin.Context) {
 		"skipped_inactive":     skippedInactive,
 		"skipped_unsubscribed": skippedUnsubscribed,
 		"smtp_configured":      smtpConfigured,
+		"smtp_host":            smtpHost,
+		"smtp_user":            smtpUser,
 		"download_links":       links,
 		"max_batch":            maxNotifyBatch,
 	}
@@ -318,30 +321,81 @@ func renderUpgradeVars(tpl string, u models.User, client string, links map[strin
 	return out
 }
 
-// isSMTPConfigured SMTP 是否真的可用（后台系统设置 → 邮件，或 .env）
+// isSMTPConfigured SMTP 是否真的可用（后台「系统设置 → 邮件」或 .env）
 //
-// 为什么要判"可用"而不是"非空"：.env 里的占位值（your-email@qq.com / your-smtp-password）
-// 会让"已配置"判断失真 —— 群发前必须能明确告诉管理员"现在发不出去，先去填 SMTP"。
-func isSMTPConfigured(db *gorm.DB) bool {
+// ⚠️ 键名有两套，必须都认（EmailService 自己就是双写兼容的，见
+// internal/services/email/email.go 的 NewEmailService）：
+//
+//	主机：smtp_host
+//	账号：smtp_username  → 缺失时回退 email_username
+//	密码：smtp_password  → 缺失时回退 email_password
+//
+// 只认其中一套会误报"未配置"（2026-10-18 实际踩到：线上后台用的是
+// email_username / email_password，接口却回报 smtp_configured=false，
+// 管理员以为配置丢了）。
+//
+// 另外排除 .env 里的占位值（your-email@qq.com / your-smtp-password），
+// 那种"看起来配了其实发不出去"的情况也要如实报出来。
+func smtpStatus(db *gorm.DB) (configured bool, host, user string) {
 	var configs []models.SystemConfig
-	db.Where("category = ? AND key IN ?", "email",
-		[]string{"smtp_host", "smtp_username", "smtp_password"}).Find(&configs)
+	db.Where("category = ?", "email").Find(&configs)
 	m := map[string]string{}
 	for _, c := range configs {
 		m[c.Key] = strings.TrimSpace(c.Value)
 	}
-	if m["smtp_host"] != "" && m["smtp_username"] != "" && m["smtp_password"] != "" {
-		return true
+	pick := func(keys ...string) string {
+		for _, k := range keys {
+			if v := m[k]; v != "" {
+				return v
+			}
+		}
+		return ""
 	}
+	host = pick("smtp_host", "email_host", "mail_host")
+	user = pick("smtp_username", "email_username", "mail_username")
+	pass := pick("smtp_password", "email_password", "mail_password")
+	if host != "" && user != "" && pass != "" && !looksPlaceholder(user, pass) {
+		return true, host, maskEmail(user)
+	}
+	// 回退到 .env（SMTP_HOST / SMTP_USERNAME / SMTP_PASSWORD）
 	if cfg := config.AppConfig; cfg != nil {
-		host := strings.TrimSpace(cfg.SMTPHost)
-		user := strings.TrimSpace(cfg.SMTPUser)
-		pass := strings.TrimSpace(cfg.SMTPPassword)
-		if host != "" && user != "" && pass != "" &&
-			!strings.Contains(strings.ToLower(user), "your-email") &&
-			!strings.Contains(strings.ToLower(pass), "your-smtp") {
-			return true
+		h := strings.TrimSpace(cfg.SMTPHost)
+		u := strings.TrimSpace(cfg.SMTPUser)
+		pw := strings.TrimSpace(cfg.SMTPPassword)
+		if h != "" && u != "" && pw != "" && !looksPlaceholder(u, pw) {
+			return true, h, maskEmail(u)
+		}
+		if h != "" {
+			return false, h, ""
 		}
 	}
-	return false
+	return false, host, user
+}
+
+// looksPlaceholder 占位值探测（.env 模板里的 your-email@qq.com 等）
+func looksPlaceholder(user, pass string) bool {
+	u, p := strings.ToLower(user), strings.ToLower(pass)
+	return strings.Contains(u, "your-email") ||
+		strings.Contains(u, "your_email") ||
+		strings.Contains(p, "your-smtp") ||
+		strings.Contains(p, "your_password") ||
+		p == "password"
+}
+
+// maskEmail 账号脱敏（admin 接口回显用）：moneyflysubssr@gmail.com → mon***
+func maskEmail(s string) string {
+	if len(s) <= 3 {
+		return "***"
+	}
+	at := strings.Index(s, "@")
+	if at > 3 {
+		return s[:3] + "***" + s[at:]
+	}
+	return s[:3] + "***"
+}
+
+// isSMTPConfigured 兼容旧调用
+func isSMTPConfigured(db *gorm.DB) bool {
+	ok, _, _ := smtpStatus(db)
+	return ok
 }
