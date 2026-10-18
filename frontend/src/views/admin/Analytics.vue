@@ -386,6 +386,10 @@
       <div class="an-kv-grid">
         <div><span class="an-sub">目标</span><b>{{ notify.targetLabel }}</b></div>
         <div><span class="an-sub">可发送</span><b class="an-ok">{{ notify.previewInfo?.targets ?? '—' }} 人</b></div>
+        <div v-if="notify.previewInfo?.smtp_configured">
+          <span class="an-sub">SMTP</span>
+          <b>{{ notify.previewInfo.smtp_host }}<span class="an-sub"> · {{ notify.previewInfo.smtp_user }}</span></b>
+        </div>
         <div v-if="notify.previewInfo?.skipped_no_email"><span class="an-sub">缺邮箱</span><b>{{ notify.previewInfo.skipped_no_email }}</b></div>
         <div v-if="notify.previewInfo?.skipped_unsubscribed"><span class="an-sub">已退订</span><b>{{ notify.previewInfo.skipped_unsubscribed }}</b></div>
       </div>
