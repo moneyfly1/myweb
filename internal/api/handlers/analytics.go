@@ -193,11 +193,16 @@ func GetDeviceAnalytics(c *gin.Context) {
 
 	var stats []DeviceStat
 	db.Model(&models.Device{}).Select("device_type, COUNT(*) as count").
+		Where("is_active = ? AND kicked_at IS NULL", true).
 		Group("device_type").Order("count DESC").Scan(&stats)
 
+	// 修复：设备表里的系统列是 os_name（旧代码写成 os，SQL 报错被忽略 →
+	// 前端"系统分布"永远是空表）。同时排除已停用/已踢下线的历史行。
 	var osStat []DeviceStat
-	db.Model(&models.Device{}).Select("os as device_type, COUNT(*) as count").
-		Where("os != ''").Group("os").Order("count DESC").Scan(&osStat)
+	db.Model(&models.Device{}).Select("os_name as device_type, COUNT(*) as count").
+		Where("os_name IS NOT NULL AND os_name != ''").
+		Where("is_active = ? AND kicked_at IS NULL", true).
+		Group("os_name").Order("count DESC").Scan(&osStat)
 
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 		"device_types": stats,

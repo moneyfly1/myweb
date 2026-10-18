@@ -1,211 +1,251 @@
 <template>
-  <div class="list-container">
-    <el-card class="list-card">
-      <template #header>
-        <div class="card-header">
-          <span>用户行为分析</span>
-          <div class="header-actions">
-            <el-button @click="exportData" :loading="exporting">
-              <el-icon><Download /></el-icon>
-              导出数据
-            </el-button>
-            <el-button @click="loadData" :loading="loading">
-              <el-icon><Refresh /></el-icon>
-              刷新数据
-            </el-button>
-          </div>
-        </div>
-      </template>
-
-      <!-- 时间范围切换 -->
-      <div class="time-range-selector">
-        <el-radio-group v-model="timeRange" @change="loadData">
+  <div class="an-page">
+    <!-- 工具条：一行放完（手机端自动换行），不再占半屏 -->
+    <div class="an-bar">
+      <div class="an-bar__left">
+        <el-radio-group v-model="timeRange" size="small" @change="onRangeChange">
           <el-radio-button label="day">今日</el-radio-button>
           <el-radio-button label="month">本月</el-radio-button>
           <el-radio-button label="year">本年</el-radio-button>
         </el-radio-group>
+        <span class="an-hint">{{ timeRangeLabel }} · 更新于 {{ updatedAtText }}</span>
       </div>
+      <div class="an-bar__right">
+        <el-button size="small" :loading="loading" @click="loadData">
+          <el-icon><Refresh /></el-icon><span class="an-btn-text">刷新</span>
+        </el-button>
+        <el-button size="small" :loading="exporting" @click="exportData">
+          <el-icon><Download /></el-icon><span class="an-btn-text">导出</span>
+        </el-button>
+      </div>
+    </div>
 
-      <!-- 概览卡片 -->
-      <el-row :gutter="16" class="stats-row">
-        <el-col :xs="12" :sm="6" v-for="(item, index) in overviewCards" :key="item.label">
-          <div class="stat-card-mini">
-            <div class="stat-icon" :class="`stat-icon-${index + 1}`">
-              <el-icon><component :is="item.icon" /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-value">{{ item.value }}</div>
-              <div class="stat-label">{{ item.label }}</div>
-            </div>
-          </div>
-        </el-col>
-      </el-row>
+    <!-- 指标条：紧凑 4 格（手机 2×2） -->
+    <div class="an-metrics">
+      <div v-for="m in overviewCards" :key="m.label" class="an-metric">
+        <div class="an-metric__icon"><el-icon><component :is="m.icon" /></el-icon></div>
+        <div class="an-metric__body">
+          <div class="an-metric__value">{{ m.value }}</div>
+          <div class="an-metric__label">{{ m.label }}</div>
+        </div>
+      </div>
+    </div>
 
-      <!-- 收入统计 -->
-      <el-card header="收入统计" shadow="never" class="data-card section-card">
-        <el-row :gutter="16">
-          <el-col :xs="24" :sm="8">
-            <div class="income-stat">
-              <div class="income-label">{{ timeRangeLabel }}收入</div>
-              <div class="income-value">¥{{ revenueStats.current || '0.00' }}</div>
-              <div class="income-trend" :class="revenueTrendClass">
-                <el-icon><component :is="revenueTrendIcon" /></el-icon>
-                <span>{{ revenueTrendText }}</span>
+    <el-tabs v-model="activeTab" class="an-tabs">
+      <!-- ============ 概览 ============ -->
+      <el-tab-pane label="概览" name="overview">
+        <div class="an-grid">
+          <el-card shadow="never" class="an-card">
+            <template #header><span class="an-card__title">收入</span></template>
+            <div class="an-income">
+              <div class="an-income__item">
+                <div class="an-income__num">¥{{ revenueStats.current || '0.00' }}</div>
+                <div class="an-income__label">{{ timeRangeLabel }}收入</div>
+                <div class="an-income__trend" :class="revenueTrendClass">
+                  <el-icon><component :is="revenueTrendIcon" /></el-icon>{{ revenueTrendText }}
+                </div>
+              </div>
+              <div class="an-income__item">
+                <div class="an-income__num">{{ revenueStats.order_count || 0 }}</div>
+                <div class="an-income__label">{{ timeRangeLabel }}订单</div>
+              </div>
+              <div class="an-income__item">
+                <div class="an-income__num">¥{{ revenueStats.avg_order || '0.00' }}</div>
+                <div class="an-income__label">客单价</div>
               </div>
             </div>
-          </el-col>
-          <el-col :xs="24" :sm="8">
-            <div class="income-stat">
-              <div class="income-label">订单数量</div>
-              <div class="income-value">{{ revenueStats.order_count || 0 }}</div>
-              <div class="income-desc">{{ timeRangeLabel }}成交订单</div>
-            </div>
-          </el-col>
-          <el-col :xs="24" :sm="8">
-            <div class="income-stat">
-              <div class="income-label">平均订单金额</div>
-              <div class="income-value">¥{{ revenueStats.avg_order || '0.00' }}</div>
-              <div class="income-desc">单笔订单均值</div>
-            </div>
-          </el-col>
-        </el-row>
-      </el-card>
+          </el-card>
 
-      <!-- 数据图表 -->
-      <el-row :gutter="16" class="section-row">
-        <el-col :xs="24" :lg="12">
-          <el-card header="用户留存分析" shadow="never" class="data-card">
+          <el-card shadow="never" class="an-card">
+            <template #header><span class="an-card__title">用户留存</span></template>
             <ResponsiveDataView
-              class="analytics-data-view"
               :data="retention"
               :fields="mobileRetentionFields"
               :loading="loading"
+              title-field="label"
               empty-title="暂无留存数据"
               empty-description="当前时间范围内还没有可展示的留存记录。"
             >
               <template #table>
-                <el-table :data="retention" stripe size="small" v-loading="loading" class="desktop-analytics-table">
-                  <el-table-column label="指标" min-width="90" align="center">
+                <el-table :data="retention" size="small" v-loading="loading">
+                  <el-table-column label="指标" min-width="80">
                     <template #default="{ row }">{{ row.label || `第${row.day}天` }}</template>
                   </el-table-column>
-                  <el-table-column prop="total" label="基数" width="80" align="center" />
-                  <el-table-column prop="retained" label="达标" width="80" align="center" />
-                  <el-table-column label="留存率">
+                  <el-table-column prop="total" label="基数" width="70" align="center" />
+                  <el-table-column prop="retained" label="达标" width="70" align="center" />
+                  <el-table-column label="留存率" min-width="120">
                     <template #default="{ row }">
-                      <el-progress
-                        :percentage="Math.round(row.rate)"
-                        :stroke-width="14"
-                        :text-inside="true"
-                        :color="getProgressColor(row.rate)"
-                      />
+                      <el-progress :percentage="Math.round(row.rate || 0)" :stroke-width="12"
+                        :text-inside="true" :color="getProgressColor(row.rate || 0)" />
                     </template>
                   </el-table-column>
                 </el-table>
               </template>
               <template #header="{ item }">
-                <div class="analytics-card-header">
-                  <span class="analytics-card-title">{{ item.label || `第${item.day}天` }}</span>
-                  <el-tag size="small" :type="item.rate >= 70 ? 'success' : item.rate >= 40 ? 'warning' : 'danger'">
-                    {{ Math.round(item.rate) }}%
-                  </el-tag>
-                </div>
+                <span class="an-card__title">{{ item.label || `第${item.day}天` }}</span>
+                <el-tag size="small" :type="(item.rate || 0) >= 70 ? 'success' : (item.rate || 0) >= 40 ? 'warning' : 'danger'">
+                  {{ Math.round(item.rate || 0) }}%
+                </el-tag>
               </template>
               <template #field-rate="{ item }">
-                <el-progress
-                  :percentage="Math.round(item.rate)"
-                  :stroke-width="12"
-                  :color="getProgressColor(item.rate)"
-                />
+                <el-progress :percentage="Math.round(item.rate || 0)" :stroke-width="10"
+                  :color="getProgressColor(item.rate || 0)" />
               </template>
             </ResponsiveDataView>
           </el-card>
-        </el-col>
 
-        <el-col :xs="24" :lg="12">
-          <el-card header="设备分析" shadow="never" class="data-card">
-            <div v-loading="loading">
-              <div v-if="deviceStats.length > 0">
-                <h4 class="section-title">设备类型分布</h4>
-                <ResponsiveDataView
-                  class="analytics-data-view compact-analytics-view"
-                  :data="deviceStats"
-                  :fields="mobileDeviceFields"
-                  empty-title="暂无设备类型数据"
-                  empty-description="当前时间范围内还没有设备类型分布。"
-                >
-                  <template #table>
-                    <el-table :data="deviceStats" stripe size="small" class="desktop-analytics-table">
-                      <el-table-column label="设备类型">
-                        <template #default="{ row }">
-                          {{ getDeviceTypeName(row.device_type) }}
-                        </template>
-                      </el-table-column>
-                      <el-table-column prop="count" label="数量" width="100" align="center" />
-                      <el-table-column label="占比" width="120">
-                        <template #default="{ row }">
-                          <el-tag size="small">{{ getPercentage(row.count, totalDevices) }}%</el-tag>
-                        </template>
-                      </el-table-column>
-                    </el-table>
-                  </template>
-                  <template #header="{ item }">
-                    <div class="analytics-card-header">
-                      <span class="analytics-card-title">{{ getDeviceTypeName(item.device_type) }}</span>
-                      <el-tag size="small">{{ getPercentage(item.count, totalDevices) }}%</el-tag>
-                    </div>
-                  </template>
-                </ResponsiveDataView>
+          <el-card shadow="never" class="an-card">
+            <template #header><span class="an-card__title">设备类型 / 系统</span></template>
+            <div class="an-mini-two">
+              <div>
+                <div class="an-sub">设备类型</div>
+                <el-table :data="deviceStats" size="small" :show-header="false" empty-text="暂无">
+                  <el-table-column min-width="90">
+                    <template #default="{ row }">{{ getDeviceTypeName(row.device_type) }}</template>
+                  </el-table-column>
+                  <el-table-column width="60" align="right">
+                    <template #default="{ row }">{{ row.count }}</template>
+                  </el-table-column>
+                  <el-table-column width="70" align="right">
+                    <template #default="{ row }">
+                      <el-tag size="small" effect="plain">{{ getPercentage(row.count, totalDevices) }}%</el-tag>
+                    </template>
+                  </el-table-column>
+                </el-table>
               </div>
-
-              <div v-if="osStats.length > 0" class="device-section">
-                <h4 class="section-title">操作系统分布</h4>
-                <ResponsiveDataView
-                  class="analytics-data-view compact-analytics-view"
-                  :data="osStats"
-                  :fields="mobileOsFields"
-                  empty-title="暂无系统数据"
-                  empty-description="当前时间范围内还没有操作系统分布。"
-                >
-                  <template #table>
-                    <el-table :data="osStats" stripe size="small" class="desktop-analytics-table">
-                      <el-table-column label="系统">
-                        <template #default="{ row }">
-                          {{ getDeviceTypeName(row.device_type) }}
-                        </template>
-                      </el-table-column>
-                      <el-table-column prop="count" label="数量" width="100" align="center" />
-                      <el-table-column label="占比" width="120">
-                        <template #default="{ row }">
-                          <el-tag size="small" type="success">{{ getPercentage(row.count, totalOS) }}%</el-tag>
-                        </template>
-                      </el-table-column>
-                    </el-table>
-                  </template>
-                  <template #header="{ item }">
-                    <div class="analytics-card-header">
-                      <span class="analytics-card-title">{{ getDeviceTypeName(item.device_type) }}</span>
-                      <el-tag size="small" type="success">{{ getPercentage(item.count, totalOS) }}%</el-tag>
-                    </div>
-                  </template>
-                </ResponsiveDataView>
+              <div>
+                <div class="an-sub">系统</div>
+                <el-table :data="osStats" size="small" :show-header="false" empty-text="暂无">
+                  <el-table-column min-width="90">
+                    <template #default="{ row }">{{ getDeviceTypeName(row.device_type) }}</template>
+                  </el-table-column>
+                  <el-table-column width="60" align="right">
+                    <template #default="{ row }">{{ row.count }}</template>
+                  </el-table-column>
+                  <el-table-column width="70" align="right">
+                    <template #default="{ row }">
+                      <el-tag size="small" type="success" effect="plain">{{ getPercentage(row.count, totalOS) }}%</el-tag>
+                    </template>
+                  </el-table-column>
+                </el-table>
               </div>
-
-              <EmptyState
-                v-if="deviceStats.length === 0 && osStats.length === 0"
-                title="暂无设备数据"
-                description="当前时间范围内还没有可展示的设备或系统分布。"
-                :icon-size="52"
-                class="analytics-empty-state"
-              />
             </div>
           </el-card>
-        </el-col>
-      </el-row>
+        </div>
+      </el-tab-pane>
 
-      <!-- 流失预警 -->
-      <el-card header="流失预警用户" shadow="never" class="data-card section-card">
+      <!-- ============ 设备与客户端 ============ -->
+      <el-tab-pane label="设备与客户端" name="devices">
+        <!-- 筛选条：一行（手机端逐行堆叠） -->
+        <div class="an-filter">
+          <el-select v-model="du.dim" size="small" class="an-filter__dim" @change="loadDeviceUsage(1)">
+            <el-option v-for="d in duDims" :key="d.key" :label="d.label" :value="d.key" />
+          </el-select>
+          <el-input v-model="du.q" size="small" class="an-filter__search" clearable
+            placeholder="搜索型号 / 系统 / 客户端 / 版本"
+            @keyup.enter="loadDeviceUsage(1)" @clear="loadDeviceUsage(1)">
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
+          <el-radio-group v-model="du.official" size="small" @change="loadDeviceUsage(1)">
+            <el-radio-button label="all">全部</el-radio-button>
+            <el-radio-button label="official">官方</el-radio-button>
+            <el-radio-button label="third_party">第三方</el-radio-button>
+          </el-radio-group>
+          <el-select v-model="du.days" size="small" class="an-filter__days" @change="loadDeviceUsage(1)">
+            <el-option label="全部时间" value="0" />
+            <el-option label="近 7 天" value="7" />
+            <el-option label="近 30 天" value="30" />
+          </el-select>
+        </div>
+
+        <!-- 汇总行：一行文字，不占卡片 -->
+        <div class="an-summary">
+          <span>设备 <b>{{ duSummary.devices || 0 }}</b></span>
+          <span class="an-dot">·</span>
+          <span>用户 <b>{{ duSummary.users || 0 }}</b></span>
+          <span class="an-dot">·</span>
+          <span class="an-ok">官方客户端 <b>{{ duSummary.official_devices || 0 }}</b></span>
+          <span class="an-dot">·</span>
+          <span class="an-warn an-clickable" @click="quickThirdParty">
+            第三方客户端 <b>{{ duSummary.third_party_devices || 0 }}</b>（点击只看第三方）
+          </span>
+          <span class="an-summary__spacer"></span>
+          <el-button size="small" type="primary" plain :disabled="!selectedGroups.length"
+            @click="openNotify({ groups: selectedGroups.map(g => g.key) })">
+            提醒所选分组<span v-if="selectedGroups.length">（{{ selectedGroups.length }}）</span>
+          </el-button>
+        </div>
+
         <ResponsiveDataView
-          class="analytics-data-view"
+          :data="duGroups"
+          :fields="mobileGroupFields"
+          :loading="loadingGroups"
+          :selectable="true"
+          :selected-rows="selectedGroups"
+          id-field="key"
+          title-field="label"
+          empty-title="暂无设备数据"
+          empty-description="换个筛选条件或时间范围试试。"
+          @selection-change="onGroupSelection"
+        >
+          <template #table>
+            <el-table ref="groupTableRef" :data="duGroups" size="small" v-loading="loadingGroups"
+              @selection-change="onGroupSelection" @row-click="openDetail" class="an-table">
+              <el-table-column type="selection" width="42" />
+              <el-table-column :label="duDimLabel" min-width="170">
+                <template #default="{ row }">
+                  <div class="an-group">
+                    <span class="an-group__name">{{ row.label || '未知' }}</span>
+                    <el-tag v-if="row.official" size="small" type="success" effect="plain">官方</el-tag>
+                    <el-tag v-else-if="isThirdPartyDim" size="small" type="warning" effect="plain">第三方</el-tag>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="devices" label="设备" width="76" align="center" />
+              <el-table-column prop="users" label="用户" width="76" align="center" />
+              <el-table-column label="占比" min-width="130">
+                <template #default="{ row }">
+                  <div class="an-share">
+                    <el-progress :percentage="Math.min(100, Math.round(row.share || 0))" :stroke-width="8"
+                      :show-text="false" />
+                    <span>{{ (row.share || 0).toFixed(1) }}%</span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="last_access" label="最近活跃" width="126" />
+              <el-table-column label="操作" width="78" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="primary" size="small" @click.stop="openDetail(row)">详情</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </template>
+          <template #header="{ item }">
+            <div class="an-group">
+              <span class="an-group__name">{{ item.label || '未知' }}</span>
+              <el-tag v-if="item.official" size="small" type="success" effect="plain">官方</el-tag>
+              <el-tag v-else-if="isThirdPartyDim" size="small" type="warning" effect="plain">第三方</el-tag>
+            </div>
+          </template>
+          <template #field-devices="{ value }"><span class="an-kv">设备 <b>{{ value }}</b></span></template>
+          <template #field-users="{ value }"><span class="an-kv">用户 <b>{{ value }}</b></span></template>
+          <template #field-share="{ value }">
+            <el-progress :percentage="Math.min(100, Math.round(value || 0))" :stroke-width="8" />
+          </template>
+          <template #actions="{ item }">
+            <el-button size="small" type="primary" plain @click.stop="openDetail(item)">查看用户</el-button>
+          </template>
+        </ResponsiveDataView>
+
+        <div class="an-pager">
+          <el-pagination background small layout="prev, pager, next, total" :total="duGroupTotal"
+            :page-size="du.limit" :current-page="du.page" @current-change="loadDeviceUsage" />
+        </div>
+      </el-tab-pane>
+
+      <!-- ============ 用户预警 ============ -->
+      <el-tab-pane :label="churnUsers.length ? `用户预警 (${churnUsers.length})` : '用户预警'" name="churn">
+        <ResponsiveDataView
           :data="churnUsers"
           :fields="mobileChurnFields"
           :loading="loading"
@@ -214,342 +254,275 @@
           empty-description="当前没有符合流失预警条件的用户。"
         >
           <template #table>
-            <el-table :data="churnUsers" stripe size="small" v-loading="loading" class="desktop-analytics-table">
-              <el-table-column prop="id" label="ID" width="60" />
-              <el-table-column prop="username" label="用户名" min-width="120" />
-              <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip />
-              <el-table-column label="最后登录" width="160">
+            <el-table :data="churnUsers" size="small" v-loading="loading" class="an-table">
+              <el-table-column prop="id" label="ID" width="66" />
+              <el-table-column prop="username" label="用户名" min-width="110" show-overflow-tooltip />
+              <el-table-column prop="email" label="邮箱" min-width="170" show-overflow-tooltip />
+              <el-table-column label="最后登录" width="118">
                 <template #default="{ row }">
-                  <span :class="{ 'text-danger': isLongTimeNoLogin(row.last_login) }">
-                    {{ formatDate(row.last_login) }}
-                  </span>
+                  <span :class="{ 'an-danger': isLongTimeNoLogin(row.last_login) }">{{ formatDate(row.last_login) }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="订阅到期" width="160">
+              <el-table-column label="订阅到期" width="118">
                 <template #default="{ row }">
-                  <span :class="{ 'text-warning': isExpiringSoon(row.expire_time) }">
-                    {{ formatDate(row.expire_time) }}
-                  </span>
+                  <span :class="{ 'an-warn-text': isExpiringSoon(row.expire_time) }">{{ formatDate(row.expire_time) }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="操作" width="100" fixed="right">
+              <el-table-column label="操作" width="78" fixed="right">
                 <template #default="{ row }">
-                  <el-button size="small" type="primary" @click="openContactDialog(row)">联系</el-button>
+                  <el-button size="small" type="primary" plain @click="openContactDialog(row)">联系</el-button>
                 </template>
               </el-table-column>
             </el-table>
           </template>
           <template #header="{ item }">
-            <div class="analytics-card-header">
-              <div class="analytics-user-title">
-                <span class="analytics-card-title">{{ item.username }}</span>
-                <span class="analytics-card-subtitle">{{ item.email }}</span>
-              </div>
-              <el-tag size="small" :type="isLongTimeNoLogin(item.last_login) ? 'danger' : 'warning'">
-                #{{ item.id }}
-              </el-tag>
+            <div class="an-group">
+              <span class="an-group__name">{{ item.username }}</span>
             </div>
           </template>
           <template #field-last_login="{ item }">
-            <span :class="{ 'text-danger': isLongTimeNoLogin(item.last_login) }">
-              {{ formatDate(item.last_login) }}
-            </span>
+            <span :class="{ 'an-danger': isLongTimeNoLogin(item.last_login) }">{{ formatDate(item.last_login) }}</span>
           </template>
           <template #field-expire_time="{ item }">
-            <span :class="{ 'text-warning': isExpiringSoon(item.expire_time) }">
-              {{ formatDate(item.expire_time) }}
-            </span>
+            <span :class="{ 'an-warn-text': isExpiringSoon(item.expire_time) }">{{ formatDate(item.expire_time) }}</span>
           </template>
           <template #actions="{ item }">
-            <el-button size="small" type="primary" @click="openContactDialog(item)">联系</el-button>
+            <el-button size="small" type="primary" plain @click="openContactDialog(item)">联系</el-button>
           </template>
         </ResponsiveDataView>
-      </el-card>
-    </el-card>
+      </el-tab-pane>
+    </el-tabs>
 
-    <!-- 联系用户抽屉 -->
-    <AppDrawer
-      v-model="contactDialogVisible"
-      title="联系用户"
-      size="600px"
-      mobile-size="100%"
-      :loading="sending"
-      class="contact-user-drawer"
-    >
-      <el-form :model="contactForm" label-width="100px">
-        <el-form-item label="用户">
-          <el-input v-model="contactForm.username" disabled />
+    <!-- ============ 抽屉：某分组下的用户/设备明细 ============ -->
+    <AppDrawer v-model="detail.visible" :title="detailTitle" size="780px" mobile-size="100%">
+      <div class="an-filter an-filter--drawer">
+        <el-input v-model="detail.q" size="small" clearable placeholder="搜索本组内的型号 / 邮箱 / 版本"
+          @keyup.enter="loadDetail(1)" @clear="loadDetail(1)">
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
+        <el-button size="small" type="primary" plain :disabled="!detail.selected.length"
+          @click="openNotify({ userIds: detail.selected.map(r => r.user_id) })">
+          提醒所选（{{ detail.selected.length }}）
+        </el-button>
+      </div>
+
+      <ResponsiveDataView
+        :data="detail.items"
+        :fields="mobileDetailFields"
+        :loading="detail.loading"
+        :selectable="true"
+        :selected-rows="detail.selected"
+        id-field="device_id"
+        title-field="username"
+        empty-title="暂无数据"
+        @selection-change="onDetailSelection"
+      >
+        <template #table>
+          <el-table :data="detail.items" size="small" v-loading="detail.loading"
+            max-height="440" @selection-change="onDetailSelection" class="an-table">
+            <el-table-column type="selection" width="42" />
+            <el-table-column label="用户" min-width="128">
+              <template #default="{ row }">
+                <div class="an-user">
+                  <span class="an-user__name">{{ row.username || `用户#${row.user_id}` }}</span>
+                  <span class="an-sub">{{ row.email || '无邮箱' }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="设备" min-width="126">
+              <template #default="{ row }">
+                <div class="an-user">
+                  <span>{{ row.device_model || row.device_brand || '未知设备' }}</span>
+                  <span class="an-sub">{{ row.os_name }}{{ row.os_version ? ' ' + row.os_version : '' }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="客户端" min-width="118">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.official ? 'success' : 'warning'" effect="plain">
+                  {{ row.software_name || '未知' }}
+                </el-tag>
+                <span class="an-sub"> {{ row.software_version }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="last_access" label="最近活跃" width="118" />
+            <el-table-column label="订阅到期" width="100">
+              <template #default="{ row }"><span class="an-sub">{{ row.sub_expire || '—' }}</span></template>
+            </el-table-column>
+          </el-table>
+        </template>
+        <template #header="{ item }">
+          <div class="an-user">
+            <span class="an-user__name">{{ item.username || `用户#${item.user_id}` }}</span>
+            <span class="an-sub">{{ item.email || '无邮箱' }}</span>
+          </div>
+        </template>
+        <template #field-device_model="{ item }">
+          <span>{{ item.device_model || item.device_brand || '未知设备' }}</span>
+          <span class="an-sub"> {{ item.os_name }}</span>
+        </template>
+        <template #field-software_name="{ item }">
+          <el-tag size="small" :type="item.official ? 'success' : 'warning'" effect="plain">{{ item.software_name }}</el-tag>
+          <span class="an-sub"> {{ item.software_version }}</span>
+        </template>
+        <template #field-last_access="{ value }"><span class="an-sub">{{ value }}</span></template>
+      </ResponsiveDataView>
+
+      <div class="an-pager">
+        <el-pagination background small layout="prev, pager, next, total" :total="detail.total"
+          :page-size="detail.limit" :current-page="detail.page" @current-change="loadDetail" />
+      </div>
+      <div class="an-drawer-tip">
+        共 {{ detail.total }} 条设备记录 · 去重后 {{ detail.distinctUsers }} 人（同一个人多台设备只发一封）
+      </div>
+    </AppDrawer>
+
+    <!-- ============ 抽屉：批量升级提醒 ============ -->
+    <AppDrawer v-model="notify.visible" title="发送升级提醒邮件" size="680px" mobile-size="100%">
+      <el-alert v-if="notify.smtpConfigured === false" type="warning" :closable="false" show-icon
+        title="当前未配置 SMTP，邮件只会入队但发不出去"
+        description="请先到「系统设置 → 邮件」填写 SMTP 账号密码。" class="an-alert" />
+
+      <div class="an-kv-grid">
+        <div><span class="an-sub">目标</span><b>{{ notify.targetLabel }}</b></div>
+        <div><span class="an-sub">可发送</span><b class="an-ok">{{ notify.previewInfo?.targets ?? '—' }} 人</b></div>
+        <div v-if="notify.previewInfo?.skipped_no_email"><span class="an-sub">缺邮箱</span><b>{{ notify.previewInfo.skipped_no_email }}</b></div>
+        <div v-if="notify.previewInfo?.skipped_unsubscribed"><span class="an-sub">已退订</span><b>{{ notify.previewInfo.skipped_unsubscribed }}</b></div>
+      </div>
+
+      <el-form label-width="62px" label-position="left" class="an-form">
+        <el-form-item label="主题">
+          <el-input v-model="notify.subject" size="small" placeholder="留空使用内置模板主题" />
         </el-form-item>
-        <el-form-item label="邮箱">
-          <el-input v-model="contactForm.email" disabled />
+        <el-form-item label="备注">
+          <el-input v-model="notify.note" size="small" type="textarea" :rows="2"
+            placeholder="可选：会显示在邮件正文的提示框里" />
         </el-form-item>
+      </el-form>
+
+      <div class="an-preview">
+        <div class="an-preview__head">
+          <span class="an-card__title">邮件预览</span>
+          <el-button size="small" :loading="notify.previewing" @click="previewNotify()">生成预览（不发送）</el-button>
+        </div>
+        <div v-if="notify.preview?.subject" class="an-preview__subject">{{ notify.preview.subject }}</div>
+        <div v-if="notify.preview?.content" class="an-preview__body" v-html="notify.preview.content"></div>
+        <div v-else class="an-sub">点「生成预览」先看渲染结果（含各平台加速镜像下载地址），确认后再发送。</div>
+      </div>
+
+      <template #footer>
+        <div class="an-footer">
+          <el-button @click="notify.visible = false">取消</el-button>
+          <el-button type="primary" :loading="notify.sending" :disabled="!notify.preview" @click="sendNotify">
+            确认发送{{ notify.previewInfo?.targets ? `（${notify.previewInfo.targets} 人）` : '' }}
+          </el-button>
+        </div>
+      </template>
+    </AppDrawer>
+
+    <!-- ============ 抽屉：联系单个用户（保留原有能力） ============ -->
+    <AppDrawer v-model="contactDialogVisible" title="联系用户" size="600px" mobile-size="100%" :loading="sending">
+      <el-form :model="contactForm" label-width="80px" label-position="left">
+        <el-form-item label="用户"><el-input v-model="contactForm.username" disabled /></el-form-item>
+        <el-form-item label="邮箱"><el-input v-model="contactForm.email" disabled /></el-form-item>
         <el-form-item label="邮件类型">
-          <el-select v-model="contactForm.templateName" placeholder="请选择邮件模板" @change="onTemplateChange" class="full-width-control">
-            <el-option
-              v-for="template in emailTemplates"
-              :key="template.name"
-              :label="template.label"
-              :value="template.name"
-            />
+          <el-select v-model="contactForm.templateName" placeholder="请选择邮件模板" @change="onTemplateChange" style="width:100%">
+            <el-option v-for="t in emailTemplates" :key="t.name" :label="t.label" :value="t.name" />
           </el-select>
         </el-form-item>
-        <el-form-item label="邮件主题">
-          <el-input v-model="contactForm.subject" placeholder="请输入邮件主题" />
-        </el-form-item>
+        <el-form-item label="邮件主题"><el-input v-model="contactForm.subject" placeholder="请输入邮件主题" /></el-form-item>
         <el-form-item label="邮件内容">
-          <el-input
-            v-model="contactForm.content"
-            type="textarea"
-            :rows="isMobile ? 10 : 8"
-            placeholder="请输入邮件内容"
-          />
+          <el-input v-model="contactForm.content" type="textarea" :rows="isMobile ? 8 : 7" placeholder="请输入邮件内容" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <FormActionBar
-          :loading="sending"
-          submit-text="发送邮件"
-          @cancel="contactDialogVisible = false"
-          @submit="sendEmail"
-        />
+        <div class="an-footer">
+          <el-button @click="contactDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="sending" @click="sendEmail">发送邮件</el-button>
+        </div>
       </template>
     </AppDrawer>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from '@/utils/elementPlusServices'
-import { Refresh, User, TrendCharts, DataAnalysis, Monitor, Download, Top, Bottom } from '@element-plus/icons-vue'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import {
+  Refresh, User, TrendCharts, DataAnalysis, Monitor, Download, Top, Bottom, Search
+} from '@element-plus/icons-vue'
 import { api } from '@/utils/api'
 import { formatDateTimeSafe } from '@/utils/date'
 import AppDrawer from '@/components/AppDrawer.vue'
-import EmptyState from '@/components/EmptyState.vue'
-import FormActionBar from '@/components/FormActionBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import { useMobile } from '@/composables/useMobile'
 
-const loading = ref(false)
-const exporting = ref(false)
-const sending = ref(false)
-const timeRange = ref('day')
-const contactDialogVisible = ref(false)
 const isMobile = useMobile()
 
-onMounted(() => {
-  loadData()
-})
-
+// ---------------- 概览 ----------------
+const loading = ref(false)
+const exporting = ref(false)
+const timeRange = ref('day')
+const activeTab = ref('overview')
 const userAnalytics = ref({})
 const retention = ref([])
 const churnUsers = ref([])
 const deviceStats = ref([])
 const osStats = ref([])
 const revenueStats = ref({})
+const updatedAt = ref(null)
 let loadSeq = 0
-const contactForm = ref({
-  userId: null,
-  username: '',
-  email: '',
-  templateName: '',
-  subject: '',
-  content: ''
-})
 
-const emailTemplates = ref([
-  { name: 'subscription_expiring', label: '订阅即将到期提醒' },
-  { name: 'subscription_expired', label: '订阅已到期通知' },
-  { name: 'user_recall', label: '流失用户召回' },
-  { name: 'custom', label: '自定义邮件' }
-])
-
-const timeRangeLabel = computed(() => {
-  const labels = { day: '今日', month: '本月', year: '本年' }
-  return labels[timeRange.value] || '今日'
-})
+const timeRangeLabel = computed(() => ({ day: '今日', month: '本月', year: '本年' }[timeRange.value] || '今日'))
+const updatedAtText = computed(() =>
+  updatedAt.value ? formatDateTimeSafe(updatedAt.value, 'HH:mm:ss', '—') : '—')
 
 const overviewCards = computed(() => [
-  {
-    label: '日活跃(DAU)',
-    value: userAnalytics.value.dau || 0,
-    icon: User
-  },
-  {
-    label: '周活跃(WAU)',
-    value: userAnalytics.value.wau || 0,
-    icon: TrendCharts
-  },
-  {
-    label: '月活跃(MAU)',
-    value: userAnalytics.value.mau || 0,
-    icon: DataAnalysis
-  },
-  {
-    label: '总用户数',
-    value: userAnalytics.value.total_users || 0,
-    icon: Monitor
-  }
+  { label: '日活跃', value: userAnalytics.value.dau || 0, icon: User },
+  { label: '周活跃', value: userAnalytics.value.wau || 0, icon: TrendCharts },
+  { label: '月活跃', value: userAnalytics.value.mau || 0, icon: DataAnalysis },
+  { label: '总用户', value: userAnalytics.value.total_users || 0, icon: Monitor }
 ])
 
-const revenueTrendClass = computed(() => {
-  const change = revenueStats.value.change_rate || 0
-  return change >= 0 ? 'trend-up' : 'trend-down'
-})
-
-const revenueTrendIcon = computed(() => {
-  const change = revenueStats.value.change_rate || 0
-  return change >= 0 ? Top : Bottom
-})
-
+const revenueTrendClass = computed(() => ((revenueStats.value.change_rate || 0) >= 0 ? 'an-up' : 'an-down'))
+const revenueTrendIcon = computed(() => ((revenueStats.value.change_rate || 0) >= 0 ? Top : Bottom))
 const revenueTrendText = computed(() => {
   const change = revenueStats.value.change_rate || 0
-  const prefix = change >= 0 ? '较上期增长' : '较上期下降'
-  return `${prefix} ${Math.abs(change).toFixed(1)}%`
+  return `${change >= 0 ? '较上期增长' : '较上期下降'} ${Math.abs(change).toFixed(1)}%`
 })
 
-const totalDevices = computed(() => {
-  return deviceStats.value.reduce((sum, item) => sum + item.count, 0)
-})
+const totalDevices = computed(() => deviceStats.value.reduce((s, i) => s + (i.count || 0), 0))
+const totalOS = computed(() => osStats.value.reduce((s, i) => s + (i.count || 0), 0))
 
-const totalOS = computed(() => {
-  return osStats.value.reduce((sum, item) => sum + item.count, 0)
-})
+const deviceTypeMap = {
+  mobile: '移动设备', desktop: '桌面设备', tablet: '平板设备', unknown: '未知设备',
+  ios: 'iOS', android: 'Android', windows: 'Windows', macos: 'macOS', linux: 'Linux'
+}
+const getDeviceTypeName = (t) => deviceTypeMap[(t || '').toLowerCase()] || t || '未知'
+const getPercentage = (v, total) => (total ? ((v / total) * 100).toFixed(1) : 0)
+const getProgressColor = (rate) => (rate >= 70 ? '#67c23a' : rate >= 40 ? '#e6a23c' : '#f56c6c')
+const formatDate = (d) => formatDateTimeSafe(d, 'YYYY-MM-DD', '-')
+const isLongTimeNoLogin = (t) => {
+  if (!t) return true
+  return Math.floor((Date.now() - new Date(t).getTime()) / 86400000) > 7
+}
+const isExpiringSoon = (t) => {
+  if (!t) return false
+  const d = Math.floor((new Date(t).getTime() - Date.now()) / 86400000)
+  return d <= 7 && d >= 0
+}
 
 const mobileRetentionFields = [
   { key: 'total', label: '基数' },
   { key: 'retained', label: '达标' },
   { key: 'rate', label: '留存率', fullWidth: true }
 ]
-
-const mobileDeviceFields = [
-  { key: 'count', label: '数量' }
-]
-
-const mobileOsFields = [
-  { key: 'count', label: '数量' }
-]
-
 const mobileChurnFields = [
   { key: 'last_login', label: '最后登录' },
   { key: 'expire_time', label: '订阅到期' }
 ]
 
-const deviceTypeMap = {
-  'mobile': '移动设备',
-  'desktop': '桌面设备',
-  'tablet': '平板设备',
-  'unknown': '未知设备',
-  'ios': 'iOS',
-  'android': 'Android',
-  'windows': 'Windows',
-  'macos': 'macOS',
-  'linux': 'Linux'
-}
-
-const getDeviceTypeName = (type) => {
-  return deviceTypeMap[type?.toLowerCase()] || type || '未知'
-}
-
-const formatDate = (d) => {
-  return formatDateTimeSafe(d, 'YYYY-MM-DD', '-')
-}
-
-const getPercentage = (value, total) => {
-  if (total === 0) return 0
-  return ((value / total) * 100).toFixed(1)
-}
-
-const getProgressColor = (rate) => {
-  if (rate >= 70) return '#67c23a'
-  if (rate >= 40) return '#e6a23c'
-  return '#f56c6c'
-}
-
-const isLongTimeNoLogin = (lastLogin) => {
-  if (!lastLogin) return true
-  const days = Math.floor((Date.now() - new Date(lastLogin).getTime()) / (1000 * 60 * 60 * 24))
-  return days > 7
-}
-
-const isExpiringSoon = (expireTime) => {
-  if (!expireTime) return false
-  const days = Math.floor((new Date(expireTime).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-  return days <= 7 && days >= 0
-}
-
-
-const openContactDialog = (user) => {
-  contactForm.value = {
-    userId: user.id,
-    username: user.username,
-    email: user.email,
-    templateName: '',
-    subject: '',
-    content: ''
-  }
-
-  // 根据用户状态自动选择邮件模板
-  const now = Date.now()
-  const expireTime = new Date(user.expire_time).getTime()
-  const daysDiff = Math.floor((expireTime - now) / (1000 * 60 * 60 * 24))
-
-  if (daysDiff < 0) {
-    // 已到期
-    contactForm.value.templateName = 'subscription_expired'
-  } else if (daysDiff <= 7) {
-    // 即将到期
-    contactForm.value.templateName = 'subscription_expiring'
-  } else if (isLongTimeNoLogin(user.last_login)) {
-    // 流失用户
-    contactForm.value.templateName = 'user_recall'
-  }
-
-  onTemplateChange()
-  contactDialogVisible.value = true
-}
-
-const onTemplateChange = async () => {
-  if (!contactForm.value.templateName || contactForm.value.templateName === 'custom') {
-    return
-  }
-
-  try {
-    const res = await api.get(`/admin/email-templates/${contactForm.value.templateName}`)
-
-    if (res.data?.data) {
-      const template = res.data.data
-      contactForm.value.subject = template.subject
-      contactForm.value.content = template.content
-    }
-  } catch (e) {
-    console.error('获取邮件模板失败:', e)
-  }
-}
-
-const sendEmail = async () => {
-  if (!contactForm.value.subject || !contactForm.value.content) {
-    ElMessage.warning('请填写邮件主题和内容')
-    return
-  }
-
-  sending.value = true
-  try {
-    await api.post('/admin/users/send-email', {
-      user_id: contactForm.value.userId,
-      email: contactForm.value.email,
-      subject: contactForm.value.subject,
-      content: contactForm.value.content,
-      template_name: contactForm.value.templateName
-    })
-
-    ElMessage.success('邮件发送成功')
-    contactDialogVisible.value = false
-  } catch (e) {
-    ElMessage.error(e.response?.data?.message || '邮件发送失败')
-  } finally {
-    sending.value = false
-  }
-}
+const onRangeChange = () => loadData()
 
 const loadData = async () => {
   const seq = ++loadSeq
@@ -564,402 +537,528 @@ const loadData = async () => {
       api.get(`/admin/analytics/devices?range=${range}`)
     ])
     if (seq !== loadSeq) return
-
     revenueStats.value = revenueRes.data?.data || {}
     userAnalytics.value = uRes.data?.data || {}
     retention.value = rRes.data?.data || []
     churnUsers.value = cRes.data?.data || []
-
-    const devData = dRes.data?.data || {}
-    deviceStats.value = devData.device_types || []
-    osStats.value = devData.os_stats || []
+    const dev = dRes.data?.data || {}
+    deviceStats.value = dev.device_types || []
+    osStats.value = dev.os_stats || []
+    updatedAt.value = new Date()
   } catch (e) {
-    console.error('加载数据失败:', e)
-    console.error('错误详情:', e.response?.data)
     ElMessage.error(e.response?.data?.message || '加载数据失败')
   } finally {
     if (seq === loadSeq) loading.value = false
   }
 }
 
+// ---------------- 设备与客户端使用 ----------------
+const du = reactive({ dim: 'client', q: '', official: 'all', days: '0', page: 1, limit: 15 })
+const duDims = ref([
+  { key: 'client', label: '客户端软件' },
+  { key: 'client_version', label: '客户端版本' },
+  { key: 'platform', label: '平台（系统）' },
+  { key: 'ios_model', label: 'iOS 设备型号' },
+  { key: 'ios_version', label: 'iOS 系统版本' },
+  { key: 'os_version', label: '系统版本' },
+  { key: 'device_type', label: '设备类型' },
+  { key: 'brand', label: '设备品牌' }
+])
+const duGroups = ref([])
+const duSummary = ref({})
+const duGroupTotal = ref(0)
+const duDimLabel = ref('客户端软件')
+const loadingGroups = ref(false)
+const groupTableRef = ref(null)
+const selectedGroups = ref([])
+
+const isThirdPartyDim = computed(() => ['client', 'client_version'].includes(du.dim))
+
+const loadDeviceUsage = async (page = 1) => {
+  du.page = page
+  loadingGroups.value = true
+  try {
+    const res = await api.get('/admin/analytics/device-usage', {
+      params: {
+        dim: du.dim, q: du.q || undefined, official: du.official,
+        days: du.days, page: du.page, limit: du.limit
+      }
+    })
+    const data = res.data?.data || {}
+    duGroups.value = data.groups || []
+    duSummary.value = data.summary || {}
+    duGroupTotal.value = data.group_total || 0
+    duDimLabel.value = data.dim_label || '分组'
+    if (Array.isArray(data.dims) && data.dims.length) duDims.value = data.dims
+    selectedGroups.value = []
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '设备数据加载失败')
+  } finally {
+    loadingGroups.value = false
+  }
+}
+
+const onGroupSelection = (rows) => { selectedGroups.value = rows }
+
+/// 一键切到「第三方客户端」筛选（汇总行里的数字可点）
+const quickThirdParty = () => {
+  du.official = 'third_party'
+  loadDeviceUsage(1)
+}
+
+// ---------------- 明细抽屉 ----------------
+const detail = reactive({
+  visible: false, loading: false, dim: 'client', key: '', label: '',
+  q: '', page: 1, limit: 20, items: [], total: 0, distinctUsers: 0, selected: []
+})
+const detailTitle = computed(() =>
+  `${duDimLabel.value}：${detail.label || '全部'}${detail.total ? `（${detail.total} 台设备）` : ''}`)
+
+const openDetail = async (row) => {
+  detail.dim = du.dim
+  detail.key = row.key
+  detail.label = row.label
+  detail.q = ''
+  detail.selected = []
+  detail.visible = true
+  await loadDetail(1)
+}
+
+const loadDetail = async (page = 1) => {
+  detail.page = page
+  detail.loading = true
+  try {
+    const res = await api.get('/admin/analytics/device-usage/detail', {
+      params: {
+        dim: detail.dim, key: detail.key, q: detail.q || undefined,
+        official: du.official, days: du.days, page: detail.page, limit: detail.limit
+      }
+    })
+    const data = res.data?.data || {}
+    detail.items = data.items || []
+    detail.total = data.total || 0
+    detail.distinctUsers = data.distinct_users || 0
+    detail.selected = []
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '明细加载失败')
+  } finally {
+    detail.loading = false
+  }
+}
+
+const onDetailSelection = (rows) => { detail.selected = rows }
+
+const mobileGroupFields = [
+  { key: 'devices', label: '设备' },
+  { key: 'users', label: '用户' },
+  { key: 'share', label: '占比', fullWidth: true }
+]
+const mobileDetailFields = [
+  { key: 'device_model', label: '设备' },
+  { key: 'software_name', label: '客户端' },
+  { key: 'last_access', label: '最近活跃' }
+]
+
+// ---------------- 批量升级提醒 ----------------
+const notify = reactive({
+  visible: false, sending: false, previewing: false,
+  targetKind: '', groupKeys: [], userIds: [], targetLabel: '', targetCount: 0,
+  subject: '', note: '', preview: null, previewInfo: null, result: null, smtpConfigured: null
+})
+
+/// 打开提醒抽屉：
+///  - groups: 表格里勾选的分组（后端展开成这些分组下的用户）
+///  - userIds: 抽屉里勾选的用户
+const openNotify = async ({ groups, userIds } = {}) => {
+  notify.groupKeys = groups || []
+  notify.userIds = userIds || []
+  notify.targetKind = (userIds && userIds.length) ? 'users' : 'groups'
+  notify.subject = ''
+  notify.note = ''
+  notify.preview = null
+  notify.previewInfo = null
+  notify.result = null
+  notify.smtpConfigured = null
+  notify.visible = true
+
+  if (notify.targetKind === 'users') {
+    notify.targetLabel = `${notify.userIds.length} 位选中用户`
+    notify.targetCount = notify.userIds.length
+  } else {
+    notify.targetLabel = `${notify.groupKeys.length} 个所选分组`
+    notify.targetCount = selectedGroups.value.reduce((s, g) => s + (g.users || 0), 0)
+  }
+  await previewNotify(true)
+}
+
+const notifyPayload = (dryRun) => {
+  const p = {
+    dim: du.dim,
+    official: notify.targetKind === 'users' ? 'third_party' : du.official,
+    days: du.days,
+    q: du.q || undefined,
+    subject: notify.subject || undefined,
+    note: notify.note || undefined,
+    dry_run: dryRun
+  }
+  if (notify.targetKind === 'users') return { ...p, user_ids: notify.userIds }
+  return { ...p, keys: notify.groupKeys }
+}
+
+const previewNotify = async (silent = false) => {
+  notify.previewing = true
+  try {
+    const res = await api.post('/admin/analytics/device-usage/notify-upgrade', notifyPayload(true))
+    const data = res.data?.data || {}
+    notify.previewInfo = data
+    notify.smtpConfigured = data.smtp_configured
+    if (data.targets) notify.targetCount = data.targets
+    if (data.preview) notify.preview = data.preview
+    if (!silent) {
+      if (data.targets) ElMessage.success(`将发送给 ${data.targets} 人（预览已生成）`)
+      else ElMessage.warning('当前条件下没有可发送的用户')
+    }
+  } catch (e) {
+    if (!silent) ElMessage.error(e.response?.data?.message || '生成预览失败')
+  } finally {
+    notify.previewing = false
+  }
+}
+
+const sendNotify = async () => {
+  try {
+    await ElMessageBox.confirm(
+      `确认向 ${notify.targetCount} 人发送升级提醒邮件？发送后进入邮件队列，无法撤回。`,
+      '确认发送', { type: 'warning', confirmButtonText: '确认发送', cancelButtonText: '取消' })
+  } catch { return }
+  notify.sending = true
+  try {
+    const res = await api.post('/admin/analytics/device-usage/notify-upgrade', notifyPayload(false))
+    const data = res.data?.data || {}
+    notify.result = data
+    const skipped = (data.skipped_no_email || 0) + (data.skipped_inactive || 0) + (data.skipped_unsubscribed || 0)
+    ElMessage.success(`已入队 ${data.queued || 0} 封${skipped ? `，跳过 ${skipped} 人` : ''}${data.failed ? `，失败 ${data.failed}` : ''}`)
+    if (data.failed && data.fail_reasons?.length) ElMessage.warning(data.fail_reasons[0])
+    notify.visible = false
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '发送失败')
+  } finally {
+    notify.sending = false
+  }
+}
+
+// ---------------- 联系单个用户（保留原有功能） ----------------
+const contactDialogVisible = ref(false)
+const sending = ref(false)
+const contactForm = ref({ userId: null, username: '', email: '', templateName: '', subject: '', content: '' })
+const emailTemplates = ref([
+  { name: 'subscription_expiring', label: '订阅即将到期提醒' },
+  { name: 'subscription_expired', label: '订阅已到期通知' },
+  { name: 'user_recall', label: '流失用户召回' },
+  { name: 'custom', label: '自定义邮件' }
+])
+
+const openContactDialog = (user) => {
+  contactForm.value = { userId: user.id, username: user.username, email: user.email, templateName: '', subject: '', content: '' }
+  const daysDiff = Math.floor((new Date(user.expire_time).getTime() - Date.now()) / 86400000)
+  if (daysDiff < 0) contactForm.value.templateName = 'subscription_expired'
+  else if (daysDiff <= 7) contactForm.value.templateName = 'subscription_expiring'
+  else if (isLongTimeNoLogin(user.last_login)) contactForm.value.templateName = 'user_recall'
+  onTemplateChange()
+  contactDialogVisible.value = true
+}
+
+const onTemplateChange = async () => {
+  const name = contactForm.value.templateName
+  if (!name || name === 'custom') return
+  try {
+    const res = await api.get(`/admin/email-templates/${name}`)
+    if (res.data?.data) {
+      contactForm.value.subject = res.data.data.subject
+      contactForm.value.content = res.data.data.content
+    }
+  } catch { /* 模板不存在时让管理员手写 */ }
+}
+
+const sendEmail = async () => {
+  if (!contactForm.value.subject || !contactForm.value.content) {
+    ElMessage.warning('请填写邮件主题和内容')
+    return
+  }
+  sending.value = true
+  try {
+    await api.post('/admin/users/send-email', {
+      user_id: contactForm.value.userId, email: contactForm.value.email,
+      subject: contactForm.value.subject, content: contactForm.value.content,
+      template_name: contactForm.value.templateName
+    })
+    ElMessage.success('邮件发送成功')
+    contactDialogVisible.value = false
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '邮件发送失败')
+  } finally {
+    sending.value = false
+  }
+}
+
+// ---------------- 导出 ----------------
 const exportData = async () => {
   exporting.value = true
   try {
-    // 构建 CSV 内容
-    let csvContent = '\uFEFF' // UTF-8 BOM for Excel
-
-    // 1. 基本信息
-    csvContent += '用户分析数据导出\n'
-    csvContent += `导出时间,${new Date().toLocaleString('zh-CN')}\n`
-    csvContent += `时间范围,${timeRangeLabel.value}\n\n`
-
-    // 2. 收入统计
-    csvContent += '收入统计\n'
-    csvContent += '指标,数值\n'
-    csvContent += `${timeRangeLabel.value}收入,¥${revenueStats.value.current || '0.00'}\n`
-    csvContent += `订单数量,${revenueStats.value.order_count || 0}\n`
-    csvContent += `平均订单金额,¥${revenueStats.value.avg_order || '0.00'}\n`
-    csvContent += `较上期变化,${revenueStats.value.change_rate || 0}%\n\n`
-
-    // 3. 用户活跃度
-    csvContent += '用户活跃度统计\n'
-    csvContent += '指标,数值\n'
-    csvContent += `日活跃用户(DAU),${userAnalytics.value.dau || 0}\n`
-    csvContent += `周活跃用户(WAU),${userAnalytics.value.wau || 0}\n`
-    csvContent += `月活跃用户(MAU),${userAnalytics.value.mau || 0}\n`
-    csvContent += `总用户数,${userAnalytics.value.total_users || 0}\n\n`
-
-    // 4. 用户留存分析
-    csvContent += '用户留存分析\n'
-    csvContent += '指标,基数,达标,比率\n'
-    retention.value.forEach(row => {
-      csvContent += `${row.label || '第' + row.day + '天'},${row.total},${row.retained},${row.rate.toFixed(1)}%\n`
+    let csv = '\uFEFF'
+    csv += '用户分析数据导出\n'
+    csv += `导出时间,${new Date().toLocaleString('zh-CN')}\n时间范围,${timeRangeLabel.value}\n\n`
+    csv += '收入统计\n指标,数值\n'
+    csv += `${timeRangeLabel.value}收入,¥${revenueStats.value.current || '0.00'}\n`
+    csv += `订单数量,${revenueStats.value.order_count || 0}\n客单价,¥${revenueStats.value.avg_order || '0.00'}\n\n`
+    csv += '用户活跃\n指标,数值\n'
+    csv += `DAU,${userAnalytics.value.dau || 0}\nWAU,${userAnalytics.value.wau || 0}\nMAU,${userAnalytics.value.mau || 0}\n总用户,${userAnalytics.value.total_users || 0}\n\n`
+    csv += '设备类型\n类型,数量,占比\n'
+    deviceStats.value.forEach(r => { csv += `${getDeviceTypeName(r.device_type)},${r.count},${getPercentage(r.count, totalDevices.value)}%\n` })
+    csv += '\n系统分布\n系统,数量,占比\n'
+    osStats.value.forEach(r => { csv += `${getDeviceTypeName(r.device_type)},${r.count},${getPercentage(r.count, totalOS.value)}%\n` })
+    csv += `\n${duDimLabel.value}（当前筛选）\n名称,设备数,用户数,占比,最近活跃\n`
+    duGroups.value.forEach(g => {
+      csv += `"${(g.label || '').replace(/"/g, '""')}",${g.devices},${g.users},${(g.share || 0).toFixed(2)}%,${g.last_access || ''}\n`
     })
-    csvContent += '\n'
+    csv += '\n流失预警用户\nID,用户名,邮箱,最后登录,订阅到期\n'
+    churnUsers.value.forEach(u => { csv += `${u.id},${u.username},${u.email},${formatDate(u.last_login)},${formatDate(u.expire_time)}\n` })
 
-    // 5. 设备类型分布
-    csvContent += '设备类型分布\n'
-    csvContent += '设备类型,数量,占比\n'
-    deviceStats.value.forEach(row => {
-      const percentage = getPercentage(row.count, totalDevices.value)
-      csvContent += `${getDeviceTypeName(row.device_type)},${row.count},${percentage}%\n`
-    })
-    csvContent += '\n'
-
-    // 6. 操作系统分布
-    csvContent += '操作系统分布\n'
-    csvContent += '系统,数量,占比\n'
-    osStats.value.forEach(row => {
-      const percentage = getPercentage(row.count, totalOS.value)
-      csvContent += `${getDeviceTypeName(row.device_type)},${row.count},${percentage}%\n`
-    })
-    csvContent += '\n'
-
-    // 7. 流失预警用户
-    csvContent += '流失预警用户\n'
-    csvContent += 'ID,用户名,邮箱,最后登录,订阅到期\n'
-    churnUsers.value.forEach(user => {
-      csvContent += `${user.id},${user.username},${user.email},${formatDate(user.last_login)},${formatDate(user.expire_time)}\n`
-    })
-
-    // 创建并下载 CSV 文件
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `用户分析数据_${timeRangeLabel.value}_${Date.now()}.csv`
+    a.download = `用户分析_${timeRangeLabel.value}_${Date.now()}.csv`
     a.click()
     URL.revokeObjectURL(url)
-
-    ElMessage.success('数据导出成功')
-  } catch (e) {
+    ElMessage.success('已导出 CSV')
+  } catch {
     ElMessage.error('导出失败')
   } finally {
     exporting.value = false
   }
 }
 
+onMounted(() => {
+  loadData()
+  loadDeviceUsage(1)
+})
 </script>
 
 <style scoped>
-.list-container {
-  padding: 0;
+/* ===== 整体：紧凑，一屏尽量放完 ===== */
+.an-page {
+  padding: 12px 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.list-card {
-  border-radius: 8px;
-  border: 1px solid #ebeef5;
-  box-shadow: none;
-}
-
-.time-range-selector {
-  margin-bottom: 20px;
-  padding: 16px;
-  background: #f5f7fa;
-  border-radius: 8px;
+.an-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
 }
-
-.stats-row {
-  margin: -8px;
-}
-
-.stats-row .el-col {
-  padding: 8px;
-}
-
-.stat-card-mini {
+.an-bar__left,
+.an-bar__right {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 20px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.an-hint {
+  font-size: 12px;
+  color: #909399;
+  white-space: nowrap;
+}
+
+/* 指标条：4 格紧凑卡 */
+.an-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.an-metric {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
   background: #fff;
   border: 1px solid #ebeef5;
   border-radius: 8px;
   min-width: 0;
-  transition: border-color 0.16s ease, background-color 0.16s ease;
 }
-
-.stat-card-mini:hover {
-  background: #f8fafc;
-  border-color: #dcdfe6;
-}
-
-.stat-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
+.an-metric__icon {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--stat-icon-color, #409eff);
-  background: var(--stat-icon-bg, #ecf5ff);
-  font-size: 24px;
-  flex-shrink: 0;
-}
-
-.stat-icon-1 {
-  --stat-icon-color: #2563eb;
-  --stat-icon-bg: #eff6ff;
-}
-
-.stat-icon-2 {
-  --stat-icon-color: #16a34a;
-  --stat-icon-bg: #f0fdf4;
-}
-
-.stat-icon-3 {
-  --stat-icon-color: #d97706;
-  --stat-icon-bg: #fffbeb;
-}
-
-.stat-icon-4 {
-  --stat-icon-color: #475569;
-  --stat-icon-bg: #f8fafc;
-}
-
-.stat-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.stat-value {
-  font-size: 24px;
-  font-weight: 600;
-  color: #303133;
-  line-height: 1.2;
-}
-
-.stat-label {
-  font-size: 13px;
-  color: #909399;
-  margin-top: 4px;
-}
-
-.income-stat {
-  padding: 20px;
-  background: #f5f7fa;
   border-radius: 8px;
-  text-align: center;
+  background: #f2f6ff;
+  color: #409eff;
+  font-size: 15px;
 }
-
-.income-label {
-  font-size: 14px;
-  color: #909399;
-  margin-bottom: 8px;
-}
-
-.income-value {
-  font-size: 28px;
-  font-weight: 600;
+.an-metric__body { min-width: 0; }
+.an-metric__value {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.15;
   color: #303133;
-  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.an-metric__label {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.income-trend {
+.an-tabs { margin-top: 2px; }
+.an-tabs :deep(.el-tabs__header) { margin-bottom: 10px; }
+.an-tabs :deep(.el-tabs__item) { font-size: 13.5px; height: 38px; line-height: 38px; }
+
+.an-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.an-grid > .an-card:nth-child(3) { grid-column: 1 / -1; }
+.an-card { border-radius: 8px; }
+.an-card :deep(.el-card__header) { padding: 8px 12px; }
+.an-card :deep(.el-card__body) { padding: 10px 12px; }
+.an-card__title { font-size: 13.5px; font-weight: 600; color: #303133; }
+.an-sub { font-size: 12px; color: #909399; }
+
+.an-income { display: flex; gap: 18px; flex-wrap: wrap; }
+.an-income__item { min-width: 84px; }
+.an-income__num { font-size: 20px; font-weight: 700; color: #303133; font-variant-numeric: tabular-nums; }
+.an-income__label { font-size: 12px; color: #909399; margin-top: 2px; }
+.an-income__trend { font-size: 12px; margin-top: 4px; display: flex; align-items: center; gap: 3px; }
+.an-up { color: #67c23a; }
+.an-down { color: #f56c6c; }
+
+.an-mini-two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+/* 筛选条 + 汇总行 */
+.an-filter {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
-  font-size: 13px;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
 }
+.an-filter--drawer { margin-bottom: 10px; }
+.an-filter__dim { width: 148px; }
+.an-filter__search { width: 240px; flex: 1 1 200px; max-width: 320px; }
+.an-filter__days { width: 112px; }
 
-.income-trend.trend-up {
-  color: #67c23a;
+.an-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: #606266;
+  margin-bottom: 8px;
 }
+.an-summary b { color: #303133; font-variant-numeric: tabular-nums; }
+.an-summary__spacer { flex: 1 1 auto; }
+.an-dot { color: #dcdfe6; }
+.an-ok b { color: #67c23a; }
+.an-warn b { color: #e6a23c; }
+.an-clickable { cursor: pointer; }
+.an-clickable:hover { text-decoration: underline; }
 
-.income-trend.trend-down {
-  color: #f56c6c;
+/* 表格里的紧凑单元格 */
+.an-table :deep(.el-table__cell) { padding: 6px 0; }
+.an-table { cursor: pointer; }
+.an-group { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.an-group__name {
+  font-weight: 600;
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+.an-user { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.an-user__name { font-weight: 600; color: #303133; }
+.an-kv { font-size: 12.5px; color: #606266; }
+.an-share { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #909399; }
+.an-share .el-progress { flex: 1 1 auto; }
+.an-danger { color: #f56c6c; }
+.an-warn-text { color: #e6a23c; }
 
-.income-desc {
-  font-size: 13px;
-  color: #909399;
-  margin-top: 8px;
+.an-pager { display: flex; justify-content: flex-end; margin-top: 10px; }
+.an-drawer-tip { font-size: 12px; color: #909399; margin-top: 8px; }
+.an-alert { margin-bottom: 10px; }
+.an-kv-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 14px;
+  font-size: 12.5px;
+  color: #606266;
+  margin-bottom: 10px;
 }
-
-.data-card {
+.an-kv-grid b { color: #303133; margin-left: 6px; }
+.an-form :deep(.el-form-item) { margin-bottom: 10px; }
+.an-preview {
   border: 1px solid #ebeef5;
   border-radius: 8px;
+  padding: 10px 12px;
+  background: #fafbfc;
 }
-
-.section-card,
-.section-row,
-.device-section {
-  margin-top: 20px;
-}
-
-.full-width-control {
-  width: 100%;
-}
-
-.section-title {
-  margin: 0 0 12px 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.text-danger {
-  color: #f56c6c;
-}
-
-.text-warning {
-  color: #e6a23c;
-}
-
-.analytics-empty-state {
-  min-height: 180px;
-  padding: 32px 16px;
-}
-
-.analytics-card-header {
+.an-preview__head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+  margin-bottom: 8px;
 }
-
-.analytics-card-title {
-  min-width: 0;
-  color: #303133;
-  font-size: 15px;
+.an-preview__subject {
+  font-size: 13px;
   font-weight: 600;
-  line-height: 1.4;
-  word-break: break-word;
+  color: #303133;
+  margin-bottom: 6px;
 }
-
-.analytics-card-subtitle {
-  min-width: 0;
-  color: #909399;
-  font-size: 12px;
-  line-height: 1.45;
-  word-break: break-all;
+.an-preview__body {
+  max-height: 300px;
+  overflow: auto;
+  font-size: 13px;
+  color: #303133;
+  background: #fff;
+  border-radius: 6px;
+  padding: 8px 10px;
 }
+.an-footer { display: flex; justify-content: flex-end; gap: 8px; }
 
-.analytics-user-title {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-/* 移动端适配 */
+/* ===== 手机端 ===== */
 @media (max-width: 768px) {
-  .header-actions {
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .header-actions .el-button {
-    width: 100%;
-  }
-
-  .time-range-selector {
-    padding: 12px;
-  }
-
-  .time-range-selector :deep(.el-radio-group) {
-    display: flex;
-    width: 100%;
-  }
-
-  .time-range-selector :deep(.el-radio-button) {
-    flex: 1;
-  }
-
-  .time-range-selector :deep(.el-radio-button__inner) {
-    width: 100%;
-  }
-
-  .stats-row {
-    margin: -4px;
-  }
-
-  .stats-row .el-col {
-    padding: 4px;
-  }
-
-  .stat-card-mini {
-    padding: 16px;
-    gap: 12px;
-  }
-
-  .stat-icon {
-    width: 40px;
-    height: 40px;
-    font-size: 20px;
-  }
-
-  .stat-value {
-    font-size: 20px;
-  }
-
-  .stat-label {
-    font-size: 12px;
-  }
-
-  .income-stat {
-    margin-bottom: 12px;
-  }
-
-  .income-value {
-    font-size: 24px;
-  }
-
-  .income-label {
-    font-size: 13px;
-  }
-
-  .income-trend {
-    font-size: 12px;
-  }
-
-  .contact-user-drawer {
-    :deep(.el-form-item__label) {
-      font-size: 14px;
-    }
-
-    :deep(.el-input__inner),
-    :deep(.el-textarea__inner) {
-      font-size: 16px;
-    }
-  }
-
-  .data-card {
-    margin-top: 16px;
-  }
-
-  .compact-analytics-view {
-    margin-bottom: 4px;
-  }
-}
-
-@media (min-width: 769px) {
-  .analytics-data-view :deep(.responsive-data-view__cards) {
-    display: none !important;
-  }
+  .an-page { padding: 10px 10px 16px; gap: 8px; }
+  .an-btn-text { display: none; }
+  .an-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .an-metric { padding: 8px 10px; }
+  .an-metric__value { font-size: 16px; }
+  .an-grid { grid-template-columns: minmax(0, 1fr); }
+  .an-grid > .an-card:nth-child(3) { grid-column: auto; }
+  .an-mini-two { grid-template-columns: minmax(0, 1fr); }
+  .an-filter { gap: 6px; }
+  .an-filter__dim,
+  .an-filter__search,
+  .an-filter__days { width: 100%; max-width: none; flex: 1 1 100%; }
+  .an-filter :deep(.el-radio-group) { width: 100%; display: flex; }
+  .an-filter :deep(.el-radio-button) { flex: 1 1 0; }
+  .an-filter :deep(.el-radio-button__inner) { width: 100%; padding: 8px 0; }
+  .an-summary { font-size: 12px; }
+  .an-summary__spacer { flex: 1 1 100%; }
+  .an-income { gap: 12px; }
+  .an-kv-grid { grid-template-columns: minmax(0, 1fr); }
+  .an-pager { justify-content: center; }
+  .an-preview__body { max-height: 220px; }
 }
 </style>

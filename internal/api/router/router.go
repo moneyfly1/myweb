@@ -635,6 +635,11 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/analytics/retention", handlers.GetRetentionAnalytics)
 			admin.GET("/analytics/churn", handlers.GetChurnWarning)
 			admin.GET("/analytics/devices", handlers.GetDeviceAnalytics)
+			// 设备/客户端使用分析（用户分析页「设备与客户端使用」区块）：
+			// 分组统计 → 明细（抽屉）→ 对非官方客户端用户批量发升级提醒邮件
+			admin.GET("/analytics/device-usage", handlers.GetDeviceUsageAnalytics)
+			admin.GET("/analytics/device-usage/detail", handlers.GetDeviceUsageDetail)
+			admin.POST("/analytics/device-usage/notify-upgrade", handlers.NotifyClientUpgrade)
 			admin.GET("/analytics/revenue", handlers.GetRevenueAnalytics)
 
 			// 邮件模板

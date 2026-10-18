@@ -1230,3 +1230,109 @@ func getFloatFromData(data map[string]interface{}, key string, defaultValue floa
 	}
 	return defaultValue
 }
+
+// GetClientUpgradeNoticeTemplate 「建议升级到官方客户端」通知邮件。
+//
+// 用途（2026-10-16 需求）：后台用户分析里筛出**没在用官方客户端**（第三方
+// Shadowrocket / Clash / v2rayN …）的用户，批量发信引导他们换到官方客户端
+// MoneyFly，并给出**带国内加速镜像**的下载地址。
+//
+// links 里放各平台的下载链接（键名固定，见 handlers.ClientUpgradeLinks）：
+//
+//	windows / macos_arm / macos_intel / android / ios / page
+//
+// 为什么要强调镜像：客户端安装包托管在 GitHub Releases，国内直连极慢或打不开；
+// 本站 /api/v1/download/gh?key=… 会自动 302 到当前可用的国内加速镜像，
+// 且永远指向最新版本 —— 邮件里给这个地址，用户点开就能下。
+func (b *EmailTemplateBuilder) GetClientUpgradeNoticeTemplate(
+	username, currentClient string, links map[string]string, note string) string {
+	if strings.TrimSpace(username) == "" {
+		username = "你好"
+	}
+	if strings.TrimSpace(currentClient) == "" {
+		currentClient = "第三方客户端"
+	}
+
+	btn := func(label, url string) string {
+		if strings.TrimSpace(url) == "" {
+			return ""
+		}
+		return fmt.Sprintf(
+			`<a href="%s" style="display:inline-block;padding:11px 22px;margin:6px 10px 6px 0;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">%s</a>`,
+			url, label)
+	}
+
+	var rows strings.Builder
+	row := func(label, url, hint string) {
+		if strings.TrimSpace(url) == "" {
+			return
+		}
+		rows.WriteString(fmt.Sprintf(
+			`<tr><td style="padding:10px 12px;border-bottom:1px solid #eef2f7;font-size:14px;color:#111827;font-weight:600;">%s</td>`+
+				`<td style="padding:10px 12px;border-bottom:1px solid #eef2f7;font-size:13px;"><a href="%s" style="color:#2563eb;text-decoration:none;">%s</a></td>`+
+				`<td style="padding:10px 12px;border-bottom:1px solid #eef2f7;font-size:12px;color:#6b7280;">%s</td></tr>`,
+			label, url, url, hint))
+	}
+	row("Windows", links["windows"], "安装包 · 国内加速镜像")
+	row("macOS（Apple 芯片）", links["macos_arm"], "M 系列芯片 · 国内加速镜像")
+	row("macOS（Intel）", links["macos_intel"], "Intel 芯片 · 国内加速镜像")
+	row("Android", links["android"], "APK 直装 · 国内加速镜像")
+	row("iOS", links["ios"], "iPhone / iPad 安装说明")
+
+	extra := ""
+	if strings.TrimSpace(note) != "" {
+		extra = fmt.Sprintf(
+			`<div style="margin-top:16px;padding:12px 14px;background:#fffbeb;border-left:3px solid #f59e0b;border-radius:6px;font-size:13px;color:#7c5200;line-height:1.7;">%s</div>`,
+			note)
+	}
+
+	content := fmt.Sprintf(`
+		<p style="font-size:15px;color:#111827;line-height:1.8;margin:0 0 12px;">%s，你好：</p>
+		<p style="font-size:14px;color:#374151;line-height:1.8;margin:0 0 14px;">
+			我们检测到你目前在使用 <b>%s</b> 连接我们的服务。为了让你用得更稳、更省心，
+			建议换成我们的官方客户端 <b>MoneyFly</b>：
+		</p>
+		<ul style="font-size:14px;color:#374151;line-height:1.9;margin:0 0 18px;padding-left:20px;">
+			<li>节点自动选择与一键测速，线路切换更快更稳</li>
+			<li>内置分流规则，国内网站不受影响，无需手工配置</li>
+			<li>订阅到期、设备数量等状态一目了然，支持自动更新</li>
+			<li>遇到问题可以直接在客户端里看日志、找客服，排查更快</li>
+		</ul>
+		<div style="margin:0 0 20px;">%s%s%s%s</div>
+		<table style="width:100%%;border-collapse:collapse;margin:0 0 12px;border:1px solid #eef2f7;border-radius:8px;overflow:hidden;">
+			<thead><tr style="background:#f8fafc;">
+				<th style="padding:10px 12px;text-align:left;font-size:13px;color:#6b7280;">平台</th>
+				<th style="padding:10px 12px;text-align:left;font-size:13px;color:#6b7280;">下载地址（已附国内加速镜像）</th>
+				<th style="padding:10px 12px;text-align:left;font-size:13px;color:#6b7280;">说明</th>
+			</tr></thead>
+			<tbody>%s</tbody>
+		</table>
+		<p style="font-size:13px;color:#6b7280;line-height:1.8;margin:8px 0 0;">
+			提示：安装新版客户端后，用同一个账号登录即可继续使用现有订阅，无需重新购买。
+			若同时保留旧客户端，请确认新版能正常连接后再卸载。
+		</p>%s`,
+		htmlEscape(username), htmlEscape(currentClient),
+		btn("立即下载官方客户端", links["page"]),
+		btn("Windows 下载", links["windows"]),
+		btn("Android 下载", links["android"]),
+		btn("macOS 下载", firstNonEmpty(links["macos_arm"], links["macos_intel"])),
+		rows.String(), extra)
+
+	return b.GetBaseTemplate("建议升级到官方客户端 MoneyFly", content,
+		"本邮件由系统自动发送。如果你已在使用官方客户端，请忽略本邮件。")
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// htmlEscape 简单转义（模板里的用户名等变量来自数据库，避免注入到 HTML）
+func htmlEscape(s string) string {
+	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&#39;")
+	return r.Replace(s)
+}
