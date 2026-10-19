@@ -184,3 +184,33 @@ func TestStrongPlatformOSBeatsGenericAppleUA(t *testing.T) {
 		}
 	}
 }
+
+// 机型标识解析（用户反馈：抽屉里出现「iPhone 18.2」这种假机型）
+//
+// UIKit 上报的机型标识是 iPhone18,2 这种形式。老解析器把逗号换成点写进
+// device_model，得到 "iPhone 18.2" —— 看起来就是系统版本号，用户会以为
+// 机型识别错了。现在：认识的机型查表给中文/市场名，不认识的保留原始标识。
+func TestIPhoneModelIDParsing(t *testing.T) {
+	dm := NewDeviceManager()
+	cases := []struct {
+		ua    string
+		model string
+	}{
+		// UA 形如 "Shadowrocket/3896 CFNetwork/3860.700.1 Darwin/25.6.0 iPhone18,2"
+		{"Shadowrocket/3896 CFNetwork/3860.700.1 Darwin/25.6.0 iPhone18,2", "iPhone 17 Pro Max"},
+		{"Shadowrocket/3896 CFNetwork/3860.700.1 Darwin/25.6.0 iPhone18,1", "iPhone 17 Pro"},
+		{"Shadowrocket/3896 CFNetwork/3860.700.1 Darwin/25.6.0 iPhone17,1", "iPhone 16 Pro"},
+		{"Shadowrocket/3896 CFNetwork/3860.700.1 Darwin/25.6.0 iPhone16,1", "iPhone 15 Pro"},
+		// 未收录的未来机型：保留标识，绝不写成 "iPhone 19.7"
+		{"Shadowrocket/3445 CFNetwork/3896.100.1.2.1 Darwin/27.0.0 iPhone19,7", "iPhone19,7"},
+		// iPad 同理
+		{"Shadowrocket/3896 CFNetwork/3860.700.1 Darwin/25.6.0 iPad16,3", "iPad Pro 11英寸 (M4)"},
+		{"Shadowrocket/3896 CFNetwork/3860.700.1 Darwin/25.6.0 iPad11,1", "iPad11,1"},
+	}
+	for _, c := range cases {
+		info := dm.ParseUserAgent(c.ua)
+		if info.DeviceModel != c.model {
+			t.Errorf("UA=%q 机型应为 %q，实际 %q", c.ua, c.model, info.DeviceModel)
+		}
+	}
+}
