@@ -113,6 +113,9 @@ func main() {
 			"clash": true, "clash meta": true, "v2ray": true, "xray": true,
 			"shadowsocks": true, "sing-box": true, "unknown": true, "": true,
 			"自动化/非客户端": true, "desktop（win/macos）": true,
+			// 老解析器把 Android 的 v2rayNG 认成了 Windows 的 v2rayN（含子串），
+			// 允许用新结果纠正（同 UA 同结果时不会产生无意义写入）
+			"v2rayn": true,
 		}
 		isGeneric := func(p *string) bool {
 			if p == nil {
@@ -150,11 +153,36 @@ func main() {
 		}
 
 		setCorrigible(d.SoftwareName, "software_name", info.SoftwareName)
-		setCorrigible(d.SoftwareVersion, "software_version", info.SoftwareVersion)
-		setCorrigible(d.OSName, "os_name", info.OSName)
-		setIfBlank(d.OSVersion, "os_version", info.OSVersion)
-		setIfBlank(d.DeviceModel, "device_model", info.DeviceModel)
-		setIfBlank(d.DeviceBrand, "device_brand", info.DeviceBrand)
+		softwareChanged := updates["software_name"] != nil
+		if softwareChanged {
+			// 软件名被纠正（旧解析写错了客户端）时，同一行的版本/系统/机型字段
+			// 大概率也是那次错误的连带产物（例：v2rayNG 被当成 Windows 的
+			// v2rayN，os_name 一并错了）→ 用新结果覆盖，不再死守"只改空值"。
+			forceField := func(cur *string, col, val string) {
+				if val == "" || strings.EqualFold(val, "unknown") {
+					return
+				}
+				if cur != nil && strings.EqualFold(strings.TrimSpace(*cur), strings.TrimSpace(val)) {
+					return
+				}
+				if _, exists := updates[col]; exists {
+					return
+				}
+				updates[col] = val
+				changedFields = append(changedFields, col)
+			}
+			forceField(d.SoftwareVersion, "software_version", info.SoftwareVersion)
+			forceField(d.OSName, "os_name", info.OSName)
+			setIfBlank(d.OSVersion, "os_version", info.OSVersion)
+			setIfBlank(d.DeviceModel, "device_model", info.DeviceModel)
+			setIfBlank(d.DeviceBrand, "device_brand", info.DeviceBrand)
+		} else {
+			setCorrigible(d.SoftwareVersion, "software_version", info.SoftwareVersion)
+			setCorrigible(d.OSName, "os_name", info.OSName)
+			setIfBlank(d.OSVersion, "os_version", info.OSVersion)
+			setIfBlank(d.DeviceModel, "device_model", info.DeviceModel)
+			setIfBlank(d.DeviceBrand, "device_brand", info.DeviceBrand)
+		}
 
 		// device_type：只有 unknown/空才改
 		if info.DeviceType != "" && (d.DeviceType == nil ||
