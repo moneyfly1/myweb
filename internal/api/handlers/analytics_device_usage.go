@@ -374,3 +374,189 @@ func parsePageLimit(c *gin.Context, defLimit, maxLimit int) (int, int) {
 	}
 	return page, limit
 }
+
+// ---------------------------------------------------------------------------
+// 「按用户」视角：一个用户一行，直接看出他在用什么软件/版本，并能一键发升级通知
+//
+// 需求（2026-10-19）：管理员要看到「哪些用户用的是哪些软件版本」，并且点这个用户
+// 就能给他发「安装官方客户端」的通知邮件。原来的分组统计只能"从分组下钻到设备"，
+// 反过来查人要多点两步 —— 这里补一个用户维度的列表。
+//
+// 实现：两步查询（先按用户分页，再取这些用户的设备聚合成标签），避免大表全量扫。
+// ---------------------------------------------------------------------------
+
+// DeviceUsageUserRow 一个用户的使用情况
+type DeviceUsageUserRow struct {
+	UserID      uint     `json:"user_id"`
+	Username    string   `json:"username"`
+	Email       string   `json:"email"`
+	UserActive  bool     `json:"user_active"`
+	Devices     int64    `json:"devices"`
+	Clients     []string `json:"clients"`      // 形如 ["Shadowrocket 2.0.3", "MoneyFly 2.2.30"]
+	OfficialUse bool     `json:"official_use"` // 该用户是否在用官方客户端
+	OnlyThird   bool     `json:"only_third"`   // 全部都是第三方（= 待劝升级）
+	Brands      []string `json:"brands"`       // 机型/系统摘要（最多 3 个）
+	LastAccess  string   `json:"last_access"`
+	SubStatus   string   `json:"sub_status"`
+	SubExpire   string   `json:"sub_expire"`
+}
+
+// GetDeviceUsageUsers 按用户列出「谁在用哪个软件/版本」
+// GET /api/v1/admin/analytics/device-usage/users?q=&official=all|official|third_party&days=0&page=1&limit=20
+func GetDeviceUsageUsers(c *gin.Context) {
+	db := database.GetDB()
+	q := c.Query("q")
+	official := c.DefaultQuery("official", "all")
+	days := c.DefaultQuery("days", "0")
+	page, limit := parsePageLimit(c, 20, 200)
+
+	// dim 固定用 platform（不影响筛选；只借 base 的通用条件）
+	dim := deviceUsageDim{Key: "platform", Column: "os_name"}
+	base := deviceUsageBaseQuery(db, q, official, days, dim).
+		Where("user_id IS NOT NULL")
+
+	var totalUsers int64
+	base.Session(&gorm.Session{}).Distinct("user_id").Count(&totalUsers)
+
+	type userAgg struct {
+		UserID     int64
+		Devices    int64
+		LastAccess *string
+	}
+	var aggs []userAgg
+	if err := base.Session(&gorm.Session{}).
+		Select("user_id, COUNT(*) AS devices, MAX(last_access) AS last_access").
+		Group("user_id").
+		Order("last_access DESC").
+		Offset((page - 1) * limit).Limit(limit).
+		Scan(&aggs).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "按用户聚合失败", err)
+		return
+	}
+
+	userIDs := make([]uint, 0, len(aggs))
+	for _, a := range aggs {
+		userIDs = append(userIDs, uint(a.UserID))
+	}
+	if len(userIDs) == 0 {
+		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+			"total": 0, "page": page, "limit": limit, "items": []DeviceUsageUserRow{},
+		})
+		return
+	}
+
+	// 这些用户的设备行（同一套筛选条件）→ 在内存里聚合成软件/版本标签
+	var devices []models.Device
+	base.Session(&gorm.Session{}).Where("user_id IN ?", userIDs).
+		Order("last_access DESC").Find(&devices)
+
+	type acc struct {
+		clients     []string
+		brands      []string
+		officialUse bool
+		third       bool
+	}
+	accs := map[uint]*acc{}
+	for _, d := range devices {
+		uid := uint(0)
+		if d.UserID != nil {
+			uid = uint(*d.UserID)
+		}
+		a := accs[uid]
+		if a == nil {
+			a = &acc{}
+			accs[uid] = a
+		}
+		sw := strVal(d.SoftwareName)
+		ver := strVal(d.SoftwareVersion)
+		if sw != "" {
+			label := sw
+			if ver != "" {
+				label = sw + " " + ver
+			}
+			dup := false
+			for _, c := range a.clients {
+				if c == label {
+					dup = true
+					break
+				}
+			}
+			if !dup {
+				a.clients = append(a.clients, label)
+			}
+			if strings.EqualFold(sw, officialClientName) {
+				a.officialUse = true
+			} else {
+				a.third = true
+			}
+		}
+		brand := strVal(d.DeviceModel)
+		if brand == "" {
+			brand = strVal(d.OSName)
+		}
+		if brand != "" && len(a.brands) < 3 {
+			dup := false
+			for _, b := range a.brands {
+				if b == brand {
+					dup = true
+					break
+				}
+			}
+			if !dup {
+				a.brands = append(a.brands, brand)
+			}
+		}
+	}
+
+	var users []models.User
+	db.Where("id IN ?", userIDs).Find(&users)
+	userMap := map[uint]models.User{}
+	for _, u := range users {
+		userMap[u.ID] = u
+	}
+
+	subMap := map[uint]models.Subscription{}
+	var subs []models.Subscription
+	db.Where("user_id IN ?", userIDs).Order("created_at DESC").Find(&subs)
+	for _, s := range subs {
+		if _, ok := subMap[s.UserID]; !ok {
+			subMap[s.UserID] = s
+		}
+	}
+
+	rows := make([]DeviceUsageUserRow, 0, len(aggs))
+	for _, a := range aggs {
+		uid := uint(a.UserID)
+		u := userMap[uid]
+		ac := accs[uid]
+		row := DeviceUsageUserRow{
+			UserID:     uid,
+			Username:   u.Username,
+			Email:      u.Email,
+			UserActive: u.IsActive,
+			Devices:    a.Devices,
+			LastAccess: formatAggTime(a.LastAccess),
+		}
+		if ac != nil {
+			row.Clients = ac.clients
+			row.Brands = ac.brands
+			row.OfficialUse = ac.officialUse
+			// 「只用第三方」= 没有任何官方客户端记录，且确实有第三方记录
+			row.OnlyThird = ac.third && !ac.officialUse
+		}
+		if s, ok := subMap[uid]; ok {
+			row.SubStatus = s.Status
+			if !s.ExpireTime.IsZero() {
+				row.SubExpire = s.ExpireTime.Format("2006-01-02")
+			}
+		}
+		rows = append(rows, row)
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"total": totalUsers,
+		"page":  page,
+		"limit": limit,
+		"items": rows,
+	})
+}

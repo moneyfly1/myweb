@@ -639,6 +639,8 @@ func SetupRouter() *gin.Engine {
 			// 分组统计 → 明细（抽屉）→ 对非官方客户端用户批量发升级提醒邮件
 			admin.GET("/analytics/device-usage", handlers.GetDeviceUsageAnalytics)
 			admin.GET("/analytics/device-usage/detail", handlers.GetDeviceUsageDetail)
+			// 按用户视角：一个用户一行（谁在用哪个软件/版本），可直接发升级通知
+			admin.GET("/analytics/device-usage/users", handlers.GetDeviceUsageUsers)
 			admin.POST("/analytics/device-usage/notify-upgrade", handlers.NotifyClientUpgrade)
 			admin.GET("/analytics/revenue", handlers.GetRevenueAnalytics)
 

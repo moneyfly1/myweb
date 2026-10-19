@@ -11,7 +11,7 @@
         <span class="an-hint">{{ timeRangeLabel }} · 更新于 {{ updatedAtText }}</span>
       </div>
       <div class="an-bar__right">
-        <el-button size="small" :loading="loading" @click="loadData">
+        <el-button size="small" :loading="loading" @click="loadData(); reloadCurrent(1)">
           <el-icon><Refresh /></el-icon><span class="an-btn-text">刷新</span>
         </el-button>
         <el-button size="small" :loading="exporting" @click="exportData">
@@ -136,22 +136,31 @@
 
       <!-- ============ 设备与客户端 ============ -->
       <el-tab-pane label="设备与客户端" name="devices">
+        <!-- 视图切换：按用户（谁在用哪个软件/版本）/ 按分组（软件、版本、机型的分布） -->
+        <div class="an-filter an-filter--view">
+          <el-radio-group v-model="duView" size="small" @change="onViewChange">
+            <el-radio-button label="user">按用户</el-radio-button>
+            <el-radio-button label="group">按分组</el-radio-button>
+          </el-radio-group>
+        </div>
+
         <!-- 筛选条：一行（手机端逐行堆叠） -->
         <div class="an-filter">
-          <el-select v-model="du.dim" size="small" class="an-filter__dim" @change="loadDeviceUsage(1)">
+          <el-select v-if="duView === 'group'" v-model="du.dim" size="small" class="an-filter__dim"
+            @change="loadDeviceUsage(1)">
             <el-option v-for="d in duDims" :key="d.key" :label="d.label" :value="d.key" />
           </el-select>
           <el-input v-model="du.q" size="small" class="an-filter__search" clearable
             placeholder="搜索型号 / 系统 / 客户端 / 版本"
-            @keyup.enter="loadDeviceUsage(1)" @clear="loadDeviceUsage(1)">
+            @keyup.enter="reloadCurrent(1)" @clear="reloadCurrent(1)">
             <template #prefix><el-icon><Search /></el-icon></template>
           </el-input>
-          <el-radio-group v-model="du.official" size="small" @change="loadDeviceUsage(1)">
+          <el-radio-group v-model="du.official" size="small" @change="reloadCurrent(1)">
             <el-radio-button label="all">全部</el-radio-button>
             <el-radio-button label="official">官方</el-radio-button>
             <el-radio-button label="third_party">第三方</el-radio-button>
           </el-radio-group>
-          <el-select v-model="du.days" size="small" class="an-filter__days" @change="loadDeviceUsage(1)">
+          <el-select v-model="du.days" size="small" class="an-filter__days" @change="reloadCurrent(1)">
             <el-option label="全部时间" value="0" />
             <el-option label="近 7 天" value="7" />
             <el-option label="近 30 天" value="30" />
@@ -170,13 +179,106 @@
             第三方客户端 <b>{{ duSummary.third_party_devices || 0 }}</b>（点击只看第三方）
           </span>
           <span class="an-summary__spacer"></span>
-          <el-button size="small" type="primary" plain :disabled="!selectedGroups.length"
-            @click="openNotify({ groups: selectedGroups.map(g => g.key) })">
-            提醒所选分组<span v-if="selectedGroups.length">（{{ selectedGroups.length }}）</span>
-          </el-button>
+          <template v-if="duView === 'user'">
+            <el-button size="small" type="primary" plain :disabled="!selectedUsers.length"
+              @click="notifySelectedUsers()">
+              提醒所选用户<span v-if="selectedUsers.length">（{{ selectedUsers.length }}）</span>
+            </el-button>
+          </template>
+          <template v-else>
+            <el-button size="small" type="primary" plain :disabled="!selectedGroups.length"
+              @click="openNotify({ groups: selectedGroups.map(g => g.key) })">
+              提醒所选分组<span v-if="selectedGroups.length">（{{ selectedGroups.length }}）</span>
+            </el-button>
+          </template>
         </div>
 
+        <!-- ===== 按用户：谁在用哪个软件/版本，每行可直接发升级通知 ===== -->
         <ResponsiveDataView
+          v-if="duView === 'user'"
+          :data="duUsers"
+          :fields="mobileUserFields"
+          :loading="loadingUsers"
+          :selectable="true"
+          :selected-rows="selectedUsers"
+          id-field="user_id"
+          title-field="username"
+          empty-title="暂无用户数据"
+          empty-description="换个筛选条件或时间范围试试。"
+          @selection-change="onUserSelection"
+        >
+          <template #table>
+            <el-table :data="duUsers" size="small" v-loading="loadingUsers"
+              @selection-change="onUserSelection" class="an-table">
+              <el-table-column type="selection" width="42" />
+              <el-table-column label="用户" min-width="150">
+                <template #default="{ row }">
+                  <div class="an-user">
+                    <span class="an-user__name">
+                      {{ row.username || `用户#${row.user_id}` }}
+                      <el-tag v-if="!row.user_active" size="small" type="info" effect="plain">已停用</el-tag>
+                    </span>
+                    <span class="an-sub">{{ row.email || '无邮箱' }}</span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="使用的客户端（软件 + 版本）" min-width="260">
+                <template #default="{ row }">
+                  <div class="an-clients">
+                    <el-tag v-for="c in row.clients" :key="c" size="small" effect="plain"
+                      :type="isOfficialClient(c) ? 'success' : 'warning'">{{ c }}</el-tag>
+                    <span v-if="!row.clients || !row.clients.length" class="an-sub">—</span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="devices" label="设备" width="66" align="center" />
+              <el-table-column label="机型/系统" min-width="120">
+                <template #default="{ row }">
+                  <span class="an-sub">{{ (row.brands || []).join('、') || '—' }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="last_access" label="最近活跃" width="126" />
+              <el-table-column label="订阅到期" width="100">
+                <template #default="{ row }"><span class="an-sub">{{ row.sub_expire || '—' }}</span></template>
+              </el-table-column>
+              <el-table-column label="操作" width="118" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="primary" size="small" :disabled="!row.email"
+                    @click.stop="notifySelectedUsers([row])">
+                    发送升级通知
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </template>
+          <template #header="{ item }">
+            <div class="an-user">
+              <span class="an-user__name">{{ item.username || `用户#${item.user_id}` }}</span>
+              <span class="an-sub">{{ item.email || '无邮箱' }}</span>
+            </div>
+          </template>
+          <template #field-clients="{ item }">
+            <div class="an-clients">
+              <el-tag v-for="c in (item.clients || [])" :key="c" size="small" effect="plain"
+                :type="isOfficialClient(c) ? 'success' : 'warning'">{{ c }}</el-tag>
+            </div>
+          </template>
+          <template #field-devices="{ value }"><span class="an-kv">设备 <b>{{ value }}</b></span></template>
+          <template #field-last_access="{ value }"><span class="an-sub">{{ value }}</span></template>
+          <template #actions="{ item }">
+            <el-button size="small" type="primary" plain :disabled="!item.email"
+              @click.stop="notifySelectedUsers([item])">发送升级通知</el-button>
+          </template>
+        </ResponsiveDataView>
+
+        <div v-if="duView === 'user'" class="an-pager">
+          <el-pagination background small layout="prev, pager, next, total" :total="duUserTotal"
+            :page-size="du.limit" :current-page="duUserPage" @current-change="loadDeviceUsers" />
+        </div>
+
+        <!-- ===== 按分组：软件/版本/机型的分布统计 ===== -->
+        <ResponsiveDataView
+          v-else
           :data="duGroups"
           :fields="mobileGroupFields"
           :loading="loadingGroups"
@@ -237,7 +339,7 @@
           </template>
         </ResponsiveDataView>
 
-        <div class="an-pager">
+        <div v-if="duView !== 'user'" class="an-pager">
           <el-pagination background small layout="prev, pager, next, total" :total="duGroupTotal"
             :page-size="du.limit" :current-page="du.page" @current-change="loadDeviceUsage" />
         </div>
@@ -558,6 +660,13 @@ const loadData = async () => {
 
 // ---------------- 设备与客户端使用 ----------------
 const du = reactive({ dim: 'client', q: '', official: 'all', days: '0', page: 1, limit: 15 })
+// 视图：user = 按用户（谁在用哪个软件/版本，可直接发升级通知）；group = 按分组统计
+const duView = ref('user')
+const duUsers = ref([])
+const duUserTotal = ref(0)
+const duUserPage = ref(1)
+const loadingUsers = ref(false)
+const selectedUsers = ref([])
 const duDims = ref([
   { key: 'client', label: '客户端软件' },
   { key: 'client_version', label: '客户端版本' },
@@ -603,6 +712,60 @@ const loadDeviceUsage = async (page = 1) => {
 }
 
 const onGroupSelection = (rows) => { selectedGroups.value = rows }
+const onUserSelection = (rows) => { selectedUsers.value = rows }
+
+/// 视图切换：切到哪个就加载哪个（两个视图共用同一套筛选条件）
+const onViewChange = () => {
+  if (duView.value === 'user') loadDeviceUsers(1)
+  else loadDeviceUsage(1)
+}
+
+/// 筛选条件变化：按当前视图重新加载
+const reloadCurrent = (page = 1) => {
+  if (duView.value === 'user') loadDeviceUsers(page)
+  else loadDeviceUsage(page)
+}
+
+/// 按用户列出「谁在用哪个软件/版本」
+const loadDeviceUsers = async (page = 1) => {
+  duUserPage.value = page
+  loadingUsers.value = true
+  try {
+    const res = await api.get('/admin/analytics/device-usage/users', {
+      params: {
+        q: du.q || undefined, official: du.official,
+        days: du.days, page, limit: du.limit,
+      }
+    })
+    const data = res.data?.data || {}
+    duUsers.value = data.items || []
+    duUserTotal.value = data.total || 0
+    selectedUsers.value = []
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '用户列表加载失败')
+  } finally {
+    loadingUsers.value = false
+  }
+}
+
+/// 某条客户端标签是不是官方客户端（MoneyFly）
+const isOfficialClient = (label) =>
+    (label || '').toLowerCase().startsWith('moneyfly')
+
+/// 给「选中的用户」或「指定用户」发升级通知：直接进预览抽屉，确认后才发送
+const notifySelectedUsers = (rows) => {
+  const list = (rows && rows.length ? rows : selectedUsers.value) || []
+  const ids = [...new Set(list.map(r => r.user_id).filter(Boolean))]
+  if (!ids.length) {
+    ElMessage.warning('请先勾选要提醒的用户')
+    return
+  }
+  const withoutEmail = list.filter(r => !r.email)
+  if (withoutEmail.length) {
+    ElMessage.warning(`${withoutEmail.length} 位用户没有邮箱，将自动跳过`)
+  }
+  openNotify({ userIds: ids })
+}
 
 /// 一键切到「第三方客户端」筛选（汇总行里的数字可点）
 const quickThirdParty = () => {
@@ -652,6 +815,11 @@ const loadDetail = async (page = 1) => {
 
 const onDetailSelection = (rows) => { detail.selected = rows }
 
+const mobileUserFields = [
+  { key: 'clients', label: '使用的客户端', fullWidth: true },
+  { key: 'devices', label: '设备' },
+  { key: 'last_access', label: '最近活跃' }
+]
 const mobileGroupFields = [
   { key: 'devices', label: '设备' },
   { key: 'users', label: '用户' },
@@ -845,7 +1013,8 @@ const exportData = async () => {
 
 onMounted(() => {
   loadData()
-  loadDeviceUsage(1)
+  loadDeviceUsage(1) // 汇总行/分组的数字始终要有
+  loadDeviceUsers(1) // 默认展示「按用户」视图
 })
 </script>
 
@@ -958,6 +1127,9 @@ onMounted(() => {
   margin-bottom: 8px;
 }
 .an-filter--drawer { margin-bottom: 10px; }
+.an-filter--view { margin-bottom: 6px; }
+.an-clients { display: flex; flex-wrap: wrap; gap: 4px; }
+.an-clients .el-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .an-filter__dim { width: 148px; }
 .an-filter__search { width: 240px; flex: 1 1 200px; max-width: 320px; }
 .an-filter__days { width: 112px; }
