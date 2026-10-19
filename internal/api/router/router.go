@@ -601,6 +601,8 @@ func SetupRouter() *gin.Engine {
 			admin.GET("/backup/remote/list", handlers.ListRemoteBackupContents)
 			admin.POST("/backup/restore", handlers.RestoreBackup)
 
+			// 日志全局搜索：一个搜索框搜出某用户跨 7 类日志的全部记录
+			admin.GET("/logs/global-search", handlers.GetGlobalLogSearch)
 			admin.GET("/logs/audit", handlers.GetAuditLogs)
 			admin.GET("/dashboard/activity", handlers.GetDashboardActivity)
 			admin.GET("/logs/login-attempts", handlers.GetLoginAttempts)
