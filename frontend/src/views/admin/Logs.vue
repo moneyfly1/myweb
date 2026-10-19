@@ -7,6 +7,9 @@
           <p>查看和管理各类系统日志</p>
         </div>
       </template>
+      <!-- 全局搜索：一个搜索框把这个用户的**全部**日志一次搜出来（不再逐个 Tab 搜） -->
+      <GlobalLogSearch />
+
       <!-- 移动端：7 个 tab 横排 ≈654px（390px 屏幕只露 3 个）→ 下拉导航 -->
       <el-tabs v-model="activeTab" class="logs-tabs-host tabs-wrap-mobile">
         <el-tab-pane label="注册日志" name="registration">
@@ -40,6 +43,7 @@
 defineOptions({ name: 'AdminLogs' })
 
 import { ref } from 'vue'
+import GlobalLogSearch from './logs/GlobalLogSearch.vue'
 import RegistrationLogs from './logs/RegistrationLogs.vue'
 import SubscriptionLogs from './logs/SubscriptionLogs.vue'
 import BalanceLogs from './logs/BalanceLogs.vue'

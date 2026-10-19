@@ -264,6 +264,9 @@
             </div>
           </template>
           <template #field-devices="{ value }"><span class="an-kv">设备 <b>{{ value }}</b></span></template>
+          <template #field-brands="{ item }">
+            <span class="an-sub">{{ (item.brands || []).join('、') || '—' }}</span>
+          </template>
           <template #field-last_access="{ value }"><span class="an-sub">{{ value }}</span></template>
           <template #actions="{ item }">
             <el-button size="small" type="primary" plain :disabled="!item.email"
@@ -272,8 +275,9 @@
         </ResponsiveDataView>
 
         <div v-if="duView === 'user'" class="an-pager">
-          <el-pagination background small layout="prev, pager, next, total" :total="duUserTotal"
-            :page-size="du.limit" :current-page="duUserPage" @current-change="loadDeviceUsers" />
+          <PaginationBar :current-page="duUserPage" :page-size="du.limit" :total="duUserTotal"
+            :page-sizes="[20, 50, 100, 200]"
+            @update:current-page="loadDeviceUsers" @update:page-size="onLimitChange" />
         </div>
 
         <!-- ===== 按分组：软件/版本/机型的分布统计 ===== -->
@@ -340,8 +344,9 @@
         </ResponsiveDataView>
 
         <div v-if="duView !== 'user'" class="an-pager">
-          <el-pagination background small layout="prev, pager, next, total" :total="duGroupTotal"
-            :page-size="du.limit" :current-page="du.page" @current-change="loadDeviceUsage" />
+          <PaginationBar :current-page="du.page" :page-size="du.limit" :total="duGroupTotal"
+            :page-sizes="[20, 50, 100, 200]"
+            @update:current-page="loadDeviceUsage" @update:page-size="onLimitChange" />
         </div>
       </el-tab-pane>
 
@@ -471,8 +476,9 @@
       </ResponsiveDataView>
 
       <div class="an-pager">
-        <el-pagination background small layout="prev, pager, next, total" :total="detail.total"
-          :page-size="detail.limit" :current-page="detail.page" @current-change="loadDetail" />
+        <PaginationBar :current-page="detail.page" :page-size="detail.limit" :total="detail.total"
+          :page-sizes="[20, 50, 100]"
+          @update:current-page="loadDetail" @update:page-size="onDetailLimitChange" />
       </div>
       <div class="an-drawer-tip">
         共 {{ detail.total }} 条设备记录 · 去重后 {{ detail.distinctUsers }} 人（同一个人多台设备只发一封）
@@ -659,7 +665,7 @@ const loadData = async () => {
 }
 
 // ---------------- 设备与客户端使用 ----------------
-const du = reactive({ dim: 'client', q: '', official: 'all', days: '0', page: 1, limit: 15 })
+const du = reactive({ dim: 'client', q: '', official: 'all', days: '0', page: 1, limit: 20 })
 // 视图：user = 按用户（谁在用哪个软件/版本，可直接发升级通知）；group = 按分组统计
 const duView = ref('user')
 const duUsers = ref([])
@@ -718,6 +724,16 @@ const onUserSelection = (rows) => { selectedUsers.value = rows }
 const onViewChange = () => {
   if (duView.value === 'user') loadDeviceUsers(1)
   else loadDeviceUsage(1)
+}
+
+/// 每页条数变化：改 limit 后回到第 1 页（参考其他列表的交互）
+const onLimitChange = (size) => {
+  du.limit = size
+  reloadCurrent(1)
+}
+const onDetailLimitChange = (size) => {
+  detail.limit = size
+  loadDetail(1)
 }
 
 /// 筛选条件变化：按当前视图重新加载
@@ -818,6 +834,7 @@ const onDetailSelection = (rows) => { detail.selected = rows }
 const mobileUserFields = [
   { key: 'clients', label: '使用的客户端', fullWidth: true },
   { key: 'devices', label: '设备' },
+  { key: 'brands', label: '机型/系统', fullWidth: true },
   { key: 'last_access', label: '最近活跃' }
 ]
 const mobileGroupFields = [
