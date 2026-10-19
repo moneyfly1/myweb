@@ -75,11 +75,13 @@ func deviceUsageBaseQuery(db *gorm.DB, q, official, days string, dim deviceUsage
 		tx = tx.Where("LOWER(TRIM(COALESCE(software_name, ''))) = ?", strings.ToLower(officialClientName))
 	case "third_party", "unofficial":
 		// 第三方客户端 = 用户设备上的其它客户端。**排除自动化/抓取类 UA**
-		// （curl / Go-http-client / python-requests / okhttp …）：
+		// （curl / Go-http-client / python-requests / okhttp / 链接预览爬虫 …）：
 		// 它们不是用户设备，混进来会让"待升级用户"数字虚高（用户反馈
-		// "很多未知设备"，其中一部分就是这些）。
+		// "很多未知设备"，其中一部分就是这些）。口径与 UA 归类保持一致：
+		// 软件名命中自动化名单，或系统已被归为「自动化/非客户端」。
 		tx = tx.Where("LOWER(TRIM(COALESCE(software_name, ''))) <> ?", strings.ToLower(officialClientName)).
-			Where("LOWER(COALESCE(software_name, '')) NOT IN ?", automationSoftwareNames())
+			Where("LOWER(COALESCE(software_name, '')) NOT IN ?", automationSoftwareNames()).
+			Where("LOWER(TRIM(COALESCE(os_name, ''))) <> ?", "自动化/非客户端")
 	}
 
 	if n, err := strconv.Atoi(strings.TrimSpace(days)); err == nil && n > 0 {
@@ -103,10 +105,14 @@ func deviceUsageBaseQuery(db *gorm.DB, q, official, days string, dim deviceUsage
 	return tx
 }
 
-// automationSoftwareNames 自动化/抓取类客户端（不是用户设备），统计第三方用户时排除
+// automationSoftwareNames 自动化/抓取类客户端（不是用户设备），统计第三方用户时排除。
+// 与 device 包 UA 归类保持同一份名单：软件名命中即视为抓取请求。
 func automationSoftwareNames() []string {
 	return []string{"curl", "wget", "go-http-client", "python-requests", "python-urllib",
-		"okhttp", "postman", "axios", "node-fetch", "java", "apache-httpclient", "libwww-perl"}
+		"okhttp", "postman", "axios", "node-fetch", "java", "apache-httpclient", "libwww-perl",
+		"got", "undici", "java-http-client",
+		// 链接预览爬虫 / 订阅链接被直接请求（UA 本身就是链接）
+		"链接预览", "直接抓取订阅", "协议链接请求", "反垃圾检测"}
 }
 
 // DeviceUsageGroup 一条分组统计
@@ -143,6 +149,25 @@ func GetDeviceUsageAnalytics(c *gin.Context) {
 
 	var officialDevices int64
 	deviceUsageBaseQuery(db, q, "official", days, dim).Count(&officialDevices)
+
+	// 自动化请求数（curl/脚本/链接预览爬虫）：单列出来，让"设备总数"能被解释，
+	// 也便于前端提示「其中 N 台不是用户设备」。
+	var automationDevices int64
+	deviceUsageBaseQuery(db, q, "all", days, dim).
+		Where("LOWER(TRIM(COALESCE(os_name, ''))) = ?", "自动化/非客户端").
+		Count(&automationDevices)
+
+	// 第三方设备数：base 已经把自动化请求排除掉时（official=third_party），
+	// totalDevices 里本来就没有它们，不能重复减。
+	thirdPartyDevices := totalDevices - officialDevices
+	switch strings.ToLower(strings.TrimSpace(official)) {
+	case "third_party", "unofficial":
+	default:
+		thirdPartyDevices -= automationDevices
+	}
+	if thirdPartyDevices < 0 {
+		thirdPartyDevices = 0
+	}
 
 	var groupTotal int64
 	base.Session(&gorm.Session{}).Distinct(dim.Column).Count(&groupTotal)
@@ -204,7 +229,8 @@ func GetDeviceUsageAnalytics(c *gin.Context) {
 			"devices":             totalDevices,
 			"users":               totalUsers,
 			"official_devices":    officialDevices,
-			"third_party_devices": totalDevices - officialDevices,
+			"third_party_devices": thirdPartyDevices,
+			"automation_devices":  automationDevices,
 		},
 		"groups": groups,
 	})

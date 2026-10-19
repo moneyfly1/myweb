@@ -178,6 +178,12 @@
           <span class="an-warn an-clickable" @click="quickThirdParty">
             第三方客户端 <b>{{ duSummary.third_party_devices || 0 }}</b>（点击只看第三方）
           </span>
+          <template v-if="duSummary.automation_devices">
+            <span class="an-dot">·</span>
+            <el-tooltip content="curl / 脚本 / 链接预览爬虫等抓取请求，不是用户设备" placement="top">
+              <span class="an-muted">其中自动化请求 <b>{{ duSummary.automation_devices }}</b> 台（非设备）</span>
+            </el-tooltip>
+          </template>
           <span class="an-summary__spacer"></span>
           <template v-if="duView === 'user'">
             <el-button size="small" type="primary" plain :disabled="!selectedUsers.length"
@@ -1165,6 +1171,8 @@ onMounted(() => {
 .an-dot { color: #dcdfe6; }
 .an-ok b { color: #67c23a; }
 .an-warn b { color: #e6a23c; }
+.an-muted { color: #909399; }
+.an-muted b { color: #909399; }
 .an-clickable { cursor: pointer; }
 .an-clickable:hover { text-decoration: underline; }
 
