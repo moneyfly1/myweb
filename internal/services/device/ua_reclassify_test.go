@@ -69,6 +69,7 @@ func TestAutomationUAClassification(t *testing.T) {
 //  1. UA 本身就是我们的订阅链接（脚本/中间层转发）；
 //  2. 社交/IM 的链接预览爬虫（钉钉、WhatsApp、微信、TelegramBot…）；
 //  3. 客户端写了但规则没覆盖（FlC=FlClash、CMFAndroid、ClashX、V2Box、SagerNet…）。
+//
 // 前两类不是设备，第三类必须识别出来 —— 本测试逐条锁住。
 func TestParseUserAgentReclassifiesUnknownRound2(t *testing.T) {
 	dm := NewDeviceManager()
@@ -129,5 +130,57 @@ func TestSystemOnlyUserAgentKeepsHonestUnknown(t *testing.T) {
 	}
 	if info.SoftwareName != "Unknown" {
 		t.Errorf("Dalvik UA 没有客户端标识，软件名应保持 Unknown，实际 %q", info.SoftwareName)
+	}
+}
+
+// 第三轮收尾：生产库里最后的零散来源。
+func TestParseUserAgentReclassifiesUnknownRound3(t *testing.T) {
+	dm := NewDeviceManager()
+
+	cases := []struct {
+		ua       string
+		software string
+		osName   string
+	}{
+		// 路由器插件：UA 就是 "passwall/26.7.1"
+		{"passwall/26.7.1", "PassWall", "OpenWrt"},
+		{"passwall/26.8.26", "PassWall", "OpenWrt"},
+		// 节点协议链接被当 UA 发过来
+		{"vmess://YXV0bzpmMmU2MWExNy04ZjA1LTQ1N2QtZDUxNy05OWQzZjdhZjVmZDVAMTU0Lj", "协议链接请求", "自动化/非客户端"},
+		// 容器健康检查 / 反垃圾脚本
+		{"container_curl", "curl", "自动化/非客户端"},
+		{"antispam/1.0.0", "反垃圾检测", "自动化/非客户端"},
+		// 只报 CFNetwork/Darwin 的 Apple 平台请求：OS 能定到 iOS，软件名保持 Unknown
+		{"SFMainland_Store_Pro/9.89.0.1 CFNetwork/3826.500.131 Darwin/24.5.0", "Unknown", "iOS"},
+		{"V2Guard/8 CFNetwork/3860.600.12 Darwin/25.5.0", "V2Guard", "iOS"},
+	}
+
+	for _, c := range cases {
+		info := dm.ParseUserAgent(c.ua)
+		if info.SoftwareName != c.software {
+			t.Errorf("UA=%q 软件名应为 %q，实际 %q", c.ua, c.software, info.SoftwareName)
+		}
+		if info.OSName != c.osName {
+			t.Errorf("UA=%q 系统应为 %q，实际 %q", c.ua, c.osName, info.OSName)
+		}
+	}
+}
+
+// 平台专属客户端的归属必须压过 UA 里的通用段：
+// 同一形状的 "CFNetwork/Darwin" UA，iOS 客户端要判 iOS、桌面客户端要判 macOS。
+func TestStrongPlatformOSBeatsGenericAppleUA(t *testing.T) {
+	dm := NewDeviceManager()
+	cases := map[string]string{
+		"Shadowrocket/3860.700.2 CFNetwork/3860.700.1 Darwin/24.6.0":             "iOS",
+		"V2Box/10.1.5 CFNetwork/3860.700.1 Darwin/24.6.0":                        "iOS",
+		"V2rayU/4.2.2 CFNetwork/1410.4 Darwin/22.6.0":                            "macOS",
+		"ClashX/1.119.0 (com.west2online.ClashX; macOS 26.7.1) Alamofire/5.10.2": "macOS",
+		"v2rayNG/1.9.16": "Android",
+		"MoneyFly/2.2.31 (Windows NT 10.0; Win64; x64)": "Windows",
+	}
+	for ua, want := range cases {
+		if got := dm.ParseUserAgent(ua).OSName; got != want {
+			t.Errorf("UA=%q 系统应为 %q，实际 %q", ua, want, got)
+		}
 	}
 }
