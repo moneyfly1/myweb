@@ -45,8 +45,11 @@ import (
 	devicesvc "cboard-go/internal/services/device"
 )
 
-// 旧解析器把机型标识 "iPhone18,2" 的逗号换成点后写成的样子（"iPhone 18.2"）
-var reMangledModel = regexp.MustCompile(`^(iPhone|iPad) \d+\.\d+$`)
+// 两种「机型需要重新解析」的形态：
+//
+//	· "iPhone 18.2"  —— 旧解析器把 iPhone18,2 的逗号换成了点（看起来像系统版本号）
+//	· "iPhone13,2"   —— 旧解析器只写了 UIKit 机型标识，没翻译成市场名
+var reMangledModel = regexp.MustCompile(`^(iPhone|iPad) ?\d+[.,]\d+$`)
 
 func main() {
 	apply := flag.Bool("apply", false, "真正写库（缺省只预演，不修改任何数据）")
