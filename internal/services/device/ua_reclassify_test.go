@@ -62,3 +62,72 @@ func TestAutomationUAClassification(t *testing.T) {
 		}
 	}
 }
+
+// 第二轮再分类：把生产库里剩下的「未知」一条条对回真实来源。
+//
+// 抽样（老站活跃设备）后剩下的 Unknown 只有三类：
+//  1. UA 本身就是我们的订阅链接（脚本/中间层转发）；
+//  2. 社交/IM 的链接预览爬虫（钉钉、WhatsApp、微信、TelegramBot…）；
+//  3. 客户端写了但规则没覆盖（FlC=FlClash、CMFAndroid、ClashX、V2Box、SagerNet…）。
+// 前两类不是设备，第三类必须识别出来 —— 本测试逐条锁住。
+func TestParseUserAgentReclassifiesUnknownRound2(t *testing.T) {
+	dm := NewDeviceManager()
+
+	cases := []struct {
+		ua       string
+		software string
+		osName   string // 空表示"不校验（跨平台/无 OS 段）"
+	}{
+		// ① UA 就是订阅地址
+		{"https://dy.moneyfly.top/api/v1/subscriptions/universal/oSEtBtfvh4xELKDZDeqkow==", "直接抓取订阅", "自动化/非客户端"},
+		// ② 链接预览爬虫：不是设备
+		{"DingTalkBot-LinkService/1.0 (+https://open-doc.dingtalk.com/microapp/faquestions/ftpfeu)", "钉钉链接预览", "自动化/非客户端"},
+		{"WhatsApp/2.23.20.0", "WhatsApp 链接预览", "自动化/非客户端"},
+		{"WhatsApp/3.0.0.0 A", "WhatsApp 链接预览", "自动化/非客户端"},
+		{"Mobile/15E148 wxwork/5.0.6 MicroMessenger/7.0.1 Language/zh ColorScheme/Light wwmver/3.26.120.400", "企业微信链接预览", "自动化/非客户端"},
+		{"GoogleMessages/20.2 facebookexternalhit/1.1 Facebot Twitterbot/1.0", "Google 链接预览", "自动化/非客户端"},
+		{"TelegramBot (like TwitterBot)", "Telegram 链接预览", "自动化/非客户端"},
+		// ③ 规则未覆盖的真实客户端
+		{"FlC/0.8.61/meta/verge/Android 10; HJC-AN90", "FlClash", "Android"},
+		{"CMFAndroid/2.11.1x", "Clash Meta", "Android"},
+		{"HiddifyNext/1.1.1 (macos) like ClashMeta v2ray sing-box", "Hiddify", "macOS"},
+		{"HiddifyNext/4.0.0 (ios) like ClashMeta v2ray sing-box", "Hiddify", "iOS"},
+		{"V2rayU/4.2.2 CFNetwork/1410.4 Darwin/22.6.0", "V2rayU", "macOS"},
+		{"ClashX Meta/v1.0 (com.metacubex.ClashX.meta; build:0; macOS 12.6.9) Alamofire/5.10.2", "ClashX Meta", "macOS"},
+		{"ClashX/1.119.0 (com.west2online.ClashX; build:1.119.0; macOS 26.7.1) Alamofire/5.10.2", "ClashX", "macOS"},
+		{"V2Box 10.1.5/iOS 26.5.2", "V2Box", "iOS"},
+		{"SagerNet/0.4-rc06", "SagerNet", "Android"},
+		{"Matsuri/0.4 (Prefer Clash Format)", "Matsuri", "Android"},
+		{"AxXray/0.2-rc02", "ANXRay", "iOS"},
+		{"ToMoonClash/0.2.8", "ToMoon Clash", ""},
+	}
+
+	for _, c := range cases {
+		info := dm.ParseUserAgent(c.ua)
+		if info.SoftwareName != c.software {
+			t.Errorf("UA=%q 软件名应为 %q，实际 %q", c.ua, c.software, info.SoftwareName)
+		}
+		if c.osName != "" && info.OSName != c.osName {
+			t.Errorf("UA=%q 系统应为 %q，实际 %q", c.ua, c.osName, info.OSName)
+		}
+	}
+
+	// V2Box 的 iOS 版本号要能从 "/iOS 26.5.2" 里取到
+	if info := dm.ParseUserAgent("V2Box 10.1.5/iOS 26.5.2"); info.OSVersion != "26.5.2" {
+		t.Errorf("V2Box iOS 版本应为 26.5.2，实际 %q", info.OSVersion)
+	}
+}
+
+// 没有客户端标识、但 UA 带系统信息的请求（Android 系统 UA / Dalvik）：
+// 系统要能识别出来，软件名保持 Unknown 是诚实的（不能瞎猜客户端）。
+func TestSystemOnlyUserAgentKeepsHonestUnknown(t *testing.T) {
+	dm := NewDeviceManager()
+	ua := "Dalvik/2.1.0 (Linux; U; Android 16; PKB110 Build/BP2A.250605.015)"
+	info := dm.ParseUserAgent(ua)
+	if info.OSName != "Android" {
+		t.Errorf("Dalvik UA 系统应为 Android，实际 %q", info.OSName)
+	}
+	if info.SoftwareName != "Unknown" {
+		t.Errorf("Dalvik UA 没有客户端标识，软件名应保持 Unknown，实际 %q", info.SoftwareName)
+	}
+}

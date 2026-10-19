@@ -34,6 +34,10 @@ var (
 	reIPadModel      = regexp.MustCompile(`iPad(\d+,\d+)`)
 	reIPadPlain      = regexp.MustCompile(`iPad`)
 	reAndroidBuild   = regexp.MustCompile(`(?i);\s*([^;]+)\s*build`)
+	// 只写 iOS 不写 iPhone 标识的客户端 UA（如 "V2Box 10.1.5/iOS 26.5.2"）
+	reIOSToken = regexp.MustCompile(`(?i)(?:^|[/\s(])ios(?:[\s/),]|$)`)
+	// macOS 版本号（"macOS 12.6.9" / "Mac OS X 10.15.7" 之外的写法）
+	reMacOSVersion = regexp.MustCompile(`(?i)mac(?:\s?os\s?x?)\s*(\d+[._]\d+(?:[._]\d+)?)`)
 )
 
 type DeviceManager struct {
@@ -617,6 +621,42 @@ func (dm *DeviceManager) deactivateClashMetaAndroidAliasDuplicates(canonical *mo
 }
 
 func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
+	// ① UA 本身就是订阅链接：脚本 / 中间层把地址当作 UA 发出来，没有任何客户端标识。
+	//    这类请求既不是用户设备，也不属于任何已知客户端，必须单独归类，
+	//    否则全部堆进"未知设备"（实测生产库一次就有十几条）。
+	if strings.HasPrefix(uaLower, "http://") || strings.HasPrefix(uaLower, "https://") {
+		return "直接抓取订阅"
+	}
+
+	// ② 社交 / IM 的链接预览爬虫：用户把订阅链接发进聊天窗口，由服务端来抓一次。
+	//    它们不是设备（没有 OS、没有硬件指纹），归为「链接预览」，从设备统计里剔除。
+	previewBots := []struct{ key, name string }{
+		{"dingtalkbot", "钉钉链接预览"},
+		{"wxwork", "企业微信链接预览"},
+		{"micromessenger", "微信链接预览"},
+		{"whatsapp/", "WhatsApp 链接预览"},
+		{"googlemessages", "Google 链接预览"},
+		{"telegrambot", "Telegram 链接预览"},
+		{"telegram", "Telegram 链接预览"},
+		{"facebookexternalhit", "Facebook 链接预览"},
+		{"facebookbot", "Facebook 链接预览"},
+		{"twitterbot", "Twitter 链接预览"},
+		{"slackbot", "Slack 链接预览"},
+		{"discordbot", "Discord 链接预览"},
+		{"linkedinbot", "LinkedIn 链接预览"},
+		{"pinterestbot", "Pinterest 链接预览"},
+		{"redditbot", "Reddit 链接预览"},
+		{"bingbot", "Bing 链接预览"},
+		{"googlebot", "Google 链接预览"},
+		{"applebot", "Apple 链接预览"},
+		{"vkshare", "VK 链接预览"},
+	}
+	for _, b := range previewBots {
+		if strings.Contains(uaLower, b.key) {
+			return b.name
+		}
+	}
+
 	// Shadowrocket
 	if strings.Contains(uaLower, "shadowrocket") {
 		return "Shadowrocket"
@@ -730,6 +770,20 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		{"mihomo-party", "Mihomo Party"},
 		{"mihomo_party", "Mihomo Party"},
 		{"flclash", "FlClash"},
+		// FlClash 在 Android 上的短 UA："FlC/0.8.61/meta/verge/Android 10; HJC-AN90"
+		{"flc/", "FlClash"},
+		// macOS / iOS 上的具体客户端（UA 通常带 macos/ios 段，早识别避免落到 Unknown）
+		{"clashx meta", "ClashX Meta"},
+		{"clashx", "ClashX"},
+		{"v2rayu", "V2rayU"},
+		{"v2box", "V2Box"},
+		{"sagernet", "SagerNet"},
+		{"matsuri", "Matsuri"},
+		{"tomoonclash", "ToMoon Clash"},
+		{"axxray", "ANXRay"},
+		{"anxray", "ANXRay"},
+		// Clash Meta for Android 的短 UA："CMFAndroid/2.11.1x"
+		{"cmfandroid", "Clash Meta"},
 		{"clash.meta", "Clash Meta"},
 		{"clash-meta", "Clash Meta"},
 		{"clashmetaforandroid", "Clash Meta"},
@@ -801,8 +855,11 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 		return result
 	}
 
-	// iOS/iPadOS 识别
-	if strings.Contains(uaLower, "iphone") || strings.Contains(uaLower, "ipad") || strings.Contains(uaLower, "ipod") {
+	// iOS/iPadOS 识别。除了标准 iPhone/iPad 标识，还要认只写 "iOS" 的客户端 UA
+	// （"V2Box 10.1.5/iOS 26.5.2"、"HiddifyNext/4.0.0 (ios) like ClashMeta ..."），
+	// 否则这些真实 iOS 设备会落到"未知系统"。
+	if strings.Contains(uaLower, "iphone") || strings.Contains(uaLower, "ipad") ||
+		strings.Contains(uaLower, "ipod") || reIOSToken.MatchString(userAgent) {
 		if strings.Contains(uaLower, "ipad") {
 			result["os_name"] = "iPadOS"
 		} else {
@@ -845,10 +902,16 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 		return result
 	}
 
-	// macOS 识别
-	if strings.Contains(uaLower, "macintosh") || strings.Contains(uaLower, "mac os") {
+	// macOS 识别。除标准 "Macintosh"/"Mac OS X"，还要认 "macOS 12.6.9"（ClashX 系列 UA）。
+	// ⚠️ 不能用裸 "CFNetwork/Darwin" 判 macOS：iOS 客户端（Shadowrocket 等）也带这段
+	//    但没有 iPhone 标识，误判会把它们从 iOS 挪到 macOS。这类 UA 留给
+	//    inferOSFromSoftware 按客户端名兜底（Shadowrocket→iOS、ClashX/V2rayU→macOS）。
+	if strings.Contains(uaLower, "macintosh") || strings.Contains(uaLower, "mac os") ||
+		strings.Contains(uaLower, "macos") {
 		result["os_name"] = "macOS"
 		if match := reMacOSX.FindStringSubmatch(userAgent); len(match) > 1 {
+			result["os_version"] = strings.Replace(match[1], "_", ".", -1)
+		} else if match := reMacOSVersion.FindStringSubmatch(userAgent); len(match) > 1 {
 			result["os_version"] = strings.Replace(match[1], "_", ".", -1)
 		}
 		return result
@@ -874,10 +937,11 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 }
 
 func (dm *DeviceManager) inferOSFromSoftware(softwareName string) map[string]string {
-	iosSoftware := []string{"shadowrocket", "quantumult", "surge", "loon", "stash", "anx", "anxray", "karing", "kitsunebi", "pharos", "potatso"}
-	androidSoftware := []string{"clash for android", "clashandroid", "shadowsocks", "v2rayng", "surfboard", "nekobox", "sfa/"}
+	iosSoftware := []string{"shadowrocket", "quantumult", "surge", "loon", "stash", "anx", "anxray", "karing", "kitsunebi", "pharos", "potatso", "v2box"}
+	androidSoftware := []string{"clash for android", "clashandroid", "shadowsocks", "v2rayng", "surfboard", "nekobox", "sfa/",
+		"sagernet", "matsuri"}
 	windowsSoftware := []string{"clash for windows", "clash-verge", "clash verge", "v2rayn", "qv2ray", "clash part", "nekoray"}
-	macosSoftware := []string{"clash for mac", "clashx", "clashx pro", "surge", "v2rayu"}
+	macosSoftware := []string{"clash for mac", "clashx", "clashx pro", "v2rayu"}
 	routerSoftware := []string{"openclash", "passwall", "ssr plus+", "ssrplus"}
 	// 跨平台桌面客户端：UA 里只有客户端名、没有 OS 段（实测 "mihomo.party/v2.0.0
 	// (clash.meta)" 就是这种）→ 明确标成桌面，而不是留一个"未知"让人以为识别失败。
@@ -886,7 +950,7 @@ func (dm *DeviceManager) inferOSFromSoftware(softwareName string) map[string]str
 	// 自动化/抓取：不是用户设备
 	automationSoftware := []string{"curl", "wget", "go-http-client", "python-requests", "python-urllib",
 		"okhttp", "postman", "axios", "node-fetch", "apache-httpclient", "libwww-perl",
-		"got", "undici", "java-http-client"}
+		"got", "undici", "java-http-client", "直接抓取订阅", "链接预览"}
 
 	swLower := strings.ToLower(softwareName)
 
