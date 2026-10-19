@@ -214,3 +214,22 @@ func TestIPhoneModelIDParsing(t *testing.T) {
 		}
 	}
 }
+
+// 老机型标识也要给市场名（生产库里 iPhone13,2 这种还有上百台）
+func TestLegacyModelIDsResolve(t *testing.T) {
+	dm := NewDeviceManager()
+	cases := map[string]string{
+		"iPhone13,2": "iPhone 12",
+		"iPhone12,1": "iPhone 11",
+		"iPhone14,7": "iPhone 14",
+		"iPhone11,8": "iPhone XR",
+		"iPad11,6":   "iPad (第8代)",
+		"iPad12,1":   "iPad (第9代)",
+	}
+	for id, want := range cases {
+		ua := "Shadowrocket/3896 CFNetwork/3860.700.1 Darwin/25.6.0 " + id
+		if got := dm.ParseUserAgent(ua).DeviceModel; got != want {
+			t.Errorf("UA=%q 机型应为 %q，实际 %q", ua, want, got)
+		}
+	}
+}
