@@ -65,23 +65,6 @@ bash bt-deploy.sh        # choose menu 1
 | Script-managed (default) | just run the steps above | `certbot.timer`; **do not** click Apply/Renew in the panel |
 | Panel-managed | `CERT_MANAGER=panel bash bt-deploy.sh`, then Panel -> Website -> SSL -> Let's Encrypt -> Apply | the panel; run **menu 16** after a domain change or a panel config rewrite |
 
-### Option C — Docker (optional)
-
-```bash
-cp .env.example .env        # set SECRET_KEY (openssl rand -hex 32) and ADMIN_PASSWORD
-docker compose up -d --build
-curl -fsS http://127.0.0.1:8000/health
-```
-
-- **Fully verified** (clean Debian 12 + Docker 20.10 + Compose v2): the three-stage image builds (61 MB), then
-  `docker compose up -d` starts a container that reports `healthy` — `/health`, `/`, `/admin/login`, static assets
-  and `/api/v1/packages` all return 200, admin API login returns a token, and data survives `docker compose restart`
-  (SQLite lives in the host `./data`).
-- Change the host port with `APP_PORT=8080` in `.env`; reuse an existing build with `docker compose up -d --no-build`.
-- Slow networks: `docker build --build-arg NPM_REGISTRY=https://registry.npmmirror.com --build-arg GOPROXY=https://goproxy.cn,direct -t cboard .`
-- The runtime image **must include `tzdata`** (this repo does; verified CST inside the container) — slim images must
-  copy `/usr/share/zoneinfo`, otherwise startup fails with `Invalid _loc: Asia/Shanghai`.
-
 ---
 
 ## 2. After install — only three things to configure
@@ -153,7 +136,6 @@ File: `<project>/.env` — apply changes with **menu 8**.
 
 - The script backs up automatically before every upgrade (see above).
 - Manual (SQLite): `sqlite3 cboard.db ".backup '/root/cboard-$(date +%F).db'"`, plus copy `uploads/`.
-- Docker: back up the host `./data` and `./uploads` directories.
 - Never `cp` the live `cboard.db` while the service runs — use `.backup` or stop the service first.
 
 ---

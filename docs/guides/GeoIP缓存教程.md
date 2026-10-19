@@ -21,12 +21,6 @@
 
 ### 1. 启动 Redis（可选）
 
-#### 方式一：Docker（推荐）
-```bash
-docker run -d --name redis -p 6379:6379 redis:alpine
-```
-
-#### 方式二：本地安装
 ```bash
 # macOS
 brew install redis

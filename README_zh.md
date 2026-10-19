@@ -62,21 +62,6 @@ bash bt-deploy.sh        # 菜单选 1
 | 脚本管（默认） | 直接跑上面的步骤 | `certbot.timer` 自动续期；**面板里不要点「申请/续签」** |
 | 面板管 | `CERT_MANAGER=panel bash bt-deploy.sh`，再去 面板 → 网站 → SSL → Let's Encrypt → 申请 | 面板自动续期；换域名或面板重写配置后跑一次**菜单 16** |
 
-### 方式 C：Docker（可选）
-
-```bash
-cp .env.example .env        # 至少填 SECRET_KEY (openssl rand -hex 32) 和 ADMIN_PASSWORD
-docker compose up -d --build
-curl -fsS http://127.0.0.1:8000/health
-```
-
-- **已完整实测通过**（干净 Debian 12 + Docker 20.10 + Compose v2）：三阶段镜像构建成功（61MB）→
-  `docker compose up -d` 后容器 `healthy`，`/health`、首页、`/admin/login`、静态资源、`/api/v1/packages`
-  全部 200，后台 API 登录拿到 token；`docker compose restart` 后数据仍在（SQLite 落在宿主 `./data`）。
-- 换宿主端口：在 `.env` 里设 `APP_PORT=8080`；复用已构建镜像：`docker compose up -d --no-build`。
-- 国内构建慢可走镜像源：`docker build --build-arg NPM_REGISTRY=https://registry.npmmirror.com --build-arg GOPROXY=https://goproxy.cn,direct -t cboard .`
-- 运行时镜像**必须含 `tzdata`**（本仓库已装，实测容器内时区为 CST）；精简镜像要自己把 `/usr/share/zoneinfo` 拷进去，否则启动即报 `Invalid _loc: Asia/Shanghai`。
-
 ---
 
 ## 二、安装后要设置的（只有 3 件）
@@ -148,7 +133,6 @@ curl -fsS http://127.0.0.1:8000/health
 
 - 脚本在每次升级前会自动备份（见上表）。
 - 手动备份（SQLite）：`sqlite3 cboard.db ".backup '/root/cboard-$(date +%F).db'"`，连 `uploads/` 一起拷走即可。
-- Docker 部署：备份宿主的 `./data` 与 `./uploads` 目录。
 - 数据库文件是 `项目目录/cboard.db`（**不要**在服务运行时直接 `cp`，用 `.backup` 或先停服务）。
 
 ---
