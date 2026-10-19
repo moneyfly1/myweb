@@ -35,6 +35,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -43,6 +44,9 @@ import (
 	"cboard-go/internal/models"
 	devicesvc "cboard-go/internal/services/device"
 )
+
+// 旧解析器把机型标识 "iPhone18,2" 的逗号换成点后写成的样子（"iPhone 18.2"）
+var reMangledModel = regexp.MustCompile(`^(iPhone|iPad) \d+\.\d+$`)
 
 func main() {
 	apply := flag.Bool("apply", false, "真正写库（缺省只预演，不修改任何数据）")
@@ -151,6 +155,30 @@ func main() {
 			updates[col] = val
 			changedFields = append(changedFields, col)
 		}
+		// 机型还有一类存量错误必须纠正：老解析器把 "iPhone18,2" 的逗号换成点，
+		// 写成了 "iPhone 18.2"（看起来像系统版本号）。这种"带点号的机型"是
+		// 旧解析器的产物，允许用新结果覆盖（认识的机型会给市场名，
+		// 不认识的保留 iPhone18,2 原始标识）。
+		mangledModel := func(cur *string) bool {
+			if cur == nil {
+				return false
+			}
+			return reMangledModel.MatchString(strings.TrimSpace(*cur))
+		}
+		setDeviceModel := func(cur *string) {
+			val := info.DeviceModel
+			if val == "" || strings.EqualFold(val, "unknown") {
+				return
+			}
+			if cur != nil && strings.EqualFold(strings.TrimSpace(*cur), strings.TrimSpace(val)) {
+				return
+			}
+			if !mangledModel(cur) && !isBlank(cur) {
+				return // 正常机型（含人工标注）不动
+			}
+			updates["device_model"] = val
+			changedFields = append(changedFields, "device_model")
+		}
 
 		setCorrigible(d.SoftwareName, "software_name", info.SoftwareName)
 		softwareChanged := updates["software_name"] != nil
@@ -174,13 +202,13 @@ func main() {
 			forceField(d.SoftwareVersion, "software_version", info.SoftwareVersion)
 			forceField(d.OSName, "os_name", info.OSName)
 			setIfBlank(d.OSVersion, "os_version", info.OSVersion)
-			setIfBlank(d.DeviceModel, "device_model", info.DeviceModel)
+			setDeviceModel(d.DeviceModel)
 			setIfBlank(d.DeviceBrand, "device_brand", info.DeviceBrand)
 		} else {
 			setCorrigible(d.SoftwareVersion, "software_version", info.SoftwareVersion)
 			setCorrigible(d.OSName, "os_name", info.OSName)
 			setIfBlank(d.OSVersion, "os_version", info.OSVersion)
-			setIfBlank(d.DeviceModel, "device_model", info.DeviceModel)
+			setDeviceModel(d.DeviceModel)
 			setIfBlank(d.DeviceBrand, "device_brand", info.DeviceBrand)
 		}
 

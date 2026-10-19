@@ -1108,6 +1108,15 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 			"iPhone16,2": "iPhone 15 Pro Max",
 			"iPhone16,3": "iPhone 15",
 			"iPhone16,4": "iPhone 15 Plus",
+			"iPhone17,1": "iPhone 16 Pro",
+			"iPhone17,2": "iPhone 16 Pro Max",
+			"iPhone17,3": "iPhone 16",
+			"iPhone17,4": "iPhone 16 Plus",
+			"iPhone17,5": "iPhone 16e",
+			"iPhone18,1": "iPhone 17 Pro",
+			"iPhone18,2": "iPhone 17 Pro Max",
+			"iPhone18,3": "iPhone 17",
+			"iPhone18,4": "iPhone Air",
 		}
 
 		if match := reIPhoneModel.FindStringSubmatch(userAgent); len(match) > 1 {
@@ -1115,7 +1124,10 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 			if modelName, exists := iphoneModelMap[modelID]; exists {
 				result["device_model"] = modelName
 			} else {
-				result["device_model"] = fmt.Sprintf("iPhone %s", strings.Replace(match[1], ",", ".", -1))
+				// 未收录的机型标识原样保留（iPhone19,7）。
+				// ⚠️ 以前这里把逗号换成点，得到 "iPhone 18.2" —— 看起来像系统版本号，
+				//    抽屉里就会显示成「iPhone 18.2」，用户以为机型识别错了（实测 1800+ 行）。
+				result["device_model"] = modelID
 			}
 		} else if match := reIPhoneProMax.FindStringSubmatch(userAgent); len(match) > 1 {
 			result["device_model"] = fmt.Sprintf("iPhone %s Pro Max", match[1])
@@ -1151,11 +1163,21 @@ func (dm *DeviceManager) parseDeviceInfo(userAgent, osName string) map[string]st
 				"iPad14,4":  "iPad Pro 11英寸 (第5代)",
 				"iPad14,5":  "iPad Pro 12.9英寸 (第7代)",
 				"iPad14,6":  "iPad Pro 12.9英寸 (第7代)",
+				"iPad14,8":  "iPad Air 11英寸 (M2)",
+				"iPad14,9":  "iPad Air 11英寸 (M2)",
+				"iPad14,10": "iPad Air 13英寸 (M2)",
+				"iPad14,11": "iPad Air 13英寸 (M2)",
+				"iPad16,1":  "iPad mini (第7代)",
+				"iPad16,2":  "iPad mini (第7代)",
+				"iPad16,3":  "iPad Pro 11英寸 (M4)",
+				"iPad16,4":  "iPad Pro 11英寸 (M4)",
+				"iPad16,5":  "iPad Pro 13英寸 (M4)",
+				"iPad16,6":  "iPad Pro 13英寸 (M4)",
 			}
 			if modelName, exists := iPadModelMap[modelID]; exists {
 				result["device_model"] = modelName
 			} else {
-				result["device_model"] = fmt.Sprintf("iPad %s", strings.Replace(match[1], ",", ".", -1))
+				result["device_model"] = modelID
 			}
 		} else if strings.Contains(userAgent, "iPad Pro") {
 			if strings.Contains(userAgent, "12.9") {
