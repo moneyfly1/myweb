@@ -8,10 +8,10 @@
         </div>
       </template>
       <!-- 全局搜索：一个搜索框把这个用户的**全部**日志一次搜出来（不再逐个 Tab 搜） -->
-      <GlobalLogSearch />
+      <GlobalLogSearch v-model:searching="searching" />
 
-      <!-- 移动端：7 个 tab 横排 ≈654px（390px 屏幕只露 3 个）→ 下拉导航 -->
-      <el-tabs v-model="activeTab" class="logs-tabs-host tabs-wrap-mobile">
+      <!-- 看全局搜索结果时隐藏分类 Tab（重置后恢复），避免"搜索完回不去" -->
+      <el-tabs v-if="!searching" v-model="activeTab" class="logs-tabs-host tabs-wrap-mobile">
         <el-tab-pane label="注册日志" name="registration">
           <RegistrationLogs />
         </el-tab-pane>
@@ -41,6 +41,9 @@
 
 
 defineOptions({ name: 'AdminLogs' })
+
+/// 是否正在看全局搜索结果（GlobalLogSearch 通过 v-model:searching 同步）
+const searching = ref(false)
 
 import { ref } from 'vue'
 import GlobalLogSearch from './logs/GlobalLogSearch.vue'
