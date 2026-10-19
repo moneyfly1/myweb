@@ -38,6 +38,8 @@ var (
 	reIOSToken = regexp.MustCompile(`(?i)(?:^|[/\s(])ios(?:[\s/),]|$)`)
 	// macOS 版本号（"macOS 12.6.9" / "Mac OS X 10.15.7" 之外的写法）
 	reMacOSVersion = regexp.MustCompile(`(?i)mac(?:\s?os\s?x?)\s*(\d+[._]\d+(?:[._]\d+)?)`)
+	// UA 里显式的 iOS 版本号（"iOS 26.5.2"）
+	reIOSVersion = regexp.MustCompile(`(?i)ios\s+(\d+)[._](\d+)(?:[._](\d+))?`)
 )
 
 type DeviceManager struct {
@@ -91,6 +93,14 @@ func (dm *DeviceManager) ParseUserAgentWithHeaders(userAgent string, headers map
 	osInfo := dm.parseOSInfo(userAgent, uaLower)
 	info.OSName = osInfo["os_name"]
 	info.OSVersion = osInfo["os_version"]
+
+	// 平台专属客户端的归属强于 UA 里的通用段：
+	// Shadowrocket/Quantumult 只可能是 iOS，V2rayU/ClashX 只可能是 macOS。
+	// iOS 客户端 UA 常只带 "CFNetwork/… Darwin/…"（没有 iPhone 段），
+	// 光看 UA 会判不出，所以这里按客户端名覆盖。
+	if osName, ok := strongPlatformOS(info.SoftwareName); ok {
+		info.OSName = osName
+	}
 
 	if info.OSName == "Unknown" && info.SoftwareName != "Unknown" {
 		inferredOS := dm.inferOSFromSoftware(info.SoftwareName)
@@ -627,6 +637,12 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 	if strings.HasPrefix(uaLower, "http://") || strings.HasPrefix(uaLower, "https://") {
 		return "直接抓取订阅"
 	}
+	// 节点协议链接被当成 UA 发过来（vmess://、vless://、ss:// …），同上：不是设备
+	if strings.HasPrefix(uaLower, "vmess://") || strings.HasPrefix(uaLower, "vless://") ||
+		strings.HasPrefix(uaLower, "ss://") || strings.HasPrefix(uaLower, "ssr://") ||
+		strings.HasPrefix(uaLower, "trojan://") {
+		return "协议链接请求"
+	}
 
 	// ② 社交 / IM 的链接预览爬虫：用户把订阅链接发进聊天窗口，由服务端来抓一次。
 	//    它们不是设备（没有 OS、没有硬件指纹），归为「链接预览」，从设备统计里剔除。
@@ -691,6 +707,12 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		return "Mihomo Party"
 	}
 
+	// Android 的 v2rayNG 名字里含 "v2rayn"，必须先判，否则会被当成 Windows 的
+	// v2rayN（老 bug：Android 设备被统计成 Windows）
+	if strings.Contains(uaLower, "v2rayng") {
+		return "v2rayNG"
+	}
+
 	// Windows 客户端
 	if strings.Contains(uaLower, "v2rayn") {
 		return "v2rayN"
@@ -751,6 +773,9 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		{"got/", "got"},
 		{"undici", "undici"},
 		{"java-http-client", "Java HttpClient"},
+		// 容器/反垃圾等健康检查脚本
+		{"container_curl", "curl"},
+		{"antispam/", "反垃圾检测"},
 	}
 	for _, a := range automationUA {
 		if strings.Contains(uaLower, a.key) {
@@ -794,6 +819,9 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		{"sfm/", "sing-box"},
 		{"nekoray", "NekoRay"},
 		{"nekobox", "NekoBox"},
+		// OpenWrt PassWall 的 UA 就是 "passwall/26.8.26"（路由器插件，不是手机/桌面）
+		{"passwall", "PassWall"},
+		{"v2guard", "V2Guard"},
 		{"clash party", "Clash Party"},
 		{"clash-party", "Clash Party"},
 		{"moneyfly", "MoneyFly"},
@@ -903,9 +931,9 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 	}
 
 	// macOS 识别。除标准 "Macintosh"/"Mac OS X"，还要认 "macOS 12.6.9"（ClashX 系列 UA）。
-	// ⚠️ 不能用裸 "CFNetwork/Darwin" 判 macOS：iOS 客户端（Shadowrocket 等）也带这段
-	//    但没有 iPhone 标识，误判会把它们从 iOS 挪到 macOS。这类 UA 留给
-	//    inferOSFromSoftware 按客户端名兜底（Shadowrocket→iOS、ClashX/V2rayU→macOS）。
+	// ⚠️ 不能用裸 "CFNetwork/Darwin" 判 macOS：iOS 客户端（Shadowrocket 等）也带这段，
+	//    误判会把它们从 iOS 挪到 macOS。桌面专属客户端（ClashX/V2rayU）由
+	//    strongPlatformOS 覆盖成 macOS，所以下面这段只兜底 Apple 平台的其余情况。
 	if strings.Contains(uaLower, "macintosh") || strings.Contains(uaLower, "mac os") ||
 		strings.Contains(uaLower, "macos") {
 		result["os_name"] = "macOS"
@@ -913,6 +941,20 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 			result["os_version"] = strings.Replace(match[1], "_", ".", -1)
 		} else if match := reMacOSVersion.FindStringSubmatch(userAgent); len(match) > 1 {
 			result["os_version"] = strings.Replace(match[1], "_", ".", -1)
+		}
+		return result
+	}
+
+	// Apple 平台兜底：带 CFNetwork/Darwin 又没有 Mac 标识的 UA
+	// （App 内嵌 webview 抓订阅、只报 CFNetwork 的 iOS 客户端）→ 按 iOS 归类。
+	if strings.Contains(uaLower, "cfnetwork") || strings.Contains(uaLower, "darwin/") {
+		result["os_name"] = "iOS"
+		if match := reIOSVersion.FindStringSubmatch(userAgent); len(match) > 1 {
+			version := match[1] + "." + match[2]
+			if len(match) > 3 && match[3] != "" {
+				version += "." + match[3]
+			}
+			result["os_version"] = version
 		}
 		return result
 	}
@@ -936,6 +978,42 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 	return result
 }
 
+// strongPlatformOS 返回「只存在于单一平台」的客户端所属系统。
+//
+// 用途：覆盖 UA 里缺失/笼统的 OS 段。iOS 客户端（Shadowrocket、V2Box）常只报
+// "CFNetwork/… Darwin/…" 而没有 iPhone 标识，光看 UA 判不出平台；反过来
+// 桌面客户端（V2rayU）也是同样的 UA 形状。按客户端名定性比猜 UA 可靠。
+// 跨平台客户端（Clash Meta、sing-box、Karing、Surge、MoneyFly）不在此列。
+func strongPlatformOS(softwareName string) (string, bool) {
+	sw := strings.ToLower(softwareName)
+	iosOnly := []string{"shadowrocket", "quantumult", "loon", "stash", "kitsunebi",
+		"pharos", "potatso", "v2box", "anxray", "anx"}
+	macosOnly := []string{"clashx meta", "clashx pro", "clashx", "v2rayu"}
+	androidOnly := []string{"clash for android", "v2rayng", "surfboard", "nekobox", "sagernet", "matsuri"}
+	routerOnly := []string{"passwall", "openclash", "ssr plus+", "ssrplus"}
+	for _, s := range iosOnly {
+		if strings.Contains(sw, s) {
+			return "iOS", true
+		}
+	}
+	for _, s := range macosOnly {
+		if strings.Contains(sw, s) {
+			return "macOS", true
+		}
+	}
+	for _, s := range androidOnly {
+		if strings.Contains(sw, s) {
+			return "Android", true
+		}
+	}
+	for _, s := range routerOnly {
+		if strings.Contains(sw, s) {
+			return "OpenWrt", true
+		}
+	}
+	return "", false
+}
+
 func (dm *DeviceManager) inferOSFromSoftware(softwareName string) map[string]string {
 	iosSoftware := []string{"shadowrocket", "quantumult", "surge", "loon", "stash", "anx", "anxray", "karing", "kitsunebi", "pharos", "potatso", "v2box"}
 	androidSoftware := []string{"clash for android", "clashandroid", "shadowsocks", "v2rayng", "surfboard", "nekobox", "sfa/",
@@ -950,7 +1028,7 @@ func (dm *DeviceManager) inferOSFromSoftware(softwareName string) map[string]str
 	// 自动化/抓取：不是用户设备
 	automationSoftware := []string{"curl", "wget", "go-http-client", "python-requests", "python-urllib",
 		"okhttp", "postman", "axios", "node-fetch", "apache-httpclient", "libwww-perl",
-		"got", "undici", "java-http-client", "直接抓取订阅", "链接预览"}
+		"got", "undici", "java-http-client", "直接抓取订阅", "链接预览", "协议链接请求", "反垃圾检测"}
 
 	swLower := strings.ToLower(softwareName)
 
