@@ -259,6 +259,11 @@ type DeviceUsageDetailRow struct {
 	SubStatus       string `json:"sub_status"`
 	SubExpire       string `json:"sub_expire"`
 	UserActive      bool   `json:"user_active"`
+	// DeviceLabel / DeviceSub：抽屉里「设备」列的两行文本。
+	// 直接拼后端，前端不用自己判断该显示机型还是系统还是客户端
+	// （历史问题：抽屉里曾经整列都是「未知设备」，因为只看了 device_model）。
+	DeviceLabel string `json:"device_label"`
+	DeviceSub   string `json:"device_sub"`
 }
 
 // GetDeviceUsageDetail 分组下的用户/设备明细（抽屉）
@@ -340,6 +345,7 @@ func GetDeviceUsageDetail(c *gin.Context) {
 			LastAccess:      d.LastAccess.Format("2006-01-02 15:04"),
 			SubscriptionID:  d.SubscriptionID,
 		}
+		r.DeviceLabel, r.DeviceSub = deviceLabelOf(&d)
 		if d.FirstSeen != nil {
 			r.FirstSeen = d.FirstSeen.Format("2006-01-02 15:04")
 		}
@@ -391,6 +397,56 @@ func strVal(p *string) string {
 		return ""
 	}
 	return strings.TrimSpace(*p)
+}
+
+// deviceLabelOf 生成「设备」列的两行文本（主标题 + 副标题）。
+//
+// 历史问题：抽屉里只取 device_model，而 device_model 只有 iOS/Android 的 UA
+// 才解析得出来，于是桌面客户端、系统 UA 全都显示「未知设备」——实际信息
+// 明明都在 os_name / software_name 里。现在按信息量从高到低兜底：
+//
+//	机型（iPhone 15 Pro）> 品牌（HUAWEI）> 系统+版本（iOS 18.6 / Windows 11）
+//	> 客户端+版本（Mihomo Party 2.0.0）> 未知设备
+//
+// 副标题与主标题互补（主标题是设备就给系统，主标题是系统就给客户端），
+// 避免两行重复同一句话。
+func deviceLabelOf(d *models.Device) (label, sub string) {
+	blank := func(s string) bool {
+		v := strings.TrimSpace(strings.ToLower(s))
+		return v == "" || v == "unknown" || s == "未知" || s == "未知设备"
+	}
+
+	model := strVal(d.DeviceModel)
+	brand := strVal(d.DeviceBrand)
+	osName := strVal(d.OSName)
+	osVersion := strVal(d.OSVersion)
+	sw := strVal(d.SoftwareName)
+	swVersion := strVal(d.SoftwareVersion)
+
+	osText := strings.TrimSpace(osName)
+	if !blank(osVersion) {
+		osText = strings.TrimSpace(osText + " " + osVersion)
+	}
+	swText := strings.TrimSpace(sw)
+	if !blank(swVersion) {
+		swText = strings.TrimSpace(swText + " " + swVersion)
+	}
+
+	switch {
+	case !blank(model):
+		return model, osText
+	case !blank(brand):
+		return brand, osText
+	case !blank(osName):
+		// 系统能确定时，主标题给系统，副标题给客户端（客户端列本身也在，这里是补充）
+		if blank(sw) {
+			return osText, osVersion
+		}
+		return osText, swText
+	case !blank(sw):
+		return swText, ""
+	}
+	return "未知设备", ""
 }
 
 func round2(v float64) float64 {

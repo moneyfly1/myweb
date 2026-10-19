@@ -442,11 +442,11 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="设备" min-width="126">
+            <el-table-column label="设备" min-width="132">
               <template #default="{ row }">
                 <div class="an-user">
-                  <span>{{ row.device_model || row.device_brand || '未知设备' }}</span>
-                  <span class="an-sub">{{ row.os_name }}{{ row.os_version ? ' ' + row.os_version : '' }}</span>
+                  <span>{{ deviceLabel(row) }}</span>
+                  <span v-if="deviceSub(row)" class="an-sub">{{ deviceSub(row) }}</span>
                 </div>
               </template>
             </el-table-column>
@@ -470,9 +470,9 @@
             <span class="an-sub">{{ item.email || '无邮箱' }}</span>
           </div>
         </template>
-        <template #field-device_model="{ item }">
-          <span>{{ item.device_model || item.device_brand || '未知设备' }}</span>
-          <span class="an-sub"> {{ item.os_name }}</span>
+        <template #field-device_label="{ item }">
+          <span>{{ deviceLabel(item) }}</span>
+          <span v-if="deviceSub(item)" class="an-sub"> {{ deviceSub(item) }}</span>
         </template>
         <template #field-software_name="{ item }">
           <el-tag size="small" :type="item.official ? 'success' : 'warning'" effect="plain">{{ item.software_name }}</el-tag>
@@ -848,8 +848,31 @@ const mobileGroupFields = [
   { key: 'users', label: '用户' },
   { key: 'share', label: '占比', fullWidth: true }
 ]
+/// 抽屉「设备」列的主标题 / 副标题。
+/// 后端 deviceLabelOf 已经按「机型 > 品牌 > 系统+版本 > 客户端+版本 > 未知设备」
+/// 拼好 device_label / device_sub —— 历史问题：这里曾经只看 device_model，
+/// 而 device_model 只有 iOS/Android 才解析得出，于是整列都是「未知设备」。
+const deviceLabel = (row) => {
+  if (!row) return '未知设备'
+  if (row.device_label) return row.device_label
+  if (row.device_model) return row.device_model
+  if (row.device_brand) return row.device_brand
+  const os = [row.os_name, row.os_version].filter(Boolean).join(' ')
+  if (os) return os
+  const sw = [row.software_name, row.software_version].filter(Boolean).join(' ')
+  return sw || '未知设备'
+}
+
+const deviceSub = (row) => {
+  if (!row) return ''
+  if (row.device_sub) return row.device_sub
+  // 旧接口没有 device_label：副行仍是「系统 + 版本」
+  if (row.device_label) return ''
+  return [row.os_name, row.os_version].filter(Boolean).join(' ')
+}
+
 const mobileDetailFields = [
-  { key: 'device_model', label: '设备' },
+  { key: 'device_label', label: '设备' },
   { key: 'software_name', label: '客户端' },
   { key: 'last_access', label: '最近活跃' }
 ]
