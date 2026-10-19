@@ -707,6 +707,10 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		{"java/", "Java"},
 		{"apache-httpclient", "Apache HttpClient"},
 		{"libwww-perl", "libwww-perl"},
+		{"got (", "got"},
+		{"got/", "got"},
+		{"undici", "undici"},
+		{"java-http-client", "Java HttpClient"},
 	}
 	for _, a := range automationUA {
 		if strings.Contains(uaLower, a.key) {
@@ -880,7 +884,9 @@ func (dm *DeviceManager) inferOSFromSoftware(softwareName string) map[string]str
 	desktopSoftware := []string{"mihomo party", "mihomo.party", "mihomo", "clash verge", "clash-verge",
 		"flclash", "clash meta", "clashmeta", "sing-box", "nekoray"}
 	// 自动化/抓取：不是用户设备
-	automationSoftware := []string{"curl", "wget", "go-http-client", "python-requests", "python-urllib", "okhttp", "postman", "axios", "node-fetch", "apache-httpclient", "libwww-perl"}
+	automationSoftware := []string{"curl", "wget", "go-http-client", "python-requests", "python-urllib",
+		"okhttp", "postman", "axios", "node-fetch", "apache-httpclient", "libwww-perl",
+		"got", "undici", "java-http-client"}
 
 	swLower := strings.ToLower(softwareName)
 

@@ -2,15 +2,16 @@
 //
 // 背景（2026-10-19 用户反馈）：「用户分析里有很多未知设备，看看到底是不是未知设备」。
 // 排查结论：多数并不是"识别失败"，而是两类情况 ——
-//   1. UA 里**根本没写操作系统**：如 `mihomo.party/v2.0.0 (clash.meta)`、
-//      `clash.meta/alpha-…`、`sing-box/1.13.2`（跨平台桌面客户端/裸内核）。
-//      旧解析器把它们落到 Clash / Unknown，于是软件名与系统双"未知"。
-//   2. 自动化/抓取类 UA：`curl/8.9.1`、`Go-http-client/2.0`、`python-requests` 等，
-//      它们**不是用户设备**，以前也混进"未知设备"里拉高了数字。
+//  1. UA 里**根本没写操作系统**：如 `mihomo.party/v2.0.0 (clash.meta)`、
+//     `clash.meta/alpha-…`、`sing-box/1.13.2`（跨平台桌面客户端/裸内核）。
+//     旧解析器把它们落到 Clash / Unknown，于是软件名与系统双"未知"。
+//  2. 自动化/抓取类 UA：`curl/8.9.1`、`Go-http-client/2.0`、`python-requests` 等，
+//     它们**不是用户设备**，以前也混进"未知设备"里拉高了数字。
 //
 // 本工具用**增强后的解析器**重新解析 user_agent / device_ua，并把结果回填到：
-//   software_name / software_version / os_name / os_version /
-//   device_model / device_brand / device_type / device_name
+//
+//	software_name / software_version / os_name / os_version /
+//	device_model / device_brand / device_type / device_name
 //
 // 安全策略（默认只预演，绝不写库）：
 //   - 只覆盖「空 / Unknown」的字段，**不覆盖已有有效值**（人工标注、X-MF-* 头带来的
@@ -98,10 +99,48 @@ func main() {
 		changedFields := []string{}
 		updates := map[string]interface{}{}
 
-		// 只补「空 / Unknown」，绝不覆盖有效值
+		// 覆盖策略：
+		//   · 空 / Unknown → 一律补；
+		//   · **泛化名**（Clash / Clash Meta / V2Ray / Xray / Shadowsocks / sing-box 等旧解析
+		//     写下的粗分类）→ 允许被更具体的新结果纠正。否则存量行永远是 "Clash"，
+		//     这次"重新分类"就等于没做（实测 557 台 mihomo.party 被写成 Clash）；
+		//   · 具体名（Mihomo Party / Clash Verge / FlClash…）与人工可见的机型品牌 →
+		//     绝不覆盖。
 		isBlank := func(p *string) bool {
 			return p == nil || strings.TrimSpace(*p) == "" || strings.EqualFold(strings.TrimSpace(*p), "unknown")
 		}
+		genericNames := map[string]bool{
+			"clash": true, "clash meta": true, "v2ray": true, "xray": true,
+			"shadowsocks": true, "sing-box": true, "unknown": true, "": true,
+			"自动化/非客户端": true, "desktop（win/macos）": true,
+		}
+		isGeneric := func(p *string) bool {
+			if p == nil {
+				return true
+			}
+			return genericNames[strings.ToLower(strings.TrimSpace(*p))]
+		}
+		setCorrigible := func(cur *string, col, val string) {
+			if val == "" || strings.EqualFold(val, "unknown") {
+				return
+			}
+			if !isBlank(cur) {
+				if !isGeneric(cur) {
+					return // 已有具体值 → 不覆盖
+				}
+				// 新值同样是泛化名时不覆盖（避免把 Clash 改成 Clash Meta 之类无意义抖动）
+				if genericNames[strings.ToLower(strings.TrimSpace(val))] &&
+					strings.EqualFold(strings.TrimSpace(*cur), strings.TrimSpace(val)) {
+					return
+				}
+			}
+			if cur != nil && strings.EqualFold(strings.TrimSpace(*cur), strings.TrimSpace(val)) {
+				return
+			}
+			updates[col] = val
+			changedFields = append(changedFields, col)
+		}
+		// 机型/品牌：只补空（X-MF-* 头或人工标注更准）
 		setIfBlank := func(cur *string, col, val string) {
 			if val == "" || strings.EqualFold(val, "unknown") || !isBlank(cur) {
 				return
@@ -110,9 +149,9 @@ func main() {
 			changedFields = append(changedFields, col)
 		}
 
-		setIfBlank(d.SoftwareName, "software_name", info.SoftwareName)
-		setIfBlank(d.SoftwareVersion, "software_version", info.SoftwareVersion)
-		setIfBlank(d.OSName, "os_name", info.OSName)
+		setCorrigible(d.SoftwareName, "software_name", info.SoftwareName)
+		setCorrigible(d.SoftwareVersion, "software_version", info.SoftwareVersion)
+		setCorrigible(d.OSName, "os_name", info.OSName)
 		setIfBlank(d.OSVersion, "os_version", info.OSVersion)
 		setIfBlank(d.DeviceModel, "device_model", info.DeviceModel)
 		setIfBlank(d.DeviceBrand, "device_brand", info.DeviceBrand)
@@ -130,12 +169,16 @@ func main() {
 		}
 		st.changed++
 		finalSoftware := info.SoftwareName
-		if !isBlank(d.SoftwareName) {
+		if v, ok := updates["software_name"].(string); ok {
+			finalSoftware = v
+		} else if !isBlank(d.SoftwareName) {
 			finalSoftware = strings.TrimSpace(*d.SoftwareName)
 		}
 		st.software[finalSoftware]++
 		finalOS := info.OSName
-		if !isBlank(d.OSName) {
+		if v, ok := updates["os_name"].(string); ok {
+			finalOS = v
+		} else if !isBlank(d.OSName) {
 			finalOS = strings.TrimSpace(*d.OSName)
 		}
 		st.osDist[finalOS]++
