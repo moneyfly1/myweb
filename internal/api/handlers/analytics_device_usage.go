@@ -74,7 +74,12 @@ func deviceUsageBaseQuery(db *gorm.DB, q, official, days string, dim deviceUsage
 	case "official":
 		tx = tx.Where("LOWER(TRIM(COALESCE(software_name, ''))) = ?", strings.ToLower(officialClientName))
 	case "third_party", "unofficial":
-		tx = tx.Where("LOWER(TRIM(COALESCE(software_name, ''))) <> ?", strings.ToLower(officialClientName))
+		// 第三方客户端 = 用户设备上的其它客户端。**排除自动化/抓取类 UA**
+		// （curl / Go-http-client / python-requests / okhttp …）：
+		// 它们不是用户设备，混进来会让"待升级用户"数字虚高（用户反馈
+		// "很多未知设备"，其中一部分就是这些）。
+		tx = tx.Where("LOWER(TRIM(COALESCE(software_name, ''))) <> ?", strings.ToLower(officialClientName)).
+			Where("LOWER(COALESCE(software_name, '')) NOT IN ?", automationSoftwareNames())
 	}
 
 	if n, err := strconv.Atoi(strings.TrimSpace(days)); err == nil && n > 0 {
@@ -96,6 +101,12 @@ func deviceUsageBaseQuery(db *gorm.DB, q, official, days string, dim deviceUsage
 			like, like, like, like, like, like)
 	}
 	return tx
+}
+
+// automationSoftwareNames 自动化/抓取类客户端（不是用户设备），统计第三方用户时排除
+func automationSoftwareNames() []string {
+	return []string{"curl", "wget", "go-http-client", "python-requests", "python-urllib",
+		"okhttp", "postman", "axios", "node-fetch", "java", "apache-httpclient", "libwww-perl"}
 }
 
 // DeviceUsageGroup 一条分组统计
