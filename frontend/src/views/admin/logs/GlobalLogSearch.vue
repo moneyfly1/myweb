@@ -14,6 +14,8 @@
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
       <el-button size="small" type="primary" :loading="loading" @click="search(1)">全库搜索</el-button>
+      <!-- 重置：清空关键词并退出搜索状态，回到原来的分类日志视图 -->
+      <el-button v-if="searched" size="small" @click="reset">重置</el-button>
       <el-select v-if="searched" v-model="sources" size="small" class="gls-bar__src" multiple
         collapse-tags placeholder="全部类型" @change="search(1)">
         <el-option v-for="s in sourceOptions" :key="s.value" :label="s.label" :value="s.value" />
@@ -97,6 +99,9 @@ import PaginationBar from '@/components/PaginationBar.vue'
 /// 日志全局搜索：一个搜索框把这个用户的**全部**日志（注册/订阅/余额/佣金/
 /// 重置/邮件/管理员操作/登录）一次搜出来，按时间倒序合并。
 /// 需求（2026-10-19）：原来要在 7 个 Tab 里分别搜，查一个问题得搜 7 次。
+/// searching = true 表示"正在看全局搜索结果"（父组件据此隐藏分类 Tab）
+const emit = defineEmits(['update:searching'])
+
 const keyword = ref('')
 const lastQuery = ref('')
 const searched = ref(false)
@@ -157,6 +162,7 @@ const search = async (p = 1) => {
   loading.value = true
   searched.value = true
   lastQuery.value = q
+  emit('update:searching', true)
   try {
     const res = await api.get('/admin/logs/global-search', {
       params: {
@@ -184,12 +190,18 @@ const onLimitChange = (size) => {
   search(1)
 }
 
+/// 重置：清空关键词/来源过滤并退出搜索状态 —— 父组件据此恢复分类 Tab 视图。
+/// 没有这个出口时，搜索完只能刷新页面才能回到原来的日志分类（用户反馈）。
 const reset = () => {
+  keyword.value = ''
   searched.value = false
   items.value = []
   total.value = 0
   bySource.value = {}
   lastQuery.value = ''
+  sources.value = []
+  page.value = 1
+  emit('update:searching', false)
 }
 
 const exportCsv = () => {
@@ -251,6 +263,8 @@ const exportCsv = () => {
   .global-log-search { padding: 8px; }
   .gls-bar__input, .gls-bar__src { width: 100%; max-width: none; flex: 1 1 100%; }
   .gls-bar .el-button { width: 100%; }
+  /* 手机上「全库搜索 / 重置」各占一半，避免按钮叠成两大块 */
+  .gls-bar .el-button { width: calc(50% - 4px); flex: 0 0 calc(50% - 4px); }
   .gls-summary { font-size: 12px; }
   .gls-summary__spacer { flex: 1 1 100%; }
   .an-pager { justify-content: center; }
