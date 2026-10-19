@@ -640,6 +640,17 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		return "Shadowrocket"
 	}
 
+	// 具体客户端优先于"clash verge / clash for windows"等泛化分支 ——
+	// 实测 FlClash 的 UA 是 "FlClash/v0.9.1 clash-verge Platform/macos"，
+	// 先判 clash-verge 会把它误认成 Clash Verge。
+	if strings.Contains(uaLower, "flclash") {
+		return "FlClash"
+	}
+	if strings.Contains(uaLower, "mihomo.party") || strings.Contains(uaLower, "mihomo-party") ||
+		strings.Contains(uaLower, "mihomo_party") {
+		return "Mihomo Party"
+	}
+
 	// Windows 客户端
 	if strings.Contains(uaLower, "v2rayn") {
 		return "v2rayN"
@@ -677,12 +688,56 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		return "v2rayNG"
 	}
 
+	// 自动化/抓取类 UA：**不是用户设备**（面板健康检查、订阅探测、脚本抓取、
+	// 第三方监控）。以前它们落到 "Unknown"，让"未知设备"数字虚高。
+	// 单独归类后，分析页可以把它们排除在设备统计之外。
+	automationUA := []struct {
+		key  string
+		name string
+	}{
+		{"curl/", "curl"},
+		{"wget/", "Wget"},
+		{"go-http-client", "Go-http-client"},
+		{"python-requests", "python-requests"},
+		{"python-urllib", "python-urllib"},
+		{"okhttp", "OkHttp"},
+		{"postmanruntime", "Postman"},
+		{"axios/", "axios"},
+		{"node-fetch", "node-fetch"},
+		{"java/", "Java"},
+		{"apache-httpclient", "Apache HttpClient"},
+		{"libwww-perl", "libwww-perl"},
+	}
+	for _, a := range automationUA {
+		if strings.Contains(uaLower, a.key) {
+			return a.name
+		}
+	}
+
 	// 通用软件识别。这里必须保持有序：一些客户端 UA 会同时带上内核/兼容标识，
 	// 例如 HiddifyNext/... like ClashMeta v2ray sing-box，应优先识别真实客户端。
+	// ⚠️ 顺序原则：**具体名在前、泛化名（clash/v2ray）在后** ——
+	//    "mihomo.party/v2.0.0 (clash.meta)" 必须识别成 Mihomo Party 而不是 Clash。
 	softwares := []struct {
 		key  string
 		name string
 	}{
+		{"mihomo.party", "Mihomo Party"},
+		{"mihomo-party", "Mihomo Party"},
+		{"mihomo_party", "Mihomo Party"},
+		{"flclash", "FlClash"},
+		{"clash.meta", "Clash Meta"},
+		{"clash-meta", "Clash Meta"},
+		{"clashmetaforandroid", "Clash Meta"},
+		{"mihomo", "Mihomo"},
+		{"karing", "Karing"},
+		{"sfi/", "sing-box"},
+		{"sfa/", "sing-box"},
+		{"sfm/", "sing-box"},
+		{"nekoray", "NekoRay"},
+		{"nekobox", "NekoBox"},
+		{"clash party", "Clash Party"},
+		{"clash-party", "Clash Party"},
 		{"moneyfly", "MoneyFly"},
 		{"hiddifynext", "Hiddify"},
 		{"hiddify-next", "Hiddify"},
@@ -816,12 +871,32 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 
 func (dm *DeviceManager) inferOSFromSoftware(softwareName string) map[string]string {
 	iosSoftware := []string{"shadowrocket", "quantumult", "surge", "loon", "stash", "anx", "anxray", "karing", "kitsunebi", "pharos", "potatso"}
-	androidSoftware := []string{"clash for android", "clashandroid", "shadowsocks", "v2rayng", "surfboard"}
-	windowsSoftware := []string{"clash for windows", "clash-verge", "clash verge", "v2rayn", "qv2ray", "clash part"}
+	androidSoftware := []string{"clash for android", "clashandroid", "shadowsocks", "v2rayng", "surfboard", "nekobox", "sfa/"}
+	windowsSoftware := []string{"clash for windows", "clash-verge", "clash verge", "v2rayn", "qv2ray", "clash part", "nekoray"}
 	macosSoftware := []string{"clash for mac", "clashx", "clashx pro", "surge", "v2rayu"}
 	routerSoftware := []string{"openclash", "passwall", "ssr plus+", "ssrplus"}
+	// 跨平台桌面客户端：UA 里只有客户端名、没有 OS 段（实测 "mihomo.party/v2.0.0
+	// (clash.meta)" 就是这种）→ 明确标成桌面，而不是留一个"未知"让人以为识别失败。
+	desktopSoftware := []string{"mihomo party", "mihomo.party", "mihomo", "clash verge", "clash-verge",
+		"flclash", "clash meta", "clashmeta", "sing-box", "nekoray"}
+	// 自动化/抓取：不是用户设备
+	automationSoftware := []string{"curl", "wget", "go-http-client", "python-requests", "python-urllib", "okhttp", "postman", "axios", "node-fetch", "apache-httpclient", "libwww-perl"}
 
 	swLower := strings.ToLower(softwareName)
+
+	// 自动化/抓取：归为「非客户端」，OS 未知但不再算"用户设备"
+	for _, sw := range automationSoftware {
+		if strings.Contains(swLower, sw) {
+			return map[string]string{"os_name": "自动化/非客户端", "os_version": ""}
+		}
+	}
+
+	// 跨平台桌面客户端（UA 无 OS 段）
+	for _, sw := range desktopSoftware {
+		if strings.Contains(swLower, sw) {
+			return map[string]string{"os_name": "Desktop（Win/macOS）", "os_version": ""}
+		}
+	}
 
 	// 路由器软件
 	for _, sw := range routerSoftware {
