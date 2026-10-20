@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type TokenBlacklist struct {
@@ -38,6 +39,12 @@ func AddToBlacklist(db *gorm.DB, tokenHash string, userID uint, expiresAt time.T
 	return AddToBlacklistWithReason(db, tokenHash, userID, expiresAt, BlacklistReasonRotate)
 }
 
+// AddToBlacklistWithReason 拉黑并记录原因（按 token_hash 幂等 upsert）。
+//
+// ⚠️ 必须 upsert 而不是 Create：同一个 refresh_token 会先因「轮换」被拉黑
+// （reason=rotate，允许宽限重放），之后用户又显式登出时再次拉黑
+// （reason=logout，必须立刻失效）。若第二次 Create 撞上 uniqueIndex 静默失败，
+// 记录会一直停在 rotate —— 登出后旧 token 仍能换到新令牌（实测过的 bug）。
 func AddToBlacklistWithReason(db *gorm.DB, tokenHash string, userID uint, expiresAt time.Time, reason string) error {
 	blacklist := TokenBlacklist{
 		TokenHash: tokenHash,
@@ -45,7 +52,12 @@ func AddToBlacklistWithReason(db *gorm.DB, tokenHash string, userID uint, expire
 		ExpiresAt: expiresAt,
 		Reason:    reason,
 	}
-	return db.Create(&blacklist).Error
+	return db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "token_hash"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"user_id", "expires_at", "reason", "created_at",
+		}),
+	}).Create(&blacklist).Error
 }
 
 // BlacklistEntry 查一条未过期的黑名单记录（用于区分拉黑原因与时间）
