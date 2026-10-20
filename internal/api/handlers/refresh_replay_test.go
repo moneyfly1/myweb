@@ -38,8 +38,13 @@ func TestCanReplayRotatedToken(t *testing.T) {
 			want:  true,
 		},
 		{
-			name:  "轮换后 31 分钟（超出豁免窗口）→ 拒绝",
-			entry: models.TokenBlacklist{Reason: models.BlacklistReasonRotate, CreatedAt: now.Add(-31 * time.Minute)},
+			name:  "轮换后 23 小时（隔天才开 App）→ 仍放行",
+			entry: models.TokenBlacklist{Reason: models.BlacklistReasonRotate, CreatedAt: now.Add(-23 * time.Hour)},
+			want:  true,
+		},
+		{
+			name:  "轮换后 25 小时（超出 24 小时窗口）→ 拒绝",
+			entry: models.TokenBlacklist{Reason: models.BlacklistReasonRotate, CreatedAt: now.Add(-25 * time.Hour)},
 			want:  false,
 		},
 		{
@@ -72,8 +77,8 @@ func TestReplayWindowCoversDeployRestart(t *testing.T) {
 		t.Fatalf("持久化豁免窗口（%s）应远大于内存宽限期（%s）",
 			refreshRotateReplayWindow, refreshRotateGracePeriod)
 	}
-	if refreshRotateReplayWindow < 10*time.Minute {
-		t.Fatalf("豁免窗口（%s）至少 10 分钟，才能覆盖客户端分钟级重试与部署重启",
+	if refreshRotateReplayWindow < 1*time.Hour {
+		t.Fatalf("豁免窗口（%s）至少 1 小时，才能覆盖客户端分钟级重试、部署重启与隔天开 App",
 			refreshRotateReplayWindow)
 	}
 }

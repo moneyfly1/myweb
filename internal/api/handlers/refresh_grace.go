@@ -112,8 +112,14 @@ func startRotatedRefreshJanitor() {
 //
 // 因此：只要黑名单记录的 Reason == rotate 且发生在该窗口内，就允许用旧 refresh
 // 换一对新令牌（等价于「第一次刷新的响应丢了，重放一次」）。
-// 登出/吊销（logout / revoke）不受此豁免 —— 登出必须立刻生效。
-const refreshRotateReplayWindow = 30 * time.Minute
+//
+// 窗口定为 24 小时（用户决策 2026-10-20）：实测还有客户端本地 token 长期不更新
+// （拿着很久以前作废的 refresh 反复试，日志里 reason=blacklist_rotate），
+// 30 分钟的窗口救不回这类「隔天才打开 App」的用户。安全边界仍然成立：
+//   - 只对 reason=rotate 生效；登出（logout）、吊销（revoke）一律不豁免，登出立刻生效；
+//   - 旧 token 本身仍受 refresh JWT 的 30 天有效期约束，且用户必须存在且启用；
+//   - 轮换本身没变：每次重放都会签发全新一对令牌并继续拉黑旧值。
+const refreshRotateReplayWindow = 24 * time.Hour
 
 // logRefreshReject 记录「刷新被服务端拒绝」的原因，便于定位「用户无故退出」。
 // 只记原因码与用户 id，不记 token 明文。
