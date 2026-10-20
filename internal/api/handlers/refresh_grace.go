@@ -3,6 +3,11 @@ package handlers
 import (
 	"sync"
 	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"cboard-go/internal/models"
+	"cboard-go/internal/utils"
 )
 
 // 刷新令牌「轮换宽限期」。
@@ -95,4 +100,48 @@ func startRotatedRefreshJanitor() {
 			})
 		}
 	}()
+}
+
+// refreshRotateReplayWindow：轮换重放的持久化兜底窗口。
+//
+// 内存宽限期只有 60 秒，且服务重启就清空（每次部署都会重启）。客户端把刷新响应
+// 丢掉之后，往往要等后台定时任务下一轮（分钟级）才重试 —— 那时旧 token 早已被
+// 拉黑，于是一次网络抖动就变成「必须重新登录」。生产日志（2026-10-20）里能看到
+// 同一个 IP 每 60 秒一次 `POST /auth/refresh` 401 + `POST /auth/logout` 401 的循环，
+// 用户勾了「自动登录」照样被踢回登录页。
+//
+// 因此：只要黑名单记录的 Reason == rotate 且发生在该窗口内，就允许用旧 refresh
+// 换一对新令牌（等价于「第一次刷新的响应丢了，重放一次」）。
+// 登出/吊销（logout / revoke）不受此豁免 —— 登出必须立刻生效。
+const refreshRotateReplayWindow = 30 * time.Minute
+
+// logRefreshReject 记录「刷新被服务端拒绝」的原因，便于定位「用户无故退出」。
+// 只记原因码与用户 id，不记 token 明文。
+func logRefreshReject(c *gin.Context, reason string, userID uint) {
+	utils.LogWarn("刷新令牌被拒绝: reason=%s user_id=%d ip=%s ua=%s",
+		reason, userID, c.ClientIP(), truncateUA(c.GetHeader("User-Agent")))
+}
+
+// logRefreshReplay 记录「轮换重放」：说明客户端确实丢了响应，但会话被救回来了。
+func logRefreshReplay(c *gin.Context, userID uint, since time.Duration) {
+	utils.LogInfo("刷新令牌轮换重放: user_id=%d 距轮换=%s ip=%s ua=%s",
+		userID, since.Round(time.Second), c.ClientIP(), truncateUA(c.GetHeader("User-Agent")))
+}
+
+func truncateUA(ua string) string {
+	if len(ua) > 60 {
+		return ua[:60]
+	}
+	return ua
+}
+
+// canReplayRotatedToken 判断一条黑名单记录能否按「轮换重放」放行。
+//
+// 只有「因为轮换而被拉黑」（Reason=rotate）且发生在 replays 窗口内的记录才允许；
+// 登出/吊销属于用户或管理员的明确意图，一律不豁免。
+func canReplayRotatedToken(entry models.TokenBlacklist, now time.Time) bool {
+	if entry.Reason != models.BlacklistReasonRotate {
+		return false
+	}
+	return now.Sub(entry.CreatedAt) <= refreshRotateReplayWindow
 }
