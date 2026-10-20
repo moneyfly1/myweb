@@ -349,9 +349,8 @@ func RefreshToken(c *gin.Context) {
 
 	tokenHash := utils.HashToken(refreshToken)
 
-	// 【轮换宽限期】同一旧 token 在轮换后 60 秒内重复提交（客户端把响应丢了、
-	// 或并发/换域名重试）→ 重放上次签发的同一对令牌，而不是 401。
-	// 旧行为会让「响应丢失」直接变成「必须重新登录」（详见 refresh_grace.go）。
+	// 【轮换宽限期·内存快路径】同一旧 token 在轮换后 60 秒内重复提交（客户端把响应
+	// 丢了、并发/换域名重试）→ 重放上次签发的同一对令牌，而不是 401。
 	if cachedAccess, cachedRefresh, ok := lookupRotatedRefreshResult(tokenHash); ok {
 		utils.SuccessResponse(c, http.StatusOK, "", gin.H{
 			"access_token":  cachedAccess,
@@ -361,29 +360,43 @@ func RefreshToken(c *gin.Context) {
 		return
 	}
 
-	if models.IsTokenBlacklisted(database.GetDB(), tokenHash) {
-		utils.ErrorResponse(c, http.StatusUnauthorized, "刷新令牌已失效，请重新登录", nil)
-		return
-	}
-
 	claims, err := utils.VerifyToken(refreshToken)
 	if err != nil {
-		// token 过期是正常客户端行为，不记录安全日志
+		// token 过期/签名不符是正常客户端行为，不记录安全日志
+		logRefreshReject(c, "jwt_invalid", 0)
 		utils.ErrorResponse(c, http.StatusUnauthorized, "刷新令牌已过期", nil)
 		return
 	}
 	if claims.Type != "refresh" {
+		logRefreshReject(c, "wrong_type", claims.UserID)
 		utils.ErrorResponse(c, http.StatusUnauthorized, "令牌类型错误", nil)
 		return
 	}
 
 	db := database.GetDB()
+	if entry, blacklisted := models.GetBlacklistEntry(db, tokenHash); blacklisted {
+		// 【轮换宽限期·持久化兜底】旧实现的宽限期只活在内存里：服务重启（每次部署）
+		// 或客户端在 60 秒后才重试，同一个「响应丢失」就会变成 401 → 客户端登出。
+		// 现在按黑名单记录区分原因与时间：
+		//   · rotate 且发生在 grace 窗口内 → 视为轮换重放，正常换新令牌；
+		//   · logout / revoke、或超出窗口 → 一律拒绝（登出必须立刻生效）。
+		if canReplayRotatedToken(entry, time.Now()) {
+			logRefreshReplay(c, claims.UserID, time.Since(entry.CreatedAt))
+		} else {
+			logRefreshReject(c, "blacklist_"+entry.Reason, claims.UserID)
+			utils.ErrorResponse(c, http.StatusUnauthorized, "刷新令牌已失效，请重新登录", nil)
+			return
+		}
+	}
+
 	var user models.User
 	if err := db.Where("id = ?", claims.UserID).First(&user).Error; err != nil {
+		logRefreshReject(c, "user_missing", claims.UserID)
 		utils.ErrorResponse(c, http.StatusUnauthorized, "用户不存在或已被删除", nil)
 		return
 	}
 	if !user.IsActive {
+		logRefreshReject(c, "user_inactive", claims.UserID)
 		utils.ErrorResponse(c, http.StatusForbidden, "账户已被禁用", nil)
 		return
 	}
@@ -444,7 +457,9 @@ func Logout(c *gin.Context) {
 	}
 
 	accessTokenHash := utils.HashToken(token)
-	if err := models.AddToBlacklist(database.GetDB(), accessTokenHash, user.ID, expiresAt); err != nil {
+	// 显式登出必须立刻生效：标记 reason=logout，刷新接口不会对这类记录做「轮换重放」豁免
+	if err := models.AddToBlacklistWithReason(database.GetDB(), accessTokenHash, user.ID, expiresAt,
+		models.BlacklistReasonLogout); err != nil {
 		utils.LogError("Logout: failed to add token to blacklist", err, map[string]interface{}{"user_id": user.ID})
 	}
 	middleware.AddTokenToBlacklistCache(accessTokenHash)
@@ -456,7 +471,8 @@ func Logout(c *gin.Context) {
 	if bindErr := c.ShouldBindJSON(&logoutReq); bindErr == nil && logoutReq.RefreshToken != "" {
 		if refreshClaims, verifyErr := utils.VerifyToken(logoutReq.RefreshToken); verifyErr == nil && refreshClaims.ExpiresAt != nil {
 			refreshTokenHash := utils.HashToken(logoutReq.RefreshToken)
-			_ = models.AddToBlacklist(database.GetDB(), refreshTokenHash, user.ID, refreshClaims.ExpiresAt.Time)
+			_ = models.AddToBlacklistWithReason(database.GetDB(), refreshTokenHash, user.ID,
+				refreshClaims.ExpiresAt.Time, models.BlacklistReasonLogout)
 			middleware.AddTokenToBlacklistCache(refreshTokenHash)
 			// 同时清掉轮换宽限记录：显式登出后，该旧 token 不该还能在 60 秒宽限期内
 			// 换到新令牌（否则「登出」在这段时间里形同虚设）
