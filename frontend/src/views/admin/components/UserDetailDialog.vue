@@ -371,23 +371,50 @@
               class="data-table"
               v-loading="loadingDevices"
             >
-              <el-table-column prop="device_name" label="设备名称" min-width="120" show-overflow-tooltip />
-              <el-table-column prop="device_type" label="类型" width="80">
+              <el-table-column prop="device_name" label="设备名称" min-width="130" show-overflow-tooltip />
+              <el-table-column prop="device_type" label="类型" width="76">
                 <template #default="scope">
                   <el-tag :type="getDeviceTypeColor(scope.row.device_type)" size="small">
                     {{ getDeviceTypeName(scope.row.device_type) }}
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="ip_address" label="IP地址" width="130" show-overflow-tooltip />
-              <el-table-column prop="location" label="归属地" min-width="100" show-overflow-tooltip>
+              <el-table-column label="客户端" min-width="120" show-overflow-tooltip>
+                <template #default="scope">
+                  <span v-if="scope.row.software_name">
+                    {{ scope.row.software_name }}
+                    <span v-if="scope.row.software_version" class="device-version">v{{ scope.row.software_version }}</span>
+                  </span>
+                  <span v-else>—</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="ip_address" label="IP地址" width="126" show-overflow-tooltip />
+              <el-table-column prop="location" label="归属地" min-width="96" show-overflow-tooltip>
                 <template #default="scope">
                   {{ displayLocation(scope.row.location) }}
                 </template>
               </el-table-column>
-              <el-table-column prop="last_access" label="最后访问" width="160">
+              <el-table-column label="状态" width="96" align="center">
                 <template #default="scope">
-                  {{ formatDateTime(scope.row.last_access || scope.row.last_seen) }}
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div style="line-height: 1.7">
+                        <div>{{ scope.row.activity_basis || '按最近一次回拉订阅时间判定' }}</div>
+                        <div>最后活跃：{{ formatDateTime(scope.row.last_access || scope.row.last_seen) }}</div>
+                      </div>
+                    </template>
+                    <el-tag :type="deviceActivityColor(scope.row)" size="small" effect="light">
+                      {{ deviceActivityLabel(scope.row) }}
+                    </el-tag>
+                  </el-tooltip>
+                </template>
+              </el-table-column>
+              <el-table-column prop="last_access" label="最后访问" width="150">
+                <template #default="scope">
+                  <el-tooltip placement="top" effect="dark"
+                    :content="formatDateTime(scope.row.last_access || scope.row.last_seen)">
+                    <span>{{ deviceLastVisit(scope.row) }}</span>
+                  </el-tooltip>
                 </template>
               </el-table-column>
               <el-table-column label="操作" width="80" fixed="right">
@@ -1157,6 +1184,36 @@ export default {
     getDeviceTypeColor(type) {
       return deviceTypeColor(type)
     },
+    // 设备状态（后台「设备记录」表）：后端已算好 activity_state，
+    // 这里只做展示映射；老接口没有该字段时按在线/离线兜底。
+    deviceActivityLabel(row) {
+      const label = row && row.activity_state_label
+      if (label) return label
+      const state = (row && row.activity_state) || ''
+      if (state === 'active') return '活跃'
+      if (state === 'recent') return '近期用过'
+      return '离线'
+    },
+    deviceActivityColor(row) {
+      const state = (row && row.activity_state) || ''
+      if (state === 'active') return 'success'
+      if (state === 'recent') return 'warning'
+      return 'info'
+    },
+    // 「最后访问」：优先用后端给的秒数写成「3 分钟前」，
+    // 没有秒数时退回绝对时间；都没有显示「从未」。
+    deviceLastVisit(row) {
+      const ago = row && row.activity_ago_seconds
+      if (typeof ago === 'number' && ago >= 0) {
+        if (ago < 60) return '刚刚'
+        if (ago < 3600) return `${Math.floor(ago / 60)} 分钟前`
+        if (ago < 86400) return `${Math.floor(ago / 3600)} 小时前`
+        return `${Math.floor(ago / 86400)} 天前`
+      }
+      const t = row && (row.last_access || row.last_seen)
+      if (!t) return '从未'
+      return this.formatDateTime(t)
+    },
     displayLocation(loc) {
       if (!loc) return '-'
       // 后端已返回"国家, 城市"格式，直接用公共 formatLocation 解析；
@@ -1530,6 +1587,16 @@ export default {
             is_active: device.is_active !== false,
             user_agent: device.user_agent || '',
             software_name: device.software_name || '',
+            software_version: device.software_version || '',
+            os_name: device.os_name || '',
+            os_version: device.os_version || '',
+            // 后端按设备自己的回拉节奏算好的三档状态（active/recent/offline），
+            // 以前这里被丢掉了 → 后台设备表看不到「状态」。
+            activity_state: device.activity_state || '',
+            activity_state_label: device.activity_state_label || '',
+            activity_ago_seconds:
+              typeof device.activity_ago_seconds === 'number' ? device.activity_ago_seconds : -1,
+            activity_basis: device.activity_basis || '',
             subscription_id: subId
           }))
         }
@@ -2180,6 +2247,13 @@ export default {
 
     .device-count-tip {
       font-size: 12px;
+      color: #909399;
+    }
+
+    /* 客户端版本号：跟在客户端名后面，弱化显示 */
+    .device-version {
+      margin-left: 4px;
+      font-size: 11px;
       color: #909399;
     }
 
