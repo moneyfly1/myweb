@@ -1869,6 +1869,12 @@ export default {
     return {
       isMobile,
       minPasswordLength,
+      // 使用状态标签：模板里 activityLabel/activityTagType/activityBasis 三处都在用，
+      // 但一直没暴露 → 每次渲染用户列表都抛
+      // "TypeError: _ctx.activityTagType is not a function"，整页渲染中断。
+      activityLabel,
+      activityTagType,
+      activityBasis,
       loading,
       batchDeleting,
       batchOperating,
