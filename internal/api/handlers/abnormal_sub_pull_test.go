@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -66,6 +67,10 @@ func TestSubscriptionPullAbuseMetrics(t *testing.T) {
 	}
 	insert(1, "9.9.9.9", "本地", now.Add(-5*time.Minute))
 
+	// 用户 4：城市名里带缺字段/空段，拼接后不能出现「//」
+	insert(4, "4.4.4.1", `{"country":"中国","city":""}`, now.Add(-3*time.Minute))
+	insert(4, "4.4.4.2", loc("广州"), now.Add(-3*time.Minute))
+
 	// 用户 2：只有 1 个 IP、1 个城市（正常用户，不应该被判异常）
 	insert(2, "2.2.2.2", loc("北京"), now.Add(-2*time.Minute))
 
@@ -89,6 +94,10 @@ func TestSubscriptionPullAbuseMetrics(t *testing.T) {
 		t.Error("用户 1 应能拼出城市名（广州/济南/福州）")
 	} else {
 		t.Logf("城市名拼接: %s", names)
+	}
+
+	if names, ok := metrics.subPullCityNames[4]; ok && strings.Contains(names, "//") {
+		t.Errorf("城市名不应出现空段: %q", names)
 	}
 
 	if got := metrics.subPullIPCounts[2]; got != 1 {
