@@ -42,22 +42,19 @@ func GetStatistics(c *gin.Context) {
 		TodayOrders         int64   `json:"today_orders"`
 	}
 
+	// 邮箱验证已与注册流程合并（注册验证码通过即激活），不再单独统计验证状态
 	var userAggregate struct {
-		Total      int64
-		Active     int64
-		Inactive   int64
-		Verified   int64
-		Unverified int64
+		Total    int64
+		Active   int64
+		Inactive int64
 	}
 	db.Raw(`
 		SELECT
 			COUNT(*) AS total,
 			COALESCE(SUM(CASE WHEN is_active = ? THEN 1 ELSE 0 END), 0) AS active,
-			COALESCE(SUM(CASE WHEN is_active = ? THEN 1 ELSE 0 END), 0) AS inactive,
-			COALESCE(SUM(CASE WHEN is_verified = ? THEN 1 ELSE 0 END), 0) AS verified,
-			COALESCE(SUM(CASE WHEN is_verified = ? THEN 1 ELSE 0 END), 0) AS unverified
+			COALESCE(SUM(CASE WHEN is_active = ? THEN 1 ELSE 0 END), 0) AS inactive
 		FROM users
-	`, true, false, true, false).Scan(&userAggregate)
+	`, true, false).Scan(&userAggregate)
 	stats.TotalUsers = userAggregate.Total
 	stats.ActiveUsers = userAggregate.Active
 
@@ -108,26 +105,6 @@ func GetStatistics(c *gin.Context) {
 			"percentage": func() float64 {
 				if stats.TotalUsers > 0 {
 					return float64(userAggregate.Inactive) / float64(stats.TotalUsers) * 100
-				}
-				return 0
-			}(),
-		},
-		{
-			"name":  "已验证用户",
-			"value": userAggregate.Verified,
-			"percentage": func() float64 {
-				if stats.TotalUsers > 0 {
-					return float64(userAggregate.Verified) / float64(stats.TotalUsers) * 100
-				}
-				return 0
-			}(),
-		},
-		{
-			"name":  "未验证用户",
-			"value": userAggregate.Unverified,
-			"percentage": func() float64 {
-				if stats.TotalUsers > 0 {
-					return float64(userAggregate.Unverified) / float64(stats.TotalUsers) * 100
 				}
 				return 0
 			}(),
@@ -304,8 +281,6 @@ func GetUserStatistics(c *gin.Context) {
 		NewUsersToday     int64 `json:"new_users_today"`
 		NewUsersThisWeek  int64 `json:"new_users_this_week"`
 		NewUsersThisMonth int64 `json:"new_users_this_month"`
-		VerifiedUsers     int64 `json:"verified_users"`
-		UnverifiedUsers   int64 `json:"unverified_users"`
 	}
 
 	now := utils.GetBeijingTime()
@@ -324,11 +299,9 @@ func GetUserStatistics(c *gin.Context) {
 			COUNT(*) AS total_users,
 			COALESCE(SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END), 0) AS new_users_today,
 			COALESCE(SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END), 0) AS new_users_this_week,
-			COALESCE(SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END), 0) AS new_users_this_month,
-			COALESCE(SUM(CASE WHEN is_verified = ? THEN 1 ELSE 0 END), 0) AS verified_users,
-			COALESCE(SUM(CASE WHEN is_verified = ? THEN 1 ELSE 0 END), 0) AS unverified_users
+			COALESCE(SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END), 0) AS new_users_this_month
 		FROM users
-	`, dayStart, dayEnd, weekStart, monthStart, true, false).Scan(&stats).Error; err != nil {
+	`, dayStart, dayEnd, weekStart, monthStart).Scan(&stats).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取用户统计失败", err)
 		return
 	}

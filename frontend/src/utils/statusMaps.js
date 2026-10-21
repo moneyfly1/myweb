@@ -153,7 +153,7 @@ export const ABNORMAL_TYPE_MAP = {
   multi_ip: { text: '多IP访问', type: 'danger' },
   multi_location: { text: '多地区访问', type: 'warning' },
   multiple_abnormal: { text: '多重异常', type: 'error' },
-  unverified: { text: '未验证邮箱', type: 'warning' },
+  subscription_multi_location: { text: '多地区拉取订阅', type: 'danger' },
   unknown: { text: '未知异常', type: 'info' }
 }
 

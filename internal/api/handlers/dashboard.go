@@ -270,7 +270,14 @@ const (
 	abnormalIPThreshold          = 5
 	abnormalLocationThreshold    = 3
 	abnormalLoginFailedThreshold = 5
-	unverifiedAccountAgeDays     = 7
+
+	// 订阅分享检测：24 小时内用多少个不同 IP / 地区拉取同一订阅。
+	// 生产数据（2026-10-21，老站）：24 小时内 647 个用户拉过订阅，
+	// 其中 IP ≥ 8 的只有 51 个（7.9%）、≥ 12 的 29 个 —— 正常用户换网络
+	// 一般 1~3 个 IP，所以这档阈值能把「多人共用一条订阅」挑出来而不误伤。
+	abnormalSubPullIPThreshold   = 8
+	abnormalSubPullCityThreshold = 5
+	abnormalSubPullWindow        = 24 * time.Hour
 )
 
 type abnormalUserMetric struct {
@@ -292,6 +299,10 @@ type abnormalUserRiskMetrics struct {
 	loginFailedCounts  map[uint]int64
 	activeDeviceCounts map[uint]int64
 	deviceLimits       map[uint]int
+	// 订阅拉取（防分享）指标：最近 24 小时拉取订阅时的不同 IP / 城市
+	subPullIPCounts   map[uint]int64
+	subPullCityCounts map[uint]int64
+	subPullCityNames  map[uint]string
 }
 
 func GetAbnormalUsers(c *gin.Context) {
@@ -400,10 +411,11 @@ func collectAbnormalUserCandidateIDs(db *gorm.DB, startTime, endTime, oneMonthAg
 		ID uint `gorm:"column:id"`
 	}
 	var accountRows []userIDRow
+	// 只按「账户禁用 / 长期未登录」拉候选：邮箱是否验证不再作为异常信号
+	// （注册时已经过邮箱验证码，账号激活即视为验证完成）
 	db.Model(&models.User{}).
 		Select("id").
-		Where("is_active = ? OR (last_login IS NULL AND created_at < ?) OR (is_verified = ? AND created_at < ?)",
-			false, oneMonthAgo, false, utils.GetBeijingTime().AddDate(0, 0, -unverifiedAccountAgeDays)).
+		Where("is_active = ? OR (last_login IS NULL AND created_at < ?)", false, oneMonthAgo).
 		Scan(&accountRows)
 	for _, row := range accountRows {
 		addCandidateID(row.ID)
@@ -440,6 +452,16 @@ func collectAbnormalUserCandidateIDs(db *gorm.DB, startTime, endTime, oneMonthAg
 			addCandidateID(userID)
 		}
 	}
+	for userID, count := range metrics.subPullIPCounts {
+		if count >= abnormalSubPullIPThreshold {
+			addCandidateID(userID)
+		}
+	}
+	for userID, count := range metrics.subPullCityCounts {
+		if count >= abnormalSubPullCityThreshold {
+			addCandidateID(userID)
+		}
+	}
 
 	candidateIDs := make([]uint, 0, len(candidateSet))
 	for id := range candidateSet {
@@ -461,7 +483,7 @@ func MarkUserNormal(c *gin.Context) {
 		return
 	}
 	user.IsActive = true
-	user.IsVerified = true
+	// 邮箱验证状态不再参与「异常」判定，这里也不改写它
 	if err := db.Save(&user).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "更新用户失败", err)
 		return
@@ -553,6 +575,23 @@ func buildAbnormalUserDataWithDateRange(db *gorm.DB, users []models.User, startT
 			abnormalCount++
 			riskScore += 40
 		}
+		// 订阅分享：24 小时内有大量不同 IP / 城市来拉取同一条订阅。
+		// 与上面的「多地区访问」不同：这里只看**订阅拉取**这一个入口，
+		// 是「把订阅地址发给别人、多人多地共用」最直接的证据。
+		if subPullIPCount := metrics.subPullIPCounts[user.ID]; subPullIPCount >= abnormalSubPullIPThreshold ||
+			metrics.subPullCityCounts[user.ID] >= abnormalSubPullCityThreshold {
+			cityDesc := ""
+			if names := metrics.subPullCityNames[user.ID]; names != "" {
+				cityDesc = "：" + names
+			}
+			abnormalTypes = append(abnormalTypes, "多地区拉取订阅")
+			abnormalDescriptions = append(abnormalDescriptions,
+				fmt.Sprintf("24 小时内 %d 个不同 IP、%d 个城市拉取订阅%s（疑似多人共用）",
+					subPullIPCount, metrics.subPullCityCounts[user.ID], cityDesc))
+			riskReasons = append(riskReasons, "短期内多地区拉取订阅（疑似分享）")
+			abnormalCount++
+			riskScore += 75
+		}
 		if loginFailedCount >= abnormalLoginFailedThreshold {
 			abnormalTypes = append(abnormalTypes, "登录失败过多")
 			abnormalDescriptions = append(abnormalDescriptions, fmt.Sprintf("登录失败 %d 次", loginFailedCount))
@@ -573,13 +612,6 @@ func buildAbnormalUserDataWithDateRange(db *gorm.DB, users []models.User, startT
 			riskReasons = append(riskReasons, "频繁创建订阅")
 			abnormalCount++
 			riskScore += 30
-		}
-		if !user.IsVerified && user.CreatedAt.Before(now.AddDate(0, 0, -unverifiedAccountAgeDays)) {
-			abnormalTypes = append(abnormalTypes, "邮箱未验证")
-			abnormalDescriptions = append(abnormalDescriptions, fmt.Sprintf("注册超过%d天仍未验证邮箱", unverifiedAccountAgeDays))
-			riskReasons = append(riskReasons, "长期未验证邮箱")
-			abnormalCount++
-			riskScore += 15
 		}
 		if !user.LastLogin.Valid && user.CreatedAt.Before(oneMonthAgo) {
 			abnormalTypes = append(abnormalTypes, "长期未登录")
@@ -616,8 +648,9 @@ func buildAbnormalUserDataWithDateRange(db *gorm.DB, users []models.User, startT
 				abnormalType = "frequent_reset"
 			} else if subscriptionCount >= int64(minSub) {
 				abnormalType = "frequent_subscription"
-			} else if !user.IsVerified {
-				abnormalType = "unverified"
+			} else if metrics.subPullIPCounts[user.ID] >= abnormalSubPullIPThreshold ||
+				metrics.subPullCityCounts[user.ID] >= abnormalSubPullCityThreshold {
+				abnormalType = "subscription_multi_location"
 			} else {
 				abnormalType = "inactive"
 			}
@@ -671,6 +704,9 @@ func loadAbnormalUserRiskMetrics(db *gorm.DB, userIDs []uint, startTime, endTime
 		loginFailedCounts:  make(map[uint]int64),
 		activeDeviceCounts: make(map[uint]int64),
 		deviceLimits:       make(map[uint]int),
+		subPullIPCounts:    make(map[uint]int64),
+		subPullCityCounts:  make(map[uint]int64),
+		subPullCityNames:   make(map[uint]string),
 	}
 
 	applyUserFilter := func(query *gorm.DB, column string) *gorm.DB {
@@ -717,6 +753,8 @@ func loadAbnormalUserRiskMetrics(db *gorm.DB, userIDs []uint, startTime, endTime
 	loadDistinctCountMap(db.Model(&models.LoginHistory{}), userIDs, "user_id", "ip_address", "login_time", startTime, endTime, metrics.ipCounts, "login_status = ?", "success")
 	loadDistinctCountMap(db.Model(&models.Device{}), userIDs, "user_id", "location", "last_access", startTime, endTime, metrics.locationCounts, "user_id IS NOT NULL AND is_active = ?", true)
 	loadDistinctCountMap(db.Model(&models.LoginHistory{}), userIDs, "user_id", "location", "login_time", startTime, endTime, metrics.locationCounts, "login_status = ?", "success")
+
+	loadSubscriptionPullAbuseMetrics(db, userIDs, metrics)
 
 	var loginFailedCounts []abnormalUserMetric
 	loginFailedQuery := db.Table("login_attempts").
@@ -775,4 +813,53 @@ func paginateAbnormalUserData(users []gin.H, offset, size int) []gin.H {
 		end = len(users)
 	}
 	return users[offset:end]
+}
+
+// loadSubscriptionPullAbuseMetrics 统计「最近 24 小时用多少个不同 IP / 城市拉取订阅」。
+//
+// 用途（2026-10-21 需求）：多地区频繁订阅 = 异常，防止客户把订阅地址分享给别人、
+// 多人多地共用一条订阅。数据源是 subscription_logs 里 action_type='access' 的拉取
+// 记录（含 ip_address 与 location JSON）。
+//
+// 跨库细节：location 是 JSON 字符串，SQLite 用 json_extract、MySQL 用
+// JSON_EXTRACT；线上还有 461 条 location 是纯文本「本地」，所以用 CASE 先挡掉
+// 非 JSON 值（SQLite 是惰性求值，非法 JSON 不会触发解析错误）。
+func loadSubscriptionPullAbuseMetrics(db *gorm.DB, userIDs []uint, metrics abnormalUserRiskMetrics) {
+	since := utils.GetBeijingTime().Add(-abnormalSubPullWindow)
+
+	cityExpr := "json_extract(location, '$.city')"
+	if db.Dialector != nil && db.Dialector.Name() == "mysql" {
+		cityExpr = "JSON_UNQUOTE(JSON_EXTRACT(location, '$.city'))"
+	}
+	pullCity := fmt.Sprintf("CASE WHEN location LIKE '{%%' THEN %s END", cityExpr)
+
+	type pullRow struct {
+		UserID    uint   `gorm:"column:user_id"`
+		IPCount   int64  `gorm:"column:ip_count"`
+		CityCount int64  `gorm:"column:city_count"`
+		CityNames string `gorm:"column:city_names"`
+	}
+	var rows []pullRow
+	q := db.Model(&models.SubscriptionLog{}).
+		Select(fmt.Sprintf("user_id, COUNT(DISTINCT ip_address) AS ip_count, COUNT(DISTINCT %s) AS city_count, GROUP_CONCAT(DISTINCT %s) AS city_names", pullCity, pullCity)).
+		Where("action_type = ? AND created_at >= ?", "access", since)
+	if len(userIDs) > 0 {
+		q = q.Where("user_id IN ?", userIDs)
+	}
+	if err := q.Group("user_id").Scan(&rows).Error; err != nil {
+		utils.LogError("loadSubscriptionPullAbuseMetrics 查询订阅拉取失败", err, nil)
+		return
+	}
+	for _, row := range rows {
+		metrics.subPullIPCounts[row.UserID] = row.IPCount
+		metrics.subPullCityCounts[row.UserID] = row.CityCount
+		if names := strings.TrimSpace(row.CityNames); names != "" {
+			// 城市名最多展示 6 个，避免描述过长
+			parts := strings.Split(names, ",")
+			if len(parts) > 6 {
+				parts = append(parts[:6], "…")
+			}
+			metrics.subPullCityNames[row.UserID] = strings.Join(parts, "/")
+		}
+	}
 }

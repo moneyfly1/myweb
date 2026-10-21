@@ -990,21 +990,6 @@ func buildUserAbnormalDetails(db *gorm.DB, user *models.User, startTime, endTime
 	if subscriptionCount >= int64(minSub) {
 		details = append(details, buildFrequentSubscriptionDetail(db, user.ID, subscriptionCount, startTime, endTime, period))
 	}
-	if !user.IsVerified && user.CreatedAt.Before(utils.GetBeijingTime().AddDate(0, 0, -unverifiedAccountAgeDays)) {
-		details = append(details, gin.H{
-			"type":    "unverified",
-			"title":   "邮箱未验证",
-			"level":   "warning",
-			"summary": fmt.Sprintf("注册超过 %d 天仍未验证邮箱", unverifiedAccountAgeDays),
-			"period":  "账户状态",
-			"columns": abnormalDetailColumns("字段", "内容"),
-			"items": []gin.H{
-				{"label": "邮箱", "value": user.Email},
-				{"label": "注册时间", "value": utils.FormatBeijingTime(user.CreatedAt)},
-				{"label": "验证状态", "value": "未验证"},
-			},
-		})
-	}
 	if !user.LastLogin.Valid && user.CreatedAt.Before(utils.GetBeijingTime().AddDate(0, -1, 0)) {
 		details = append(details, gin.H{
 			"type":    "inactive",
