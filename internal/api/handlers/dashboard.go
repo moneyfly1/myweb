@@ -854,12 +854,22 @@ func loadSubscriptionPullAbuseMetrics(db *gorm.DB, userIDs []uint, metrics abnor
 		metrics.subPullIPCounts[row.UserID] = row.IPCount
 		metrics.subPullCityCounts[row.UserID] = row.CityCount
 		if names := strings.TrimSpace(row.CityNames); names != "" {
-			// 城市名最多展示 6 个，避免描述过长
+			// GROUP_CONCAT 里可能夹着空值（location 缺 city 字段），先清掉空段，
+			// 否则描述里会出现「Taipei//广州」这种双斜杠。
 			parts := strings.Split(names, ",")
-			if len(parts) > 6 {
-				parts = append(parts[:6], "…")
+			clean := make([]string, 0, len(parts))
+			for _, p := range parts {
+				if p = strings.TrimSpace(p); p != "" {
+					clean = append(clean, p)
+				}
 			}
-			metrics.subPullCityNames[row.UserID] = strings.Join(parts, "/")
+			// 城市名最多展示 6 个，避免描述过长
+			if len(clean) > 6 {
+				clean = append(clean[:6], "…")
+			}
+			if len(clean) > 0 {
+				metrics.subPullCityNames[row.UserID] = strings.Join(clean, "/")
+			}
 		}
 	}
 }
