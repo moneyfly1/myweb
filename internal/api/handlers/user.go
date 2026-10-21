@@ -1197,7 +1197,8 @@ func buildSubscriptionMultiLocationDetail(db *gorm.DB, userID uint, username str
 	if cityNames != "" {
 		summary += "，涉及：" + cityNames
 	}
-	summary += "。正常的单人多设备不会出现这么多地区，通常意味着订阅地址被分享给了其他人。"
+	summary += "。同一 IP 的多次拉取是客户端定时更新，关键看不同 IP / 城市的分布；" +
+		"正常的单人多设备不会出现这么多地区，通常意味着订阅地址被分享给了其他人。"
 
 	return gin.H{
 		"type":    "subscription_multi_location",
