@@ -66,7 +66,7 @@
                 <el-option label="登录失败" value="login_failed" />
                 <el-option label="频繁重置" value="frequent_reset" />
                 <el-option label="频繁订阅" value="frequent_subscription" />
-                <el-option label="未验证邮箱" value="unverified" />
+                <el-option label="多地区拉取订阅" value="subscription_multi_location" />
                 <el-option label="长期未登录" value="inactive" />
                 <el-option label="多重异常" value="multiple_abnormal" />
               </el-select>
