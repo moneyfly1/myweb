@@ -327,6 +327,14 @@
                 />
               </el-table>
               <el-empty v-else description="暂无可展示的明细记录" :image-size="64" />
+              <el-alert
+                v-if="detail.advice"
+                :closable="false"
+                show-icon
+                type="warning"
+                :title="detail.advice"
+                class="abnormal-detail-advice"
+              />
             </section>
           </div>
         </el-card>
@@ -887,7 +895,10 @@ export default {
     font-size: 12px;
   }
 
-  .abnormal-detail-list {
+  .abnormal-detail-advice {
+  margin-top: 10px;
+}
+.abnormal-detail-list {
     display: flex;
     flex-direction: column;
     gap: 14px;

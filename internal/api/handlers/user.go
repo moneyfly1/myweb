@@ -990,6 +990,12 @@ func buildUserAbnormalDetails(db *gorm.DB, user *models.User, startTime, endTime
 	if subscriptionCount >= int64(minSub) {
 		details = append(details, buildFrequentSubscriptionDetail(db, user.ID, subscriptionCount, startTime, endTime, period))
 	}
+	// 订阅分享（多地区拉取订阅）：与其他异常项一样给出明细表
+	if metrics.subPullIPCounts[user.ID] >= abnormalSubPullIPThreshold ||
+		metrics.subPullCityCounts[user.ID] >= abnormalSubPullCityThreshold {
+		details = append(details, buildSubscriptionMultiLocationDetail(db, user.ID, user.Username,
+			metrics.subPullIPCounts[user.ID], metrics.subPullCityCounts[user.ID], metrics.subPullCityNames[user.ID]))
+	}
 	if !user.LastLogin.Valid && user.CreatedAt.Before(utils.GetBeijingTime().AddDate(0, -1, 0)) {
 		details = append(details, gin.H{
 			"type":    "inactive",
@@ -1112,6 +1118,103 @@ func buildMultiLocationDetail(db *gorm.DB, userID uint, count int64, startTime, 
 			{"prop": "user_agent", "label": "User-Agent", "min_width": 240},
 		},
 		"items": items,
+	}
+}
+
+// buildSubscriptionMultiLocationDetail 「多地区拉取订阅」详情（疑似订阅地址被分享）
+//
+// 与其他异常详情同构：带 summary / period / columns / items，抽屉里直接渲染成表格。
+// 数据源是 subscription_logs 里 action_type='access' 的记录（含 IP 与 location JSON），
+// 并按 IP 关联 devices 补出「用什么客户端拉的」，方便判断是不是多人多设备。
+func buildSubscriptionMultiLocationDetail(db *gorm.DB, userID uint, username string, ipCount, cityCount int64, cityNames string) gin.H {
+	since := utils.GetBeijingTime().Add(-abnormalSubPullWindow)
+
+	var logs []models.SubscriptionLog
+	db.Where("user_id = ? AND action_type = ? AND created_at >= ?", userID, "access", since).
+		Order("created_at DESC").
+		Limit(200).
+		Find(&logs)
+
+	// 按 IP 反查设备，补出客户端信息（同一 IP 可能对应多条设备记录，取最近活跃的）
+	ipSet := make(map[string]struct{}, len(logs))
+	for _, l := range logs {
+		if ip := strings.TrimSpace(utils.NullStringValue(l.IPAddress)); ip != "" {
+			ipSet[ip] = struct{}{}
+		}
+	}
+	type deviceBrief struct {
+		ip     string
+		client string
+		osName string
+	}
+	deviceByIP := make(map[string]deviceBrief, len(ipSet))
+	if len(ipSet) > 0 {
+		ips := make([]string, 0, len(ipSet))
+		for ip := range ipSet {
+			ips = append(ips, ip)
+		}
+		var devs []models.Device
+		db.Where("user_id = ? AND ip_address IN ?", userID, ips).
+			Order("last_access DESC").
+			Find(&devs)
+		for _, d := range devs {
+			ip := utils.GetStringValue(d.IPAddress)
+			if ip == "" {
+				continue
+			}
+			if _, exists := deviceByIP[ip]; exists {
+				continue // 已经是该 IP 最近活跃的设备
+			}
+			client := utils.GetStringValue(d.SoftwareName)
+			if v := utils.GetStringValue(d.SoftwareVersion); v != "" {
+				client = strings.TrimSpace(client + " " + v)
+			}
+			deviceByIP[ip] = deviceBrief{ip: ip, client: client, osName: utils.GetStringValue(d.OSName)}
+		}
+	}
+
+	items := make([]gin.H, 0, len(logs))
+	for _, l := range logs {
+		ip := strings.TrimSpace(utils.NullStringValue(l.IPAddress))
+		client, osName := "", ""
+		if d, ok := deviceByIP[ip]; ok {
+			client, osName = d.client, d.osName
+		}
+		if client == "" {
+			client = "未登记设备（非客户端直连？）"
+		}
+		items = append(items, gin.H{
+			"time":            utils.FormatBeijingTime(l.CreatedAt),
+			"ip_address":      ip,
+			"location":        utils.FormatLocation(utils.NullStringValue(l.Location)),
+			"client":          client,
+			"os_name":         osName,
+			"subscription_id": fmt.Sprintf("#%d", l.SubscriptionID),
+		})
+	}
+
+	summary := fmt.Sprintf("最近 24 小时内，该账号的订阅被 %d 个不同 IP、%d 个城市拉取（共 %d 次）", ipCount, cityCount, len(logs))
+	if cityNames != "" {
+		summary += "，涉及：" + cityNames
+	}
+	summary += "。正常的单人多设备不会出现这么多地区，通常意味着订阅地址被分享给了其他人。"
+
+	return gin.H{
+		"type":    "subscription_multi_location",
+		"title":   "多地区拉取订阅",
+		"level":   "danger",
+		"summary": summary,
+		"period":  "最近 24 小时",
+		"columns": []gin.H{
+			{"prop": "time", "label": "拉取时间", "width": 170},
+			{"prop": "ip_address", "label": "IP 地址", "width": 150},
+			{"prop": "location", "label": "地点", "min_width": 180},
+			{"prop": "client", "label": "客户端", "min_width": 160},
+			{"prop": "os_name", "label": "系统", "width": 110},
+			{"prop": "subscription_id", "label": "订阅", "width": 90},
+		},
+		"items":  items,
+		"advice": "如确认是分享：可在用户列表对该订阅执行「重置订阅」（旧链接立即失效），或按需限制设备数/封禁账号。",
 	}
 }
 
