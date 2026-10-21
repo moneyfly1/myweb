@@ -164,6 +164,30 @@
                   </div>
                 </template>
               </el-table-column>
+              <el-table-column label="状态" width="110" align="center">
+                <template #default="{ row }">
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div style="line-height: 1.7">
+                        <div style="max-width: 320px">{{ row.activity_basis || '按最近一次回拉订阅时间判定' }}</div>
+                        <div v-if="row.activity_avg_interval_sec">平均回拉间隔：{{ humanInterval(row.activity_avg_interval_sec) }}</div>
+                        <div v-if="row.activity_threshold_sec">判定阈值：{{ humanInterval(row.activity_threshold_sec) }}</div>
+                        <div>最后活跃：{{ formatTime(row.last_access) }}</div>
+                      </div>
+                    </template>
+                    <el-tag :type="deviceActivityColor(row.activity_state)" size="small" effect="light">
+                      {{ deviceActivityLabel(row.activity_state) }}
+                    </el-tag>
+                  </el-tooltip>
+                </template>
+              </el-table-column>
+              <el-table-column prop="last_access" label="最后访问" :width="columnWidths.last_access" resizable>
+                <template #default="{ row }">
+                  <el-tooltip placement="top" effect="dark" :content="formatTime(row.last_access)">
+                    <span>{{ relativeTime(row.activity_ago_seconds, row.last_access) }}</span>
+                  </el-tooltip>
+                </template>
+              </el-table-column>
               <el-table-column prop="device_type" label="设备类型" :width="columnWidths.device_type" resizable>
                 <template #default="{ row }">
                   <el-tag :type="getDeviceTypeColor(row.device_type)">
@@ -193,30 +217,6 @@
                     </el-tag>
                     <span v-else class="no-location-text">位置信息不可用</span>
                   </div>
-                </template>
-              </el-table-column>
-              <el-table-column label="状态" width="110" align="center">
-                <template #default="{ row }">
-                  <el-tooltip placement="top" effect="dark">
-                    <template #content>
-                      <div style="line-height: 1.7">
-                        <div style="max-width: 320px">{{ row.activity_basis || '按最近一次回拉订阅时间判定' }}</div>
-                        <div v-if="row.activity_avg_interval_sec">平均回拉间隔：{{ humanInterval(row.activity_avg_interval_sec) }}</div>
-                        <div v-if="row.activity_threshold_sec">判定阈值：{{ humanInterval(row.activity_threshold_sec) }}</div>
-                        <div>最后活跃：{{ formatTime(row.last_access) }}</div>
-                      </div>
-                    </template>
-                    <el-tag :type="deviceActivityColor(row.activity_state)" size="small" effect="light">
-                      {{ deviceActivityLabel(row.activity_state) }}
-                    </el-tag>
-                  </el-tooltip>
-                </template>
-              </el-table-column>
-              <el-table-column prop="last_access" label="最后访问" :width="columnWidths.last_access" resizable>
-                <template #default="{ row }">
-                  <el-tooltip placement="top" effect="dark" :content="formatTime(row.last_access)">
-                    <span>{{ relativeTime(row.activity_ago_seconds, row.last_access) }}</span>
-                  </el-tooltip>
                 </template>
               </el-table-column>
               <el-table-column prop="user_agent" label="User Agent" :min-width="columnWidths.user_agent" :width="columnWidths.user_agent" resizable>
@@ -404,14 +404,14 @@ export default {
     const upgradeSubscriptionLoading = ref(false)
     const DEVICES_TABLE_STORAGE_KEY = 'user_devices_table_settings'
     const defaultColumnWidths = {
-      device_name: 220,
-      device_type: 120,
-      os_name: 180,
-      ip_address: 280,
-      last_access: 180,
-      user_agent: 200,
-      remark: 160,
-      actions: 120
+      device_name: 210,
+      device_type: 96,
+      os_name: 120,
+      ip_address: 190,
+      last_access: 150,
+      user_agent: 180,
+      remark: 140,
+      actions: 110
     }
     const DEVICE_COLUMN_KEYS = ['device_name', 'device_type', 'os_name', 'ip_address', 'last_access', 'user_agent', 'remark', 'actions']
     const { columnWidths, handleColumnResize: handleDeviceColumnResize } = usePersistentTableColumns(
@@ -490,9 +490,11 @@ export default {
         tagType: value => getDeviceTypeColor(value),
         formatter: value => value && value !== 'unknown' ? getDeviceTypeName(value) : '-'
       },
+      // 状态：手机上原来完全没有这一栏（只有桌面表格才有）→ 补上三档文案
+      { key: 'activity_state', label: '状态', formatter: (_v, row) => deviceActivityLabel(row.activity_state) },
       { key: 'os_name', label: '操作系统', formatter: (_value, row) => [row.os_name, row.os_version].filter(Boolean).join(' ') || '-' },
       { key: 'ip_address', label: 'IP地址', fullWidth: true },
-      { key: 'last_access', label: '最后访问', formatter: value => formatTime(value) },
+      { key: 'last_access', label: '最后访问', formatter: (_v, row) => relativeTime(row.activity_ago_seconds, row.last_access) },
       { key: 'user_agent', label: 'User Agent', formatter: value => truncateUserAgent(value), fullWidth: true },
       { key: 'remark', label: '备注', fullWidth: true }
     ])
@@ -741,6 +743,16 @@ export default {
       loadUpgradeSubscription()
     })
     return {
+      // 状态与「最后访问」用到的展示函数：模板里在调用，但 setup 一直没暴露，
+      // 于是每次渲染设备列表都抛
+      //   TypeError: _ctx.deviceActivityColor is not a function
+      //   TypeError: _ctx.relativeTime is not a function
+      // → 这两格的渲染直接中断，客户看到的就是「状态/最后访问一片空白」。
+      deviceActivityLabel,
+      deviceActivityColor,
+      relativeTime,
+      humanInterval,
+      isOnline,
       loading,
       devices,
       deviceStats,
