@@ -2826,7 +2826,12 @@ func BatchSendExpireReminder(c *gin.Context) {
 
 		daysUntilExpire, isExpired := utils.RemainingDays(sub.ExpireTime, now)
 
-		subject := "订阅即将到期提醒"
+		subject := "【到期提醒】你的订阅即将到期"
+		if isExpired {
+			subject = "【到期提醒】订阅已到期，请及时续费"
+		} else if daysUntilExpire > 0 {
+			subject = fmt.Sprintf("【到期提醒】你的订阅将于 %d 天后到期", daysUntilExpire)
+		}
 		pkgName := "默认套餐"
 		if sub.PackageID != nil {
 			if name, ok := pkgMap[*sub.PackageID]; ok {

@@ -637,9 +637,11 @@ func (b *EmailTemplateBuilder) GetExpirationReminderTemplate(username, packageNa
 	username = escapeHTML(username)
 	packageName = escapeHTML(packageName)
 	expireDate = escapeHTML(expireDate)
-	title := "订阅已到期"
+	// 主题/标题统一带【到期提醒】前缀：客户在邮箱列表里一眼能认出这是提醒，
+	// 也便于面板「到期提醒」与其它营销邮件区分（用户反馈要能一眼看到）。
+	title := "【到期提醒】订阅已到期"
 	if !isExpired {
-		title = "订阅即将到期"
+		title = "【到期提醒】订阅即将到期"
 	}
 
 	baseURL := b.GetBaseURL()
@@ -688,10 +690,9 @@ func (b *EmailTemplateBuilder) GetExpirationReminderTemplate(username, packageNa
             </div>`
 	}
 
-	buttonText := "查看订阅详情"
-	if isExpired {
-		buttonText = "立即续费"
-	}
+	// 一键续费：站内续费入口就是「套餐购买」页（Subscription 页的「立即续费」也跳这里），
+	// 邮件里不再引导去 /dashboard，减少一次点击才能续费。
+	buttonText := "立即续费"
 
 	content := fmt.Sprintf(`%s
             <div class="info-box">
@@ -715,7 +716,7 @@ func (b *EmailTemplateBuilder) GetExpirationReminderTemplate(username, packageNa
                     <li>支持多种支付方式，支付成功后自动激活</li>
                 </ul>
             </div>
-            <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, headerContent, username, packageName, expireDate, remainingDaysRow, deviceLimit, currentDevices, deviceLimit, warningBox, buildActionBtn(baseURL+"/dashboard", buttonText))
+            <p style="text-align: center; color: #666; font-size: 14px;">如有任何问题，请随时联系我们的客服团队</p>`, headerContent, username, packageName, expireDate, remainingDaysRow, deviceLimit, currentDevices, deviceLimit, warningBox, buildActionBtn(baseURL+"/packages", buttonText))
 
 	return b.GetBaseTemplate(title, content, "我们期待继续为您服务")
 }
