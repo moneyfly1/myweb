@@ -393,6 +393,17 @@
                       </el-button>
                     </div>
                     <div class="button-row">
+                      <!-- 仅 QQ 邮箱用户显示：唤起本机 QQ 打开对话（不能预填内容） -->
+                      <el-tooltip
+                        v-if="qqFromEmail(scope.row.email)"
+                        :content="`打开 QQ 聊天：${qqFromEmail(scope.row.email)}（需本机已登录 QQ）`"
+                        placement="top"
+                      >
+                        <el-button size="small" type="primary" plain @click="openUserQQByEmail(scope.row.email)">
+                          <el-icon><ChatDotRound /></el-icon>
+                          QQ
+                        </el-button>
+                      </el-tooltip>
                       <el-button size="small" type="danger" @click="deleteUser(scope.row)">
                         <el-icon><Delete /></el-icon>
                         删除
@@ -842,8 +853,10 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { unwrapList } from '@/utils/format'
 import {
   Plus, Edit, Delete, Search, Refresh, Switch, Key, Close, Filter,
-  Connection, Monitor, Unlock, Check, Message, Bell, Loading, CircleCheck, View
+  Connection, Monitor, Unlock, Check, Message, Bell, Loading, CircleCheck, View,
+  ChatDotRound
 } from '@element-plus/icons-vue'
+import { qqFromEmail, openQQChat, copyQQ } from '@/utils/qq'
 import { adminAPI } from '@/utils/api'
 import { formatDateTimeSafe, formatLocation } from '@/utils/date'
 import { getDeviceTypeColor as getDeviceTypeTag, getDeviceTypeName as getDeviceTypeText } from '@/utils/device'
@@ -1689,6 +1702,22 @@ export default {
         ElMessage.error(`状态更新失败: ${error.response?.data?.message || error.message}`)
       }
     }
+    // 打开与用户的 QQ 对话（本机 QQ 已登录时直接弹窗；不能预填内容）
+    // 浏览器拦截外部协议时退回「复制 QQ 号」。
+    const openUserQQByEmail = async (email) => {
+      const qq = qqFromEmail(email)
+      if (!qq) {
+        ElMessage.warning('该用户不是 QQ 邮箱，无法唤起 QQ')
+        return
+      }
+      if (!openQQChat(qq)) {
+        const copied = await copyQQ(qq)
+        ElMessage[copied ? 'warning' : 'error'](
+          copied ? `无法唤起 QQ，已复制 QQ 号 ${qq}` : '无法唤起 QQ，请手动复制 QQ 号'
+        )
+      }
+    }
+
     const resetUserPassword = async (user) => {
       resetPasswordUser.value = user
       resetPasswordForm.password = ''
@@ -1875,6 +1904,8 @@ export default {
       activityLabel,
       activityTagType,
       activityBasis,
+      qqFromEmail,
+      openUserQQByEmail,
       loading,
       batchDeleting,
       batchOperating,
