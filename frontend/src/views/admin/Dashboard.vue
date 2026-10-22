@@ -243,7 +243,7 @@
                   </span>
                 </template>
               </el-table-column>
-              <el-table-column label="操作" width="120" fixed="right">
+              <el-table-column label="操作" width="186" fixed="right">
                 <template #default="scope">
                   <el-button
                     type="success"
@@ -252,6 +252,17 @@
                   >
                     发送提醒
                   </el-button>
+                  <!-- 仅 QQ 邮箱用户显示：点击唤起本机 QQ 打开对话（不能预填内容） -->
+                  <el-tooltip
+                    v-if="qqFromEmail(scope.row.email)"
+                    :content="`打开 QQ 聊天：${qqFromEmail(scope.row.email)}（需本机已登录 QQ）`"
+                    placement="top"
+                  >
+                    <el-button size="small" type="primary" plain @click="openUserQQ(scope.row)">
+                      <el-icon><ChatDotRound /></el-icon>
+                      QQ
+                    </el-button>
+                  </el-tooltip>
                 </template>
               </el-table-column>
             </el-table>
@@ -361,8 +372,10 @@ import {
   Delete,
   Connection,
   Monitor,
-  Wallet
+  Wallet,
+  ChatDotRound
 } from '@element-plus/icons-vue'
+import { qqFromEmail, openQQChat, copyQQ } from '@/utils/qq'
 import EmptyState from '@/components/EmptyState.vue'
 export default {
   name: 'AdminDashboard',
@@ -705,6 +718,23 @@ dashboardActivity.value = unwrapList(data).slice(0, 20)
       if (days <= 3) return 'is-urgent'
       return 'is-upcoming'
     }
+    // 打开与用户的 QQ 对话：本机 QQ 客户端已登录时会直接弹出聊天窗口。
+    // 协议限制：只能打开窗口、不能预填内容；手机端无效（按钮只在桌面表格出现）。
+    // 浏览器拦截外部协议时退回「复制 QQ 号」。
+    const openUserQQ = async (row) => {
+      const qq = qqFromEmail(row && row.email)
+      if (!qq) {
+        ElMessage.warning('该用户不是 QQ 邮箱，无法唤起 QQ')
+        return
+      }
+      if (!openQQChat(qq)) {
+        const copied = await copyQQ(qq)
+        ElMessage[copied ? 'warning' : 'error'](
+          copied ? `无法唤起 QQ，已复制 QQ 号 ${qq}` : '无法唤起 QQ，请手动复制 QQ 号'
+        )
+      }
+    }
+
     const sendExpireReminder = async (ids) => {
       try {
         sendingExpireReminder.value = true
@@ -785,6 +815,8 @@ dashboardActivity.value = unwrapList(data).slice(0, 20)
       getExpireTagType,
       getExpireStatusClass,
       sendExpireReminder,
+      openUserQQ,
+      qqFromEmail,
       batchSendExpireReminder
     }
   }

@@ -27,7 +27,20 @@
               <el-descriptions :column="isMobile ? 1 : 2" border size="small">
                 <el-descriptions-item label="用户ID">{{ user.user_info?.id || user.id }}</el-descriptions-item>
                 <el-descriptions-item label="用户名">{{ user.user_info?.username || user.username }}</el-descriptions-item>
-                <el-descriptions-item label="邮箱">{{ user.user_info?.email || user.email }}</el-descriptions-item>
+                <el-descriptions-item label="邮箱">
+                  <span>{{ user.user_info?.email || user.email }}</span>
+                  <!-- 仅 QQ 邮箱用户显示：唤起本机 QQ 打开对话 -->
+                  <el-button
+                    v-if="qqFromEmail(user.user_info?.email || user.email)"
+                    size="small"
+                    type="primary"
+                    plain
+                    class="qq-chat-btn"
+                    @click="openQQChatFor(user.user_info?.email || user.email)"
+                  >
+                    QQ 聊天
+                  </el-button>
+                </el-descriptions-item>
                 <el-descriptions-item label="账户余额">
                   <span class="balance-highlight">¥{{ ((user.user_info?.balance || user.balance || 0)).toFixed(2) }}</span>
                 </el-descriptions-item>
@@ -841,6 +854,7 @@ import { adminAPI } from '@/utils/api'
 import { unwrapList } from '@/utils/format'
 import { formatDateTimeSafe, formatLocation } from '@/utils/date'
 import { getDeviceTypeName as deviceTypeName, getDeviceTypeColor as deviceTypeColor } from '@/utils/device'
+import { qqFromEmail as parseQQFromEmail, openQQChat, copyQQ } from '@/utils/qq'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
 import {
   USER_STATUS_MAP,
@@ -1213,6 +1227,25 @@ export default {
       const t = row && (row.last_access || row.last_seen)
       if (!t) return '从未'
       return this.formatDateTime(t)
+    },
+    // 模板里判断按钮是否显示：从邮箱推断 QQ 号（仅纯数字@qq.com）
+    qqFromEmail(email) {
+      return parseQQFromEmail(email)
+    },
+    // 打开该用户的 QQ 对话（本机 QQ 已登录时直接弹窗；协议不能预填内容）
+    async openQQChatFor(email) {
+      const qq = parseQQFromEmail(email)
+      if (!qq) {
+        this.$message && this.$message.warning('该用户不是 QQ 邮箱，无法唤起 QQ')
+        return
+      }
+      if (!openQQChat(qq)) {
+        const copied = await copyQQ(qq)
+        this.$message &&
+          this.$message[copied ? 'warning' : 'error'](
+            copied ? `无法唤起 QQ，已复制 QQ 号 ${qq}` : '无法唤起 QQ，请手动复制 QQ 号'
+          )
+      }
     },
     displayLocation(loc) {
       if (!loc) return '-'
@@ -2248,6 +2281,14 @@ export default {
     .device-count-tip {
       font-size: 12px;
       color: #909399;
+    }
+
+    /* 邮箱旁的 QQ 聊天按钮：紧凑，不把信息行撑高 */
+    .qq-chat-btn {
+      margin-left: 8px;
+      padding: 2px 8px;
+      height: 22px;
+      font-size: 11px;
     }
 
     /* 客户端版本号：跟在客户端名后面，弱化显示 */
