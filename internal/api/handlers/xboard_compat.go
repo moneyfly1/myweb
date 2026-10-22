@@ -269,8 +269,9 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 	c.Header("Subscription-Title", subscriptionName)
 	c.Header("Profile-Title", subscriptionName)
 	// 不发送 Subscription-Userinfo 头：去掉流量与到期时间显示，客户端只显示"更新时间: X 分钟前"
-	// 更新间隔（单位：分钟）：60 = 1 小时，客户端导入后按此间隔自动更新订阅
-	c.Header("Profile-Update-Interval", "60")
+	// 更新间隔：Clash / mihomo 规范里 **单位是小时**（客户端按 小时×60 显示成分钟），
+	// 所以 1 = 60 分钟。以前这里写 60 被客户端当成 60 小时 → 面板显示「3600 分钟」。
+	c.Header("Profile-Update-Interval", "1")
 	// 最后更新时间（Unix 时间戳）= 本次配置生成时间
 	c.Header("Profile-Update-Time", fmt.Sprintf("%d", time.Now().Unix()))
 
