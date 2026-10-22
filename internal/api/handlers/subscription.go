@@ -2050,9 +2050,9 @@ func GetSubscriptionConfig(c *gin.Context) {
 	// 3. 不再发送 Subscription-Userinfo 头（不含流量 upload/download/total 与到期 expire），
 	//    让客户端只显示"更新时间: X 分钟/小时前"，不显示流量与到期时间
 
-	// 4. 更新间隔头部（单位：分钟，Clash/mihomo 系列客户端导入时会据此自动启用定时更新）
-	//    60 分钟 = 1 小时
-	c.Header("Profile-Update-Interval", "60")
+	// 4. 更新间隔头部：Clash / mihomo 规范里 **单位是小时**（客户端按 小时×60 显示成分钟），
+	//    所以 1 = 60 分钟。以前这里写 60，被客户端当成 60 小时 → 显示「3600 分钟」。
+	c.Header("Profile-Update-Interval", "1")
 
 	// 5. 最后更新时间（Unix 时间戳）= 本次配置生成时间
 	//    客户端据此显示相对更新时间（如"3 分钟前 / 1 小时前"），并随自动更新保持新鲜
