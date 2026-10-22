@@ -12,9 +12,28 @@
       <!-- 账户与订阅信息：默认折叠（记录信息优先级更高，避免一屏详情把记录挤到下面） -->
       <div class="detail-collapse-bar">
         <span class="detail-collapse-hint">{{ detailSections.length ? "上方信息已展开" : "上方为账户与订阅信息，点击标题展开" }}</span>
-        <el-button text type="primary" size="small" @click="toggleDetailSections">
-          {{ detailSections.length ? '全部收起' : '全部展开' }}
-        </el-button>
+        <div class="detail-collapse-actions">
+          <!-- QQ 邮箱用户：一键唤起本机 QQ 打开对话（协议不能预填内容） -->
+          <el-tooltip
+            v-if="qqFromEmail(user.user_info?.email || user.email)"
+            :content="`打开 QQ 聊天：${qqFromEmail(user.user_info?.email || user.email)}（需本机已登录 QQ）`"
+            placement="top"
+          >
+            <el-button
+              size="small"
+              type="primary"
+              plain
+              class="qq-chat-btn"
+              @click="openQQChatFor(user.user_info?.email || user.email)"
+            >
+              <el-icon><ChatDotRound /></el-icon>
+              QQ 聊天
+            </el-button>
+          </el-tooltip>
+          <el-button text type="primary" size="small" @click="toggleDetailSections">
+            {{ detailSections.length ? '全部收起' : '全部展开' }}
+          </el-button>
+        </div>
       </div>
       <el-collapse v-model="detailSections" class="detail-collapse">
         <el-collapse-item name="profile">
@@ -29,17 +48,6 @@
                 <el-descriptions-item label="用户名">{{ user.user_info?.username || user.username }}</el-descriptions-item>
                 <el-descriptions-item label="邮箱">
                   <span>{{ user.user_info?.email || user.email }}</span>
-                  <!-- 仅 QQ 邮箱用户显示：唤起本机 QQ 打开对话 -->
-                  <el-button
-                    v-if="qqFromEmail(user.user_info?.email || user.email)"
-                    size="small"
-                    type="primary"
-                    plain
-                    class="qq-chat-btn"
-                    @click="openQQChatFor(user.user_info?.email || user.email)"
-                  >
-                    QQ 聊天
-                  </el-button>
                 </el-descriptions-item>
                 <el-descriptions-item label="账户余额">
                   <span class="balance-highlight">¥{{ ((user.user_info?.balance || user.balance || 0)).toFixed(2) }}</span>
@@ -885,7 +893,8 @@ import {
   RefreshRight,
   CopyDocument,
   Monitor,
-  Delete
+  Delete,
+  ChatDotRound
 } from '@element-plus/icons-vue'
 
 const COUNTRY_NAME_ZH = {
@@ -2283,12 +2292,16 @@ export default {
       color: #909399;
     }
 
-    /* 邮箱旁的 QQ 聊天按钮：紧凑，不把信息行撑高 */
+    /* 顶部操作栏：QQ 聊天按钮与「全部展开」并排 */
+    .detail-collapse-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
     .qq-chat-btn {
-      margin-left: 8px;
-      padding: 2px 8px;
-      height: 22px;
-      font-size: 11px;
+      padding: 2px 10px;
+      height: 24px;
+      font-size: 12px;
     }
 
     /* 客户端版本号：跟在客户端名后面，弱化显示 */
