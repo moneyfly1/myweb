@@ -253,9 +253,11 @@ func (s *Scheduler) sendExpirationReminders(subscriptions []models.Subscription,
 			sub.CurrentDevices,
 			isExpired,
 		)
-		subject := "订阅已到期"
+		// 主题统一【到期提醒】前缀：QQ 邮箱 / 手机 QQ 的邮件提醒只显示主题，
+		// 客户一眼能看出这是到期提醒而不是营销邮件。
+		subject := "【到期提醒】订阅已到期，请及时续费"
 		if !isExpired {
-			subject = fmt.Sprintf("订阅即将到期（剩余%d天）", remainingDays)
+			subject = fmt.Sprintf("【到期提醒】你的订阅将于 %d 天后到期", remainingDays)
 		}
 
 		if notification.ShouldSendCustomerNotification("subscription_expiry") {
