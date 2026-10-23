@@ -122,22 +122,25 @@ func applySystemTaskTypeFilter(query *gorm.DB, taskType string) *gorm.DB {
 	}
 
 	taskType = utils.SanitizeSearchKeyword(taskType)
-	escapedTaskType := utils.EscapeLikePattern(taskType)
 
+	// 常量前缀用范围谓词：LIKE 'x%' 因默认不区分大小写而无法走 action_type 索引
+	schedulerLo, schedulerHi := utils.LikePrefixRange("scheduler_")
 	switch taskType {
 	case "scheduler":
-		return query.Where("audit_logs.action_type LIKE ?", "scheduler_%")
+		return query.Where("audit_logs.action_type >= ? AND audit_logs.action_type < ?", schedulerLo, schedulerHi)
 	case "system_error":
 		return query.Where("audit_logs.action_type = ?", "system_error")
 	}
 
 	if strings.HasPrefix(taskType, "scheduler_") {
-		return query.Where("(audit_logs.action_type = ? OR audit_logs.action_type LIKE ?)",
-			taskType, escapedTaskType+"%")
+		lo, hi := utils.LikePrefixRange(taskType)
+		return query.Where("(audit_logs.action_type = ? OR (audit_logs.action_type >= ? AND audit_logs.action_type < ?))",
+			taskType, lo, hi)
 	}
 
-	return query.Where("(audit_logs.action_type = ? OR audit_logs.action_type = ? OR audit_logs.action_type LIKE ?)",
-		taskType, "scheduler_"+taskType, "scheduler_"+escapedTaskType+"%")
+	lo, hi := utils.LikePrefixRange("scheduler_" + taskType)
+	return query.Where("(audit_logs.action_type = ? OR audit_logs.action_type = ? OR (audit_logs.action_type >= ? AND audit_logs.action_type < ?))",
+		taskType, "scheduler_"+taskType, lo, hi)
 }
 
 func applySystemLogsFilters(query *gorm.DB, c *gin.Context, includeLevel bool) *gorm.DB {
@@ -418,6 +421,33 @@ func logLevelWhere(level string) string {
 }
 
 // batchFormatAuditLogs 批量格式化审计日志，避免逐条查用户名的 N+1 问题
+// batchFillLogUsers 为未预加载用户名的日志批量补 User 关联（只取 username）。
+// 导出场景不需要 Preload 整行用户，按需补即可。
+func batchFillLogUsers(db *gorm.DB, logs []models.AuditLog) {
+	missing := make([]int64, 0, len(logs))
+	for _, log := range logs {
+		if log.User.ID == 0 && log.UserID.Valid {
+			missing = append(missing, log.UserID.Int64)
+		}
+	}
+	if len(missing) == 0 {
+		return
+	}
+	var users []models.User
+	db.Select("id, username").Where("id IN ?", missing).Find(&users)
+	byID := make(map[uint]models.User, len(users))
+	for _, u := range users {
+		byID[u.ID] = u
+	}
+	for i := range logs {
+		if logs[i].User.ID == 0 && logs[i].UserID.Valid {
+			if u, ok := byID[uint(logs[i].UserID.Int64)]; ok {
+				logs[i].User = u
+			}
+		}
+	}
+}
+
 func batchFormatAuditLogs(db *gorm.DB, logs []models.AuditLog) []gin.H {
 	// 收集未预加载的 UserID
 	missingIDs := make([]int64, 0)
@@ -1039,15 +1069,21 @@ func GetLogsStats(c *gin.Context) {
 
 func ExportLogs(c *gin.Context) {
 	db := database.GetDB()
-	query := db.Model(&models.AuditLog{}).Preload("User")
+	query := db.Model(&models.AuditLog{})
 	query = applySystemLogsBaseScope(query)
 	query = applySystemLogsFilters(query, c, true)
 
+	// 只投影导出真正用到的列：audit_logs 的 request_params/before_data/after_data 都是 TEXT(JSON)，
+	// 1 万行 SELECT * 会把几百 MB 拉进内存（再用不到）。同时不 Preload 用户，
+	// formatLogForCSV 用的是 log.User 上的关联字段，这里改为按需批量补名字。
 	var logs []models.AuditLog
-	if err := query.Order("audit_logs.created_at DESC").Limit(10000).Find(&logs).Error; err != nil {
+	if err := query.
+		Select("id, user_id, action_type, resource_type, action_description, ip_address, response_status, created_at").
+		Order("audit_logs.created_at DESC").Limit(10000).Find(&logs).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "导出日志失败", err)
 		return
 	}
+	batchFillLogUsers(db, logs)
 
 	var csvContent strings.Builder
 	csvContent.WriteString("\xEF\xBB\xBF") // UTF-8 BOM

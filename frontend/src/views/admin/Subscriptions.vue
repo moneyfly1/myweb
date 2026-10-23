@@ -1832,9 +1832,7 @@ export default {
         }
       }
     }
-    const truncateUserAgent = (userAgent) => {
-      return truncateText(userAgent, 50)
-    }
+    const truncateUserAgent = truncateText // 50 正是 truncateText 的默认长度
     const formatTime = (time) => {
       return formatDateTimeSafe(time, 'YYYY-MM-DD HH:mm:ss', '未知')
     }

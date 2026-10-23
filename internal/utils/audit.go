@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"cboard-go/internal/core/database"
@@ -515,25 +516,37 @@ func CheckBruteForcePattern(c *gin.Context, username string) (isSuspicious bool,
 
 	now := GetBeijingTime()
 
-	var recentAttempts int64
-	db.Model(&models.AuditLog{}).
-		Where("ip_address = ? AND action_type LIKE ? AND created_at > ?",
-			ipAddress, "security_login_attempt%", now.Add(-1*time.Minute)).
-		Count(&recentAttempts)
-
-	if recentAttempts >= 10 {
-		return true, fmt.Sprintf("检测到批量登录行为：IP %s 在1分钟内尝试登录 %d 次", ipAddress, recentAttempts)
+	// 结果缓存 10 秒：登录是最频繁的写路径，同一 IP 连续重试时没必要每次都把
+	// audit_logs 的窗口聚合重跑一遍。10s 足够短，不会让真的攻击漏检。
+	cacheKey := ipAddress + "|" + strings.ToLower(strings.TrimSpace(username))
+	if cached, ok := bruteForceCache.Load(cacheKey); ok {
+		if entry, ok := cached.(bruteForceResult); ok && now.Before(entry.expireAt) {
+			return entry.suspicious, entry.reason
+		}
 	}
 
-	var uniqueUsernames int64
+	// 一次查询同时拿到「1 分钟内次数」与「5 分钟内不同用户名数」：
+	// 此前是两次独立查询（同一张表、同一 IP、嵌套窗口），第二条还得 Group 后计数。
+	var agg struct {
+		LastMinute int64 `gorm:"column:last_minute"`
+		LastFive   int64 `gorm:"column:last_five"`
+		UniqueUser int64 `gorm:"column:unique_user"`
+	}
 	db.Model(&models.AuditLog{}).
+		Select("SUM(CASE WHEN created_at > ? THEN 1 ELSE 0 END) AS last_minute, COUNT(*) AS last_five, COUNT(DISTINCT before_data) AS unique_user",
+			now.Add(-1*time.Minute)).
 		Where("ip_address = ? AND action_type LIKE ? AND created_at > ?",
 			ipAddress, "security_login_attempt%", now.Add(-5*time.Minute)).
-		Group("before_data").
-		Count(&uniqueUsernames)
+		Scan(&agg)
 
-	if uniqueUsernames >= 5 {
-		return true, fmt.Sprintf("检测到撞库行为：IP %s 在5分钟内尝试登录 %d 个不同用户名", ipAddress, uniqueUsernames)
+	if agg.LastMinute >= 10 {
+		return storeBruteForceResult(cacheKey, now, true,
+			fmt.Sprintf("检测到批量登录行为：IP %s 在1分钟内尝试登录 %d 次", ipAddress, agg.LastMinute))
+	}
+
+	if agg.UniqueUser >= 5 {
+		return storeBruteForceResult(cacheKey, now, true,
+			fmt.Sprintf("检测到撞库行为：IP %s 在5分钟内尝试登录 %d 个不同用户名", ipAddress, agg.UniqueUser))
 	}
 
 	if username != "" {
@@ -546,11 +559,26 @@ func CheckBruteForcePattern(c *gin.Context, username string) (isSuspicious bool,
 			Count(&uniqueIPs)
 
 		if uniqueIPs >= 3 {
-			return true, fmt.Sprintf("检测到账户定向攻击：用户名 %s 在10分钟内被 %d 个不同IP尝试登录", username, uniqueIPs)
+			return storeBruteForceResult(cacheKey, now, true,
+				fmt.Sprintf("检测到账户定向攻击：用户名 %s 在10分钟内被 %d 个不同IP尝试登录", username, uniqueIPs))
 		}
 	}
 
-	return false, ""
+	return storeBruteForceResult(cacheKey, now, false, "")
+}
+
+// bruteForceResult 登录爆破检测的短时缓存条目
+type bruteForceResult struct {
+	suspicious bool
+	reason     string
+	expireAt   time.Time
+}
+
+var bruteForceCache sync.Map
+
+func storeBruteForceResult(key string, now time.Time, suspicious bool, reason string) (bool, string) {
+	bruteForceCache.Store(key, bruteForceResult{suspicious: suspicious, reason: reason, expireAt: now.Add(10 * time.Second)})
+	return suspicious, reason
 }
 
 func CreateSystemErrorLog(c *gin.Context, statusCode int, message string, err error) {

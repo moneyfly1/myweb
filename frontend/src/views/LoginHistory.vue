@@ -354,9 +354,7 @@ export default {
       if (!lastLogin) return 0
       return dayjs().diff(dayjs(lastLogin), 'day')
     })
-    const getLocationText = (location, ipAddress) => {
-      return getLocationTextUtil(location, ipAddress)
-    }
+    const getLocationText = getLocationTextUtil
     const mobileHistoryFields = computed(() => [
       {
         key: 'status',

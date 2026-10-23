@@ -321,7 +321,7 @@ func renderUpgradeVars(tpl string, u models.User, client string, links map[strin
 	return out
 }
 
-// isSMTPConfigured SMTP 是否真的可用（后台「系统设置 → 邮件」或 .env）
+// smtpStatus 返回 SMTP 是否真的可用（后台「系统设置 → 邮件」或 .env），并附带主机与脱敏账号。
 //
 // ⚠️ 键名有两套，必须都认（EmailService 自己就是双写兼容的，见
 // internal/services/email/email.go 的 NewEmailService）：

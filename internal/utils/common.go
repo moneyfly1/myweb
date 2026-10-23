@@ -369,6 +369,12 @@ type PaymentSummary struct {
 	RangeRevenue float64
 }
 
+// CalculatePaymentSummary 汇总全站订单与充值（后台仪表盘/统计页/订单汇总）。
+//
+// 金额口径必须与 CalculateUserPaymentSummary 一致：订单一律用「成交金额 = amount - discount_amount」，
+// 不能用 final_amount —— 余额支付的订单创建时 final_amount 已被余额抵扣为 0，
+// 按 final_amount 累加会让后台收入凭空少算这一部分（用户详情页与仪表盘显示同一用户
+// 消费额不一致，就是这个口径分叉造成的）。
 func CalculatePaymentSummary(db *gorm.DB, rangeStart time.Time, rangeEnd time.Time) PaymentSummary {
 	var summary PaymentSummary
 	db.Raw(`
@@ -387,11 +393,11 @@ func CalculatePaymentSummary(db *gorm.DB, rangeStart time.Time, rangeEnd time.Ti
 				COALESCE(SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END), 0) AS paid,
 				COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled,
 				COALESCE(SUM(CASE WHEN status = 'paid' THEN
-					CASE WHEN final_amount IS NOT NULL THEN final_amount ELSE amount END
+					ABS(COALESCE(amount, 0) - COALESCE(discount_amount, 0))
 				ELSE 0 END), 0) AS paid_revenue,
 				COALESCE(SUM(CASE WHEN status = 'paid' AND created_at >= ? AND created_at < ? THEN 1 ELSE 0 END), 0) AS range_paid,
 				COALESCE(SUM(CASE WHEN status = 'paid' AND created_at >= ? AND created_at < ? THEN
-					CASE WHEN final_amount IS NOT NULL THEN final_amount ELSE amount END
+					ABS(COALESCE(amount, 0) - COALESCE(discount_amount, 0))
 				ELSE 0 END), 0) AS range_revenue
 			FROM orders
 			UNION ALL

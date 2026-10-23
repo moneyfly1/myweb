@@ -103,7 +103,7 @@
 import { computed } from 'vue'
 import dayjs from 'dayjs'
 import { formatDateTimeSafe } from '@/utils/date'
-import { formatMoney as formatMoneyUtil } from '@/utils/format'
+import { formatMoneyPlain } from '@/utils/format'
 import SkeletonLoader from './SkeletonLoader.vue'
 import ErrorState from './ErrorState.vue'
 import EmptyState from './EmptyState.vue'
@@ -223,9 +223,7 @@ const formatDate = (date, format) => {
   return formatDateTimeSafe(date, format || props.dateFormat, '-')
 }
 
-const formatMoney = (value) => {
-  return formatMoneyUtil(value, { prefix: '' })
-}
+const formatMoney = formatMoneyPlain
 
 const formatValue = (value, item, field) => {
   if (field.formatter) return field.formatter(value, item)

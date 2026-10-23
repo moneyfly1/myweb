@@ -1055,10 +1055,12 @@ func ChangePassword(c *gin.Context) {
 	utils.CreateAuditLogSimple(c, "change_password", "user", user.ID,
 		fmt.Sprintf("用户修改密码: %s", user.Email))
 
+	// baseURL 必须在进入 goroutine 之前算好：请求结束后 gin 会回收 *gin.Context
+	// （Request 被复用），在协程里读 c.Request 属数据竞争（gin 官方明确禁止）。
+	baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 	go func() {
 		emailService := email.NewEmailService()
 		templateBuilder := email.NewEmailTemplateBuilder()
-		baseURL := utils.GetBuildBaseURL(c.Request, database.GetDB())
 		loginURL := fmt.Sprintf("%s/login", baseURL)
 		changeTime := utils.FormatBeijingTime(utils.GetBeijingTime())
 		content := templateBuilder.GetPasswordChangedTemplate(user.Username, changeTime, loginURL)

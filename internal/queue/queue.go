@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"cboard-go/internal/core/cache"
@@ -31,6 +32,11 @@ type Handler func(ctx context.Context, payload []byte) error
 // InitQueue 初始化队列客户端和服务端（基于 Redis）。
 // 若 Redis 未启用，本函数不应被调用（调用方先判断 cache 是否可用）。
 func InitQueue(redisAddr string) error {
+	if !cache.IsRedisEnabled() {
+		// Redis 没连上就别创建 asynq client/server：否则 worker 会在后台无限重连、
+		// 刷屏 "failed to dial"，而每次入队都要先付一次连接失败的时间。
+		return fmt.Errorf("队列未启动：Redis 不可用")
+	}
 	conn := cache.CurrentRedisConn()
 	if redisAddr != "" {
 		conn.Addr = redisAddr
@@ -89,9 +95,17 @@ func Enqueue(ctx context.Context, taskType string, payload interface{}, opts ...
 
 // StartWorker 启动 worker 处理任务（阻塞，通常用 goroutine 调用）。
 // handlers 为任务类型到处理器的映射。
+var workerOnce sync.Once
+
+// StartWorker 启动 worker（可安全重复调用：Redis 断线恢复后会被再次触发，靠 once 保证只起一份）。
 func StartWorker(handlers map[string]Handler) error {
 	if server == nil {
 		return fmt.Errorf("队列服务端未初始化")
+	}
+	started := false
+	workerOnce.Do(func() { started = true })
+	if !started {
+		return nil
 	}
 	mux := asynq.NewServeMux()
 	for taskType, h := range handlers {

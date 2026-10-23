@@ -39,6 +39,13 @@ export function apiErrorMessage(error, fallback = '操作失败') {
   return raw
 }
 
+// formatMoneyPlain 不带货币符号的金额（模板里自己拼 ¥ 的场景用）。
+// 此前每个页面各写一份 `(v) => formatMoneyUtil(v, { prefix: '' })` 薄包装，
+// 四份行为完全一致，纯属重复。
+export function formatMoneyPlain(value, empty = '0.00') {
+  return formatMoney(value, { prefix: '', empty })
+}
+
 export function formatFileSize(bytes, empty = '-') {
   const number = Number(bytes)
   if (!Number.isFinite(number) || number < 0) return empty

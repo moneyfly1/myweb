@@ -2,7 +2,6 @@ package models
 
 import (
 	"database/sql"
-	"encoding/json"
 	"time"
 )
 
@@ -34,75 +33,4 @@ type PaymentConfig struct {
 
 func (PaymentConfig) TableName() string {
 	return "payment_configs"
-}
-
-func (p *PaymentConfig) GetConfig() map[string]interface{} {
-	config := map[string]interface{}{
-		"pay_type":   p.PayType,
-		"status":     p.Status,
-		"sort_order": p.SortOrder,
-	}
-
-	if p.ReturnURL.Valid {
-		config["return_url"] = p.ReturnURL.String
-	}
-	if p.NotifyURL.Valid {
-		config["notify_url"] = p.NotifyURL.String
-	}
-
-	switch p.PayType {
-	case "alipay":
-		if p.AppID.Valid {
-			config["app_id"] = p.AppID.String
-		}
-		if p.MerchantPrivateKey.Valid {
-			config["merchant_private_key"] = p.MerchantPrivateKey.String
-		}
-		if p.AlipayPublicKey.Valid {
-			config["alipay_public_key"] = p.AlipayPublicKey.String
-		}
-	case "wechat":
-		if p.WechatAppID.Valid {
-			config["app_id"] = p.WechatAppID.String
-		}
-		if p.WechatMchID.Valid {
-			config["mch_id"] = p.WechatMchID.String
-		}
-		if p.WechatAPIKey.Valid {
-			config["api_key"] = p.WechatAPIKey.String
-		}
-	case "crypto":
-		if p.WalletAddress.Valid {
-			config["wallet_address"] = p.WalletAddress.String
-		}
-	case "yipay", "yipay_alipay", "yipay_wxpay", "yipay_qqpay":
-		if p.AppID.Valid {
-			config["pid"] = p.AppID.String
-			config["app_id"] = p.AppID.String
-		}
-		if p.MerchantPrivateKey.Valid {
-			config["key"] = p.MerchantPrivateKey.String
-			config["merchant_private_key"] = p.MerchantPrivateKey.String
-		}
-	case "codepay", "codepay_alipay", "codepay_wxpay":
-		if p.AppID.Valid {
-			config["pid"] = p.AppID.String
-			config["app_id"] = p.AppID.String
-		}
-		if p.MerchantPrivateKey.Valid {
-			config["key"] = p.MerchantPrivateKey.String
-			config["merchant_private_key"] = p.MerchantPrivateKey.String
-		}
-	}
-
-	if p.ConfigJSON.Valid {
-		var jsonData map[string]interface{}
-		if err := json.Unmarshal([]byte(p.ConfigJSON.String), &jsonData); err == nil {
-			for k, v := range jsonData {
-				config[k] = v
-			}
-		}
-	}
-
-	return config
 }

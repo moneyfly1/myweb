@@ -757,6 +757,9 @@
                 :value="node.id"
               />
             </el-select>
+            <div v-if="migrateNodesTruncated" style="margin-top: 4px; font-size: 12px; color: var(--el-text-color-secondary);">
+              可用节点超过 500 个，下拉仅显示前 500 个
+            </div>
           </el-form-item>
           <el-form-item>
             <el-checkbox v-model="deactivateSourceAfterMigrate">迁移后停用源节点</el-checkbox>
@@ -1576,9 +1579,7 @@ export default {
     }
     const selfHostStatusMap = { pending: '等待安装', online: '在线', offline: '离线', expired: '已过期', canceled: '已取消' }
     const selfHostStatusTypeMap = { pending: 'warning', online: 'success', offline: 'danger', expired: 'info', canceled: 'info' }
-    const formatBytes2 = (b) => {
-      return formatFileSize(b)
-    }
+    const formatBytes2 = formatFileSize
     const formatTime2 = (t) => {
       return formatDateTimeSafe(t, 'YYYY-MM-DD HH:mm', '-')
     }
@@ -1672,14 +1673,28 @@ export default {
         ElMessage.error(apiErrorMessage(error, '移除用户失败'))
       }
     }
+    // 后端单页上限 100（utils.ParsePagination clamp），此前 size:1000 只拿到前 100 个且无提示。
+    // 改为分页拉取（最多 5 页），超出则退回当前页可见节点并提示。
+    const migrateNodesTruncated = ref(false)
     const loadMigrateTargetNodes = async (sourceNodeId) => {
+      const pageSize = 100
+      const maxPages = 5
+      const all = []
+      migrateNodesTruncated.value = false
       try {
-        const res = await adminAPI.getCustomNodes({ page: 1, size: 1000, is_active: 'true' })
-        const raw = res.data?.data
-        const list = Array.isArray(raw) ? raw : (raw?.data || raw?.nodes || [])
-        migrateTargetNodes.value = list.filter(node => node.id !== sourceNodeId)
+        for (let page = 1; page <= maxPages; page++) {
+          const res = await adminAPI.getCustomNodes({ page, size: pageSize, is_active: 'true' })
+          const raw = res.data?.data
+          const list = Array.isArray(raw) ? raw : (raw?.data || raw?.nodes || [])
+          all.push(...list)
+          const total = Number(raw?.total || 0)
+          if (list.length < pageSize || (total > 0 && all.length >= total)) break
+          if (page === maxPages && total > all.length) migrateNodesTruncated.value = true
+        }
+        migrateTargetNodes.value = all.filter(node => node.id !== sourceNodeId)
       } catch (error) {
         migrateTargetNodes.value = customNodes.value.filter(node => node.id !== sourceNodeId)
+        migrateNodesTruncated.value = true
       }
     }
     const openMigrateDialog = async (node) => {
@@ -1783,7 +1798,7 @@ export default {
       assignMode, assignedUsers, userSearchKeyword, searchedUsers, selectedUserIds,
       loadingUsers, batchAssigning, assignExtraData, subscriptionTypeDesc, deviceLimitDesc,
       batchTesting, customTestProgress, batchDeleting, batchUnassigning,
-      showMigrateDialog, migratingNode, migrateTargetNodeId, migrateTargetNodes,
+      showMigrateDialog, migratingNode, migrateTargetNodeId, migrateTargetNodes, migrateNodesTruncated,
       deactivateSourceAfterMigrate, migratingAssignments,
       loadCustomNodes, handleFilterChange, debouncedSearch, resetFilters, handleSelectionChange, handleMobileSelect, handleGridSelect,
       handleCommand, openCreateNodeDialog, handleNodeDrawerClosed, editNode, saveNode, deleteNode, toggleNodeStatus,

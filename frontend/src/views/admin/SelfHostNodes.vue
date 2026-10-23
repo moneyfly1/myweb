@@ -503,9 +503,7 @@ const selfHostPagination = reactive({ page: 1, size: 10, total: 0 })
 const selfHostStatusMap = { pending: '等待安装', online: '在线', offline: '离线', expired: '已过期', canceled: '已取消' }
 const selfHostStatusTypeMap = { pending: 'warning', online: 'success', offline: 'danger', expired: 'info', canceled: 'info' }
 
-const formatBytes = (b) => {
-  return formatFileSize(b)
-}
+const formatBytes = formatFileSize
 const formatTime = (t) => {
   return formatDateTimeSafe(t, 'YYYY-MM-DD HH:mm', '-')
 }

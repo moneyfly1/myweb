@@ -373,9 +373,15 @@ func realityPublicKey(priv string) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(pub), nil
 }
 
+// truncate 按**字符**截断而不是按字节：节点名/域名常含中文，
+// 按字节切会切出半个 UTF-8 字符，终端与日志里显示成乱码。
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	if n <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	return string(r[:n]) + "…"
 }

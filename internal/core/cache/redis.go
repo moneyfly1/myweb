@@ -31,7 +31,30 @@ var (
 
 	reconnectStop chan struct{}
 	reconnectOnce sync.Once
+
+	// recoverHooks Redis 从不可用恢复时执行（例如把任务队列 worker 拉起来）。
+	recoverMu    sync.Mutex
+	recoverHooks []func()
 )
+
+// RegisterRecoverHook 注册"Redis 恢复可用"的回调（只注册一次即可，恢复时会全部调用）。
+func RegisterRecoverHook(fn func()) {
+	if fn == nil {
+		return
+	}
+	recoverMu.Lock()
+	recoverHooks = append(recoverHooks, fn)
+	recoverMu.Unlock()
+}
+
+func runRecoverHooks() {
+	recoverMu.Lock()
+	hooks := append([]func(){}, recoverHooks...)
+	recoverMu.Unlock()
+	for _, fn := range hooks {
+		fn()
+	}
+}
 
 var (
 	redisOpsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -102,7 +125,9 @@ func InitRedis() error {
 		WriteTimeout: envMillis("REDIS_TIMEOUT_MS", 800),
 		PoolSize:     envInt("REDIS_POOL_SIZE", 20),
 		MinIdleConns: envInt("REDIS_MIN_IDLE", 5),
-		MaxRetries:   envInt("REDIS_MAX_RETRIES", 1),
+		// -1 = 关闭命令级重试：Redis 不可用时让调用立刻失败并降级，
+		// 而不是把"连不上"放大成多轮重试（既拖慢请求又刷屏日志）。
+		MaxRetries: envInt("REDIS_MAX_RETRIES", -1),
 		// 让每条命令受 ctx deadline 约束：否则 Redis 主机被丢包（不是立刻 ECONNREFUSED）时，
 		// 一次 cache.Get 会按 拨号超时×重试 挂住好几秒，而调用方以为"缓存很快"。
 		ContextTimeoutEnabled: true,
@@ -128,6 +153,7 @@ func InitRedis() error {
 	redisMu.Unlock()
 	redisReady.Store(true)
 	fmt.Printf("Redis 连接成功 (addr=%s db=%d prefix=%s)\n", addr, opts.DB, keyPrefix)
+	runRecoverHooks()
 	return nil
 }
 
@@ -140,32 +166,45 @@ func supervise() {
 	reconnectOnce.Do(func() {
 		reconnectStop = make(chan struct{})
 		go func() {
-			ticker := time.NewTicker(10 * time.Second)
-			defer ticker.Stop()
+			// 退避探测：无 Redis 的部署（或长时间故障）不该每 10 秒刷一批
+			// "failed to dial" 日志；恢复后再回到 10s 节奏，保证及时发现。
+			backoff := 10 * time.Second
 			for {
 				select {
 				case <-reconnectStop:
 					return
-				case <-ticker.C:
-					client := GetRedisClient()
-					if client == nil {
-						if err := InitRedis(); err == nil {
-							log.Println("Redis 已恢复，缓存重新启用")
-						}
-						continue
+				case <-time.After(backoff):
+				}
+				client := GetRedisClient()
+				ok := false
+				if client == nil {
+					if err := InitRedis(); err == nil {
+						log.Println("Redis 已恢复，缓存重新启用")
+						ok = true
 					}
-					pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+				} else {
+					pingCtx, cancel := context.WithTimeout(ctx, time.Second)
 					err := client.Ping(pingCtx).Err()
 					cancel()
-					if err != nil {
-						if redisReady.Swap(false) {
-							log.Printf("Redis 不可用，缓存降级为直连数据库: %v", err)
+					if err == nil {
+						if !redisReady.Load() {
+							redisReady.Store(true)
+							log.Println("Redis 连接恢复，缓存重新启用")
+							runRecoverHooks()
 						}
-						continue
+						ok = true
+					} else if redisReady.Swap(false) {
+						log.Printf("Redis 不可用，缓存降级为直连数据库: %v", err)
 					}
-					if !redisReady.Load() {
-						redisReady.Store(true)
-						log.Println("Redis 连接恢复，缓存重新启用")
+				}
+				if ok {
+					backoff = 10 * time.Second
+					continue
+				}
+				if backoff < 5*time.Minute {
+					backoff *= 2
+					if backoff > 5*time.Minute {
+						backoff = 5 * time.Minute
 					}
 				}
 			}
