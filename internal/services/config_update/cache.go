@@ -1,13 +1,14 @@
 package config_update
 
 import (
-	"cboard-go/internal/core/cache"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"sync/atomic"
 	"time"
+
+	"cboard-go/internal/core/cache"
 )
 
 // CacheService 订阅配置缓存服务

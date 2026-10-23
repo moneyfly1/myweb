@@ -1312,7 +1312,7 @@ func (b *EmailTemplateBuilder) GetClientUpgradeNoticeTemplate(
 			提示：安装新版客户端后，用同一个账号登录即可继续使用现有订阅，无需重新购买。
 			若同时保留旧客户端，请确认新版能正常连接后再卸载。
 		</p>%s`,
-		htmlEscape(username), htmlEscape(currentClient),
+		escapeHTML(username), escapeHTML(currentClient),
 		btn("立即下载官方客户端", links["page"]),
 		btn("Windows 下载", links["windows"]),
 		btn("Android 下载", links["android"]),
@@ -1330,10 +1330,4 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
-}
-
-// htmlEscape 简单转义（模板里的用户名等变量来自数据库，避免注入到 HTML）
-func htmlEscape(s string) string {
-	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&#39;")
-	return r.Replace(s)
 }

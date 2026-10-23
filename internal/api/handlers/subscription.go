@@ -144,7 +144,6 @@ func getCurrentAdminUsername(c *gin.Context) *string {
 
 // asyncSubscriptionLog 异步记录订阅日志，带超时控制
 func asyncSubscriptionLog(
-	ctx context.Context,
 	subID, userID uint,
 	actionType, actionBy string,
 	actionByUserID *uint,
@@ -360,7 +359,7 @@ func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, 
 		}
 
 		// 使用传入的 IP 地址记录日志
-		asyncSubscriptionLog(context.Background(), sub.ID, sub.UserID, "reset", actionBy, actionByUserID, ipAddress, beforeData, afterData, reason)
+		asyncSubscriptionLog(sub.ID, sub.UserID, "reset", actionBy, actionByUserID, ipAddress, beforeData, afterData, reason)
 
 		return nil
 	})
@@ -496,7 +495,7 @@ func CreateSubscription(c *gin.Context) {
 		"expire_time":     utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout),
 		"status":          sub.Status,
 	}
-	asyncSubscriptionLog(c.Request.Context(), sub.ID, user.ID, "create", "user", &user.ID, utils.GetRealClientIP(c), nil, afterData, "用户创建订阅")
+	asyncSubscriptionLog(sub.ID, user.ID, "create", "user", &user.ID, utils.GetRealClientIP(c), nil, afterData, "用户创建订阅")
 
 	utils.SuccessResponse(c, http.StatusCreated, "", sub)
 }
@@ -1002,7 +1001,7 @@ func UpdateSubscription(c *gin.Context) {
 		"target_email":    targetEmail,
 	}
 
-	asyncSubscriptionLog(c.Request.Context(), sub.ID, sub.UserID, actionType, actionBy, actionByUserID, utils.GetRealClientIP(c), beforeData, afterData, "更新订阅")
+	asyncSubscriptionLog(sub.ID, sub.UserID, actionType, actionBy, actionByUserID, utils.GetRealClientIP(c), beforeData, afterData, "更新订阅")
 	if actionBy == "admin" {
 		changes := []string{}
 		if req.DeviceLimit != nil {
@@ -1118,7 +1117,7 @@ func ExtendSubscription(c *gin.Context) {
 				log.Printf("failed to queue email: %v", err)
 			}
 		}
-	}(c.Request.Context(), sub.User.Email, sub.User.Username, sub.PackageID, oldExp, utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout), utils.FormatBeijingTime(utils.GetBeijingTime()))
+	}(context.Background(), sub.User.Email, sub.User.Username, sub.PackageID, oldExp, utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout), utils.FormatBeijingTime(utils.GetBeijingTime()))
 	utils.SuccessResponse(c, http.StatusOK, "订阅已延长", sub)
 }
 
@@ -1340,14 +1339,14 @@ func ConvertSubscriptionToBalance(c *gin.Context) {
 				log.Printf("failed to create balance log: %v", err)
 			}
 		}
-	}(c.Request.Context())
+	}(context.Background())
 
 	// 记录订阅日志
 	beforeData := map[string]interface{}{
 		"subscription_id": subID,
 		"expire_time":     utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout),
 	}
-	asyncSubscriptionLog(c.Request.Context(), subID, user.ID, "delete", "user", &user.ID, ipAddress, beforeData, nil, "订阅转换为余额")
+	asyncSubscriptionLog(subID, user.ID, "delete", "user", &user.ID, ipAddress, beforeData, nil, "订阅转换为余额")
 
 	utils.SuccessResponse(c, http.StatusOK, "已转换为余额", gin.H{
 		"converted_amount":       convertedAmount,
@@ -1512,7 +1511,7 @@ func BatchDeleteSubscriptions(c *gin.Context) {
 			"user_id":         sub.UserID,
 			"expire_time":     utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout),
 		}
-		asyncSubscriptionLog(c.Request.Context(), sub.ID, sub.UserID, "delete", actionBy, actionByUserID, ipAddress, beforeData, nil, "批量删除订阅")
+		asyncSubscriptionLog(sub.ID, sub.UserID, "delete", actionBy, actionByUserID, ipAddress, beforeData, nil, "批量删除订阅")
 		clearSubConfigCacheAsync(sub.SubscriptionURL)
 	}
 	utils.CreateAuditLog(c, "batch_delete_subscriptions", "subscription", 0,
@@ -1582,7 +1581,7 @@ func batchUpdateSubscriptionStatus(c *gin.Context, isActive bool, status string)
 			"is_active": isActive,
 			"status":    status,
 		}
-		asyncSubscriptionLog(c.Request.Context(), sub.ID, sub.UserID, actionType, actionBy, actionByUserID, ipAddress, beforeData, afterData, fmt.Sprintf("批量%s订阅", actionName))
+		asyncSubscriptionLog(sub.ID, sub.UserID, actionType, actionBy, actionByUserID, ipAddress, beforeData, afterData, fmt.Sprintf("批量%s订阅", actionName))
 		clearSubConfigCacheAsync(sub.SubscriptionURL)
 	}
 	// 构建批量操作详情
@@ -1937,8 +1936,8 @@ func GetSubscriptionConfig(c *gin.Context) {
 		}
 	}
 
-	// 异步记录设备访问和更新计数（不阻塞配置返回，带超时）
-	// mfHeaders 已在上面声明（避免重复声明遮蔽）
+	// 异步记录设备访问和更新计数（不阻塞配置返回，带超时）。
+	// 注意用 Background：handler 返回后请求 ctx 会被取消，带它做异步写库必然失败。
 	if shouldRecord {
 		go func(ctx context.Context, subID, userID uint, ua, ip string, mfh map[string]string) {
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -1953,7 +1952,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 					log.Printf("failed to record device access: %v", err)
 				}
 			}
-		}(c.Request.Context(), subscription.ID, subscription.UserID, userAgent, clientIP, mfHeaders)
+		}(context.Background(), subscription.ID, subscription.UserID, userAgent, clientIP, mfHeaders)
 
 		go func(ctx context.Context, subID uint) {
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -1969,7 +1968,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 					log.Printf("failed to update clash count: %v", err)
 				}
 			}
-		}(c.Request.Context(), subscription.ID)
+		}(context.Background(), subscription.ID)
 	}
 
 	// 记录订阅访问日志（含设备信息）
@@ -1990,7 +1989,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 			}
 			_ = utils.CreateSubscriptionLog(subID, userID, "access", "user", nil, ip, nil, logData,
 				fmt.Sprintf("[%s] %s %s", subType, devInfo.SoftwareName, devInfo.DeviceName))
-		}(c.Request.Context(), subscription.ID, subscription.UserID, userAgent, clientIP, "clash")
+		}(context.Background(), subscription.ID, subscription.UserID, userAgent, clientIP, "clash")
 	}
 
 	// 生成 Clash 配置
@@ -2223,7 +2222,7 @@ func GetUniversalSubscription(c *gin.Context) {
 				logData := map[string]interface{}{"type": "universal", "software_name": devInfo.SoftwareName, "software_ver": devInfo.SoftwareVersion, "os_name": devInfo.OSName, "device_name": devInfo.DeviceName}
 				_ = utils.CreateSubscriptionLog(subID, userID, "access", "user", nil, ip, nil, logData,
 					fmt.Sprintf("[universal] %s %s", devInfo.SoftwareName, devInfo.DeviceName))
-			}(c.Request.Context(), sub.ID, sub.UserID, deviceUA, deviceIP)
+			}(context.Background(), sub.ID, sub.UserID, deviceUA, deviceIP)
 		}
 
 		// 正常生成配置

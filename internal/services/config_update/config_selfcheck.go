@@ -597,14 +597,19 @@ func (s *ConfigUpdateService) fallbackClashConfig(proxies []*ProxyNode, ctx *Sub
 	return cfg
 }
 
+// logNodeValidationEvent 单条校验事件打日志（落库可攒批，日志保持逐条可读）
+func logNodeValidationEvent(e NodeValidationEvent) {
+	logf("[%s] 来源=%s 节点=%q 类型=%s 地址=%s:%d 原因=%s",
+		e.Event, e.Source, e.NodeName, e.NodeType, e.Server, e.Port, e.Reason)
+}
+
 // recordNodeValidationEvents 记录校验事件：server.log 可见 + 落库供后台展示
 func (s *ConfigUpdateService) recordNodeValidationEvents(events []NodeValidationEvent) {
 	if len(events) == 0 {
 		return
 	}
 	for _, e := range events {
-		logf("[%s] 来源=%s 节点=%q 类型=%s 地址=%s:%d 原因=%s",
-			e.Event, e.Source, e.NodeName, e.NodeType, e.Server, e.Port, e.Reason)
+		logNodeValidationEvent(e)
 	}
 	RecordNodeValidationEvents(s.db, events)
 }

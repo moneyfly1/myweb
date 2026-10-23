@@ -63,7 +63,6 @@ func getRequestedLogLevel(c *gin.Context) string {
 	return normalizeLogLevel(level)
 }
 
-// applyCommonKeywordFilter 通用关键词过滤 (针对 AuditLog)
 // applyCommonLogFilters 审计日志与系统日志共用的 module/username/keyword/时间过滤
 func applyCommonLogFilters(query *gorm.DB, c *gin.Context) *gorm.DB {
 	if module := strings.TrimSpace(c.Query("module")); module != "" {

@@ -672,9 +672,6 @@ func DeleteCustomNodeSubscription(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("已删除 %d 个节点", len(oldIDs)), gin.H{"removed": len(oldIDs)})
 }
 
-// importCustomNodesFromLinks 解析节点链接并创建专线节点，返回成功数、失败数与错误明细。
-// source 标识节点来源: manual / link / subscription / selfhost；
-// sourceURL 为订阅导入时的来源订阅 URL（仅 subscription 来源使用，用于更新/替换定位）。
 // customNodeImportMessage 生成专线节点导入的结果提示。
 //
 // 必须把"新增 / 已存在跳过 / 解析失败"三件事分开说：此前只回报"成功 0 个"，
