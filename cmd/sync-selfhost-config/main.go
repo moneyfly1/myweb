@@ -274,6 +274,9 @@ func inboundToProxyNode(in singBoxInbound, main models.CustomNode) (*config_upda
 		if in.Password == "" || in.Method == "" {
 			return nil, "", fmt.Errorf("shadowsocks 缺少 method/password（旧脚本未写入，需要重新搭建该协议）")
 		}
+		// sing-box 里叫 shadowsocks，面板/链接协议名是 ss —— 不转换会导致
+		// NodeToLink 走到 default 分支返回空串（生成链接失败）
+		pn.Type = "ss"
 		pn.Cipher = in.Method
 		pn.Password = in.Password
 		key = "ss"
