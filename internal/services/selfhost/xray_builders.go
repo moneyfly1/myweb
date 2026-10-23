@@ -62,7 +62,7 @@ func buildXrayConfig(protocols []XrayProtocol) string {
 			transport := ""
 			switch p.Key {
 			case "vless-reality-grpc":
-				transport = `, "transport": { "type": "grpc", "service_name": "/${WS_%s}" }`
+				transport = `, "transport": { "type": "grpc", "service_name": "${WS_%s}"`
 			case "vless-reality-xhttp":
 				transport = `, "transport": { "type": "httpupgrade", "path": "/${WS_%s}" }`
 			}
@@ -72,7 +72,7 @@ func buildXrayConfig(protocols []XrayProtocol) string {
 			}
 			sb.WriteString(fmt.Sprintf(`    { "type": "vless", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}" } ], "tls": { "enabled": true, "server_name": "%s", "reality": { "enabled": true, "handshake": { "server": "%s", "server_port": 443 }, "private_key": "${REALITY_PRIVATE_KEY}", "short_id": [ "${REALITY_SHORT_ID}" ] } }%s }%s`+"\n", key, p.Port, key, defaultRealitySNI(p), defaultRealitySNI(p), transportStr, comma))
 		case "vless-grpc-tls":
-			sb.WriteString(fmt.Sprintf(`    { "type": "vless", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}" } ], "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem", "server_name": "%s" }, "transport": { "type": "grpc", "service_name": "/${WS_%s}" } }%s`+"\n", key, p.Port, key, tlsServerName(p), key, comma))
+			sb.WriteString(fmt.Sprintf(`    { "type": "vless", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}" } ], "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem", "server_name": "%s" }, "transport": { "type": "grpc", "service_name": "${WS_%s}" }%s`+"\n", key, p.Port, key, tlsServerName(p), key, comma))
 		case "vless-tcp-tls":
 			// VLESS + TCP + TLS + Vision（对齐 v2ray-agent VLESS_TCP/TLS_Vision）
 			sb.WriteString(fmt.Sprintf(`    { "type": "vless", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}", "flow": "xtls-rprx-vision" } ], "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem", "server_name": "%s" } }%s`+"\n", key, p.Port, key, tlsServerName(p), comma))
@@ -87,14 +87,17 @@ func buildXrayConfig(protocols []XrayProtocol) string {
 		case "trojan-ws":
 			sb.WriteString(fmt.Sprintf(`    { "type": "trojan", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "password": "${PASS_%s}" } ], "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem", "server_name": "%s" }, "transport": { "type": "ws", "path": "/${WS_%s}" } }%s`+"\n", key, p.Port, key, tlsServerName(p), key, comma))
 		case "trojan-grpc-tls":
-			sb.WriteString(fmt.Sprintf(`    { "type": "trojan", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "password": "${PASS_%s}" } ], "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem", "server_name": "%s" }, "transport": { "type": "grpc", "service_name": "/${WS_%s}" } }%s`+"\n", key, p.Port, key, tlsServerName(p), key, comma))
+			sb.WriteString(fmt.Sprintf(`    { "type": "trojan", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "password": "${PASS_%s}" } ], "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem", "server_name": "%s" }, "transport": { "type": "grpc", "service_name": "${WS_%s}" }%s`+"\n", key, p.Port, key, tlsServerName(p), key, comma))
 		case "ss":
 			sb.WriteString(fmt.Sprintf(`    { "type": "shadowsocks", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "method": "aes-128-gcm", "password": "${PASS_%s}" }%s`+"\n", key, p.Port, key, comma))
 		case "hysteria2":
 			// sing-box 1.11 hysteria2 使用 users 数组（顶层 password 字段不存在）
 			sb.WriteString(fmt.Sprintf(`    { "type": "hysteria2", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "password": "${PASS_%s}" } ], "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem" } }%s`+"\n", key, p.Port, key, comma))
 		case "tuic":
-			sb.WriteString(fmt.Sprintf(`    { "type": "tuic", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}", "password": "${PASS_%s}" } ], "congestion_control": "bbr", "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem" } }%s`+"\n", key, p.Port, key, key, comma))
+			// TUIC 基于 QUIC，客户端必须协商 ALPN=h3。服务端 tls 缺 alpn 时，
+			// 客户端会报 "tls: server did not select an ALPN protocol" 并超时
+			// （2026-10-23 线上实测：TUIC 节点全灭就是这个原因）。
+			sb.WriteString(fmt.Sprintf(`    { "type": "tuic", "tag": "in-%s", "listen": "0.0.0.0", "listen_port": %d, "users": [ { "uuid": "${UUID_%s}", "password": "${PASS_%s}" } ], "congestion_control": "bbr", "tls": { "enabled": true, "certificate_path": "/etc/sing-box/cert/fullchain.pem", "key_path": "/etc/sing-box/cert/privkey.pem", "alpn": ["h3"] } }%s`+"\n", key, p.Port, key, key, comma))
 		}
 	}
 
@@ -128,7 +131,7 @@ LINKS+=("$LINK_%s")
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, defaultRealitySNI(p), protoLabel(p.Key), key))
 		case "vless-reality-grpc":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?encryption=none&security=reality&sni=%s&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=grpc&serviceName=%%2F${WS_%s}#${SERVER_ADDR}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?encryption=none&security=reality&sni=%s&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${REALITY_SHORT_ID}&type=grpc&serviceName=${WS_%s}#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, defaultRealitySNI(p), key, protoLabel(p.Key), key))
 		case "vless-reality-xhttp":
@@ -136,7 +139,7 @@ LINKS+=("$LINK_%s")
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, defaultRealitySNI(p), key, protoLabel(p.Key), key))
 		case "vless-grpc-tls":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?encryption=none&security=tls&sni=${DOMAIN}&fp=chrome&type=grpc&serviceName=%%2F${WS_%s}&host=${DOMAIN}#${SERVER_ADDR}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="vless://${UUID_%s}@${SERVER_ADDR}:%d?encryption=none&security=tls&sni=${DOMAIN}&fp=chrome&type=grpc&serviceName=${WS_%s}&host=${DOMAIN}#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, key, protoLabel(p.Key), key))
 		case "trojan-tcp-tls":
@@ -149,7 +152,7 @@ LINKS+=("$LINK_%s")
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, key, protoLabel(p.Key), key))
 		case "trojan-grpc-tls":
-			sb.WriteString(fmt.Sprintf(`LINK_%s="trojan://${PASS_%s}@${SERVER_ADDR}:%d?security=tls&sni=${DOMAIN}&fp=chrome&type=grpc&serviceName=%%2F${WS_%s}&host=${DOMAIN}#${SERVER_ADDR}-%s"
+			sb.WriteString(fmt.Sprintf(`LINK_%s="trojan://${PASS_%s}@${SERVER_ADDR}:%d?security=tls&sni=${DOMAIN}&fp=chrome&type=grpc&serviceName=${WS_%s}&host=${DOMAIN}#${SERVER_ADDR}-%s"
 LINKS+=("$LINK_%s")
 `+"\n", key, key, p.Port, key, protoLabel(p.Key), key))
 		case "vless-tcp-tls":
@@ -215,11 +218,17 @@ func tlsServerName(p XrayProtocol) string {
 	return "${IP}"
 }
 
+// defaultRealitySNI Reality 的伪装目标（handshake server + SNI）。
+//
+// 2026-10-23 线上排查：默认用 www.microsoft.com 时，该 VPS 访问它要 5.6 秒
+// 且不稳定 → REALITY 握手在服务端被判 invalid connection，客户端全部超时。
+// 换成 www.bing.com（实测 0.4 秒）后同一套 key 立刻可用。
+// 这里同时把默认值换掉，避免新装的节点再踩同一个坑。
 func defaultRealitySNI(p XrayProtocol) string {
 	if p.RealitySNI != "" {
 		return p.RealitySNI
 	}
-	return "www.microsoft.com"
+	return "www.bing.com"
 }
 
 func protoLabel(k string) string {
