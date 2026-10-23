@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"cboard-go/internal/core/cache"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
@@ -36,9 +37,11 @@ func autoDisableTimeoutEnabled(db *gorm.DB) bool {
 
 // clearNodeCaches 同步清除所有节点相关缓存，确保管理员操作后客户立即获取最新数据
 func clearNodeCaches() {
-	cs := cache_service.NewCacheService()
-	if err := cs.ClearNodesCache(); err != nil {
-		log.Printf("failed to clear nodes cache: %v", err)
+	// 清节点基线缓存 + 系统节点/订阅配置缓存（三者都真正有读方）
+	if cache.IsRedisEnabled() {
+		if _, err := cache.ClearPrefix("nodes:public:"); err != nil {
+			log.Printf("failed to clear public nodes cache: %v", err)
+		}
 	}
 	cacheService := &config_update.CacheService{}
 	if err := cacheService.ClearSystemNodesCache(); err != nil {
@@ -259,34 +262,66 @@ func processAndImportLinks(db *gorm.DB, links []string) (int, []importedNodeReje
 	return importedCount, rejects
 }
 
-func GetNodes(c *gin.Context) {
-	db := database.GetDB()
+// nodesPublicCacheTTL 节点列表基线缓存时长。
+// 节点是"读极多、写极少"的数据（用户端每次打开节点页都会拉一次），
+// 且管理端任何节点变更都会经 clearNodeCaches 清掉这份缓存。
+const nodesPublicCacheTTL = 30 * time.Second
+
+func nodesPublicCacheKey(region, nodeType, status string) string {
+	return "nodes:public:v1:" + region + "|" + nodeType + "|" + status
+}
+
+// loadPublicNodes 读取（并缓存）按过滤条件去重后的节点基线列表。
+// 注意只缓存"基线"，按用户身份做的可见性裁剪（special_only / both / 过期）仍在调用方完成，
+// 否则会把 A 用户的可见节点发给 B 用户。
+func loadPublicNodes(db *gorm.DB, region, nodeType, status string) ([]models.Node, error) {
+	cacheKey := nodesPublicCacheKey(region, nodeType, status)
+	cs := cache_service.NewCacheService()
+	if cache.IsRedisEnabled() {
+		var cached []models.Node
+		if ok, _ := cs.Get(cacheKey, &cached); ok && cached != nil {
+			return cached, nil
+		}
+	}
+
 	query := db.Model(&models.Node{}).Where("is_active = ?", true)
-	for _, param := range []string{"region", "type", "status"} {
-		if val := c.Query(param); val != "" && val != "all" {
+	for param, val := range map[string]string{"region": region, "type": nodeType, "status": status} {
+		if val != "" && val != "all" {
 			query = query.Where(fmt.Sprintf("%s = ?", param), val)
 		}
 	}
 	var allNodes []models.Node
 	if err := query.Order("order_index ASC, created_at ASC").Find(&allNodes).Error; err != nil {
+		return nil, err
+	}
+	seenKeys := make(map[string]bool)
+	unique := make([]models.Node, 0, len(allNodes))
+	for _, node := range allNodes {
+		if node.IsManual {
+			unique = append(unique, node)
+			continue
+		}
+		key := generateNodeKey(node.Type, node.Name, node.Config)
+		if !seenKeys[key] {
+			seenKeys[key] = true
+			unique = append(unique, node)
+		}
+	}
+	if cache.IsRedisEnabled() {
+		_ = cs.Set(cacheKey, unique, nodesPublicCacheTTL)
+	}
+	return unique, nil
+}
+
+func GetNodes(c *gin.Context) {
+	db := database.GetDB()
+	uniqueNodes, err := loadPublicNodes(db, c.Query("region"), c.Query("type"), c.Query("status"))
+	if err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取失败", err)
 		return
 	}
-	seenKeys := make(map[string]bool)
-	uniqueNodes := make([]models.Node, 0)
-	var customNodesList []models.Node // 专线节点列表
-
-	for _, node := range allNodes {
-		if node.IsManual {
-			uniqueNodes = append(uniqueNodes, node)
-		} else {
-			key := generateNodeKey(node.Type, node.Name, node.Config)
-			if !seenKeys[key] {
-				seenKeys[key] = true
-				uniqueNodes = append(uniqueNodes, node)
-			}
-		}
-	}
+	uniqueNodes = append([]models.Node(nil), uniqueNodes...) // 避免后续就地裁剪污染缓存切片
+	var customNodesList []models.Node                        // 专线节点列表
 
 	if user, ok := middleware.GetCurrentUser(c); ok && user != nil {
 		var sub models.Subscription

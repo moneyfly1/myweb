@@ -167,3 +167,39 @@ func InvalidatePublicSettingsCache() {
 	publicSettingsSnap = nil
 	publicSettingsMu.Unlock()
 }
+
+// ---------------- 通用短 TTL 值缓存 ----------------
+//
+// 用于"统计类接口"：同一份聚合结果被同一个页面短时间内反复请求（前端多个卡片各自请求、
+// 用户来回切页），而数据本身按分钟级变化完全可接受。存 interface{}，取用时自行断言。
+
+type ttlEntry struct {
+	value    interface{}
+	expireAt time.Time
+}
+
+var (
+	ttlCache   = make(map[string]ttlEntry)
+	ttlCacheMu sync.RWMutex
+)
+
+// CacheGet 取短 TTL 缓存（不存在或已过期返回 false）。
+func CacheGet(key string) (interface{}, bool) {
+	ttlCacheMu.RLock()
+	e, ok := ttlCache[key]
+	ttlCacheMu.RUnlock()
+	if !ok || time.Now().After(e.expireAt) {
+		return nil, false
+	}
+	return e.value, true
+}
+
+// CacheSet 写入短 TTL 缓存（超过 512 条时整体清空，避免无界增长）。
+func CacheSet(key string, value interface{}, ttl time.Duration) {
+	ttlCacheMu.Lock()
+	if len(ttlCache) > 512 {
+		ttlCache = make(map[string]ttlEntry)
+	}
+	ttlCache[key] = ttlEntry{value: value, expireAt: time.Now().Add(ttl)}
+	ttlCacheMu.Unlock()
+}

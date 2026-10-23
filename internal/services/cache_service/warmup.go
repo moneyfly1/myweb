@@ -19,9 +19,9 @@ func WarmupCache() {
 	utils.LogInfo("缓存预热: 开始预热缓存...")
 	start := time.Now()
 
+	// 只预热真正有读路径的缓存（套餐）：公告/系统配置的查询本身很轻，
+	// 且系统配置已有进程内 30s 缓存，再写一份 Redis 无人读取纯属空转。
 	go warmupPackages()
-	go warmupAnnouncements()
-	go warmupSystemConfig()
 
 	utils.LogInfo("缓存预热: 完成，耗时 %v", time.Since(start))
 }
@@ -62,63 +62,4 @@ func warmupPackages() {
 		return
 	}
 	utils.LogInfo("缓存预热: 套餐列表已预热 (%d 条)", len(result))
-}
-
-func warmupAnnouncements() {
-	db := database.GetDB()
-	var announcements []models.Notification
-	if err := db.Where("type = ? AND is_active = ?", "announcement", true).
-		Order("created_at DESC").Limit(10).Find(&announcements).Error; err != nil {
-		return
-	}
-
-	result := make([]map[string]interface{}, 0)
-	for _, ann := range announcements {
-		result = append(result, map[string]interface{}{
-			"id":         ann.ID,
-			"title":      ann.Title,
-			"content":    ann.Content,
-			"type":       ann.Type,
-			"is_active":  ann.IsActive,
-			"created_at": utils.FormatBeijingTime(ann.CreatedAt),
-		})
-	}
-
-	cs := NewCacheService()
-	if err := cs.SetAnnouncementsCache(result); err != nil {
-		log.Printf("failed to set announcements cache: %v", err)
-	}
-	utils.LogInfo("缓存预热: 公告列表已预热 (%d 条)", len(result))
-}
-
-func warmupSystemConfig() {
-	db := database.GetDB()
-	categories := []string{"general", "payment", "email", "security"}
-
-	// 一次查出所有分类的配置
-	var allConfigs []models.SystemConfig
-	db.Where("category IN ?", categories).Find(&allConfigs)
-
-	// 按分类分组
-	grouped := make(map[string][]map[string]interface{})
-	for _, cfg := range allConfigs {
-		grouped[cfg.Category] = append(grouped[cfg.Category], map[string]interface{}{
-			"id":       cfg.ID,
-			"key":      cfg.Key,
-			"value":    cfg.Value,
-			"category": cfg.Category,
-		})
-	}
-
-	cs := NewCacheService()
-	for _, category := range categories {
-		result := grouped[category]
-		if result == nil {
-			result = make([]map[string]interface{}, 0)
-		}
-		if err := cs.SetSystemConfigCache(category, result); err != nil {
-			log.Printf("failed to set system config cache for category %s: %v", category, err)
-		}
-	}
-	utils.LogInfo("缓存预热: 系统配置已预热")
 }

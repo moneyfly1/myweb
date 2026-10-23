@@ -81,19 +81,8 @@ func updateSettingsCommon(c *gin.Context, category string) {
 	// 使短 TTL 配置缓存（GetCachedSetting）失效，避免更新后脏读
 	utils.InvalidateAllSettingCache()
 
-	// 清除系统配置缓存
-	go func() {
-		cs := cache_service.NewCacheService()
-		if err := cs.ClearSystemConfigCache(category); err != nil {
-			log.Printf("failed to clear system config cache: %v", err)
-		}
-		// 如果修改的是公告设置，同时清除公告列表缓存
-		if category == CatAnnouncement {
-			if err := cs.ClearAnnouncementsCache(); err != nil {
-				log.Printf("failed to clear announcements cache: %v", err)
-			}
-		}
-	}()
+	// 说明：Redis 侧的 system:config / announcements 缓存已删除（只删不读、纯空转）。
+	// 进程内配置缓存（GetCachedSetting 与公开设置快照）由上面的 InvalidateAllSettingCache 统一失效。
 
 	utils.CreateAuditLogSimple(c, "update_settings", "settings", 0, fmt.Sprintf("管理员操作: 更新设置 category=%s", category))
 	utils.SuccessResponse(c, http.StatusOK, "设置已保存", nil)
@@ -298,7 +287,7 @@ func UpdateSystemConfig(c *gin.Context) {
 			return
 		}
 		utils.CreateAuditLogSimple(c, "update_system_config_batch", "system_config", 0, "管理员操作: 批量更新系统配置")
-		go cache_service.NewCacheService().ClearSystemConfigCache(CatSystem)
+		utils.InvalidateAllSettingCache()
 		utils.SuccessResponse(c, http.StatusOK, "批量更新成功", nil)
 		return
 	}
@@ -348,7 +337,7 @@ func UpdateSystemConfig(c *gin.Context) {
 		return
 	}
 	utils.CreateAuditLogSimple(c, "update_system_config", "system_config", config.ID, fmt.Sprintf("管理员操作: 更新系统配置 %s (category=%s)", config.Key, config.Category))
-	go cache_service.NewCacheService().ClearSystemConfigCache(config.Category)
+	utils.InvalidateAllSettingCache()
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", config)
 }
 
@@ -383,7 +372,7 @@ func DeleteSystemConfig(c *gin.Context) {
 		return
 	}
 	utils.CreateAuditLogSimple(c, "delete_system_config", "system_config", config.ID, fmt.Sprintf("管理员操作: 删除系统配置 %s (category=%s)", config.Key, config.Category))
-	go cache_service.NewCacheService().ClearSystemConfigCache(config.Category)
+	utils.InvalidateAllSettingCache()
 	utils.SuccessResponse(c, http.StatusOK, "删除成功", nil)
 }
 
