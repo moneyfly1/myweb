@@ -290,36 +290,6 @@ func GrantForRelation(tx *gorm.DB, relation *models.InviteRelation, code *models
 	return granted, nil
 }
 
-// GrantForNewInvitee 按被邀请人找到待发放关系并发放奖励。
-//
-// Deprecated: 注册路径**不再调用**本函数。业务规则是「被邀请人真正消费（首单支付成功）后
-// 才结算奖励」，注册即发会把「注册了但没花钱的人」也算进去（线上因此超发 800 元）。
-// 结算统一由订单支付路径 order.processInviteRewardsTx 完成；本函数仅保留给历史工具与单测使用。
-func GrantForNewInvitee(db *gorm.DB, inviteeID uint) error {
-	if db == nil {
-		return nil
-	}
-	return db.Transaction(func(tx *gorm.DB) error {
-		var relation models.InviteRelation
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("invitee_id = ?", inviteeID).First(&relation).Error; err != nil {
-			return nil // 无邀请关系
-		}
-		if relation.InviterRewardGiven && relation.InviteeRewardGiven {
-			return nil
-		}
-		var code models.InviteCode
-		if err := tx.First(&code, relation.InviteCodeID).Error; err != nil {
-			return err
-		}
-		if code.MinOrderAmount > 0 {
-			return nil
-		}
-		_, err := GrantForRelation(tx, &relation, &code, "注册")
-		return err
-	})
-}
-
 // ---------------------------------------------------------------------------
 // 记录查询（用户端「邀请记录」）
 // ---------------------------------------------------------------------------

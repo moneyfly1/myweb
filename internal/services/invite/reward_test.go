@@ -151,69 +151,51 @@ func TestMigrateLegacyDoesNotOverrideValidCurrent(t *testing.T) {
 	}
 }
 
-// 发放：注册即时奖励（最低消费为 0 的码）应给邀请人与被邀请人都加余额并置位
-func TestGrantForNewInviteeGrantsBothSides(t *testing.T) {
+// 建关系本身不发奖励：注册只创建关系，结算必须由消费（支付路径）显式触发。
+// 旧实现的 GrantForNewInvitee 会在注册时自动发放，导致「注册但没花钱」也拿奖励
+// （线上因此超发 800 元），该函数已删除。
+func TestRelationCreationDoesNotGrantRewards(t *testing.T) {
 	db := setupInviteDB(t)
 	setCfg(t, db, KeyInviterReward, "20")
 	setCfg(t, db, KeyInviteeReward, "20")
 	mkUser(t, db, 1, 0) // 邀请人
-	mkUser(t, db, 2, 5) // 被邀请人
+	mkUser(t, db, 2, 0) // 被邀请人
 	code := mkCode(t, db, 1, 0, 0, 0)
 	rel := models.InviteRelation{InviteCodeID: code.ID, InviterID: 1, InviteeID: 2}
 	if err := db.Create(&rel).Error; err != nil {
 		t.Fatal(err)
 	}
 
-	if err := GrantForNewInvitee(db, 2); err != nil {
-		t.Fatalf("发放失败: %v", err)
-	}
-
+	// 仅创建关系（模拟注册）：不应有任何余额变化，也不应置发放标记
 	var inviter, invitee models.User
 	db.First(&inviter, 1)
 	db.First(&invitee, 2)
-	if inviter.Balance != 20 || invitee.Balance != 25 {
-		t.Fatalf("余额不符: 邀请人 %.2f(期望20) 被邀请人 %.2f(期望25)", inviter.Balance, invitee.Balance)
-	}
-	if inviter.TotalInviteReward != 20 || inviter.TotalInviteCount != 1 {
-		t.Fatalf("邀请计数不符: reward=%.2f count=%d", inviter.TotalInviteReward, inviter.TotalInviteCount)
+	if inviter.Balance != 0 || invitee.Balance != 0 {
+		t.Fatalf("创建关系不应发放奖励: 邀请人 %.2f 被邀请人 %.2f", inviter.Balance, invitee.Balance)
 	}
 	var got models.InviteRelation
 	db.First(&got, rel.ID)
-	if !got.InviterRewardGiven || !got.InviteeRewardGiven {
-		t.Fatalf("发放标记未置位: %+v", got)
-	}
-	if got.InviterRewardAmount != 20 {
-		t.Fatalf("关系上的金额应为 20，实际 %.2f", got.InviterRewardAmount)
+	if got.InviterRewardGiven || got.InviteeRewardGiven {
+		t.Fatalf("创建关系不应置发放标记: %+v", got)
 	}
 
-	// 幂等：再调用一次不应重复发放
-	if err := GrantForNewInvitee(db, 2); err != nil {
+	// 模拟「首单支付」后由订单路径显式发放
+	if _, err := GrantForRelation(db, &got, &code, "首单"); err != nil {
+		t.Fatalf("支付后发放失败: %v", err)
+	}
+	db.First(&inviter, 1)
+	db.First(&invitee, 2)
+	if inviter.Balance != 20 || invitee.Balance != 20 {
+		t.Fatalf("支付后应各发 20: 邀请人 %.2f 被邀请人 %.2f", inviter.Balance, invitee.Balance)
+	}
+
+	// 幂等：重复发放不应翻倍
+	if _, err := GrantForRelation(db, &got, &code, "首单"); err != nil {
 		t.Fatal(err)
 	}
 	db.First(&inviter, 1)
 	if inviter.Balance != 20 {
 		t.Fatalf("重复发放导致余额翻倍: %.2f", inviter.Balance)
-	}
-}
-
-// 有最低消费要求的码，注册时不发，付款后由订单路径发
-func TestGrantForNewInviteeSkipsWhenMinOrderRequired(t *testing.T) {
-	db := setupInviteDB(t)
-	setCfg(t, db, KeyInviterReward, "20")
-	setCfg(t, db, KeyInviteeReward, "20")
-	mkUser(t, db, 1, 0)
-	mkUser(t, db, 2, 0)
-	code := mkCode(t, db, 1, 0, 0, 100)
-	rel := models.InviteRelation{InviteCodeID: code.ID, InviterID: 1, InviteeID: 2}
-	db.Create(&rel)
-
-	if err := GrantForNewInvitee(db, 2); err != nil {
-		t.Fatal(err)
-	}
-	var inviter models.User
-	db.First(&inviter, 1)
-	if inviter.Balance != 0 {
-		t.Fatalf("有最低消费要求时注册阶段不应发放，实际余额 %.2f", inviter.Balance)
 	}
 }
 
