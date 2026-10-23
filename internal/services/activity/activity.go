@@ -21,6 +21,7 @@ package activity
 import (
 	"encoding/json"
 	"log"
+	"sync"
 	"time"
 
 	"cboard-go/internal/core/cache"
@@ -118,6 +119,10 @@ type store interface {
 	membersSince(key string, since int64) []uint
 	zcountSince(key string, since int64) int64
 	scoreOf(key string, member uint) (int64, bool)
+	// prune 删除分数（unix 秒）早于 cutoff 的成员，返回删除数量。
+	// zset 只增不减：历史上出现过的 userID 会永久驻留（zset 本身不过期），
+	// 需要定期按时间窗口裁剪，否则 Redis 内存与遍历成本随用户数单调增长。
+	prune(key string, cutoff int64) int64
 	setStr(key, val string, ttl time.Duration)
 	getStr(key string) (string, bool)
 	setNX(key string, ttl time.Duration) bool
@@ -135,6 +140,7 @@ func GetStore() store {
 		} else {
 			storeImpl = newMemStore()
 		}
+		startPruneLoop()
 		return storeImpl
 	}
 	if cache.IsRedisEnabled() {
@@ -145,6 +151,24 @@ func GetStore() store {
 		storeImpl = newMemStore()
 	}
 	return storeImpl
+}
+
+// startPruneLoop 周期性裁剪活跃/在线 zset（每 10 分钟，保留 IdleWindow 内的成员）。
+var pruneOnce sync.Once
+
+func startPruneLoop() {
+	pruneOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(10 * time.Minute)
+			defer ticker.Stop()
+			for range ticker.C {
+				s := GetStore()
+				cutoff := time.Now().Add(-IdleWindow).Unix()
+				s.prune(keyActive, cutoff)
+				s.prune(keyOnline, cutoff)
+			}
+		}()
+	})
 }
 
 // ResetStoreForTest 仅测试使用：丢弃当前实现，强制下次重新选择

@@ -5,11 +5,13 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/git"
 	"cboard-go/internal/utils"
@@ -268,6 +270,33 @@ func isSensitiveKey(key string) bool {
 		}
 	}
 	return false
+}
+
+// WriteDBSnapshotToZip 用 VACUUM INTO 生成一致性快照并写入 zip（条目名 cboard.db）。
+//
+// 为什么不直接拷 cboard.db 文件：WAL 模式下主库文件不包含最近的提交，
+// 最近的事务还在 cboard.db-wal 里（实测 -wal 甚至比主库还大）。直接拷主库要么丢尾部数据，
+// 要么（补拷 -wal 时）把不同时刻的库文件与 WAL 拼在一起，还原后 SQLite 会重放旧事务。
+// VACUUM INTO 取的是读快照，且目标文件是全新的单文件库，不依赖 -wal/-shm。
+//
+// 回退：VACUUM 失败时仍按老路拷文件，绝不因此让备份失败。
+func WriteDBSnapshotToZip(zipWriter *zip.Writer, sourcePath string) error {
+	tmpFile, err := os.CreateTemp("", "cboard_snapshot_*.db")
+	if err == nil {
+		tmpPath := tmpFile.Name()
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath) // SQLite 要求目标文件不存在
+		if db := database.GetDB(); db != nil {
+			if err := db.Exec("VACUUM INTO '" + strings.ReplaceAll(tmpPath, "'", "''") + "'").Error; err == nil {
+				defer func() { _ = os.Remove(tmpPath) }()
+				return WriteDBEntryToZip(zipWriter, tmpPath)
+			} else {
+				log.Printf("VACUUM INTO 生成备份快照失败，回退为直接拷贝: %v", err)
+			}
+		}
+		_ = os.Remove(tmpPath)
+	}
+	return WriteDBEntryToZip(zipWriter, sourcePath)
 }
 
 // WriteDBEntryToZip 将数据库文件以条目名 cboard.db 写入 zip（本地/远端备份共用）

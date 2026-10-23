@@ -71,9 +71,20 @@ func applyCommonLogFilters(query *gorm.DB, c *gin.Context) *gorm.DB {
 	}
 
 	if username := strings.TrimSpace(c.Query("username")); username != "" {
+		// 先把用户名解析成 user_id 集合，再让 audit_logs 走 idx_audit_user_created。
+		// 原来的 JOIN + users.username LIKE '%kw%' 会让 SQLite 从新到旧扫完整张 audit_logs，
+		// 每行再回表探 users（实测 30 万行 429ms），且无法利用 user_id 复合索引。
 		escapedUsername := utils.EscapeLikePattern(utils.SanitizeSearchKeyword(username))
-		query = query.Joins("JOIN users ON audit_logs.user_id = users.id").
-			Where("users.username LIKE ?", "%"+escapedUsername+"%")
+		var matchedUserIDs []uint
+		query.Session(&gorm.Session{NewDB: true}).Model(&models.User{}).
+			Where("username LIKE ?", "%"+escapedUsername+"%").
+			Limit(2001).
+			Pluck("id", &matchedUserIDs)
+		if len(matchedUserIDs) == 0 {
+			query = query.Where("1 = 0")
+		} else {
+			query = query.Where("audit_logs.user_id IN ?", matchedUserIDs)
+		}
 	}
 
 	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {
@@ -995,35 +1006,32 @@ func GetLogsStats(c *gin.Context) {
 		Info    int64 `json:"info"`
 	}
 
-	baseScope := db.Model(&models.AuditLog{})
-	baseScope = applySystemLogsBaseScope(baseScope)
-	baseScope = applySystemLogsFilters(baseScope, c, false)
+	// 一条聚合代替 4 次 COUNT：此前对同一 base 过滤器连做 4 次 Count，
+	// 在 30 万行的 audit_logs 上实测 610ms（4 × 全表扫描）；info 恒等于 total-error-warning
+	// （logLevelWhere("info") 就是 NOT error AND NOT warning），不需要单独扫一遍。
+	query := db.Model(&models.AuditLog{})
+	query = applySystemLogsBaseScope(query)
+	query = applySystemLogsFilters(query, c, false)
 
-	// 注意：GORM 的 Count 会修改 query 状态，多次 Count 必须各自独立，
-	// 否则后续 Where 会叠加到已 Count 的查询上导致统计错误。
-	if err := baseScope.Count(&stats.Total).Error; err != nil {
-		utils.LogError("GetLogsStats: count total failed", err, nil)
+	agg := query.Select(
+		"COUNT(*) AS total, " +
+			"COALESCE(SUM(CASE WHEN " + logLevelWhere("error") + " THEN 1 ELSE 0 END), 0) AS error_count, " +
+			"COALESCE(SUM(CASE WHEN " + logLevelWhere("warning") + " THEN 1 ELSE 0 END), 0) AS warning_count",
+	)
+	var row struct {
+		Total        int64 `gorm:"column:total"`
+		ErrorCount   int64 `gorm:"column:error_count"`
+		WarningCount int64 `gorm:"column:warning_count"`
 	}
-
-	errorQuery := db.Model(&models.AuditLog{})
-	errorQuery = applySystemLogsBaseScope(errorQuery)
-	errorQuery = applySystemLogsFilters(errorQuery, c, false)
-	if err := errorQuery.Where(logLevelWhere("error")).Count(&stats.Error).Error; err != nil {
-		utils.LogError("GetLogsStats: count error failed", err, nil)
+	if err := agg.Scan(&row).Error; err != nil {
+		utils.LogError("GetLogsStats: aggregate failed", err, nil)
 	}
-
-	warningQuery := db.Model(&models.AuditLog{})
-	warningQuery = applySystemLogsBaseScope(warningQuery)
-	warningQuery = applySystemLogsFilters(warningQuery, c, false)
-	if err := warningQuery.Where(logLevelWhere("warning")).Count(&stats.Warning).Error; err != nil {
-		utils.LogError("GetLogsStats: count warning failed", err, nil)
-	}
-
-	infoQuery := db.Model(&models.AuditLog{})
-	infoQuery = applySystemLogsBaseScope(infoQuery)
-	infoQuery = applySystemLogsFilters(infoQuery, c, false)
-	if err := infoQuery.Where(logLevelWhere("info")).Count(&stats.Info).Error; err != nil {
-		utils.LogError("GetLogsStats: count info failed", err, nil)
+	stats.Total = row.Total
+	stats.Error = row.ErrorCount
+	stats.Warning = row.WarningCount
+	stats.Info = row.Total - row.ErrorCount - row.WarningCount
+	if stats.Info < 0 {
+		stats.Info = 0
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "", stats)

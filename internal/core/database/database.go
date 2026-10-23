@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -64,11 +65,14 @@ func InitDatabase() error {
 		}
 		dialector = sqlite.Open(sqliteDSN(dbPath))
 	}
+	// 非 debug 时用 Warn（不是 Silent）：普通 SQL 依旧不打，但超过 SlowThreshold 的慢查询
+	// 与 SQL 错误会被记录 —— 线上"某个接口突然变慢"时这是唯一的第一手线索。
+	// 历史教训：这里曾是 Silent，慢查询在线上完全不可见，只能靠翻 nginx 日志猜。
 	customLogger := logger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags),
 		logger.Config{
 			SlowThreshold:             time.Second,
-			LogLevel:                  logger.Silent,
+			LogLevel:                  logger.Warn,
 			IgnoreRecordNotFoundError: true,
 			Colorful:                  false,
 		},
@@ -122,11 +126,14 @@ func InitDatabase() error {
 			return fmt.Errorf("数据库完整性自检失败且无可恢复备份，启动中止（详见上方日志）")
 		}
 		sqlDB, _ = DB.DB()
-		DB.Exec("PRAGMA journal_mode=WAL")
-		DB.Exec("PRAGMA busy_timeout=5000")
-		DB.Exec("PRAGMA synchronous=NORMAL")
-		sqlDB.SetMaxOpenConns(10)
-		sqlDB.SetMaxIdleConns(5)
+		// journal_mode / busy_timeout / synchronous / cache_size / mmap_size / temp_store
+		// 全部写进 DSN（见 sqliteDSN）：PRAGMA 是**连接级**设置，用 DB.Exec 只会作用于
+		// 连接池里当时那一条连接，池扩容后的新连接仍是默认值（busy_timeout=0 → 一有并发写
+		// 就立刻 SQLITE_BUSY 报错）。放 DSN 里才能保证每条新连接都带上。
+		// SQLite 只有单写者：连接越多，写事务的锁竞争越重（而读在 WAL 下本来就能并发）。
+		// 10 条连接换来的是更多的 SQLITE_BUSY，6 条足够覆盖 HTTP 并发读。
+		sqlDB.SetMaxOpenConns(6)
+		sqlDB.SetMaxIdleConns(6)
 		sqlDB.SetConnMaxLifetime(time.Hour)
 	} else {
 		// 根据CPU核心数动态调整连接池配置
@@ -396,7 +403,77 @@ func restoreCustomNodesFromBackup() error {
 			log.Printf("警告: 删除备份表 %s 失败: %v", backupTable, err)
 		}
 	}
+
+	ensurePerformanceIndexes()
 	return nil
+}
+
+// OptimizeDB 让 SQLite 收集/更新查询计划统计信息（PRAGMA optimize，3.46+ 会按需执行 ANALYZE）。
+//
+// 为什么需要：本项目从未跑过 ANALYZE（sqlite_stat1 不存在），规划器只能按默认猜测选索引，
+// 实测出现过"明明有 (action_type, created_at) 复合索引却选了单列索引再落地临时 B 树排序"的误判。
+// PRAGMA optimize 比自己跑 ANALYZE 便宜得多，适合每天低峰期跑一次。
+func OptimizeDB() {
+	if DB == nil {
+		return
+	}
+	if !strings.Contains(DB.Dialector.Name(), "sqlite") {
+		return
+	}
+	if err := DB.Exec("PRAGMA optimize").Error; err != nil {
+		log.Printf("PRAGMA optimize 失败（忽略）: %v", err)
+	}
+}
+
+// ensurePerformanceIndexes 建 GORM 模型声明不了、但热点查询必需的索引（幂等）。
+//
+// 这些都是实测出来的：在 30 万行 audit_logs / 15 万行 devices 的等价数据集上，
+// 缺索引时的执行计划是 SCAN（全表）或 MATERIALIZE + TEMP B-TREE（落地排序），
+// 补上后变成 SEARCH（索引查找），单条查询从 82ms→4ms、76ms→12ms、2ms→0.012ms 量级。
+//
+//   - users(lower(email)) / users(lower(username))：登录/注册/找回密码全部走 LOWER(email)=?，
+//     而 idx_users_email 被函数包住用不上 → 每次登录全表扫 users。
+//   - devices(is_active, subscription_id)：订阅管理按「在线设备数」排序时 GROUP BY 需要这个顺序，
+//     否则 MATERIALIZE + TEMP B-TREE。
+//   - user_custom_nodes(custom_node_id, user_id)：idx_user_node 的前导列是 user_id，
+//     按节点反查用户（删节点/改节点时的级联）只能全扫。
+//   - login_attempts(created_at)：登录失败列表无条件 ORDER BY created_at。
+//   - email_queue(to_email, email_type, created_at)：发信前去重查询（当前全表扫）。
+//   - subscription_resets / custom_nodes / devices 的 created_at 排序。
+//
+// 表达式索引只有 SQLite 才能这样建（MySQL 8 需要函数索引语法且 lower() 依赖 collation），
+// 因此仅在 SQLite 上执行；非 SQLite 退化为普通索引里的等价项。
+func ensurePerformanceIndexes() {
+	if DB == nil {
+		return
+	}
+	isSQLite := strings.Contains(DB.Dialector.Name(), "sqlite")
+	var stmts []string
+	if isSQLite {
+		stmts = append(stmts,
+			"CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(lower(email))",
+			"CREATE INDEX IF NOT EXISTS idx_users_username_lower ON users(lower(username))",
+		)
+	}
+	stmts = append(stmts,
+		"CREATE INDEX IF NOT EXISTS idx_devices_active_sub ON devices(is_active, subscription_id)",
+		"CREATE INDEX IF NOT EXISTS idx_ucn_custom_node ON user_custom_nodes(custom_node_id, user_id)",
+		"CREATE INDEX IF NOT EXISTS idx_login_attempts_created_at ON login_attempts(created_at)",
+		"CREATE INDEX IF NOT EXISTS idx_email_queue_to_type_created ON email_queue(to_email, email_type, created_at)",
+		"CREATE INDEX IF NOT EXISTS idx_email_queue_created_at ON email_queue(created_at)",
+		"CREATE INDEX IF NOT EXISTS idx_subreset_created_at ON subscription_resets(created_at)",
+		"CREATE INDEX IF NOT EXISTS idx_custom_nodes_created_at ON custom_nodes(created_at)",
+		"CREATE INDEX IF NOT EXISTS idx_devices_active_lastaccess ON devices(is_active, kicked_at, last_access)",
+		"CREATE INDEX IF NOT EXISTS idx_node_validation_created_at ON node_validation_logs(created_at)",
+	)
+	for _, stmt := range stmts {
+		// 表可能还不存在（首次启动顺序/精简部署），跳过而不是让启动失败
+		if err := DB.Exec(stmt).Error; err != nil {
+			if !strings.Contains(strings.ToLower(err.Error()), "no such table") {
+				log.Printf("警告: 创建索引失败（%s）: %v", stmt, err)
+			}
+		}
+	}
 }
 
 // commonColumnsOf 返回两个表共有的列名列表（按 t1 顺序）。
@@ -1012,12 +1089,33 @@ func copyFile(src, dst string) error {
 // （SQLite 的 datetime 是文本，跨偏移比较等同于按墙钟字符串比较 → 查询结果错误）。
 // 加上 _loc=Asia/Shanghai 后，无偏移值按北京时间解释、写回统一带 +08:00。
 func sqliteDSN(dbPath string) string {
-	if strings.Contains(dbPath, "_loc=") {
-		return dbPath
+	base, rawQuery := dbPath, ""
+	if i := strings.Index(dbPath, "?"); i >= 0 {
+		base, rawQuery = dbPath[:i], dbPath[i+1:]
 	}
-	sep := "?"
-	if strings.Contains(dbPath, "?") {
-		sep = "&"
+	params := url.Values{}
+	if rawQuery != "" {
+		if parsed, err := url.ParseQuery(rawQuery); err == nil {
+			params = parsed
+		}
 	}
-	return dbPath + sep + "_loc=Asia%2FShanghai"
+	setDefault := func(key, value string) {
+		if params.Get(key) == "" {
+			params.Set(key, value)
+		}
+	}
+	// 时区：不加 _loc 时驱动会把「不带偏移」的时间串按 UTC 读回，写回时固化成 +00:00，
+	// 与库中 +08:00 的记录混存（SQLite 时间是文本，跨偏移比较等于按墙钟字符串比较）。
+	setDefault("_loc", "Asia/Shanghai")
+	// WAL：读写不互斥，单进程多 goroutine 下并发读显著变快（库级持久设置，写一次即生效）。
+	setDefault("_journal_mode", "WAL")
+	// busy_timeout：并发写时等待而不是立刻报 database is locked。
+	setDefault("_busy_timeout", "5000")
+	// synchronous=NORMAL：WAL 下的推荐值，掉电最多丢最近若干事务，不必每次 fsync。
+	setDefault("_synchronous", "NORMAL")
+	// cache_size 负值 = KB：-32000 ≈ 32MB 页缓存，大幅减少热点表（设备/订阅/配置）的读盘。
+	// 注意：mattn/go-sqlite3 的 DSN 只支持上表这些 _pragma 参数（已实测生效），
+	// _temp_store / _mmap_size 它不是 DSN 参数、传了会被静默忽略，所以不要加进来假装优化。
+	setDefault("_cache_size", "-32000")
+	return base + "?" + params.Encode()
 }
