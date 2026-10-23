@@ -61,10 +61,11 @@ type singBoxTLS struct {
 }
 
 type singBoxReality struct {
-	Enabled   bool              `json:"enabled"`
-	PrivateKV string            `json:"private_key"`
-	ShortID   []string          `json:"short_id"`
-	Handshake map[string]string `json:"handshake"`
+	Enabled   bool           `json:"enabled"`
+	PrivateKV string         `json:"private_key"`
+	ShortID   []string       `json:"short_id"`
+	// handshake 里既有字符串（server）也有数字（server_port），用 any 接收
+	Handshake map[string]any `json:"handshake"`
 }
 
 type singBoxTranspt struct {
