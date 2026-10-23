@@ -43,15 +43,6 @@ func checkDBError(c *gin.Context, err error, notFoundMsg string) bool {
 	return false
 }
 
-// truncateString 限制字符串最大 rune 长度
-func truncateString(s string, maxRunes int) string {
-	runes := []rune(s)
-	if len(runes) > maxRunes {
-		return string(runes[:maxRunes])
-	}
-	return s
-}
-
 func isValidTicketType(ticketType string) bool {
 	switch ticketType {
 	case "technical", "billing", "account", "other":
@@ -263,8 +254,8 @@ func CreateTicket(c *gin.Context) {
 		return
 	}
 
-	title := truncateString(utils.SanitizeInput(req.Title), 200)
-	content := truncateString(utils.SanitizeInput(req.Content), 5000)
+	title := utils.TruncateRunes(utils.SanitizeInput(req.Title), 200)
+	content := utils.TruncateRunes(utils.SanitizeInput(req.Content), 5000)
 	if title == "" || content == "" {
 		utils.ErrorResponse(c, http.StatusBadRequest, "工单标题和内容不能为空", nil)
 		return
@@ -556,7 +547,7 @@ func ReplyTicket(c *gin.Context) {
 		return
 	}
 
-	content := truncateString(utils.SanitizeInput(req.Content), 5000)
+	content := utils.TruncateRunes(utils.SanitizeInput(req.Content), 5000)
 	if content == "" && len(req.Files) == 0 {
 		utils.ErrorResponse(c, http.StatusBadRequest, "回复内容不能为空", nil)
 		return
@@ -643,7 +634,7 @@ func UpdateTicketStatus(c *gin.Context) {
 		ticket.Status = req.Status
 	}
 	if req.AdminNotes != "" {
-		notes := truncateString(utils.SanitizeInput(req.AdminNotes), 5000)
+		notes := utils.TruncateRunes(utils.SanitizeInput(req.AdminNotes), 5000)
 		ticket.AdminNotes = &notes
 	}
 

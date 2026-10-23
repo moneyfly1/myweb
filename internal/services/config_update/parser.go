@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"cboard-go/internal/utils"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -63,7 +65,7 @@ func (p *ParserPool) ParseLinks(links []string) []ParseResult {
 				if err != nil {
 					resultChan <- ParseResult{
 						Node: nil,
-						Err:  fmt.Errorf("解析失败 [链接: %s...]: %w", truncateLink(link, 50), err),
+						Err:  fmt.Errorf("解析失败 [链接: %s...]: %w", utils.TruncateRunesEllipsis(link, 50, "..."), err),
 						Link: link,
 					}
 					continue
@@ -98,13 +100,6 @@ func (p *ParserPool) ParseLinks(links []string) []ParseResult {
 	}
 
 	return results
-}
-
-func truncateLink(link string, maxLen int) string {
-	if len(link) > maxLen {
-		return link[:maxLen] + "..."
-	}
-	return link
 }
 
 // ==========================================

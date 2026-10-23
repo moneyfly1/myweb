@@ -1410,7 +1410,7 @@ export default {
     }
 
     // Utilities
-    const formatDateTime = (d) => formatDateTimeSafe(d, 'YYYY-MM-DD HH:mm:ss', '-')
+    const formatDateTime = formatDateTimeSafe // 默认 format/empty 一致，纯别名
     const formatMoney = formatMoneyPlain
 
     // Lifecycle

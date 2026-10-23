@@ -26,8 +26,7 @@ import (
 	"os"
 	"time"
 
-	"cboard-go/internal/core/config"
-	"cboard-go/internal/core/database"
+	"cboard-go/internal/core/dbtool"
 	"cboard-go/internal/services/domainpool"
 	"cboard-go/internal/utils"
 )
@@ -42,15 +41,11 @@ func main() {
 	)
 	flag.Parse()
 
-	if _, err := config.LoadConfig(); err != nil {
-		fmt.Printf("❌ 配置加载失败: %v\n", err)
+	db, err := dbtool.Open()
+	if err != nil {
+		fmt.Printf("❌ %v\n", err)
 		os.Exit(1)
 	}
-	if err := database.InitDatabase(); err != nil {
-		fmt.Printf("❌ 数据库初始化失败: %v\n", err)
-		os.Exit(1)
-	}
-	db := database.GetDB()
 	siteDomain := utils.GetDomainFromDB(db)
 	m := domainpool.New("", siteDomain)
 

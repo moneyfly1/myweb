@@ -411,7 +411,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { Refresh, View, Check, Search } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
-import { formatDateTimeSafe } from '@/utils/date'
+import { EMPTY_DASH, formatDateTimeSafe } from '@/utils/date'
 import { useMobile } from '@/composables/useMobile'
 import AppDrawer from '@/components/AppDrawer.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
@@ -573,7 +573,7 @@ export default {
     }
     const formatDate = (dateStr) => {
       // 统一走 formatDateTimeSafe（dayjs 解析，天然规避 Safari new Date 的 UTC 偏移问题）
-      return formatDateTimeSafe(dateStr, 'YYYY-MM-DD HH:mm', '-')
+      return formatDateTimeSafe(dateStr, 'YYYY-MM-DD HH:mm', EMPTY_DASH)
     }
     onMounted(() => {
       loadAbnormalUsers()

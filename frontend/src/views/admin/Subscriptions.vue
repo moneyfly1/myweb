@@ -801,7 +801,7 @@ import {
 import { adminAPI } from '@/utils/api'
 import { secureStorage } from '@/utils/api'
 import { safeNavigate } from '@/utils/safeOpen'
-import { formatLocation, formatDateTimeSafe } from '@/utils/date'
+import { EMPTY_UNKNOWN, formatLocation, formatDateTimeSafe } from '@/utils/date'
 import { getDeviceTypeColor as getDeviceTypeTag, getDeviceTypeName as getDeviceTypeText, truncateText } from '@/utils/device'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
 import { getSubscriptionStatusType, getSubscriptionStatusText } from '@/utils/statusMaps'
@@ -1834,7 +1834,7 @@ export default {
     }
     const truncateUserAgent = truncateText // 50 正是 truncateText 的默认长度
     const formatTime = (time) => {
-      return formatDateTimeSafe(time, 'YYYY-MM-DD HH:mm:ss', '未知')
+      return formatDateTimeSafe(time, 'YYYY-MM-DD HH:mm:ss', EMPTY_UNKNOWN)
     }
     const truncateUrl = (url) => {
       if (!url) return ''
@@ -1846,9 +1846,7 @@ export default {
       }
       return url
     }
-    const formatDate = (date) => {
-      return formatDateTimeSafe(date)
-    }
+    const formatDate = formatDateTimeSafe // 默认 format/empty 一致，纯别名
     const handleSelectionChange = (selection) => {
       selectedSubscriptions.value = selection
     }

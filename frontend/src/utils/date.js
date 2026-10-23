@@ -12,6 +12,15 @@ function setTimezone(timezone = DEFAULT_TIMEZONE) {
   dayjs.tz.setDefault(timezone)
 }
 setTimezone()
+// 日期空值兜底文案常量。各页面的 formatDate/formatTime 包装的兜底词各不相同，
+// 统一引用常量而非散落字面量；语义保持原样（'-' 占位 / '未知' 未知 / '未设置' 未配置）。
+export const EMPTY_DASH = '-'
+export const EMPTY_UNKNOWN = '未知'
+export const EMPTY_NONE = '未设置'
+
+// 已是 'YYYY-MM-DD HH:mm:ss' 的字符串直接透传（见 formatDateTime）
+const PREFORMATTED_DATE_TIME = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
+
 const createShanghaiDayjs = (date) => {
   if (!date) return dayjs()
   let d
@@ -21,7 +30,7 @@ const createShanghaiDayjs = (date) => {
     d = dayjs(date)
   } else if (typeof date === 'string' && date.includes('T')) {
     d = dayjs.utc(date)
-  } else if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(date)) {
+  } else if (typeof date === 'string' && PREFORMATTED_DATE_TIME.test(date)) {
     d = dayjs.tz(date, DEFAULT_TIMEZONE)
   } else {
     d = dayjs(date)
@@ -30,7 +39,7 @@ const createShanghaiDayjs = (date) => {
 }
 export function formatDateTime(date, format = 'YYYY-MM-DD HH:mm:ss') {
   if (!date) return ''
-  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(date)) {
+  if (typeof date === 'string' && PREFORMATTED_DATE_TIME.test(date)) {
     return date
   }
   return createShanghaiDayjs(date).format(format)
@@ -44,16 +53,20 @@ export const formatDate = formatDateTime
  * - null/undefined/空串 → empty（默认 '-'）
  * - {Time, Valid:false} → empty
  * - {Time, Valid:true} → 按 format 格式化
- * - 字符串/Date → 按 format 格式化
+ * - 非空但非法的字符串/Date → empty（不再透出 dayjs 的 'Invalid Date'）
+ * - 合法字符串/Date → 按 format 格式化
  * 供各页面替换本地重复的 formatDate 实现。
  */
-export function formatDateTimeSafe(date, format = 'YYYY-MM-DD HH:mm:ss', empty = '-') {
+export function formatDateTimeSafe(date, format = 'YYYY-MM-DD HH:mm:ss', empty = EMPTY_DASH) {
   if (date === null || date === undefined || date === '') return empty
   if (typeof date === 'object') {
     if (date.Valid === false) return empty
     if (date.Time) return createShanghaiDayjs(date.Time).format(format)
     return empty
   }
+  // 非空但非法的输入（例如后端把空时间序列化成 "null"/"None" 字符串）同样兜底，
+  // 否则 dayjs.format() 会把字面量 'Invalid Date' 直接渲染到页面上。
+  if (typeof date === 'string' && !PREFORMATTED_DATE_TIME.test(date) && !createShanghaiDayjs(date).isValid()) return empty
   return formatDateTime(date, format)
 }
 export function formatTime(date, format = 'HH:mm:ss') {

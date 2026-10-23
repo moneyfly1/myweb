@@ -26,8 +26,7 @@ import (
 	"strings"
 	"time"
 
-	"cboard-go/internal/core/config"
-	"cboard-go/internal/core/database"
+	"cboard-go/internal/core/dbtool"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/config_update"
 	"cboard-go/internal/services/sshdeploy"
@@ -88,13 +87,10 @@ func main() {
 	if *installID == "" && *nodeID == 0 {
 		log.Fatal("必须指定 -install-id 或 -node-id")
 	}
-	if _, err := config.LoadConfig(); err != nil {
-		log.Fatalf("加载配置失败: %v", err)
+	db, err := dbtool.Open()
+	if err != nil {
+		log.Fatalf("%v", err)
 	}
-	if err := database.InitDatabase(); err != nil {
-		log.Fatalf("连接数据库失败: %v", err)
-	}
-	db := database.GetDB()
 
 	q := db.Where("self_hosted = ?", true)
 	if *nodeID > 0 {
@@ -178,7 +174,7 @@ func main() {
 			skipped++
 			continue
 		}
-		fmt.Printf("  [ok] #%d %-28s ← %s\n       %s\n", n.ID, n.Name, lookup, truncate(link, 110))
+		fmt.Printf("  [ok] #%d %-28s ← %s\n       %s\n", n.ID, n.Name, lookup, utils.TruncateRunesEllipsis(link, 60, "…"))
 		if *apply {
 			if err := db.Model(&models.CustomNode{}).Where("id = ?", n.ID).Updates(map[string]interface{}{
 				"config":   string(cfgJSON),
@@ -371,17 +367,4 @@ func realityPublicKey(priv string) (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(pub), nil
-}
-
-// truncate 按**字符**截断而不是按字节：节点名/域名常含中文，
-// 按字节切会切出半个 UTF-8 字符，终端与日志里显示成乱码。
-func truncate(s string, n int) string {
-	if n <= 0 {
-		return ""
-	}
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n]) + "…"
 }

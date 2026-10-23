@@ -39,10 +39,10 @@ import (
 	"sort"
 	"strings"
 
-	"cboard-go/internal/core/config"
-	"cboard-go/internal/core/database"
+	"cboard-go/internal/core/dbtool"
 	"cboard-go/internal/models"
 	devicesvc "cboard-go/internal/services/device"
+	"cboard-go/internal/utils"
 )
 
 // 两种「机型需要重新解析」的形态：
@@ -56,13 +56,10 @@ func main() {
 	limit := flag.Int("limit", 0, "只处理前 N 行（0 = 全部，调试用）")
 	flag.Parse()
 
-	if _, err := config.LoadConfig(); err != nil {
-		log.Fatalf("加载配置失败: %v", err)
+	db, err := dbtool.Open()
+	if err != nil {
+		log.Fatalf("%v", err)
 	}
-	if err := database.InitDatabase(); err != nil {
-		log.Fatalf("连接数据库失败: %v", err)
-	}
-	db := database.GetDB()
 
 	mode := "预演（不写库）"
 	if *apply {
@@ -243,7 +240,7 @@ func main() {
 		st.osDist[finalOS]++
 		if len(st.samples) < 12 {
 			st.samples = append(st.samples, fmt.Sprintf("设备#%d %s → %s / %s（%s）",
-				d.ID, truncate(ua, 46), finalSoftware, finalOS, strings.Join(changedFields, ",")))
+				d.ID, utils.TruncateRunesEllipsis(ua, 30, "…"), finalSoftware, finalOS, strings.Join(changedFields, ",")))
 		}
 
 		if *apply {
@@ -293,12 +290,4 @@ func printTop(m map[string]int, n int) {
 		}
 		fmt.Printf("  %-24s %d\n", e.k, e.v)
 	}
-}
-
-func truncate(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n]) + "…"
 }

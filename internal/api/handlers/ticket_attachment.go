@@ -163,8 +163,8 @@ func bindTicketAttachments(db *gorm.DB, ticketID uint, replyID *int64, uploadedB
 		att := models.TicketAttachment{
 			TicketID:   ticketID,
 			ReplyID:    replyID,
-			FileName:   truncateString(f.FileName, 255),
-			FilePath:   truncateString(f.FilePath, 500),
+			FileName:   utils.TruncateRunes(f.FileName, 255),
+			FilePath:   utils.TruncateRunes(f.FilePath, 500),
 			UploadedBy: uploadedBy,
 		}
 		if f.FileSize > 0 {
@@ -172,7 +172,7 @@ func bindTicketAttachments(db *gorm.DB, ticketID uint, replyID *int64, uploadedB
 			att.FileSize = &size
 		}
 		if f.FileType != "" {
-			ft := truncateString(f.FileType, 50)
+			ft := utils.TruncateRunes(f.FileType, 50)
 			att.FileType = &ft
 		}
 		if err := db.Create(&att).Error; err != nil {

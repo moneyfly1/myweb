@@ -392,8 +392,8 @@ func CreateCustomNode(c *gin.Context) {
 		}
 
 		customNode := models.CustomNode{
-			Name:             truncateNodeName(name),
-			DisplayName:      truncateNodeName(req.DisplayName),
+			Name:             utils.TruncateRunes(name, 100),
+			DisplayName:      utils.TruncateRunes(req.DisplayName, 100),
 			Protocol:         parsed.Type,
 			Domain:           parsed.Server,
 			Port:             parsed.Port,
@@ -438,8 +438,8 @@ func CreateCustomNode(c *gin.Context) {
 	)
 
 	customNode := models.CustomNode{
-		Name:             truncateNodeName(req.Name),
-		DisplayName:      truncateNodeName(req.DisplayName),
+		Name:             utils.TruncateRunes(req.Name, 100),
+		DisplayName:      utils.TruncateRunes(req.DisplayName, 100),
 		Protocol:         protocol,
 		Domain:           domain,
 		Port:             port,
@@ -766,7 +766,7 @@ func importCustomNodesFromLinks(db *gorm.DB, links []string, source string, sour
 		}
 
 		newNodes = append(newNodes, models.CustomNode{
-			Name:      truncateNodeName(name),
+			Name:      utils.TruncateRunes(name, 100),
 			Protocol:  parsed.Type,
 			Domain:    parsed.Server,
 			Port:      parsed.Port,
@@ -1003,7 +1003,7 @@ func mergeCustomNodesFromLinks(oldNodes []models.CustomNode, links []string, url
 		if name == "" {
 			name = fmt.Sprintf("%s-%s", parsed.Type, parsed.Server)
 		}
-		name = truncateNodeName(name)
+		name = utils.TruncateRunes(name, 100)
 
 		// 匹配已有节点：先按名称（仅订阅来源），再按节点身份（含历史遗留节点）
 		var match *customNodeMatch
@@ -2068,7 +2068,7 @@ func joinNodeNames(nodes []models.CustomNode) string {
 			names = append(names, n.Name)
 		}
 	}
-	return truncateDesc(strings.Join(names, "、"))
+	return utils.TruncateRunesEllipsis(strings.Join(names, "、"), 500, "...")
 }
 
 // joinUserNames 将用户列表拼接为日志用描述（用户名+邮箱），超出长度截断
@@ -2086,17 +2086,7 @@ func joinUserNames(db *gorm.DB, userIDs []uint) string {
 			parts = append(parts, u.Username)
 		}
 	}
-	return truncateDesc(strings.Join(parts, "、"))
-}
-
-// truncateDesc 截断过长的日志描述
-func truncateDesc(desc string) string {
-	const maxLen = 500
-	runes := []rune(desc)
-	if len(runes) <= maxLen {
-		return desc
-	}
-	return string(runes[:maxLen]) + "..."
+	return utils.TruncateRunesEllipsis(strings.Join(parts, "、"), 500, "...")
 }
 
 // clearUserCustomNodeCache 清除用户专线节点相关缓存

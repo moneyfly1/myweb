@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"math/big"
 	"net/http"
@@ -17,10 +16,12 @@ import (
 	"time"
 
 	"cboard-go/internal/api/router"
+	"cboard-go/internal/core/adminutil"
 	"cboard-go/internal/core/auth"
 	"cboard-go/internal/core/cache"
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
+	"cboard-go/internal/core/dl"
 	"cboard-go/internal/core/paths"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
@@ -148,7 +149,7 @@ func main() {
 		// 数据库文件缺失：异步下载，绝不阻塞服务启动（部署/升级/重启都不应被 GeoIP 下载拖慢）
 		log.Println("GeoIP 数据库文件不存在，将在后台异步下载（不阻塞启动）...")
 		go func(path string) {
-			if err := downloadGeoIPDatabase(path); err != nil {
+			if _, err := dl.Download(context.Background(), geoipDownloadURL, path, dl.Options{Label: "自动下载 GeoIP 数据库"}); err != nil {
 				log.Printf("自动下载 GeoIP 数据库失败: %v", err)
 				log.Println("提示: 如需启用地理位置解析，可稍后在系统设置 → GeoIP 手动更新，或下载 GeoLite2-City.mmdb 到项目目录")
 			} else {
@@ -248,45 +249,8 @@ func main() {
 // 避免再次出现「等满超时被 SIGKILL」的长中断。
 const gracefulShutdownTimeout = 8 * time.Second
 
-func downloadGeoIPDatabase(filePath string) error {
-	// 验证文件路径安全性
-	cleanPath := filepath.Clean(filePath)
-	if strings.Contains(cleanPath, "..") {
-		return fmt.Errorf("不安全的文件路径: %s", filePath)
-	}
-
-	url := "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb"
-
-	out, err := os.Create(cleanPath)
-	if err != nil {
-		return fmt.Errorf("创建文件失败: %w", err)
-	}
-	defer out.Close()
-
-	// 带超时的客户端（30s），避免下载挂起
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		return fmt.Errorf("下载失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("下载失败，状态码: %d", resp.StatusCode)
-	}
-
-	// 限制大小 200MB，防止异常下载撑满磁盘
-	written, err := io.Copy(out, io.LimitReader(resp.Body, 200<<20))
-	if err != nil {
-		return fmt.Errorf("保存文件失败: %w", err)
-	}
-	if written >= 200<<20 {
-		_ = os.Remove(cleanPath)
-		return fmt.Errorf("下载内容超过 200MB 限制，已中止")
-	}
-
-	return nil
-}
+// geoipDownloadURL GeoLite2-City 镜像地址（启动时自动下载用）
+const geoipDownloadURL = "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb"
 
 func ensureDefaultAdmin() {
 	db := database.GetDB()
@@ -307,27 +271,18 @@ func ensureDefaultAdmin() {
 	}
 	adminPassword := viper.GetString("ADMIN_PASSWORD")
 
-	var user models.User
-	// 先按用户名精确匹配；未命中再按邮箱匹配。
-	// 不要用 username = ? OR email = ? 的单查询——用户名命中 A、邮箱命中 B 时会误改错误用户的密码。
-	err := db.Where("username = ?", username).First(&user).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		log.Printf("查询管理员失败: %v", err)
-		return
-	}
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		err = db.Where("email = ?", email).First(&user).Error
-	}
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		log.Printf("查询管理员失败: %v", err)
+	// 定位逻辑统一走 adminutil（先用户名、后邮箱，绝不 OR 单查询），
+	// 与 scripts/admin_tool 共用同一套匹配规则，避免两边规则漂移改错账号。
+	user, findErr := adminutil.FindByIdentities(db, username, email)
+	if findErr != nil && !errors.Is(findErr, adminutil.ErrNotFound) {
+		log.Printf("查询管理员失败: %v", findErr)
 		return
 	}
 
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		// 创建前先按忽略大小写确认没有同名用户：登录区分大小写，
+	if errors.Is(findErr, adminutil.ErrNotFound) {
+		// 创建前先确认没有「仅大小写不同」的同名用户：登录区分大小写，
 		// 若已存在 "Admin" 而这里新建 "admin"，会出现两个肉眼无法区分的管理员账号。
-		var sameName models.User
-		if e := db.Where("LOWER(username) = ?", strings.ToLower(username)).First(&sameName).Error; e == nil {
+		if sameName, exists := adminutil.HasSimilarUsername(db, username); exists {
 			log.Printf("已存在同名（仅大小写不同）的用户 %q，为避免出现两个无法区分的账号，本次不创建，请使用该用户名重试", sameName.Username)
 			return
 		}

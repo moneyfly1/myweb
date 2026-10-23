@@ -787,7 +787,7 @@ import {
   ArrowDown, Close, Setting
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
-import { formatDateTimeSafe } from '@/utils/date'
+import { EMPTY_DASH, formatDateTimeSafe } from '@/utils/date'
 import { formatFileSize, unwrapList, apiErrorMessage } from '@/utils/format'
 import { copyToClipboard } from '@/utils/textSelection'
 import { confirmDelete, confirmWarning, confirmAction } from '@/utils/confirmAction'
@@ -1581,7 +1581,7 @@ export default {
     const selfHostStatusTypeMap = { pending: 'warning', online: 'success', offline: 'danger', expired: 'info', canceled: 'info' }
     const formatBytes2 = formatFileSize
     const formatTime2 = (t) => {
-      return formatDateTimeSafe(t, 'YYYY-MM-DD HH:mm', '-')
+      return formatDateTimeSafe(t, 'YYYY-MM-DD HH:mm', EMPTY_DASH)
     }
     const viewLink = async (node) => {
       try {

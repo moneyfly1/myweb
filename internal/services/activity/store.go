@@ -27,13 +27,6 @@ func atoiDef(s string, def int) int {
 	return def
 }
 
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n]
-}
-
 func opCtx() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), 2*time.Second)
 }

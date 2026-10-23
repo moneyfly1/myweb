@@ -570,7 +570,7 @@ import {
   Refresh, User, TrendCharts, DataAnalysis, Monitor, Download, Top, Bottom, Search
 } from '@element-plus/icons-vue'
 import { api } from '@/utils/api'
-import { formatDateTimeSafe } from '@/utils/date'
+import { EMPTY_DASH, formatDateTimeSafe } from '@/utils/date'
 import AppDrawer from '@/components/AppDrawer.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import { useMobile } from '@/composables/useMobile'
@@ -620,7 +620,7 @@ const deviceTypeMap = {
 const getDeviceTypeName = (t) => deviceTypeMap[(t || '').toLowerCase()] || t || '未知'
 const getPercentage = (v, total) => (total ? ((v / total) * 100).toFixed(1) : 0)
 const getProgressColor = (rate) => (rate >= 70 ? '#67c23a' : rate >= 40 ? '#e6a23c' : '#f56c6c')
-const formatDate = (d) => formatDateTimeSafe(d, 'YYYY-MM-DD', '-')
+const formatDate = (d) => formatDateTimeSafe(d, 'YYYY-MM-DD', EMPTY_DASH)
 const isLongTimeNoLogin = (t) => {
   if (!t) return true
   return Math.floor((Date.now() - new Date(t).getTime()) / 86400000) > 7

@@ -6,33 +6,28 @@ import (
 	"log"
 	"os"
 
+	"cboard-go/internal/core/adminutil"
 	"cboard-go/internal/core/auth"
 	"cboard-go/internal/core/config"
-	"cboard-go/internal/core/database"
+	"cboard-go/internal/core/dbtool"
 	"cboard-go/internal/models"
 
 	"gorm.io/gorm"
 )
 
 func main() {
-	cfg, err := config.LoadConfig()
-	if err != nil {
+	// 本工具需要写库结构（会自动迁移），因此走 OpenWithMigrate；
+	// 「配置是否真的加载到」的校验保留在这里，避免工具静默连到空配置。
+	if _, err := config.LoadConfig(); err != nil {
 		log.Fatalf("配置加载失败: %v", err)
 	}
-
-	if cfg == nil {
+	if config.AppConfig == nil {
 		log.Fatal("配置未正确加载")
 	}
-
-	if err := database.InitDatabase(); err != nil {
-		log.Fatalf("数据库初始化失败: %v", err)
+	db, err := dbtool.OpenWithMigrate()
+	if err != nil {
+		log.Fatalf("%v", err)
 	}
-
-	if err := database.AutoMigrate(); err != nil {
-		log.Fatalf("数据库迁移失败: %v", err)
-	}
-
-	db := database.GetDB()
 
 	// 如果提供了密码参数，则只更新密码
 	if len(os.Args) >= 2 {
@@ -61,18 +56,13 @@ func updatePassword(db *gorm.DB, newPassword string) {
 		email = "admin@example.com"
 	}
 
-	var user models.User
-	// 先按用户名精确匹配；未命中再按邮箱匹配。
-	// 不要用 username = ? OR email = ? 的单查询——用户名命中 A、邮箱命中 B 时会误改错误用户的密码。
-	err := db.Where("username = ?", username).First(&user).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		log.Fatalf("查询管理员失败: %v", err)
-	}
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		err = db.Where("email = ?", email).First(&user).Error
-	}
+	// 定位逻辑统一走 adminutil（与 cmd/server、createOrUpdateAdmin 同一套匹配规则）
+	user, err := adminutil.FindByIdentities(db, username, email)
 	if err != nil {
-		log.Fatalf("未找到管理员账号: %v\n请先创建管理员账号", err)
+		if errors.Is(err, adminutil.ErrNotFound) {
+			log.Fatalf("未找到管理员账号: %v\n请先创建管理员账号", err)
+		}
+		log.Fatalf("查询管理员失败: %v", err)
 	}
 
 	hashed, err := auth.HashPassword(newPassword)
@@ -133,19 +123,13 @@ func createOrUpdateAdmin(db *gorm.DB) {
 		log.Fatalf("生成密码哈希失败: %v", err)
 	}
 
-	var user models.User
-	// 先按用户名精确匹配；未命中再按邮箱匹配。
-	// 不要用 username = ? OR email = ? 的单查询——用户名命中 A、邮箱命中 B 时
-	// 会误提升/重置错误用户的密码（OR 查询 + First 只取主键靠前的一行）。
-	result := db.Where("username = ?", username).First(&user)
-	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		log.Fatalf("查询用户失败: %v", result.Error)
+	// 定位逻辑统一走 adminutil（先用户名、后邮箱，绝不 OR 单查询）
+	user, findErr := adminutil.FindByIdentities(db, username, email)
+	if findErr != nil && !errors.Is(findErr, adminutil.ErrNotFound) {
+		log.Fatalf("查询用户失败: %v", findErr)
 	}
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		result = db.Where("email = ?", email).First(&user)
-	}
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	if errors.Is(findErr, adminutil.ErrNotFound) {
+		{
 			var existingAdmin models.User
 			if err := db.Where("is_admin = ?", true).First(&existingAdmin).Error; err == nil {
 				updates := map[string]interface{}{
@@ -174,8 +158,6 @@ func createOrUpdateAdmin(db *gorm.DB) {
 				}
 				fmt.Printf("管理员已创建: 用户名=%s 邮箱=%s\n", username, email)
 			}
-		} else {
-			log.Fatalf("查询用户失败: %v", result.Error)
 		}
 	} else {
 		updates := map[string]interface{}{

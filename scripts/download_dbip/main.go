@@ -1,13 +1,13 @@
 package main
 
 import (
-	"compress/gzip"
+	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"time"
+
+	"cboard-go/internal/core/dl"
 )
 
 func main() {
@@ -55,7 +55,7 @@ func main() {
 		os.Remove(dbipFile)
 	}
 
-	if err := downloadAndExtractGzip(dbipURL, dbipFile); err != nil {
+	if _, err := dl.Download(context.Background(), dbipURL, dbipFile, dl.Options{Gzip: true, Label: "下载并解压中"}); err != nil {
 		fmt.Printf("❌ 下载失败: %v\n", err)
 		fmt.Println()
 		fmt.Println("提示：DB-IP 免费数据库每月更新，URL 格式为:")
@@ -68,15 +68,7 @@ func main() {
 	}
 
 	if info, err := os.Stat(dbipFile); err == nil {
-		size := float64(info.Size())
-		var sizeStr string
-		if size < 1024 {
-			sizeStr = fmt.Sprintf("%.0f B", size)
-		} else if size < 1024*1024 {
-			sizeStr = fmt.Sprintf("%.2f KB", size/1024)
-		} else {
-			sizeStr = fmt.Sprintf("%.2f MB", size/(1024*1024))
-		}
+		sizeStr := dl.HumanSize(info.Size())
 		fmt.Println()
 		fmt.Println("文件信息:")
 		fmt.Printf("  路径: %s\n", dbipFile)
@@ -90,42 +82,4 @@ func main() {
 		fmt.Println("❌ 文件下载失败")
 		os.Exit(1)
 	}
-}
-
-func downloadAndExtractGzip(url, outputPath string) error {
-	// 下载文件
-	resp, err := http.Get(url)
-	if err != nil {
-		return fmt.Errorf("下载失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("下载失败，状态码: %d", resp.StatusCode)
-	}
-
-	fmt.Print("下载并解压中... ")
-
-	// 创建 gzip reader
-	gzReader, err := gzip.NewReader(resp.Body)
-	if err != nil {
-		return fmt.Errorf("解压失败: %w", err)
-	}
-	defer gzReader.Close()
-
-	// 创建输出文件
-	out, err := os.Create(outputPath)
-	if err != nil {
-		return fmt.Errorf("创建文件失败: %w", err)
-	}
-	defer out.Close()
-
-	// 复制解压后的内容
-	written, err := io.Copy(out, gzReader)
-	if err != nil {
-		return fmt.Errorf("保存文件失败: %w", err)
-	}
-
-	fmt.Printf("✅ 已下载并解压 %d 字节\n", written)
-	return nil
 }

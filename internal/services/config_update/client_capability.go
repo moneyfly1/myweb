@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"cboard-go/internal/models"
+	"cboard-go/internal/utils"
 )
 
 // ============================================================
@@ -387,17 +388,7 @@ func (s *ConfigUpdateService) logCapabilityFilterOnce(userAgent, clientType stri
 		return
 	}
 	s.infof("🧭 客户端能力过滤: UA=%q 识别为 %s(v%s) → 下发 %d/%d 个节点（按该客户端不支持的协议剔除 %d 个）",
-		truncateUA(userAgent, 64), clientType, version, kept, total, dropped)
-}
-
-// truncateUA 按 rune 截断 UA 用于日志，避免超长 UA 污染日志行。
-func truncateUA(ua string, maxRunes int) string {
-	ua = strings.TrimSpace(ua)
-	r := []rune(ua)
-	if len(r) <= maxRunes {
-		return ua
-	}
-	return string(r[:maxRunes]) + "…"
+		utils.TruncateRunesTrimEllipsis(userAgent, 64, "…"), clientType, version, kept, total, dropped)
 }
 
 // isClientCapabilityFilterEnabled 读取客户端版本过滤总开关。
