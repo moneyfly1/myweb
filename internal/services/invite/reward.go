@@ -290,8 +290,11 @@ func GrantForRelation(tx *gorm.DB, relation *models.InviteRelation, code *models
 	return granted, nil
 }
 
-// GrantForNewInvitee 注册流程使用：按被邀请人找到待发放关系并发放即时奖励。
-// 设有最低消费要求的邀请码留给订单支付后发放（与原实现一致）。
+// GrantForNewInvitee 按被邀请人找到待发放关系并发放奖励。
+//
+// Deprecated: 注册路径**不再调用**本函数。业务规则是「被邀请人真正消费（首单支付成功）后
+// 才结算奖励」，注册即发会把「注册了但没花钱的人」也算进去（线上因此超发 800 元）。
+// 结算统一由订单支付路径 order.processInviteRewardsTx 完成；本函数仅保留给历史工具与单测使用。
 func GrantForNewInvitee(db *gorm.DB, inviteeID uint) error {
 	if db == nil {
 		return nil
