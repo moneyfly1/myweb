@@ -8,7 +8,13 @@ import (
 	"time"
 )
 
-// CacheService 通用缓存服务
+// CacheService 通用缓存服务。
+//
+// 约定：**缓存只写不读 = 纯负担**。此前这里还有 user:info / user:subscription /
+// announcements:list / nodes:list / system:config 五组 key，只有写与删、没有任何
+// 读取方：每个写操作后都白跑一次 Redis 往返，还给维护者"这里有缓存"的错觉。
+// 系统配置与公开设置现在走 utils 的进程内 30s 缓存（config_cache.go），
+// 公告/节点/用户信息本身查询很轻，不需要 Redis 层缓存。
 type CacheService struct{}
 
 // NewCacheService 创建缓存服务实例
@@ -88,16 +94,6 @@ func (cs *CacheService) Invalidate(key string) error {
 }
 
 // ==========================================
-// 用户信息缓存
-// ==========================================
-
-// ClearUserCache 清除用户信息缓存
-func (cs *CacheService) ClearUserCache(userID uint) error {
-	key := fmt.Sprintf("user:info:%d", userID)
-	return cs.Del(key)
-}
-
-// ==========================================
 // 套餐列表缓存
 // ==========================================
 
@@ -132,38 +128,6 @@ func (cs *CacheService) ClearPackagesCache() error {
 }
 
 // ==========================================
-// 公告列表缓存
-// ==========================================
-
-// SetAnnouncementsCache 设置公告列表缓存
-func (cs *CacheService) SetAnnouncementsCache(announcements []map[string]interface{}) error {
-	key := "announcements:list:active"
-	return cs.Set(key, announcements, 10*time.Minute)
-}
-
-// ClearAnnouncementsCache 清除公告列表缓存
-func (cs *CacheService) ClearAnnouncementsCache() error {
-	key := "announcements:list:active"
-	return cs.Del(key)
-}
-
-// ==========================================
-// 系统配置缓存
-// ==========================================
-
-// SetSystemConfigCache 设置系统配置缓存
-func (cs *CacheService) SetSystemConfigCache(category string, configs []map[string]interface{}) error {
-	key := fmt.Sprintf("system:config:%s", category)
-	return cs.Set(key, configs, 1*time.Hour)
-}
-
-// ClearSystemConfigCache 清除系统配置缓存
-func (cs *CacheService) ClearSystemConfigCache(category string) error {
-	key := fmt.Sprintf("system:config:%s", category)
-	return cs.Del(key)
-}
-
-// ==========================================
 // 支付方式缓存
 // ==========================================
 
@@ -195,26 +159,6 @@ func (cs *CacheService) SetPaymentMethodsCacheIfUnchanged(generation int64, meth
 // ClearPaymentMethodsCache 清除支付方式列表缓存（同时递增版本号）
 func (cs *CacheService) ClearPaymentMethodsCache() error {
 	return cs.Invalidate(paymentMethodsCacheKey)
-}
-
-// ==========================================
-// 节点列表缓存（保留但不推荐使用 - 节点更新频繁）
-// ==========================================
-
-// ClearNodesCache 清除节点列表缓存
-func (cs *CacheService) ClearNodesCache() error {
-	key := "nodes:list:active"
-	return cs.Del(key)
-}
-
-// ==========================================
-// 用户订阅缓存
-// ==========================================
-
-// ClearUserSubscriptionCache 清除用户订阅缓存
-func (cs *CacheService) ClearUserSubscriptionCache(userID uint) error {
-	key := fmt.Sprintf("user:subscription:%d", userID)
-	return cs.Del(key)
 }
 
 // ==========================================

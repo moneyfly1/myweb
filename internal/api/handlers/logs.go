@@ -973,7 +973,11 @@ func GetLoginAttempts(c *gin.Context) {
 	var attempts []models.LoginAttempt
 	var total int64
 
-	db.Model(&models.LoginAttempt{}).Count(&total)
+	total, _ = utils.CachedCount("login_attempts|"+c.Request.URL.RawQuery, 15*time.Second, func() (int64, error) {
+		var n int64
+		err := db.Model(&models.LoginAttempt{}).Count(&n).Error
+		return n, err
+	})
 	db.Order("created_at DESC").
 		Offset(p.GetOffset()).Limit(p.Size).Find(&attempts)
 
@@ -1159,9 +1163,13 @@ func GetRegistrationLogs(c *gin.Context) {
 	}
 	query = applyTimeRangeFilter(query, c, "created_at")
 
-	// 1. 获取总数 (基于当前 query 状态)
+	// 1. 获取总数（15s 计数缓存，翻页不重复全表扫描）
 	var total int64
-	query.Count(&total)
+	total, _ = utils.CachedCount("registration_logs|"+c.Request.URL.RawQuery, 15*time.Second, func() (int64, error) {
+		var n int64
+		err := query.Session(&gorm.Session{}).Count(&n).Error
+		return n, err
+	})
 
 	// 2. 获取数据 (Preload + Pagination)
 	var logs []models.RegistrationLog

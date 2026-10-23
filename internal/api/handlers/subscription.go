@@ -561,7 +561,11 @@ func GetAdminSubscriptions(c *gin.Context) {
 	}
 
 	var total int64
-	query.Count(&total)
+	total, _ = utils.CachedCount("subscriptions|"+c.Request.URL.RawQuery, 15*time.Second, func() (int64, error) {
+		var n int64
+		err := query.Session(&gorm.Session{}).Count(&n).Error
+		return n, err
+	})
 
 	sort := c.DefaultQuery("sort", "add_time_desc")
 	needOnlineJoin := sort == "online_devices_desc" || sort == "online_devices_asc"

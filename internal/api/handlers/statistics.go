@@ -273,7 +273,14 @@ func GetRevenueChart(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", result)
 }
 
+// userStatsCacheKey 用户统计卡片的缓存 key（30 秒，前端多张卡片/来回切页会重复请求）
+const userStatsCacheKey = "stats:user:v1"
+
 func GetUserStatistics(c *gin.Context) {
+	if cached, ok := utils.CacheGet(userStatsCacheKey); ok {
+		utils.SuccessResponse(c, http.StatusOK, "", cached)
+		return
+	}
 	db := database.GetDB()
 
 	var stats struct {
@@ -306,6 +313,7 @@ func GetUserStatistics(c *gin.Context) {
 		return
 	}
 
+	utils.CacheSet(userStatsCacheKey, stats, 30*time.Second)
 	utils.SuccessResponse(c, http.StatusOK, "", stats)
 }
 
@@ -351,10 +359,12 @@ func GetRegionStats(c *gin.Context) {
 		Location sql.NullString `gorm:"column:location"`
 		IP       sql.NullString `gorm:"column:ip_address"`
 	}
+	// 与上面 audit_logs 一样只统计最近 90 天：此前的两条 user_activities 聚合没有时间窗口，
+	// 等于每次打开统计页都把整张活动表聚合一遍（数据越用越慢）。
 	var activityCombos []activityCombo
 	if err := db.Table("user_activities").
 		Select("user_id, location, ip_address").
-		Where("location IS NOT NULL AND location != ''").
+		Where("location IS NOT NULL AND location != '' AND created_at >= ?", windowStart).
 		Group("user_id, location, ip_address").
 		Scan(&activityCombos).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取地区统计失败", err)
@@ -364,7 +374,7 @@ func GetRegionStats(c *gin.Context) {
 	var activityCounts []locationCount
 	if err := db.Table("user_activities").
 		Select("location, COUNT(*) AS cnt").
-		Where("location IS NOT NULL AND location != ''").
+		Where("location IS NOT NULL AND location != '' AND created_at >= ?", windowStart).
 		Group("location").
 		Scan(&activityCounts).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取地区统计失败", err)

@@ -4,7 +4,6 @@ import (
 	"cboard-go/internal/core/cache"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
-	"cboard-go/internal/services/cache_service"
 	discountService "cboard-go/internal/services/discount"
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/invite"
@@ -919,33 +918,25 @@ func (s *OrderService) processPaidOrderTx(tx *gorm.DB, order *models.Order, opts
 	return result, err
 }
 
+// clearSubscriptionCaches 订单履约后清订阅配置缓存。
+// user:info / user:subscription 两类 key 已删除（只删不读，纯空转），
+// 用户资料本身由前端按需请求，无需缓存失效动作。
 func (s *OrderService) clearSubscriptionCaches(userID uint, subscriptionURL string) {
+	if subscriptionURL == "" {
+		return
+	}
 	go func() {
-		cs := cache_service.NewCacheService()
-		if cacheErr := cs.ClearUserCache(userID); cacheErr != nil {
-			log.Printf("failed to clear user cache: %v", cacheErr)
-		}
-		if cacheErr := cs.ClearUserSubscriptionCache(userID); cacheErr != nil {
-			log.Printf("failed to clear user subscription cache: %v", cacheErr)
-		}
-		if subscriptionURL != "" {
-			if cacheErr := cache.ClearSubscriptionConfigCache(subscriptionURL); cacheErr != nil {
-				log.Printf("failed to clear subscription config cache: %v", cacheErr)
-			}
+		if cacheErr := cache.ClearSubscriptionConfigCache(subscriptionURL); cacheErr != nil {
+			log.Printf("failed to clear subscription config cache: %v", cacheErr)
 		}
 	}()
 }
 
+// clearUserCaches 已无实际缓存可清（user:info 缓存已移除），保留空实现供调用点兼容。
 func (s *OrderService) clearUserCaches(userID uint) {
 	if userID == 0 {
 		return
 	}
-	go func() {
-		cs := cache_service.NewCacheService()
-		if cacheErr := cs.ClearUserCache(userID); cacheErr != nil {
-			log.Printf("failed to clear user cache: %v", cacheErr)
-		}
-	}()
 }
 
 func (s *OrderService) getUserSubscriptionTx(tx *gorm.DB, userID uint) (*models.Subscription, error) {

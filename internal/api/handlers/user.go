@@ -329,8 +329,13 @@ func GetUsers(c *gin.Context) {
 		}
 	}
 
+	// COUNT(*) 结果缓存 15s：列表页翻页时不必每次重扫 users 表（key 覆盖全部过滤参数）
 	var total int64
-	query.Count(&total)
+	total, _ = utils.CachedCount("users|"+c.Request.URL.RawQuery, 15*time.Second, func() (int64, error) {
+		var n int64
+		err := query.Session(&gorm.Session{}).Count(&n).Error
+		return n, err
+	})
 	var users []models.User
 	query.Offset(pagination.GetOffset()).Limit(pagination.Size).Order(orderBy).Find(&users)
 

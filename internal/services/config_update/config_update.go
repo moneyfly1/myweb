@@ -21,7 +21,6 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
-	"cboard-go/internal/services/cache_service"
 	"cboard-go/internal/services/device"
 	"cboard-go/internal/utils"
 
@@ -574,8 +573,7 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 }
 
 func (s *ConfigUpdateService) clearAllCaches() {
-	cs, cache := cache_service.NewCacheService(), &CacheService{}
-	_ = cs.ClearNodesCache()
+	cache := &CacheService{}
 	_ = cache.ClearSystemNodesCache()
 	_ = cache.ClearAllSubscriptionCache()
 	s.infof("🧹 缓存清理完毕 (节点/系统/订阅缓存已重置)")
