@@ -48,6 +48,11 @@
           </div>
         </div>
       </template>
+      <el-tabs v-model="activeTab" class="selfhost-tabs">
+        <el-tab-pane name="nodes">
+          <template #label>
+            自建节点<el-tag v-if="selfHostPagination.total" size="small" type="info" round effect="plain" class="tab-count">{{ selfHostPagination.total }}</el-tag>
+          </template>
       <!-- 搜索：节点名 / 域名 / VPS 地址 / 协议（与其它管理列表同款） -->
       <div class="list-filter-bar">
         <el-input
@@ -85,45 +90,6 @@
           show-icon
           class="selfhost-guide"
         />
-
-        <!-- 已保存的 VPS 档案（一键重新搭建，默认折叠节省空间） -->
-        <div v-if="savedVpsList.length" class="saved-vps-block" :class="{ collapsed: !savedVpsExpanded }">
-          <div class="saved-vps-block-head" @click="savedVpsExpanded = !savedVpsExpanded">
-            <span class="saved-vps-block-title">
-              <el-icon class="saved-vps-arrow" :class="{ 'is-expanded': savedVpsExpanded }"><ArrowDown /></el-icon>
-              <el-icon><Connection /></el-icon> 已保存的 VPS
-              <el-tag size="small" type="info" round effect="plain" class="saved-vps-count">{{ savedVpsList.length }}</el-tag>
-            </span>
-            <el-button size="small" text bg @click.stop="loadSavedVps" :loading="savedVpsLoading">
-              <el-icon><Refresh /></el-icon>刷新
-            </el-button>
-          </div>
-          <el-collapse-transition>
-            <div v-show="savedVpsExpanded" class="saved-vps-grid">
-              <div v-for="v in savedVpsList" :key="v.key" class="saved-vps-card">
-                <div class="saved-vps-card-head">
-                  <span class="vps-address">{{ v.ssh_host }}<span v-if="v.ssh_port !== 22">:{{ v.ssh_port }}</span></span>
-                  <el-tag v-if="v.has_password" type="success" size="small" effect="plain">已存密码</el-tag>
-                  <el-tag v-else type="warning" size="small" effect="plain">需输密码</el-tag>
-                </div>
-                <div class="vps-meta">
-                  <div class="vps-meta-row" v-if="v.node_name"><span class="meta-label">上次节点</span><span class="meta-value">{{ v.node_name }}</span></div>
-                  <div class="vps-meta-row" v-if="v.domain"><span class="meta-label">域名</span><span class="meta-value">{{ v.domain }}</span></div>
-                  <div class="vps-meta-row"><span class="meta-label">协议</span><span class="meta-value">{{ formatVpsProtocols(v) }}</span></div>
-                  <div class="vps-meta-row"><span class="meta-label">节点数</span><span class="meta-value">{{ v.node_count }}</span></div>
-                </div>
-                <div class="saved-vps-actions">
-                  <el-button size="small" type="primary" :loading="redeployingVpsKey === v.key" @click="redeploySavedVps(v)">
-                    <el-icon><VideoPlay /></el-icon>一键重新搭建
-                  </el-button>
-                  <el-button size="small" plain @click="editSavedVps(v)">
-                    <el-icon><Edit /></el-icon>编辑搭建
-                  </el-button>
-                </div>
-              </div>
-            </div>
-          </el-collapse-transition>
-        </div>
 
         <el-empty v-if="!selfHostLoading && selfHostNodes.length === 0" description="暂无自建节点，点击右上角「VPS自动搭建」创建" :image-size="100" />
         <el-table
@@ -255,7 +221,87 @@
             @size-change="handleSelfHostSizeChange"
           />
         </div>
-      </div>
+        </div>
+        </el-tab-pane>
+
+        <el-tab-pane name="vps">
+          <template #label>
+            已保存的 VPS<el-tag v-if="savedVpsList.length" size="small" type="info" round effect="plain" class="tab-count">{{ savedVpsList.length }}</el-tag>
+          </template>
+          <div class="saved-vps-toolbar">
+            <span class="saved-vps-dialog-tip">这些 VPS 用「一键重搭」可复用上次的域名与协议；「编辑」可改名称/域名/协议/SSH。</span>
+            <el-button size="small" text bg @click="loadSavedVps" :loading="savedVpsLoading">
+              <el-icon><Refresh /></el-icon>刷新
+            </el-button>
+          </div>
+          <!-- 桌面：表格 -->
+          <el-table
+            v-if="!isMobile"
+            :data="savedVpsPaged"
+            v-loading="savedVpsLoading"
+            class="data-table"
+            empty-text="暂无已保存的 VPS"
+          >
+            <el-table-column label="VPS 地址" min-width="170">
+              <template #default="{ row }">
+                <span class="vps-address">{{ row.ssh_host }}<span v-if="row.ssh_port !== 22" class="sub-text">:{{ row.ssh_port }}</span></span>
+                <span class="sub-text"> · {{ row.ssh_user || 'root' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="domain" label="域名" min-width="150" show-overflow-tooltip>
+              <template #default="{ row }"><span :class="{ 'sub-text': !row.domain }">{{ row.domain || '—' }}</span></template>
+            </el-table-column>
+            <el-table-column label="协议" min-width="150" show-overflow-tooltip>
+              <template #default="{ row }">{{ formatVpsProtocols(row) }}</template>
+            </el-table-column>
+            <el-table-column label="节点数" width="86" align="center">
+              <template #default="{ row }">{{ row.node_count || 0 }}</template>
+            </el-table-column>
+            <el-table-column label="凭据" width="96" align="center">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.has_password ? 'success' : 'warning'" effect="plain">{{ row.has_password ? '已存密码' : '需输密码' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="230" fixed="right">
+              <template #default="{ row }">
+                <el-button size="small" type="primary" plain :loading="redeployingVpsKey === row.key" @click="redeploySavedVps(row)">一键重搭</el-button>
+                <el-button size="small" plain @click="editSavedVps(row)">编辑</el-button>
+                <el-button size="small" text bg @click="jumpToVpsNodes(row)">节点</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <!-- 移动端：卡片 -->
+          <div v-else class="saved-vps-mobile-list">
+            <el-empty v-if="!savedVpsList.length" description="暂无已保存的 VPS" :image-size="80" />
+            <div v-for="row in savedVpsPaged" :key="row.key" class="saved-vps-mobile-card">
+              <div class="saved-vps-mobile-head">
+                <span class="vps-address">{{ row.ssh_host }}<span v-if="row.ssh_port !== 22">:{{ row.ssh_port }}</span></span>
+                <el-tag size="small" :type="row.has_password ? 'success' : 'warning'" effect="plain">{{ row.has_password ? '已存密码' : '需输密码' }}</el-tag>
+              </div>
+              <div class="saved-vps-mobile-meta">
+                <span>域名：{{ row.domain || '—' }}</span>
+                <span>协议：{{ formatVpsProtocols(row) }}</span>
+                <span>节点数：{{ row.node_count || 0 }}</span>
+              </div>
+              <div class="saved-vps-mobile-actions">
+                <el-button size="small" type="primary" plain :loading="redeployingVpsKey === row.key" @click="redeploySavedVps(row)">一键重搭</el-button>
+                <el-button size="small" plain @click="editSavedVps(row)">编辑</el-button>
+                <el-button size="small" text bg @click="jumpToVpsNodes(row)">节点</el-button>
+              </div>
+            </div>
+          </div>
+          <!-- 前端分页（接口一次返回全部） -->
+          <div class="pagination-wrapper" v-if="savedVpsList.length > savedVpsPage.size">
+            <PaginationBar
+              v-model:current-page="savedVpsPage.page"
+              v-model:page-size="savedVpsPage.size"
+              :total="savedVpsList.length"
+              :page-sizes="[10, 20, 50]"
+              background
+            />
+          </div>
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
 
     <!-- VPS 自动搭建弹窗 -->
@@ -438,7 +484,7 @@
 <script setup>
 defineOptions({ name: 'AdminSelfHostNodes' })
 
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Promotion, DocumentCopy, Refresh, RefreshLeft, Search, Setting, Operation, ArrowDown, Connection, VideoPlay, Edit } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
@@ -649,7 +695,14 @@ const vpsForm = reactive({
 // 已保存的 VPS 档案（后端按 ssh_host 去重聚合，含上次域名/协议/节点数）
 const savedVpsList = ref([])
 const savedVpsLoading = ref(false)
-const savedVpsExpanded = ref(false) // 默认折叠，节省页面空间，需要时点击展开
+// tab 切换：自建节点 / 已保存的 VPS（与「用户分析」页同款）
+const activeTab = ref('nodes')
+// 已保存 VPS：接口一次返回全部，前端分页
+const savedVpsPage = reactive({ page: 1, size: 10 })
+const savedVpsPaged = computed(() => {
+  const start = (savedVpsPage.page - 1) * savedVpsPage.size
+  return savedVpsList.value.slice(start, start + savedVpsPage.size)
+})
 const redeployingVpsKey = ref('')
 const selectedSavedVps = ref('') // 弹窗内下拉选中项（保留旧交互）
 const savedSelectedHasPassword = ref(false)
@@ -695,6 +748,19 @@ const loadSavedVps = async () => {
     savedVpsLoading.value = false
   }
 }
+
+// 跳到「自建节点」tab 并按该 VPS 地址搜索
+const jumpToVpsNodes = (v) => {
+  activeTab.value = 'nodes'
+  selfHostSearch.value = v.ssh_host || ''
+  selfHostPagination.page = 1
+  loadSelfHostNodes()
+}
+
+// 切到「已保存的 VPS」tab 时按需加载（首次进入才请求，避免每次进页面都多打一次接口）
+watch(activeTab, (v) => {
+  if (v === 'vps' && !savedVpsList.value.length) loadSavedVps()
+})
 
 // 弹窗内下拉应用（保留：从弹窗顶部下拉选择自动填充）
 const applySavedVps = (key) => {
@@ -1033,6 +1099,74 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 已保存 VPS 弹窗：顶部提示条 + 桌面表格 / 移动卡片 */
+.saved-vps-dialog-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.saved-vps-dialog-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+}
+.selfhost-tabs .vps-address {
+  font-weight: 600;
+  color: #303133;
+}
+.selfhost-tabs .sub-text {
+  color: #909399;
+  font-weight: 400;
+}
+/* tab 标题上的数量徽标 */
+.tab-count {
+  margin-left: 4px;
+}
+.saved-vps-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.saved-vps-mobile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 58vh;
+  overflow-y: auto;
+}
+.saved-vps-mobile-card {
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fff;
+}
+.saved-vps-mobile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.saved-vps-mobile-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: #606266;
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+.saved-vps-mobile-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 /* 与其它管理列表一致的筛选条（搜索 + 查询 + 重置） */
 .list-filter-bar {
   display: flex;
@@ -1231,81 +1365,11 @@ onMounted(() => {
   align-items: center;
   gap: 4px;
 }
-.saved-vps-block {
-  margin-bottom: 16px;
-}
-.saved-vps-block-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-  cursor: pointer;
-  user-select: none;
-  padding: 6px 4px;
-  border-radius: 6px;
-  transition: background-color 0.2s;
-}
-.saved-vps-block-head:hover {
-  background: var(--el-fill-color-light);
-}
-.saved-vps-arrow {
-  transition: transform 0.25s;
-  font-size: 14px;
-  color: var(--el-text-color-secondary);
-}
-.saved-vps-arrow.is-expanded {
-  transform: rotate(180deg);
-}
-.saved-vps-count {
-  margin-left: 2px;
-}
-.saved-vps-block-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.saved-vps-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
-}
-.saved-vps-card {
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  padding: 12px 14px;
-  background: var(--el-fill-color-lighter);
-  transition: border-color 0.2s;
-  &:hover { border-color: var(--el-color-primary); }
-}
-.saved-vps-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
 .vps-address {
   font-weight: 600;
   font-size: 14px;
   color: var(--el-text-color-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.vps-meta {
-  margin-bottom: 10px;
-}
-.vps-meta-row {
-  display: flex;
-  gap: 8px;
-  font-size: 12px;
-  line-height: 1.8;
-  .meta-label { color: var(--el-text-color-secondary); flex-shrink: 0; min-width: 56px; }
-  .meta-value { color: var(--el-text-color-primary); word-break: break-all; }
-}
-.saved-vps-actions {
-  display: flex;
-  gap: 8px;
 }
 .traffic-limit-bar {
   margin-top: 10px;
