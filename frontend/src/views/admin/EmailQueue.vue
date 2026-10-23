@@ -459,6 +459,7 @@ import FormActionBar from '@/components/FormActionBar.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import { debounce } from '@/composables/useDebounce'
+import { apiErrorMessage } from '@/utils/format'
 
 const handleResponse = (response, defaultErrorMsg) => {
   if (!response) {
@@ -616,7 +617,7 @@ export default {
           ElMessage.error(result.message)
         }
       } catch (error) {
-        ElMessage.error('获取邮件队列失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '获取邮件队列失败'))
       } finally {
         loading.value = false
       }
@@ -740,7 +741,7 @@ export default {
         }
       } catch (error) {
         if (error !== 'cancel') {
-          const errorMsg = error.response?.data?.message || error.message || `${title}失败`
+          const errorMsg = apiErrorMessage(error, `${title}失败`)
           ElMessage.error(errorMsg)
         }
       }

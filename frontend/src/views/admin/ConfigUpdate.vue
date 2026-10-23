@@ -304,6 +304,7 @@ import { configUpdateAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
 import { confirmClear } from '@/utils/confirmAction'
 import Sortable from 'sortablejs'
+import { apiErrorMessage } from '@/utils/format'
 
 export default {
   name: 'AdminConfigUpdate',
@@ -634,7 +635,7 @@ export default {
           ElMessage.error(response.data.message || '保存失败')
         }
       } catch (error) {
-        ElMessage.error('保存失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '保存失败'))
       } finally {
         loading.save = false
       }
@@ -652,7 +653,7 @@ export default {
           ElMessage.success('日志已清空')
         }
       } catch (e) {
-        ElMessage.error('清空日志失败: ' + (e.response?.data?.message || e.message))
+        ElMessage.error(apiErrorMessage(e, '清空日志失败'))
       }
     }
 

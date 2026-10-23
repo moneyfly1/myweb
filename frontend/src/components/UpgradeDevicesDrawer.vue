@@ -313,6 +313,7 @@ import { useMobile } from '@/composables/useMobile'
 import { buildAlipayAppUrl, createPaymentQRCode, isPaymentPageUrl as isPaymentPageUrlUtil, qrDisplaySrc } from '@/utils/payment'
 import AppDrawer from '@/components/AppDrawer.vue'
 import AppDialog from '@/components/AppDialog.vue'
+import { apiErrorMessage } from '@/utils/format'
 
 const props = defineProps({
   modelValue: {
@@ -433,7 +434,7 @@ const loadUpgradePaymentMethods = async () => {
       }
     }
   } catch (error) {
-    ElMessage.error('加载支付方式失败: ' + (error.response?.data?.message || error.message))
+    ElMessage.error(apiErrorMessage(error, '加载支付方式失败'))
     availableUpgradePaymentMethods.value = []
   }
 }
@@ -556,7 +557,7 @@ const checkUpgradeOrderStatus = async (isAutoCheck = false) => {
         ElMessage.warning('订单尚未支付，请完成支付')
       }
     } catch (error) {
-      if (!isAutoCheck) ElMessage.error('检查订单状态失败: ' + (error.response?.data?.message || error.message))
+      if (!isAutoCheck) ElMessage.error(apiErrorMessage(error, '检查订单状态失败'))
     } finally {
       paymentStatusRequest.value = null
     }
@@ -625,7 +626,7 @@ const confirmUpgrade = async () => {
       ElMessage.error(response?.data?.message || '升级设备数量失败')
     }
   } catch (error) {
-    ElMessage.error(error.response?.data?.message || '升级设备数量失败')
+    ElMessage.error(apiErrorMessage(error, '升级设备数量失败'))
   } finally {
     upgradeLoading.value = false
   }

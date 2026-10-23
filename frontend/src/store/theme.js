@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/utils/api'
+import { apiErrorMessage } from '@/utils/format'
 export const useThemeStore = defineStore('theme', () => {
   const getStoredTheme = () => {
     if (typeof window === 'undefined') return 'light'
@@ -56,7 +57,7 @@ export const useThemeStore = defineStore('theme', () => {
       } catch (apiError) {
         return {
           success: false,
-          message: apiError.response?.data?.detail || apiError.message || '保存主题到云端失败',
+          message: apiErrorMessage(apiError, '保存主题到云端失败'),
           localApplied: true
         }
       }
@@ -70,7 +71,7 @@ export const useThemeStore = defineStore('theme', () => {
       }
       return {
         success: false,
-        message: error.response?.data?.detail || error.message || '设置主题失败',
+        message: apiErrorMessage(error, '设置主题失败'),
         localApplied: true
       }
     } finally {

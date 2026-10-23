@@ -89,7 +89,7 @@
 import { ref, onMounted } from 'vue'
 import { debounce } from '@/composables/useDebounce'
 import { adminAPI } from '@/utils/api'
-import { unwrapList } from '@/utils/format'
+import { unwrapList, apiErrorMessage } from '@/utils/format'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
@@ -121,7 +121,7 @@ const runCleanup = async () => {
     page.value = 1
     fetch()
   } catch (e) {
-    ElMessage.error(e?.response?.data?.message || '清理失败')
+    ElMessage.error(apiErrorMessage(e, '清理失败'))
   } finally {
     clearing.value = false
   }

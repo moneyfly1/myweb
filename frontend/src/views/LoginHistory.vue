@@ -203,6 +203,7 @@ import { usePersistentTableColumns } from '@/composables/usePersistentTableColum
 import EmptyState from '@/components/EmptyState.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import { apiErrorMessage } from '@/utils/format'
 export default {
   name: 'LoginHistory',
   components: {
@@ -310,7 +311,7 @@ export default {
         }
       } catch (error) {
         console.error('获取登录历史失败:', error)
-        ElMessage.error(`获取登录历史失败: ${error.response?.data?.message || error.message || '未知错误'}`)
+        ElMessage.error(apiErrorMessage(error, '获取登录历史失败'))
         loginHistory.value = []
         total.value = 0
       } finally {

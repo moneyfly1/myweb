@@ -6,6 +6,39 @@ export function formatMoney(value, options = {}) {
   return `${prefix}${number.toFixed(2)}`
 }
 
+/**
+ * apiErrorMessage 从 axios 错误对象中取出可读的错误文案 —— 全站唯一的错误提示入口。
+ *
+ * 背景：前端各处的 catch / 业务失败分支里，散落着上百处手写模板：
+ *   `error.response?.data?.message || error.message`
+ *    `error.response?.data?.detail || error.response?.data?.message || error.message || 'xxx失败'`
+ *   `'xxx失败: ' + (error.response?.data?.message || error.message)`
+ * 三套字段名（message / detail / message）顺序不一、有的漏了 detail、有的漏了兜底，
+ * 同一个后端错误在不同页面显示的文案因此不一致，也容易把 undefined / 空串直接抛给用户。
+ *
+ * 统一为一个函数后：
+ * 1) 取值顺序固定：后端 message → 后端 detail → axios/JS 的 error.message → 调用方兜底文案；
+ * 2) 永远不会返回 undefined / 空串（兜底默认「操作失败」），用户不会看到空白提示；
+ *    但 axios 自己的通用英文文案（"Request failed with status code 500" / "Network Error" /
+ *    "timeout of ..."）对用户没有信息量，这类一律退回中文兜底，避免中文界面冒出英文技术提示；
+ * 3) 原来「'xxx失败: ' + 详情」的写法改为把「xxx失败」当兜底文案传入，
+ *    后端有具体原因时直接显示原因，没有时才显示「xxx失败」，语义不变且不会出现「xxx失败: xxx失败」。
+ *
+ * @param {*} error 捕获到的错误（axios error / Error / undefined 均可）
+ * @param {string} fallback 兜底文案（一般传业务动作名，如「保存失败」）
+ * @returns {string}
+ */
+const GENERIC_AXIOS_MESSAGE = /^(Request failed with status code|Network Error|timeout of)/i
+
+export function apiErrorMessage(error, fallback = '操作失败') {
+  const data = error?.response?.data
+  const serverMessage = data?.message || data?.detail
+  if (serverMessage) return serverMessage
+  const raw = typeof error?.message === 'string' ? error.message.trim() : ''
+  if (!raw || GENERIC_AXIOS_MESSAGE.test(raw)) return fallback
+  return raw
+}
+
 export function formatFileSize(bytes, empty = '-') {
   const number = Number(bytes)
   if (!Number.isFinite(number) || number < 0) return empty

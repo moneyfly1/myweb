@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { apiCache } from './apiCache'
 import { ElMessage } from './elementPlusServices'
+import { apiErrorMessage } from './format'
 
 const SECURE_STORAGE_KEY = 'cboard_secure_'
 const MAX_STORAGE_AGE = 24 * 60 * 60 * 1000
@@ -361,7 +362,7 @@ api.interceptors.response.use(
       }
     }
     if (error.response?.status === 503 && error.response?.data?.maintenance_mode) {
-      ElMessage.error(error.response.data.message || '系统维护中，请稍后再试')
+      ElMessage.error(apiErrorMessage(error, '系统维护中，请稍后再试'))
       return Promise.reject(error)
     }
     if (error.response?.status === 403 && (error.response?.data?.message?.includes('CSRF') || error.response?.data?.csrf_token)) {
@@ -376,7 +377,7 @@ api.interceptors.response.use(
         }
       }
       if (!error.config?._csrfRetry) {
-        ElMessage.error(error.response?.data?.message || 'CSRF验证失败，请刷新页面后重试')
+        ElMessage.error(apiErrorMessage(error, 'CSRF验证失败，请刷新页面后重试'))
       }
       return Promise.reject(error)
     }
@@ -467,9 +468,7 @@ export const authAPI = {
   login: (data) => api.post('/auth/login', data),
   register: (data) => api.post('/auth/register', data),
   sendVerificationCode: (data) => api.post('/auth/verification/send', data),
-  resendVerificationCode: (data) => api.post('/auth/verification/send', data),
   forgotPassword: (data) => api.post('/auth/forgot-password', data),
-  resetPassword: (data) => api.post('/auth/reset-password', data),
   refreshToken: (refreshToken) => api.post('/auth/refresh', { refresh_token: refreshToken })
 }
 export const userAPI = {
@@ -477,17 +476,12 @@ export const userAPI = {
   updateProfile: (data) => api.put('/users/me', data),
   changePassword: (data) => api.post('/users/change-password', data),
   getLoginHistory: () => api.get('/users/login-history'),
-  getUserActivities: () => api.get('/users/activities'),
-  getSubscriptionResets: () => api.get('/users/subscription-resets'),
   getUserInfo: () => api.get('/users/dashboard-info'),
-  getUserDevices: () => api.get('/users/devices'),
   getMyLevel: () => api.get('/users/my-level'),
   deleteDevice: (id) => api.delete(`/devices/${id}`)
 }
 export const rechargeAPI = {
   createRecharge: (data) => api.post('/recharge', data), // 通用创建充值（兼容）
-  createRechargeWithMethod: (amount, method = 'alipay') => api.post('/recharge', { amount, payment_method: method }),
-  getRechargeRecords: () => api.get('/recharge'), // 充值记录
   getRecharges: (params) => api.get('/recharge', { params }),
   getRechargeDetail: (id) => api.get(`/recharge/${id}`),
   getRechargeStatus: (orderNo) => api.get(`/recharge/status/${orderNo}`),
@@ -500,24 +494,18 @@ export const subscriptionAPI = {
   getDevices: (params) => api.get('/subscriptions/devices', { params }),
   removeDevice: (id) => api.delete(`/subscriptions/devices/${id}`),
   updateDeviceRemark: (id, remark) => api.put(`/subscriptions/devices/${id}/remark`, { remark }),
-  getSSRSubscription: (key) => api.get(`/subscriptions/ssr/${key}`),
-  getClashSubscription: (key) => api.get(`/subscriptions/clash/${key}`),
   convertToBalance: () => api.post('/subscriptions/convert-to-balance')
 }
 export const packageAPI = {
   getPackages: (params) => api.get('/packages/', { params }),
-  getPackage: (id) => api.get(`/packages/${id}`),
   createPackage: (data) => api.post('/packages/', data),
   updatePackage: (id, data) => api.put(`/packages/${id}`, data),
   deletePackage: (id) => api.delete(`/packages/${id}`)
 }
 export const orderAPI = {
   upgradeDevices: (data) => api.post('/orders/upgrade-devices', data),
-  createOrder: (data) => api.post('/orders/', data),
   createCustomOrder: (data) => api.post('/orders/custom', data),
-  getOrderList: (params) => api.get('/orders', { params }), // 订单列表（兼容别名）
   getUserOrders: (params) => api.get('/orders/', { params }),
-  getOrderDetail: (id) => api.get(`/orders/id/${id}`), // 订单详情（与列表同形状：formatOrderData）
   getOrderStatus: (orderNo) => api.get(`/orders/${orderNo}/status`),
   cancelOrder: (orderNo) => api.post(`/orders/${orderNo}/cancel`),
   getPackages: () => api.get('/packages/')
@@ -525,14 +513,8 @@ export const orderAPI = {
 
 export const nodeAPI = {
   getNodes: () => api.get('/nodes/'),
-  getNode: (id) => api.get(`/nodes/${id}`),
-  testUserNode: (id) => api.post(`/nodes/${id}/test`),
-  batchTestUserNodes: (data) => api.post('/nodes/batch-test', data),
-  importFromClash: (config) => api.post('/nodes/import-from-clash', { clash_config: config }),
   importNodeSubscription: (url) => api.post('/admin/nodes/import-subscription', { url }),
-  getNodesStats: () => api.get('/admin/nodes/stats'),
   getAdminNodes: (params) => api.get('/admin/nodes', { params }),
-  getAdminNode: (id) => api.get(`/admin/nodes/${id}`),
   createNode: (data) => api.post('/admin/nodes', data),
   importNodeLinks: (links) => api.post('/admin/nodes/import-links', { links }),
   updateNode: (id, data) => api.put(`/admin/nodes/${id}`, data),
@@ -544,8 +526,6 @@ export const nodeAPI = {
   getNodesBatchTestStatus: (jobId) => api.get('/admin/nodes/batch-test/status', { params: jobId ? { job_id: jobId } : {} }),
   batchDeleteNodes: (nodeIds) => api.post('/admin/nodes/batch-delete', { node_ids: nodeIds }),
   createSelfHostNode: (data) => api.post('/admin/nodes/selfhost', data),
-  disableTimeoutNodes: () => api.post('/admin/nodes/disable-timeout'),
-  enableAllNodes: () => api.post('/admin/nodes/enable-all')
 }
 export const adminAPI = {
   getDashboard: () => api.get('/admin/dashboard'),
@@ -609,7 +589,6 @@ export const adminAPI = {
   clearLogs: () => api.post('/admin/clear-logs'),
   // 数据清理：手动清理 + 自动清理保留天数配置
   cleanupData: (type, before) => api.post(`/admin/cleanup/${type}`, null, { params: before ? { before } : {} }),
-  getCleanupRetention: () => api.get('/admin/cleanup/retention'),
   updateCleanupRetention: (data) => api.put('/admin/cleanup/retention', data),
   getSubscriptionDevices: (id) => api.get(`/admin/subscriptions/${id}/devices`),
   getAdminRechargeRecords: (params) => api.get('/recharge/admin', { params }),
@@ -620,8 +599,6 @@ export const adminAPI = {
   importNodeLinks: (links) => nodeAPI.importNodeLinks(links),
   importNodeSubscription: (url) => nodeAPI.importNodeSubscription(url),
   createSelfHostNode: (data) => nodeAPI.createSelfHostNode(data),
-  disableTimeoutNodes: () => nodeAPI.disableTimeoutNodes(),
-  enableAllNodes: () => nodeAPI.enableAllNodes(),
   updateNode: (id, data) => nodeAPI.updateNode(id, data),
   getNodeLink: (id) => nodeAPI.getNodeLink(id),
   deleteNode: (id) => nodeAPI.deleteNode(id),
@@ -699,7 +676,6 @@ export const knowledgeAPI = {
   deleteArticle: (id) => api.delete(`/admin/knowledge/articles/${id}`)
 }
 export const promotionAPI = {
-  getActive: () => api.get('/promotions/active'),
   getAll: (params) => api.get('/admin/promotions', { params }),
   create: (data) => api.post('/admin/promotions', data),
   update: (id, data) => api.put(`/admin/promotions/${id}`, data),
@@ -709,21 +685,16 @@ export const configAPI = {
   getEmailConfig: () => api.get('/admin/email-config'),
   saveEmailConfig: (data) => api.post('/admin/email-config', data),
   getSystemConfigs: (params) => api.get('/admin/configs', { params }),
-  getSystemConfig: (key) => api.get(`/admin/configs/${key}`),
   updateSystemConfig: (key, data) => api.put(`/admin/configs/${key}`, data),
-  createSystemConfig: (data) => api.post('/admin/configs', data)
 }
 export const statisticsAPI = {
   getStatistics: () => api.get('/admin/statistics'),
   getUserTrend: () => api.get('/admin/statistics/user-trend'),
   getRevenueTrend: () => api.get('/admin/statistics/revenue-trend'),
-  getUserStatistics: (params) => api.get('/admin/statistics/users', { params }),
   getRegionStats: () => api.get('/admin/statistics/regions')
 }
 export const paymentAPI = {
   getPaymentMethods: () => api.get('/payment-methods/active'),
-  createPayment: (data) => api.post('/payment/', data),
-  getPaymentStatus: (id) => api.get(`/payment/status/${id}`),
   getPaymentConfigs: (params) => api.get('/payment-config/', { params }),
   createPaymentConfig: (data) => api.post('/payment-config/', data),
   updatePaymentConfig: (id, data) => api.put(`/payment-config/${id}`, data),
@@ -734,14 +705,7 @@ export const paymentAPI = {
 }
 export const settingsAPI = {
   getPublicSettings: () => api.get('/settings/public-settings'),
-  getSystemSettings: () => api.get('/admin/settings'),
-  updateGeneralSettings: (data) => api.put('/admin/settings/general', data),
-  updateRegistrationSettings: (data) => api.put('/admin/settings/registration', data),
-  updateNotificationSettings: (data) => api.put('/admin/settings/notification', data),
   updateSecuritySettings: (data) => api.put('/admin/settings/security', data),
-  getConfigsByCategory: (params) => api.get('/admin/configs', { params }),
-  getConfigs: (params) => api.get('/admin/configs', { params }),
-  createConfig: (data) => api.post('/admin/configs', data),
   updateConfig: (key, data) => api.put(`/admin/configs/${key}`, data)
 }
 export const softwareConfigAPI = {
@@ -763,7 +727,6 @@ export const configUpdateAPI = {
   testUpdate: () => api.post('/admin/config-update/test'),
   getConfig: () => api.get('/admin/config-update/config'),
   updateConfig: (data) => api.put('/admin/config-update/config', data),
-  getFiles: () => api.get('/admin/config-update/files'),
   getLogs: (params) => api.get('/admin/config-update/logs', { params }),
   clearLogs: () => api.post('/admin/config-update/logs/clear'),
 }
@@ -781,11 +744,9 @@ export const ticketAPI = {
   uploadAttachment: (formData) => api.post('/tickets/upload', formData, { timeout: 60000, headers: { 'Content-Type': 'multipart/form-data' } })
 }
 export const couponAPI = {
-  getAvailableCoupons: () => api.get('/coupons'),
   validateCoupon: (data) => api.post('/coupons/verify', data),
   createCoupon: (data) => api.post('/coupons/admin', data),
   getAllCoupons: (params) => api.get('/coupons/admin', { params }),
-  getCoupon: (id) => api.get(`/coupons/admin/${id}`),
   updateCoupon: (id, data) => api.put(`/coupons/admin/${id}`, data),
   deleteCoupon: (id) => api.delete(`/coupons/admin/${id}`),
 }
@@ -797,17 +758,13 @@ export const inviteAPI = {
   getMyInviteRecords: () => api.get('/invites/records'),
   getInviteRewardSettings: () => api.get('/invites/reward-settings'),
   validateInviteCode: (code) => api.get(`/invites/validate/${code}`),
-  updateInviteCode: (id, data) => api.put(`/invites/${id}`, data),
   deleteInviteCode: (id) => api.delete(`/invites/${id}`),
-  getAllInviteCodes: (params) => api.get('/admin/invites', { params }),
-  getInviteRelations: (params) => api.get('/admin/invite-relations', { params }),
   getAdminInviteStatistics: () => api.get('/admin/invite-statistics'),
   // 邀请人维度聚合列表（管理员邀请管理页的唯一列表数据源）
   getAdminInviteInviters: (params) => api.get('/admin/invite-inviters', { params }),
   // 单个邀请人详情：基本信息 + 邀请码 + 邀请关系
   getAdminInviterDetail: (id) => api.get(`/admin/invite-inviters/${id}`),
   batchDeleteInviteCodes: (ids) => api.post('/admin/invites/batch-delete', { ids }),
-  batchDeleteInviteRelations: (ids) => api.post('/admin/invite-relations/batch-delete', { ids })
 }
 export const userLevelAPI = {
   getMyLevel: () => api.get('/users/my-level'),
@@ -891,11 +848,6 @@ export const cachedAPI = {
     }
     return results
   },
-
-  // 清除所有缓存
-  clearAllCache: () => {
-    apiCache.clear()
-  }
 }
 
 export function parsePaymentMethods(response) {

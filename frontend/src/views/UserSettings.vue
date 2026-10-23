@@ -236,6 +236,7 @@ import { useMobile } from '@/composables/useMobile'
 import FormActionBar from '@/components/FormActionBar.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import { usernameValidator, USERNAME_HINT } from '@/utils/usernameRules'
+import { apiErrorMessage } from '@/utils/format'
 const notificationTypeOptions = [
   { value: 'system', label: '系统通知' },
   { value: 'security', label: '安全/密码通知' },
@@ -512,7 +513,7 @@ export default {
             avatar: profileForm.avatar
           }
         })
-        const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '保存失败'
+        const errorMsg = apiErrorMessage(error, '保存失败')
         ElMessage.error(errorMsg)
       } finally {
         profileSaving.value = false
@@ -544,7 +545,7 @@ export default {
           status: error.response?.status,
           url: '/users/change-password'
         })
-        const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '密码修改失败'
+        const errorMsg = apiErrorMessage(error, '密码修改失败')
         ElMessage.error(errorMsg)
       } finally {
         passwordChanging.value = false
@@ -573,7 +574,7 @@ export default {
             notification_types: notificationForm.notificationTypes
           }
         })
-        const errorMessage = error.response?.data?.detail || error.response?.data?.message || error.message || '保存失败'
+        const errorMessage = apiErrorMessage(error, '保存失败')
         ElMessage.error('保存失败：' + errorMessage)
       } finally {
         notificationSaving.value = false
@@ -634,7 +635,7 @@ export default {
             timezone: preferenceForm.timezone
           }
         })
-        const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '保存失败'
+        const errorMsg = apiErrorMessage(error, '保存失败')
         ElMessage.error(errorMsg)
       } finally {
         preferenceSaving.value = false
@@ -655,7 +656,7 @@ export default {
         await authAPI.sendVerificationCode({ email: emailChangeForm.newEmail, type: 'email_change' })
         ElMessage.success('验证码已发送到您的新邮箱')
       } catch (error) {
-        const msg = error?.response?.data?.message || error.message || '发送失败'
+        const msg = apiErrorMessage(error, '发送失败')
         ElMessage.error('发送验证码失败：' + msg)
       } finally {
         codeSending.value = false
@@ -681,7 +682,7 @@ export default {
           ElMessage.error(response.data?.message || '邮箱修改失败')
         }
       } catch (error) {
-        const msg = error.response?.data?.message || error.response?.data?.detail || error.message || '邮箱修改失败'
+        const msg = apiErrorMessage(error, '邮箱修改失败')
         ElMessage.error('邮箱修改失败：' + msg)
       } finally {
         emailChanging.value = false

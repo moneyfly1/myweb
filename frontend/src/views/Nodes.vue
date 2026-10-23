@@ -185,6 +185,7 @@ import { usePersistentTableColumns } from '@/composables/usePersistentTableColum
 import EmptyState from '@/components/EmptyState.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import { apiErrorMessage } from '@/utils/format'
 const NODES_TABLE_STORAGE_KEY = 'user_nodes_table_settings'
 export default {
   name: 'Nodes',
@@ -361,7 +362,7 @@ export default {
         }
         updateNodeStats()
       } catch (error) {
-        const errorMsg = error.response?.data?.message || error.message || '获取节点列表失败'
+        const errorMsg = apiErrorMessage(error, '获取节点列表失败')
         ElMessage.error(`获取节点列表失败: ${errorMsg}`)
         console.error('获取节点列表错误:', error)
         console.error('错误详情:', error.response)

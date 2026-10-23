@@ -782,40 +782,85 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
 
 	switch notificationType {
 	case "order_created":
-		orderNo := getStringFromData(data, "order_no", "N/A")
-		amount := getFloatFromData(data, "amount", 0)
-		packageName := getStringFromData(data, "package_name", "未知套餐")
-		paymentMethod := getStringFromData(data, "payment_method", "待选择")
-		createTime := getStringFromData(data, "create_time", "N/A")
+		content = b.getOrderCreatedAdminTemplate(data, username, email)
+	case "order_paid":
+		content = b.getOrderPaidAdminTemplate(data, username, email)
+	case "recharge_paid":
+		content = b.getRechargePaidAdminTemplate(data, username, email)
+	case "user_registered":
+		content = b.getUserRegisteredAdminTemplate(data, username, email)
+	case "password_reset":
+		content = b.getPasswordResetAdminTemplate(data, username, email)
+	case "password_changed":
+		content = b.getPasswordChangedAdminTemplate(data, username, email)
+	case "abnormal_login":
+		content = b.getAbnormalLoginAdminTemplate(data, username, email)
+	case "subscription_sent":
+		content = b.getSubscriptionSentAdminTemplate(data, username, email)
+	case "subscription_reset":
+		content = b.getSubscriptionResetAdminTemplate(data, username, email)
+	case "subscription_expired":
+		content = b.getSubscriptionExpiredAdminTemplate(data, username, email)
+	case "subscription_expiry_warning":
+		content = b.getSubscriptionExpiryWarningAdminTemplate(data, username, email)
+	case "user_created":
+		content = b.getUserCreatedAdminTemplate(data, username, email)
+	case "subscription_created":
+		content = b.getSubscriptionCreatedAdminTemplate(data, username, email)
+	case "ticket_created":
+		content = b.getTicketCreatedAdminTemplate(data, username, email)
+	case "ticket_replied":
+		content = b.getTicketRepliedAdminTemplate(data, username, email)
+	default:
+		content = b.getDefaultAdminTemplate(title, body)
+	}
 
-		upgradeSection := ""
-		if oldLimit := getFloatFromData(data, "old_device_limit", 0); oldLimit > 0 {
-			newLimit := getFloatFromData(data, "new_device_limit", 0)
-			addDevices := getFloatFromData(data, "additional_devices", 0)
-			addDays := getFloatFromData(data, "additional_days", 0)
-			oldExpire := getStringFromData(data, "old_expire_time", "")
-			newExpire := getStringFromData(data, "new_expire_time", "")
+	return b.GetBaseTemplate(title, content, "此邮件由系统自动发送，请勿回复。")
+}
 
-			upgradeSection = `<div class="info-box">
+// buildAdminUpgradeSection 拼装后台通知里的「升级详情」区块（订单创建/支付成功两处共用）。
+// color 是数值高亮色：待支付用 #f39c12，已支付用 #27ae60。
+func buildAdminUpgradeSection(data map[string]interface{}, color string) string {
+	oldLimit := getFloatFromData(data, "old_device_limit", 0)
+	if oldLimit <= 0 {
+		return ""
+	}
+	newLimit := getFloatFromData(data, "new_device_limit", 0)
+	addDevices := getFloatFromData(data, "additional_devices", 0)
+	addDays := getFloatFromData(data, "additional_days", 0)
+	oldExpire := getStringFromData(data, "old_expire_time", "")
+	newExpire := getStringFromData(data, "new_expire_time", "")
+
+	section := `<div class="info-box">
                 <h3>📊 升级详情</h3>
                 <table class="info-table">`
-			if newLimit > 0 {
-				upgradeSection += fmt.Sprintf(`
-                    <tr><th>设备数量</th><td style="color: #f39c12; font-weight: bold;">%d → %d 台 (+%.0f台)</td></tr>`, int(oldLimit), int(newLimit), addDevices)
-			}
-			if oldExpire != "" && newExpire != "" && addDays > 0 {
-				upgradeSection += fmt.Sprintf(`
-                    <tr><th>有效期</th><td style="color: #f39c12; font-weight: bold;">%s → %s (+%.0f天)</td></tr>`, oldExpire, newExpire, addDays)
-			} else if addDays > 0 {
-				upgradeSection += fmt.Sprintf(`
-                    <tr><th>增加时长</th><td style="color: #f39c12; font-weight: bold;">+%.0f 天</td></tr>`, addDays)
-			}
-			upgradeSection += `
+	if newLimit > 0 {
+		section += fmt.Sprintf(`
+                    <tr><th>设备数量</th><td style="color: %s; font-weight: bold;">%d → %d 台 (+%.0f台)</td></tr>`, color, int(oldLimit), int(newLimit), addDevices)
+	}
+	if oldExpire != "" && newExpire != "" && addDays > 0 {
+		section += fmt.Sprintf(`
+                    <tr><th>有效期</th><td style="color: %s; font-weight: bold;">%s → %s (+%.0f天)</td></tr>`, color, oldExpire, newExpire, addDays)
+	} else if addDays > 0 {
+		section += fmt.Sprintf(`
+                    <tr><th>增加时长</th><td style="color: %s; font-weight: bold;">+%.0f 天</td></tr>`, color, addDays)
+	}
+	section += `
                 </table>
             </div>`
-		}
+	return section
+}
 
-		content = fmt.Sprintf(`<h2>🧾 用户创建订单</h2>
+func (b *EmailTemplateBuilder) getOrderCreatedAdminTemplate(data map[string]interface{}, username, email string) string {
+	orderNo := getStringFromData(data, "order_no", "N/A")
+	amount := getFloatFromData(data, "amount", 0)
+	packageName := getStringFromData(data, "package_name", "未知套餐")
+	paymentMethod := getStringFromData(data, "payment_method", "待选择")
+	createTime := getStringFromData(data, "create_time", "N/A")
+
+	upgradeSection := buildAdminUpgradeSection(data, "#f39c12")
+
+	return fmt.Sprintf(`<h2>🧾 用户创建订单</h2>
             <p>系统检测到用户创建了一笔待支付订单，详情如下：</p>
             <div class="info-box">
                 <h3>📋 订单信息</h3>
@@ -834,42 +879,18 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             <div class="info-box">
                 <p><strong>💡 提示：</strong>该订单尚未支付，支付成功后系统会自动处理订阅或升级。</p>
             </div>`, orderNo, username, email, packageName, amount, paymentMethod, createTime, upgradeSection)
+}
 
-	case "order_paid":
-		orderNo := getStringFromData(data, "order_no", "N/A")
-		amount := getFloatFromData(data, "amount", 0)
-		packageName := getStringFromData(data, "package_name", "未知套餐")
-		paymentMethod := getStringFromData(data, "payment_method", "未知")
-		paymentTime := getStringFromData(data, "payment_time", "N/A")
+func (b *EmailTemplateBuilder) getOrderPaidAdminTemplate(data map[string]interface{}, username, email string) string {
+	orderNo := getStringFromData(data, "order_no", "N/A")
+	amount := getFloatFromData(data, "amount", 0)
+	packageName := getStringFromData(data, "package_name", "未知套餐")
+	paymentMethod := getStringFromData(data, "payment_method", "未知")
+	paymentTime := getStringFromData(data, "payment_time", "N/A")
 
-		upgradeSection := ""
-		if oldLimit := getFloatFromData(data, "old_device_limit", 0); oldLimit > 0 {
-			newLimit := getFloatFromData(data, "new_device_limit", 0)
-			addDevices := getFloatFromData(data, "additional_devices", 0)
-			addDays := getFloatFromData(data, "additional_days", 0)
-			oldExpire := getStringFromData(data, "old_expire_time", "")
-			newExpire := getStringFromData(data, "new_expire_time", "")
+	upgradeSection := buildAdminUpgradeSection(data, "#27ae60")
 
-			upgradeSection = `<div class="info-box">
-                <h3>📊 升级详情</h3>
-                <table class="info-table">`
-			if newLimit > 0 {
-				upgradeSection += fmt.Sprintf(`
-                    <tr><th>设备数量</th><td style="color: #27ae60; font-weight: bold;">%d → %d 台 (+%.0f台)</td></tr>`, int(oldLimit), int(newLimit), addDevices)
-			}
-			if oldExpire != "" && newExpire != "" && addDays > 0 {
-				upgradeSection += fmt.Sprintf(`
-                    <tr><th>有效期</th><td style="color: #27ae60; font-weight: bold;">%s → %s (+%.0f天)</td></tr>`, oldExpire, newExpire, addDays)
-			} else if addDays > 0 {
-				upgradeSection += fmt.Sprintf(`
-                    <tr><th>增加时长</th><td style="color: #27ae60; font-weight: bold;">+%.0f 天</td></tr>`, addDays)
-			}
-			upgradeSection += `
-                </table>
-            </div>`
-		}
-
-		content = fmt.Sprintf(`<h2>💰 新订单支付成功</h2>
+	return fmt.Sprintf(`<h2>💰 新订单支付成功</h2>
             <p>系统检测到一笔新的订单支付，详情如下：</p>
             <div class="success-box">
                 <h3>📋 订单信息</h3>
@@ -886,14 +907,15 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             <div class="info-box">
                 <p><strong>💡 提示：</strong>订单已自动处理，订阅已激活，用户可立即使用服务。</p>
             </div>`, orderNo, username, packageName, amount, paymentMethod, paymentTime, upgradeSection)
+}
 
-	case "recharge_paid":
-		orderNo := getStringFromData(data, "order_no", "N/A")
-		amount := getFloatFromData(data, "amount", 0)
-		balance := getFloatFromData(data, "balance", 0)
-		paymentMethod := getStringFromData(data, "payment_method", "未知")
-		paymentTime := getStringFromData(data, "payment_time", "N/A")
-		content = fmt.Sprintf(`<h2>💳 用户充值成功</h2>
+func (b *EmailTemplateBuilder) getRechargePaidAdminTemplate(data map[string]interface{}, username, email string) string {
+	orderNo := getStringFromData(data, "order_no", "N/A")
+	amount := getFloatFromData(data, "amount", 0)
+	balance := getFloatFromData(data, "balance", 0)
+	paymentMethod := getStringFromData(data, "payment_method", "未知")
+	paymentTime := getStringFromData(data, "payment_time", "N/A")
+	return fmt.Sprintf(`<h2>💳 用户充值成功</h2>
             <p>系统检测到一笔账户充值到账，详情如下：</p>
             <div class="success-box">
                 <h3>💰 充值信息</h3>
@@ -907,10 +929,11 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
                     <tr><th>到账时间</th><td>%s</td></tr>
                 </table>
             </div>`, orderNo, username, email, amount, balance, paymentMethod, paymentTime)
+}
 
-	case "user_registered":
-		registerTime := getStringFromData(data, "register_time", "N/A")
-		content = fmt.Sprintf(`<h2>👤 新用户注册</h2>
+func (b *EmailTemplateBuilder) getUserRegisteredAdminTemplate(data map[string]interface{}, username, email string) string {
+	registerTime := getStringFromData(data, "register_time", "N/A")
+	return fmt.Sprintf(`<h2>👤 新用户注册</h2>
             <p>系统检测到新用户注册，详情如下：</p>
             <div class="info-box">
                 <h3>📋 用户信息</h3>
@@ -923,10 +946,11 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             <div class="info-box">
                 <p><strong>💡 提示：</strong>新用户已自动创建默认订阅，可引导用户购买套餐激活服务。</p>
             </div>`, username, email, registerTime)
+}
 
-	case "password_reset":
-		resetTime := getStringFromData(data, "reset_time", "N/A")
-		content = fmt.Sprintf(`<h2>🔐 用户重置密码</h2>
+func (b *EmailTemplateBuilder) getPasswordResetAdminTemplate(data map[string]interface{}, username, email string) string {
+	resetTime := getStringFromData(data, "reset_time", "N/A")
+	return fmt.Sprintf(`<h2>🔐 用户重置密码</h2>
             <p>系统检测到用户重置密码操作，详情如下：</p>
             <div class="warning-box">
                 <h3>📋 重置信息</h3>
@@ -939,10 +963,11 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             <div class="warning-box">
                 <p><strong>⚠️ 安全提醒：</strong>如非用户本人操作，请及时检查账户安全。</p>
             </div>`, username, email, resetTime)
+}
 
-	case "password_changed":
-		changeTime := getStringFromData(data, "change_time", "N/A")
-		content = fmt.Sprintf(`<h2>🔐 用户修改密码</h2>
+func (b *EmailTemplateBuilder) getPasswordChangedAdminTemplate(data map[string]interface{}, username, email string) string {
+	changeTime := getStringFromData(data, "change_time", "N/A")
+	return fmt.Sprintf(`<h2>🔐 用户修改密码</h2>
             <p>系统检测到用户修改密码操作，详情如下：</p>
             <div class="warning-box">
                 <h3>📋 修改信息</h3>
@@ -955,12 +980,13 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             <div class="warning-box">
                 <p><strong>⚠️ 安全提醒：</strong>如非用户本人操作，请及时检查账户安全。</p>
             </div>`, username, email, changeTime)
+}
 
-	case "abnormal_login":
-		loginTime := getStringFromData(data, "login_time", "N/A")
-		ipAddress := getStringFromData(data, "ip_address", "N/A")
-		location := getStringFromData(data, "location", "未知")
-		content = fmt.Sprintf(`<h2>⚠️ 异常登录告警</h2>
+func (b *EmailTemplateBuilder) getAbnormalLoginAdminTemplate(data map[string]interface{}, username, email string) string {
+	loginTime := getStringFromData(data, "login_time", "N/A")
+	ipAddress := getStringFromData(data, "ip_address", "N/A")
+	location := getStringFromData(data, "location", "未知")
+	return fmt.Sprintf(`<h2>⚠️ 异常登录告警</h2>
             <p>系统检测到异常登录行为，详情如下：</p>
             <div class="warning-box">
                 <h3>🔐 登录信息</h3>
@@ -972,10 +998,11 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
                     <tr><th>登录时间</th><td>%s</td></tr>
                 </table>
             </div>`, username, email, ipAddress, location, loginTime)
+}
 
-	case "subscription_sent":
-		sendTime := getStringFromData(data, "send_time", "N/A")
-		content = fmt.Sprintf(`<h2>📧 用户发送订阅</h2>
+func (b *EmailTemplateBuilder) getSubscriptionSentAdminTemplate(data map[string]interface{}, username, email string) string {
+	sendTime := getStringFromData(data, "send_time", "N/A")
+	return fmt.Sprintf(`<h2>📧 用户发送订阅</h2>
             <p>系统检测到用户发送订阅邮件，详情如下：</p>
             <div class="info-box">
                 <h3>📋 发送信息</h3>
@@ -985,10 +1012,11 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
                     <tr><th>发送时间</th><td>%s</td></tr>
                 </table>
             </div>`, username, email, sendTime)
+}
 
-	case "subscription_reset":
-		resetTime := getStringFromData(data, "reset_time", "N/A")
-		content = fmt.Sprintf(`<h2>🔄 用户重置订阅</h2>
+func (b *EmailTemplateBuilder) getSubscriptionResetAdminTemplate(data map[string]interface{}, username, email string) string {
+	resetTime := getStringFromData(data, "reset_time", "N/A")
+	return fmt.Sprintf(`<h2>🔄 用户重置订阅</h2>
             <p>系统检测到用户重置订阅地址，详情如下：</p>
             <div class="info-box">
                 <h3>📋 重置信息</h3>
@@ -1001,10 +1029,11 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             <div class="info-box">
                 <p><strong>💡 提示：</strong>订阅地址已重置，旧地址已失效，用户设备记录已清空。</p>
             </div>`, username, email, resetTime)
+}
 
-	case "subscription_expired":
-		expireTime := getStringFromData(data, "expire_time", "N/A")
-		content = fmt.Sprintf(`<h2>⏰ 订阅已过期</h2>
+func (b *EmailTemplateBuilder) getSubscriptionExpiredAdminTemplate(data map[string]interface{}, username, email string) string {
+	expireTime := getStringFromData(data, "expire_time", "N/A")
+	return fmt.Sprintf(`<h2>⏰ 订阅已过期</h2>
             <p>系统检测到用户订阅已过期，详情如下：</p>
             <div class="warning-box">
                 <h3>📋 过期信息</h3>
@@ -1017,12 +1046,13 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             <div class="warning-box">
                 <p><strong>💡 提示：</strong>用户订阅已过期，建议引导用户续费以恢复服务。</p>
             </div>`, username, email, expireTime)
+}
 
-	case "subscription_expiry_warning":
-		expireTime := getStringFromData(data, "expire_time", "N/A")
-		packageName := getStringFromData(data, "package_name", "未知套餐")
-		remainingDays := getFloatFromData(data, "remaining_days", 0)
-		content = fmt.Sprintf(`<h2>⏰ 订阅即将到期</h2>
+func (b *EmailTemplateBuilder) getSubscriptionExpiryWarningAdminTemplate(data map[string]interface{}, username, email string) string {
+	expireTime := getStringFromData(data, "expire_time", "N/A")
+	packageName := getStringFromData(data, "package_name", "未知套餐")
+	remainingDays := getFloatFromData(data, "remaining_days", 0)
+	return fmt.Sprintf(`<h2>⏰ 订阅即将到期</h2>
             <p>系统检测到用户订阅即将到期，请及时跟进续费，详情如下：</p>
             <div class="warning-box">
                 <h3>📋 到期信息</h3>
@@ -1037,11 +1067,12 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             <div class="info-box">
                 <p><strong>💡 提示：</strong>到期提醒邮件已发送至用户，建议通过 Telegram/Bark 或站内消息跟进续费。</p>
             </div>`, username, email, packageName, expireTime, int(remainingDays))
+}
 
-	case "user_created":
-		createdBy := getStringFromData(data, "created_by", "N/A")
-		createTime := getStringFromData(data, "create_time", "N/A")
-		content = fmt.Sprintf(`<h2>📋 管理员创建用户</h2>
+func (b *EmailTemplateBuilder) getUserCreatedAdminTemplate(data map[string]interface{}, username, email string) string {
+	createdBy := getStringFromData(data, "created_by", "N/A")
+	createTime := getStringFromData(data, "create_time", "N/A")
+	return fmt.Sprintf(`<h2>📋 管理员创建用户</h2>
             <p>系统检测到管理员创建新用户，详情如下：</p>
             <div class="success-box">
                 <h3>📋 账户信息</h3>
@@ -1055,11 +1086,12 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             <div class="info-box">
                 <p><strong>✅ 用户账户已成功创建</strong></p>
             </div>`, username, email, createdBy, createTime)
+}
 
-	case "subscription_created":
-		packageName := getStringFromData(data, "package_name", "未知套餐")
-		createTime := getStringFromData(data, "create_time", "N/A")
-		content = fmt.Sprintf(`<h2>📦 订阅创建</h2>
+func (b *EmailTemplateBuilder) getSubscriptionCreatedAdminTemplate(data map[string]interface{}, username, email string) string {
+	packageName := getStringFromData(data, "package_name", "未知套餐")
+	createTime := getStringFromData(data, "create_time", "N/A")
+	return fmt.Sprintf(`<h2>📦 订阅创建</h2>
             <p>系统检测到新订阅创建，详情如下：</p>
             <div class="success-box">
                 <h3>📋 订阅信息</h3>
@@ -1073,14 +1105,15 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             <div class="info-box">
                 <p><strong>💡 提示：</strong>订阅已创建并激活，用户可立即使用服务。</p>
             </div>`, username, email, packageName, createTime)
+}
 
-	case "ticket_created":
-		ticketNo := getStringFromData(data, "ticket_no", "N/A")
-		ticketTitle := getStringFromData(data, "title", "N/A")
-		ticketType := getStringFromData(data, "type", "N/A")
-		priority := getStringFromData(data, "priority", "N/A")
-		createTime := getStringFromData(data, "create_time", "N/A")
-		content = fmt.Sprintf(`<h2>🎫 用户提交工单</h2>
+func (b *EmailTemplateBuilder) getTicketCreatedAdminTemplate(data map[string]interface{}, username, email string) string {
+	ticketNo := getStringFromData(data, "ticket_no", "N/A")
+	ticketTitle := getStringFromData(data, "title", "N/A")
+	ticketType := getStringFromData(data, "type", "N/A")
+	priority := getStringFromData(data, "priority", "N/A")
+	createTime := getStringFromData(data, "create_time", "N/A")
+	return fmt.Sprintf(`<h2>🎫 用户提交工单</h2>
             <p>系统检测到用户提交新工单，详情如下：</p>
             <div class="info-box">
                 <h3>👤 用户信息</h3>
@@ -1102,12 +1135,13 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             <div class="info-box">
                 <p><strong>💡 提示：</strong>请及时登录后台处理用户工单。</p>
             </div>`, username, email, ticketNo, ticketTitle, ticketType, priority, createTime)
+}
 
-	case "ticket_replied":
-		ticketNo := getStringFromData(data, "ticket_no", "N/A")
-		ticketTitle := getStringFromData(data, "title", "N/A")
-		replyTime := getStringFromData(data, "reply_time", "N/A")
-		content = fmt.Sprintf(`<h2>💬 工单新回复</h2>
+func (b *EmailTemplateBuilder) getTicketRepliedAdminTemplate(data map[string]interface{}, username, email string) string {
+	ticketNo := getStringFromData(data, "ticket_no", "N/A")
+	ticketTitle := getStringFromData(data, "title", "N/A")
+	replyTime := getStringFromData(data, "reply_time", "N/A")
+	return fmt.Sprintf(`<h2>💬 工单新回复</h2>
             <p>系统检测到用户回复工单，详情如下：</p>
             <div class="info-box">
                 <h3>👤 用户信息</h3>
@@ -1127,15 +1161,13 @@ func (b *EmailTemplateBuilder) GetAdminNotificationTemplate(notificationType, ti
             <div class="info-box">
                 <p><strong>💡 提示：</strong>请及时登录后台查看用户回复内容。</p>
             </div>`, username, email, ticketNo, ticketTitle, replyTime)
+}
 
-	default:
-		content = fmt.Sprintf(`<div class="content">
+func (b *EmailTemplateBuilder) getDefaultAdminTemplate(title, body string) string {
+	return fmt.Sprintf(`<div class="content">
                 <h2>%s</h2>
                 <div style="line-height: 1.8; color: #555;">%s</div>
             </div>`, title, strings.ReplaceAll(body, "\n", "<br>"))
-	}
-
-	return b.GetBaseTemplate(title, content, "此邮件由系统自动发送，请勿回复。")
 }
 
 type TicketReplyHistoryItem struct {

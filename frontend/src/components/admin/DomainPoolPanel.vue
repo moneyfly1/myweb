@@ -178,6 +178,7 @@ import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminAPI } from '@/utils/api'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import { apiErrorMessage } from '@/utils/format'
 
 const loading = ref(false)
 const configuring = ref(false)
@@ -226,7 +227,7 @@ const renewCerts = async (force) => {
     const d = e.response?.data?.data || {}
     if (Array.isArray(d.steps) && d.steps.length) steps.value = d.steps
     const failed = d.result?.failed?.length ? `（失败：${d.result.failed.join('、')}）` : ''
-    ElMessage.error((e.response?.data?.message || '续期失败') + failed)
+    ElMessage.error(apiErrorMessage(e, '续期失败') + failed)
     await load()
   } finally {
     renewing.value = false
@@ -244,7 +245,7 @@ const load = async () => {
     backups.value = d.backups || []
     items.value = d.items || []
   } catch (e) {
-    ElMessage.error('加载订阅域名池失败：' + (e.response?.data?.message || e.message))
+    ElMessage.error(apiErrorMessage(e, '加载订阅域名池失败'))
   } finally {
     loading.value = false
   }
@@ -272,7 +273,7 @@ const configure = async () => {
   } catch (e) {
     steps.value = e.response?.data?.data?.steps || []
     const failed = steps.value.find(s => !s.ok)
-    ElMessage.error('配置失败：' + (failed ? `${failed.name} —— ${failed.detail}` : (e.response?.data?.message || e.message)))
+    ElMessage.error('配置失败：' + (failed ? `${failed.name} —— ${failed.detail}` : apiErrorMessage(e)))
   } finally {
     configuring.value = false
   }
@@ -289,7 +290,7 @@ const addOnly = async () => {
     newDomain.value = ''
     await load()
   } catch (e) {
-    ElMessage.error('加入失败：' + (e.response?.data?.message || e.message))
+    ElMessage.error(apiErrorMessage(e, '加入失败'))
   } finally {
     adding.value = false
   }
@@ -306,7 +307,7 @@ const setPrimary = async (domain) => {
     ElMessage.success(res.data?.message || '已切换订阅主域名')
     await load()
   } catch (e) {
-    ElMessage.error('切换失败：' + (e.response?.data?.message || e.message))
+    ElMessage.error(apiErrorMessage(e, '切换失败'))
   }
 }
 
@@ -324,7 +325,7 @@ const remove = async (domain) => {
     ElMessage.success(res.data?.data?.warn || '已移除')
     await load()
   } catch (e) {
-    ElMessage.error('移除失败：' + (e.response?.data?.message || e.message))
+    ElMessage.error(apiErrorMessage(e, '移除失败'))
   }
 }
 

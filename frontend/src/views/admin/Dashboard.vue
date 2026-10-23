@@ -353,7 +353,7 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { useRouter } from 'vue-router'
 import { useApi } from '@/utils/api'
 import { adminAPI } from '@/utils/api'
-import { formatMoney as formatMoneyUtil, unwrapList } from '@/utils/format'
+import { formatMoney as formatMoneyUtil, unwrapList, apiErrorMessage } from '@/utils/format'
 import { confirmAction } from '@/utils/confirmAction'
 import { getOrderStatusType, getOrderStatusText } from '@/utils/statusMaps'
 import {
@@ -464,7 +464,7 @@ export default {
           status: error.response?.status,
           statusText: error.response?.statusText
         })
-        ElMessage.error('获取统计数据失败: ' + (error.response?.data?.message || error.message || '未知错误'))
+        ElMessage.error(apiErrorMessage(error, '获取统计数据失败'))
         stats.value = {
           totalUsers: 0,
           activeSubscriptions: 0,
@@ -746,7 +746,7 @@ dashboardActivity.value = unwrapList(data).slice(0, 20)
           ElMessage.error(response.data?.message || '发送失败')
         }
       } catch (error) {
-        ElMessage.error(error.response?.data?.message || '发送失败')
+        ElMessage.error(apiErrorMessage(error, '发送失败'))
       } finally {
         sendingExpireReminder.value = false
       }

@@ -200,6 +200,7 @@ import { useThemeStore } from '@/store/theme'
 import { secureStorage } from '@/utils/api'
 import { resetRefreshFailed } from '@/utils/api'
 import { usernameValidator, USERNAME_HINT } from '@/utils/usernameRules'
+import { apiErrorMessage } from '@/utils/format'
 
 const router = useRouter()
 const route = useRoute()
@@ -458,9 +459,9 @@ const sendVerificationCode = async (type) => {
     }, 1000)
   } catch (error) {
     if (error.response?.data?.detail) {
-      ElMessage.error(error.response.data.detail)
+      ElMessage.error(apiErrorMessage(error))
     } else if (error.response?.data?.message) {
-      ElMessage.error(error.response.data.message)
+      ElMessage.error(apiErrorMessage(error))
     } else {
       ElMessage.error('发送验证码失败，请重试')
     }
@@ -491,10 +492,7 @@ const handleLogin = async () => {
       ElMessage.error(result.message || '登录失败，请重试')
     }
   } catch (error) {
-    let errorMessage = error.response?.data?.detail || 
-                       error.response?.data?.message || 
-                       error.message || 
-                       '登录失败，请重试'
+    let errorMessage = apiErrorMessage(error, '登录失败，请重试')
     if (error.response?.status === 403) {
       if (errorMessage.includes('账户已被禁用') || errorMessage.includes('账号已禁用')) {
         ElMessage({
@@ -623,10 +621,7 @@ const handleRegister = async () => {
       ElMessage.error('注册失败，请重试')
     }
   } catch (error) {
-    const errorMessage = error.response?.data?.detail || 
-                         error.response?.data?.message || 
-                         error.message || 
-                         '注册失败，请重试'
+    const errorMessage = apiErrorMessage(error, '注册失败，请重试')
     ElMessage.error(errorMessage)
   } finally {
     isLoading.value = false
@@ -657,10 +652,7 @@ const handleReset = async () => {
       switchView('login')
     }, 1500)
   } catch (error) {
-    const errorMessage = error.response?.data?.detail || 
-                         error.response?.data?.message || 
-                         error.message || 
-                         '重置密码失败，请重试'
+    const errorMessage = apiErrorMessage(error, '重置密码失败，请重试')
     ElMessage.error(errorMessage)
   } finally {
     isLoading.value = false
@@ -678,7 +670,7 @@ const validateInviteCode = async (code) => {
   } catch (error) {
     inviteCodeInfo.value = {
       success: false,
-      message: error.response?.data?.message || '邀请码验证失败'
+      message: apiErrorMessage(error, '邀请码验证失败')
     }
   }
 }

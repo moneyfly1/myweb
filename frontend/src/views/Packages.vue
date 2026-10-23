@@ -656,6 +656,7 @@ import ErrorState from '@/components/ErrorState.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import { confirmAction, confirmWarning } from '@/utils/confirmAction'
+import { apiErrorMessage } from '@/utils/format'
 export default {
   name: 'Packages',
   components: {
@@ -811,7 +812,7 @@ export default {
           ElMessage.error(response.data?.message || '优惠券验证失败')
         }
         } catch (error) {
-        const errorMsg = error.response?.data?.message || error.message || '验证优惠券失败'
+        const errorMsg = apiErrorMessage(error, '验证优惠券失败')
         couponInfo.value = {
           valid: false,
           message: errorMsg
@@ -1057,7 +1058,7 @@ export default {
         } else if (error.code === 'ECONNREFUSED') {
           errorMessage.value = '无法连接到服务器'
         } else {
-          const errorMsg = error.response?.data?.detail || error.response?.data?.message || error.message || '加载套餐列表失败，请重试'
+          const errorMsg = apiErrorMessage(error, '加载套餐列表失败，请重试')
           errorMessage.value = errorMsg
         }
         packages.value = [] // 确保清空套餐列表
@@ -1189,7 +1190,7 @@ export default {
             }
           }
         } catch (error) {
-          ElMessage.error(error.response?.data?.message || '支付失败')
+          ElMessage.error(apiErrorMessage(error, '支付失败'))
         } finally {
           isProcessing.value = false
         }
@@ -1225,7 +1226,7 @@ export default {
           if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
             throw new Error('请求超时，支付宝服务响应较慢，请稍后重试或前往订单页面查看')
           } else if (error.response) {
-            const errorMsg = error.response.data?.message || error.response.data?.detail || '创建订单失败'
+            const errorMsg = apiErrorMessage(error, '创建订单失败')
             const headers = error.response.headers || {}
             const requiresConversion = headers['x-requires-conversion'] === 'true'
             const remainingDays = headers['x-remaining-days'] || '0'
@@ -1406,7 +1407,7 @@ export default {
                 ElMessage.error(response.data?.message || '折算失败，请重试')
               }
             } catch (convertError) {
-              const convertErrorMsg = convertError.response?.data?.message || convertError.message || '折算失败，请重试'
+              const convertErrorMsg = apiErrorMessage(convertError, '折算失败，请重试')
               ElMessage.error(convertErrorMsg)
             } finally {
               isProcessing.value = false
@@ -1414,7 +1415,7 @@ export default {
           }).catch(() => {
           })
         } else {
-          const errorMessage = error.response?.data?.detail || error.response?.data?.message || error.message || '创建订单失败，请重试'
+          const errorMessage = apiErrorMessage(error, '创建订单失败，请重试')
           ElMessage.error(errorMessage)
         }
       } finally {
@@ -1782,7 +1783,7 @@ export default {
       } catch (error) {
         customCouponInfo.value = {
           valid: false,
-          message: error.response?.data?.message || '优惠券验证失败'
+          message: apiErrorMessage(error, '优惠券验证失败')
         }
       } finally {
         validatingCustomCoupon.value = false
@@ -1860,7 +1861,7 @@ export default {
           ElMessage.success('订单创建成功，请选择支付方式')
         }
       } catch (error) {
-        ElMessage.error(error.response?.data?.message || '创建订单失败')
+        ElMessage.error(apiErrorMessage(error, '创建订单失败'))
       } finally {
         isProcessing.value = false
       }

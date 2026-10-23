@@ -419,6 +419,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import { confirmWarning } from '@/utils/confirmAction'
 import { ABNORMAL_TYPE_MAP as abnormalTypeMap, getAbnormalTypeText, getAbnormalTypeType } from '@/utils/statusMaps'
+import { apiErrorMessage } from '@/utils/format'
 const riskLevelMap = {
   high: { tag: 'danger', text: '高危' },
   medium: { tag: 'warning', text: '中危' },
@@ -509,7 +510,7 @@ export default {
           total.value = 0
         }
       } catch (error) {
-        ElMessage.error('加载异常用户失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '加载异常用户失败'))
         abnormalUsers.value = []
       } finally {
         loading.value = false
@@ -552,7 +553,7 @@ export default {
           ElMessage.error('获取用户详情失败: ' + (response?.data?.message || response?.message || '未知错误'))
         }
       } catch (error) {
-        ElMessage.error('获取用户详情失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '获取用户详情失败'))
       }
     }
     const markAsNormal = async (user) => {
@@ -566,7 +567,7 @@ export default {
         loadAbnormalUsers()
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error(error?.response?.data?.message || '操作失败')
+          ElMessage.error(apiErrorMessage(error, '操作失败'))
         }
       }
     }

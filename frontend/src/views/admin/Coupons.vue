@@ -358,7 +358,7 @@ defineOptions({ name: 'AdminCoupons' })
 
 import { ref, reactive, computed, onMounted, onActivated} from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { unwrapList } from '@/utils/format'
+import { unwrapList, apiErrorMessage } from '@/utils/format'
 import { Plus, Search, Filter, Refresh } from '@element-plus/icons-vue'
 import { couponAPI, packageAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
@@ -438,7 +438,7 @@ const loadCoupons = async () => {
       ElMessage.error(response.data?.message || '加载优惠券列表失败')
     }
   } catch (error) {
-    const errorMsg = error.response?.data?.message || error.message || '加载优惠券列表失败'
+    const errorMsg = apiErrorMessage(error, '加载优惠券列表失败')
     ElMessage.error(errorMsg)
   } finally {
     loading.value = false
@@ -542,7 +542,7 @@ const saveCoupon = async () => {
           throw new Error(response?.data?.message || '操作失败')
         }
       } catch (error) {
-        const errorMsg = error.response?.data?.message || error.message || '操作失败'
+        const errorMsg = apiErrorMessage(error, '操作失败')
         ElMessage.error(editingCoupon.value ? `更新失败: ${errorMsg}` : `创建失败: ${errorMsg}`)
         console.error('优惠券操作失败:', error)
       } finally {

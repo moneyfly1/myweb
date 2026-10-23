@@ -596,7 +596,7 @@ import SkeletonLoader from '@/components/SkeletonLoader.vue'
 import UpgradeDevicesDrawer from '@/components/UpgradeDevicesDrawer.vue'
 import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, checkinAPI, useApi, cachedAPI, pendingPaymentStorage, orderAPI } from '@/utils/api'
 import { formatDateTimeSafe, getRemainingDays, isExpired as isExpiredUtil } from '@/utils/date'
-import { formatMoney } from '@/utils/format'
+import { formatMoney, apiErrorMessage } from '@/utils/format'
 import { getOrderStatusText, getOrderStatusType } from '@/utils/statusMaps'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
 import { safeNavigate, safeOpen, safeOpenApp } from '@/utils/safeOpen'
@@ -657,7 +657,7 @@ const handleCheckin = async () => {
     userInfo.value.balance = data.balance
     ElMessage.success(`签到成功！获得 ¥${data.amount} 奖励`)
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || '签到失败')
+    ElMessage.error(apiErrorMessage(e, '签到失败'))
   } finally {
     checkinLoading.value = false
   }
@@ -1081,7 +1081,7 @@ const createRecharge = async () => {
       ElMessage.error(response.data?.message || '创建充值订单失败')
     }
   } catch (error) {
-    ElMessage.error(error.response?.data?.detail || '创建充值订单失败')
+    ElMessage.error(apiErrorMessage(error, '创建充值订单失败'))
   } finally {
     rechargeLoading.value = false
   }

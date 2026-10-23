@@ -749,7 +749,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useApi, adminAPI } from '@/utils/api'
 import { formatDateTimeSafe, formatLocation } from '@/utils/date'
-import { formatMoney as formatMoneyUtil, unwrapList } from '@/utils/format'
+import { formatMoney as formatMoneyUtil, unwrapList, apiErrorMessage } from '@/utils/format'
 import { getOrderStatusType as getStatusType, getOrderStatusText as getStatusText } from '@/utils/statusMaps'
 import { useMobile } from '@/composables/useMobile'
 import { debounce } from '@/composables/useDebounce'
@@ -975,7 +975,7 @@ export default {
         }
         total.value = response.data.data?.total || response.data.total || 0
       } catch (error) {
-        ElMessage.error(error.response?.data?.message || '加载订单列表失败')
+        ElMessage.error(apiErrorMessage(error, '加载订单列表失败'))
         allRecords.value = []
       } finally {
         loading.value = false
@@ -1017,7 +1017,7 @@ export default {
       } catch (error) {
         console.error('加载充值记录失败:', error)
         if (!error.response || error.response.status !== 404) {
-          ElMessage.error('加载充值记录失败: ' + (error.response?.data?.message || error.message))
+          ElMessage.error(apiErrorMessage(error, '加载充值记录失败'))
         }
         recharges.value = []
         rechargeTotal.value = 0

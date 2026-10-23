@@ -244,6 +244,7 @@ import router from '@/router'
 import { secureStorage } from '@/utils/api'
 import EmptyState from '@/components/EmptyState.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import { apiErrorMessage } from '@/utils/format'
 function getCookie(name) {
   const value = `; ${document.cookie}`
   const parts = value.split(`; ${name}=`)
@@ -409,10 +410,7 @@ export default {
           ElMessage.error(message)
         }
       } catch (error) {
-        const errorMessage = error.response?.data?.message || 
-                           error.response?.data?.detail || 
-                           error.message || 
-                           '保存失败'
+        const errorMessage = apiErrorMessage(error, '保存失败')
         ElMessage.error(errorMessage)
       } finally {
         basicLoading.value = false
@@ -454,7 +452,7 @@ export default {
           ElMessage.error(message)
         }
       } catch (error) {
-        const errorMessage = error.response?.data?.message || error.response?.data?.detail || error.message || '修改密码失败'
+        const errorMessage = apiErrorMessage(error, '修改密码失败')
         ElMessage.error(errorMessage)
       } finally {
         passwordLoading.value = false
@@ -542,10 +540,7 @@ export default {
           ElMessage.error(message || '保存失败')
         }
       } catch (error) {
-        const errorMessage = error.response?.data?.message || 
-                           error.response?.data?.detail || 
-                           error.message || 
-                           '保存失败'
+        const errorMessage = apiErrorMessage(error, '保存失败')
         ElMessage.error(errorMessage)
       } finally {
         securityLoading.value = false
@@ -597,7 +592,7 @@ export default {
       } catch (error) {
         console.error('[管理员个人资料] 加载登录历史失败:', error)
         console.error('[管理员个人资料] 错误详情:', error.response?.data)
-        ElMessage.error('加载登录历史失败: ' + (error.response?.data?.message || error.message || '未知错误'))
+        ElMessage.error(apiErrorMessage(error, '加载登录历史失败'))
         loginHistory.value = []
       } finally {
         loginHistoryLoading.value = false

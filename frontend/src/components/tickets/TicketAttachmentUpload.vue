@@ -54,6 +54,7 @@ import { ref } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { ticketAPI } from '@/utils/api'
 import { Picture, FolderOpened, VideoCamera, Document, View, Delete } from '@element-plus/icons-vue'
+import { apiErrorMessage } from '@/utils/format'
 
 const props = defineProps({
   modelValue: { type: Array, default: () => [] },
@@ -149,7 +150,7 @@ const doUpload = async (file) => {
       ElMessage.error(res.data?.message || '上传失败')
     }
   } catch (e) {
-    ElMessage.error(`「${file.name}」上传失败: ` + (e.response?.data?.message || e.message || '网络错误'))
+    ElMessage.error(`「${file.name}」上传失败: ` + apiErrorMessage(e, '网络错误'))
   }
 }
 

@@ -95,6 +95,7 @@ import { Search } from '@element-plus/icons-vue'
 import { api } from '@/utils/api'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
+import { apiErrorMessage } from '@/utils/format'
 
 /// 日志全局搜索：一个搜索框把这个用户的**全部**日志（注册/订阅/余额/佣金/
 /// 重置/邮件/管理员操作/登录）一次搜出来，按时间倒序合并。
@@ -176,7 +177,7 @@ const search = async (p = 1) => {
     total.value = data.total || 0
     bySource.value = data.by_source || {}
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || '搜索失败')
+    ElMessage.error(apiErrorMessage(e, '搜索失败'))
     items.value = []
     total.value = 0
     bySource.value = {}

@@ -1235,7 +1235,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useApi, adminAPI, secureStorage } from '@/utils/api'
 import { apiCache } from '@/utils/apiCache'
-import { formatFileSize as formatFileSizeUtil } from '@/utils/format'
+import { formatFileSize as formatFileSizeUtil, apiErrorMessage } from '@/utils/format'
 import { copyToClipboard } from '@/utils/textSelection'
 import { useThemeStore } from '@/store/theme'
 import { useMobile } from '@/composables/useMobile'
@@ -1449,7 +1449,7 @@ export default {
       } catch (e) {
         // 保存失败要把开关拨回去，否则界面显示与实际不符
         registrationSettings.allow_user_delete_device = !val
-        ElMessage.error('保存失败: ' + (e?.response?.data?.message || e?.message || e))
+        ElMessage.error(apiErrorMessage(e, '保存失败'))
       } finally {
         allowDeleteSaving.value = false
       }
@@ -1551,7 +1551,7 @@ export default {
         const res = await adminAPI.updateCleanupRetention({ ...cleanupSettings })
         ElMessage.success(res?.data?.message || '保留天数配置已保存')
       } catch (e) {
-        ElMessage.error(e?.response?.data?.message || '保存失败')
+        ElMessage.error(apiErrorMessage(e, '保存失败'))
         throw e
       } finally {
         savingCleanup.value = false
@@ -1573,7 +1573,7 @@ export default {
         const res = await adminAPI.cleanupData(type)
         ElMessage.success(`已清理 ${res?.data?.data?.deleted_count ?? 0} 条${label}`)
       } catch (e) {
-        ElMessage.error(e?.response?.data?.message || '清理失败')
+        ElMessage.error(apiErrorMessage(e, '清理失败'))
       } finally {
         cleaningType.value = ''
       }
@@ -1703,7 +1703,7 @@ export default {
           repoSyncSettings.repo_sync_interval_minutes = parseInt(repoSyncSettings.repo_sync_interval_minutes) || 10
         }
       } catch (error) {
-        ElMessage.error('加载设置失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '加载设置失败'))
       } finally {
         pageLoading.value = false
       }
@@ -1724,7 +1724,7 @@ export default {
         }
         throw new Error(res.data?.message || '保存失败')
       } catch (error) {
-        ElMessage.error(error.response?.data?.message || error.message || '保存失败')
+        ElMessage.error(apiErrorMessage(error, '保存失败'))
         return false
       }
     }
@@ -1810,7 +1810,7 @@ export default {
         ElMessage.success(`已屏蔽 ${n} 个普通节点、${c} 个专线节点`)
         loadSettings()
       } catch (e) {
-        ElMessage.error('屏蔽失败: ' + (e.response?.data?.message || e.message))
+        ElMessage.error(apiErrorMessage(e, '屏蔽失败'))
       } finally {
         disablingTimeout.value = false
       }
@@ -1899,7 +1899,7 @@ export default {
         if (res.data.success) ElMessage.success('缓存已清除')
         else ElMessage.error(res.data.message || '清除失败')
       } catch (e) {
-        if (e !== 'cancel') ElMessage.error('清除失败: ' + (e.response?.data?.message || e.message))
+        if (e !== 'cancel') ElMessage.error(apiErrorMessage(e, '清除失败'))
       } finally {
         cacheClearing.value = false
       }
@@ -1917,7 +1917,7 @@ export default {
         const res = await apiMap[type].api()
         if (res.data.success) ElMessage.success(apiMap[type].msg)
         else ElMessage.error(res.data.message || '测试失败')
-      } catch (e) { ElMessage.error('测试失败: ' + (e.response?.data?.message || e.message)) }
+      } catch (e) { ElMessage.error(apiErrorMessage(e, '测试失败')) }
       finally { testingStates[type] = false }
     }
 
@@ -1933,7 +1933,7 @@ export default {
         const res = await api.post('/admin/backup/test-gitee', { token, owner, repo })
         if (res.data?.success !== false) ElMessage.success('Gitee 连接成功！' + (res.data?.data?.message || ''))
         else ElMessage.error(res.data?.message || '测试失败')
-      } catch (e) { ElMessage.error('测试失败: ' + (e.response?.data?.message || e.message)) }
+      } catch (e) { ElMessage.error(apiErrorMessage(e, '测试失败')) }
       finally { testingStates.gitee = false }
     }
     const testGitHubConnection = async () => {
@@ -1948,7 +1948,7 @@ export default {
         const res = await api.post('/admin/backup/test-github', { token, owner, repo })
         if (res.data?.success !== false) ElMessage.success('GitHub 连接成功！' + (res.data?.data?.message || ''))
         else ElMessage.error(res.data?.message || '测试失败')
-      } catch (e) { ElMessage.error('测试失败: ' + (e.response?.data?.message || e.message)) }
+      } catch (e) { ElMessage.error(apiErrorMessage(e, '测试失败')) }
       finally { testingStates.github = false }
     }
 
@@ -1976,7 +1976,7 @@ export default {
         const res = await api.get('/admin/repo-sync/status')
         repoSyncStatus.value = res.data?.data || res.data || null
       } catch (error) {
-        ElMessage.error('加载同步状态失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '加载同步状态失败'))
       } finally {
         repoSyncLoading.status = false
       }
@@ -1994,7 +1994,7 @@ export default {
         if (res.data?.success !== false) ElMessage.success(res.data?.message || 'GitHub 连接成功！')
         else ElMessage.error(res.data?.message || '测试失败')
       } catch (e) {
-        ElMessage.error('测试失败: ' + (e.response?.data?.message || e.message))
+        ElMessage.error(apiErrorMessage(e, '测试失败'))
       } finally {
         repoSyncLoading.test = false
       }
@@ -2040,7 +2040,7 @@ export default {
         pollRepoSyncUntilDone()
       } catch (e) {
         // 长请求断开时后台往往已经同步完成：给出提示并以状态为准继续轮询
-        ElMessage.warning('请求未收到响应（' + (e.response?.data?.message || e.message) + '），正在按「同步状态」确认结果…')
+        ElMessage.warning('请求未收到响应（' + apiErrorMessage(e) + '），正在按「同步状态」确认结果…')
         try { await loadRepoSyncStatus() } catch (_) { /* 忽略 */ }
         pollRepoSyncUntilDone()
       } finally {
@@ -2108,7 +2108,7 @@ export default {
         } else ElMessage.error(res.data?.message || '打包失败')
       } catch (e) {
         if (e.message?.includes('timeout')) ElMessage.warning('请求超时，后台可能仍在进行任务')
-        else ElMessage.error('执行失败: ' + (e.response?.data?.message || e.message))
+        else ElMessage.error(apiErrorMessage(e, '执行失败'))
       } finally { creatingBackup.value = false }
     }
 
@@ -2136,7 +2136,7 @@ export default {
         else throw new Error(res.data?.message || '恢复失败')
         setTimeout(() => window.location.reload(), 1500)
       } catch (e) {
-        if (e.message !== 'cancel') ElMessage.error('恢复失败: ' + (e.response?.data?.message || e.message))
+        if (e.message !== 'cancel') ElMessage.error(apiErrorMessage(e, '恢复失败'))
       } finally { restoreLocal.restoring = false }
     }
 
@@ -2147,7 +2147,7 @@ export default {
         const res = await api.get('/admin/backup/remote/list?path=')
         const items = (res.data?.data || res.data || []).filter(i => i.type === 'dir').map(i => i.name).sort().reverse()
         restoreRemote.years = items
-      } catch (e) { ElMessage.error('加载远程年份列表失败: ' + (e.response?.data?.message || e.message)) }
+      } catch (e) { ElMessage.error(apiErrorMessage(e, '加载远程年份列表失败')) }
       finally { restoreRemote.loadingYears = false }
     }
 
@@ -2193,7 +2193,7 @@ export default {
         else throw new Error(res.data?.message || '恢复失败')
         setTimeout(() => window.location.reload(), 1500)
       } catch (e) {
-        if (e.message !== 'cancel') ElMessage.error('恢复失败: ' + (e.response?.data?.message || e.message))
+        if (e.message !== 'cancel') ElMessage.error(apiErrorMessage(e, '恢复失败'))
       } finally { restoreRemote.restoring = false }
     }
 
@@ -2221,7 +2221,7 @@ export default {
           onError && onError(new Error(response?.data?.message || '上传失败'))
         }
       } catch (error) {
-        ElMessage.error(error?.response?.data?.message || 'Logo 上传失败')
+        ElMessage.error(apiErrorMessage(error, 'Logo 上传失败'))
         onError && onError(error)
       }
     }

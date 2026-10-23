@@ -349,6 +349,7 @@ import AppDrawer from '@/components/AppDrawer.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import { useMobile } from '@/composables/useMobile'
+import { apiErrorMessage } from '@/utils/format'
 const loading = ref(false)
 const saving = ref(false)
 const levels = ref([])
@@ -409,7 +410,7 @@ const loadLevels = async () => {
     if (import.meta.env.DEV) {
       console.error('加载等级列表失败:', error)
     }
-    const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '未知错误'
+    const errorMsg = apiErrorMessage(error, '未知错误')
     ElMessage.error('加载等级列表失败: ' + errorMsg)
     levels.value = []
   } finally {
@@ -518,7 +519,7 @@ const saveLevel = async () => {
         console.error('保存等级失败:', error)
         console.error('错误详情:', error.response?.data)
       }
-      ElMessage.error('保存失败: ' + (error.response?.data?.message || error.message))
+      ElMessage.error(apiErrorMessage(error, '保存失败'))
     }
   } finally {
     saving.value = false
@@ -542,7 +543,7 @@ const deleteLevel = async (level) => {
       if (import.meta.env.DEV) {
         console.error('删除等级失败:', error)
       }
-      ElMessage.error('删除失败: ' + (error.response?.data?.message || error.message))
+      ElMessage.error(apiErrorMessage(error, '删除失败'))
     }
   }
 }
