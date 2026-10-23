@@ -400,7 +400,7 @@
 <script>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { unwrapList } from '@/utils/format'
+import { unwrapList, apiErrorMessage } from '@/utils/format'
 import { Search, Refresh, Download, Delete } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatDateTimeSafe, formatLocation } from '@/utils/date'
@@ -487,7 +487,7 @@ export default {
         logsList.value = unwrapList(data)
         pagination.total = data.total || 0
       } catch (error) {
-        const errorMsg = error.response?.data?.message || error.message || '加载日志失败'
+        const errorMsg = apiErrorMessage(error, '加载日志失败')
         ElMessage.error(errorMsg)
         console.error('加载日志失败:', error)
       } finally {
@@ -566,7 +566,7 @@ export default {
             ElMessage.error('导出失败')
           }
         } else {
-          const errorMsg = error.response?.data?.message || error.message || '导出失败'
+          const errorMsg = apiErrorMessage(error, '导出失败')
           ElMessage.error(errorMsg)
         }
         console.error('导出日志失败:', error)
@@ -589,7 +589,7 @@ export default {
         }
       } catch (error) {
         if (error !== 'cancel') {
-          const errorMsg = error.response?.data?.message || error.message || '清理失败'
+          const errorMsg = apiErrorMessage(error, '清理失败')
           ElMessage.error(errorMsg)
           console.error('清理日志失败:', error)
         }

@@ -375,6 +375,7 @@ import UpgradeDevicesDrawer from '@/components/UpgradeDevicesDrawer.vue'
 import InlineEditableText from '@/components/InlineEditableText.vue'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
+import { apiErrorMessage } from '@/utils/format'
 dayjs.extend(timezone)
 export default {
   name: 'Devices',
@@ -550,7 +551,7 @@ export default {
         }
       } catch (error) {
         console.error('获取设备列表错误:', error)
-        const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '未知错误'
+        const errorMsg = apiErrorMessage(error, '未知错误')
         ElMessage.error('获取设备列表失败: ' + errorMsg)
         devices.value = []
         total.value = 0
@@ -658,7 +659,7 @@ export default {
         await fetchDevices()
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error('移除设备失败: ' + (error.response?.data?.message || error.message))
+          ElMessage.error(apiErrorMessage(error, '移除设备失败'))
         }
       }
     }
@@ -732,7 +733,7 @@ export default {
         ElMessage.success('备注已更新')
       } catch (error) {
         device.remark = oldRemark
-        ElMessage.error('更新备注失败: ' + (error.response?.data?.message || error.response?.data?.detail || error.message))
+        ElMessage.error(apiErrorMessage(error, '更新备注失败'))
         return
       } finally {
         device.savingRemark = false

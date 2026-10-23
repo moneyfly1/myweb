@@ -526,6 +526,11 @@ func GetUser(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "", u)
 }
 
+// GetUserDetails 返回用户详情。
+//
+// 内部需要串行发起十余次查询（用户/自定义节点/订阅/设备统计/订单/充值/签到/
+// 统计/重置记录/设备 UA/登录历史/异常明细），因此按数据分块抽到私有 loadUser*
+// 辅助函数中；主函数只保留「鉴权 → 按顺序调用 → 组装 gin.H → 返回」。
 func GetUserDetails(c *gin.Context) {
 	currentUser, ok := middleware.GetCurrentUser(c)
 	if !ok {
@@ -551,6 +556,42 @@ func GetUserDetails(c *gin.Context) {
 		return
 	}
 
+	userInfo := loadUserBaseInfo(db, &u, currentUser.IsAdmin)
+	formattedSubs, subIDs, totalSubscriptions := loadUserSubscriptionsData(db, c, u.ID)
+	formattedOrders := loadUserOrdersData(db, u.ID)
+	formattedRecharges := loadUserRechargesData(db, u.ID)
+	formattedCheckins := loadUserCheckinData(db, u.ID)
+	paymentSummary, totalResets := loadUserStatisticsSummary(db, u.ID)
+	formattedResets := loadUserResetsData(db, u.ID)
+	uaRecords := loadUserUARecords(db, subIDs)
+	formattedLoginHistory := loadUserLoginHistory(db, u.ID)
+	abnormalDetails := loadUserAbnormalDetail(c, db, &u, currentUser.IsAdmin)
+
+	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
+		"user_info":        userInfo,
+		"list":             formattedSubs,
+		"subscriptions":    formattedSubs,
+		"orders":           formattedOrders,
+		"recharge_records": formattedRecharges,
+		"checkin_records":  formattedCheckins,
+		"statistics": gin.H{
+			"total_subscriptions": totalSubscriptions,
+			"total_orders":        paymentSummary.Total,
+			"total_resets":        totalResets,
+			// 消费额口径：订单成交金额（含余额消费），不含充值
+			"total_spent":     paymentSummary.OrderAmount,
+			"total_recharged": paymentSummary.RechargeAmount,
+		},
+		"subscription_resets": formattedResets,
+		"ua_records":          uaRecords,
+		"login_history":       formattedLoginHistory,
+		"abnormal_details":    abnormalDetails,
+	})
+}
+
+// loadUserBaseInfo 组装 user_info 基础字段：管理员返回全量（含特殊节点信息），
+// 普通用户只返回非敏感字段。
+func loadUserBaseInfo(db *gorm.DB, u *models.User, isAdmin bool) gin.H {
 	lastLogin := ""
 	if u.LastLogin.Valid {
 		lastLogin = utils.FormatBeijingTime(u.LastLogin.Time)
@@ -558,7 +599,7 @@ func GetUserDetails(c *gin.Context) {
 
 	// 根据用户权限返回不同的信息
 	var userInfo gin.H
-	if currentUser.IsAdmin {
+	if isAdmin {
 		var specialNodeCount int64
 		db.Model(&models.UserCustomNode{}).Where("user_id = ?", u.ID).Count(&specialNodeCount)
 		// 管理员可以看到所有信息
@@ -604,8 +645,14 @@ func GetUserDetails(c *gin.Context) {
 		userInfo["avatar_url"] = u.Avatar.String
 	}
 
+	return userInfo
+}
+
+// loadUserSubscriptionsData 查询用户订阅及其在线设备数，返回格式化后的订阅列表、
+// 订阅 ID 列表（供设备 UA 查询复用）与订阅总数。
+func loadUserSubscriptionsData(db *gorm.DB, c *gin.Context, userID uint) ([]gin.H, []uint, int) {
 	var subs []models.Subscription
-	db.Where("user_id = ?", u.ID).Preload("Package").Find(&subs)
+	db.Where("user_id = ?", userID).Preload("Package").Find(&subs)
 
 	// 批量查询在线设备数
 	subIDs := make([]uint, len(subs))
@@ -676,8 +723,13 @@ func GetUserDetails(c *gin.Context) {
 		})
 	}
 
+	return formattedSubs, subIDs, len(subs)
+}
+
+// loadUserOrdersData 查询用户最近 50 条订单并格式化。
+func loadUserOrdersData(db *gorm.DB, userID uint) []gin.H {
 	var orders []models.Order
-	db.Preload("Package").Where("user_id = ?", u.ID).Order("created_at DESC").Limit(50).Find(&orders)
+	db.Preload("Package").Where("user_id = ?", userID).Order("created_at DESC").Limit(50).Find(&orders)
 
 	formattedOrders := make([]gin.H, 0, len(orders))
 	for _, order := range orders {
@@ -738,8 +790,13 @@ func GetUserDetails(c *gin.Context) {
 		formattedOrders = append(formattedOrders, formattedOrder)
 	}
 
+	return formattedOrders
+}
+
+// loadUserRechargesData 查询用户最近 50 条充值记录并格式化。
+func loadUserRechargesData(db *gorm.DB, userID uint) []gin.H {
 	var recharges []models.RechargeRecord
-	db.Where("user_id = ?", u.ID).Order("created_at DESC").Limit(50).Find(&recharges)
+	db.Where("user_id = ?", userID).Order("created_at DESC").Limit(50).Find(&recharges)
 
 	formattedRecharges := make([]gin.H, 0, len(recharges))
 	for _, record := range recharges {
@@ -776,8 +833,13 @@ func GetUserDetails(c *gin.Context) {
 		})
 	}
 
+	return formattedRecharges
+}
+
+// loadUserCheckinData 查询用户最近 100 条签到记录并格式化。
+func loadUserCheckinData(db *gorm.DB, userID uint) []gin.H {
 	var checkins []models.CheckinRecord
-	db.Where("user_id = ?", u.ID).Order("created_at DESC").Limit(100).Find(&checkins)
+	db.Where("user_id = ?", userID).Order("created_at DESC").Limit(100).Find(&checkins)
 	formattedCheckins := make([]gin.H, 0, len(checkins))
 	for _, record := range checkins {
 		formattedCheckins = append(formattedCheckins, gin.H{
@@ -788,13 +850,23 @@ func GetUserDetails(c *gin.Context) {
 		})
 	}
 
-	paymentSummary := utils.CalculateUserPaymentSummary(db, u.ID)
+	return formattedCheckins
+}
+
+// loadUserStatisticsSummary 汇总订单/充值金额统计与订阅重置总次数。
+func loadUserStatisticsSummary(db *gorm.DB, userID uint) (utils.UserPaymentSummary, int64) {
+	paymentSummary := utils.CalculateUserPaymentSummary(db, userID)
 
 	var totalResets int64
-	db.Model(&models.SubscriptionReset{}).Where("user_id = ?", u.ID).Count(&totalResets)
+	db.Model(&models.SubscriptionReset{}).Where("user_id = ?", userID).Count(&totalResets)
 
+	return paymentSummary, totalResets
+}
+
+// loadUserResetsData 查询用户订阅重置记录并格式化。
+func loadUserResetsData(db *gorm.DB, userID uint) []gin.H {
 	var resets []models.SubscriptionReset
-	db.Where("user_id = ?", u.ID).Order("created_at DESC").Find(&resets)
+	db.Where("user_id = ?", userID).Order("created_at DESC").Find(&resets)
 	formattedResets := make([]gin.H, 0, len(resets))
 	for _, reset := range resets {
 		formattedResets = append(formattedResets, gin.H{
@@ -811,6 +883,11 @@ func GetUserDetails(c *gin.Context) {
 		})
 	}
 
+	return formattedResets
+}
+
+// loadUserUARecords 按用户订阅下的设备查询不同的 User-Agent 记录。
+func loadUserUARecords(db *gorm.DB, subIDs []uint) []gin.H {
 	uaRecords := make([]gin.H, 0)
 	if len(subIDs) > 0 {
 		var devices []models.Device
@@ -851,8 +928,13 @@ func GetUserDetails(c *gin.Context) {
 		}
 	}
 
+	return uaRecords
+}
+
+// loadUserLoginHistory 查询用户最近 50 条登录历史并格式化。
+func loadUserLoginHistory(db *gorm.DB, userID uint) []gin.H {
 	var loginHistory []models.LoginHistory
-	db.Where("user_id = ?", u.ID).Order("login_time DESC").Limit(50).Find(&loginHistory)
+	db.Where("user_id = ?", userID).Order("login_time DESC").Limit(50).Find(&loginHistory)
 	formattedLoginHistory := make([]gin.H, 0, len(loginHistory))
 	for _, lh := range loginHistory {
 		ipAddr := ""
@@ -881,32 +963,18 @@ func GetUserDetails(c *gin.Context) {
 		formattedLoginHistory = append(formattedLoginHistory, entry)
 	}
 
+	return formattedLoginHistory
+}
+
+// loadUserAbnormalDetail 仅管理员可查看的异常明细。
+func loadUserAbnormalDetail(c *gin.Context, db *gorm.DB, u *models.User, isAdmin bool) []gin.H {
 	abnormalDetails := []gin.H{}
-	if currentUser.IsAdmin {
+	if isAdmin {
 		startTime, endTime, minSub, minReset := parseAbnormalDetailFilters(c)
-		abnormalDetails = buildUserAbnormalDetails(db, &u, startTime, endTime, minSub, minReset)
+		abnormalDetails = buildUserAbnormalDetails(db, u, startTime, endTime, minSub, minReset)
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "", gin.H{
-		"user_info":        userInfo,
-		"list":             formattedSubs,
-		"subscriptions":    formattedSubs,
-		"orders":           formattedOrders,
-		"recharge_records": formattedRecharges,
-		"checkin_records":  formattedCheckins,
-		"statistics": gin.H{
-			"total_subscriptions": len(subs),
-			"total_orders":        paymentSummary.Total,
-			"total_resets":        totalResets,
-			// 消费额口径：订单成交金额（含余额消费），不含充值
-			"total_spent":     paymentSummary.OrderAmount,
-			"total_recharged": paymentSummary.RechargeAmount,
-		},
-		"subscription_resets": formattedResets,
-		"ua_records":          uaRecords,
-		"login_history":       formattedLoginHistory,
-		"abnormal_details":    abnormalDetails,
-	})
+	return abnormalDetails
 }
 
 func parseAbnormalDetailFilters(c *gin.Context) (time.Time, time.Time, int, int) {

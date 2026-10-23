@@ -370,6 +370,7 @@ import AppDrawer from '@/components/AppDrawer.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
+import { apiErrorMessage } from '@/utils/format'
 
 const api = useApi()
 const router = useRouter()
@@ -408,7 +409,7 @@ const loadStats = async () => {
     })
   } catch (error) {
     console.error('加载邀请统计失败:', error)
-    ElMessage.error('加载邀请统计失败: ' + (error.response?.data?.message || error.message || '未知错误'))
+    ElMessage.error(apiErrorMessage(error, '加载邀请统计失败'))
   } finally {
     statsLoading.value = false
   }
@@ -490,7 +491,7 @@ const loadInviters = async () => {
   } catch (err) {
     if (seq !== loadSeq) return
     console.error('加载邀请人列表失败:', err)
-    error.value = err.response?.data?.message || err.message || '加载邀请人列表失败'
+    error.value = apiErrorMessage(err, '加载邀请人列表失败')
     inviters.value = []
     total.value = 0
   } finally {
@@ -576,7 +577,7 @@ const openDetail = async (row) => {
       summary: data.summary || {},
     }
   } catch (err) {
-    ElMessage.error('加载邀请详情失败: ' + (err.response?.data?.message || err.message || '未知错误'))
+    ElMessage.error(apiErrorMessage(err, '加载邀请详情失败'))
     detailVisible.value = false
   } finally {
     detailLoading.value = false
@@ -615,7 +616,7 @@ const removeCode = async (row) => {
     loadStats()
     loadInviters()
   } catch (err) {
-    ElMessage.error('删除邀请码失败: ' + (err.response?.data?.message || err.message || '未知错误'))
+    ElMessage.error(apiErrorMessage(err, '删除邀请码失败'))
   }
 }
 
@@ -668,7 +669,7 @@ const openSettings = async () => {
     }
   } catch (error) {
     console.error('加载邀请设置失败:', error)
-    ElMessage.error('加载邀请设置失败: ' + (error.response?.data?.message || error.message || '未知错误'))
+    ElMessage.error(apiErrorMessage(error, '加载邀请设置失败'))
   }
 }
 
@@ -680,7 +681,7 @@ const saveInviteSettings = async () => {
     showSettingsDialog.value = false
   } catch (error) {
     console.error('保存邀请设置失败:', error)
-    ElMessage.error('保存邀请设置失败: ' + (error.response?.data?.message || error.message || '未知错误'))
+    ElMessage.error(apiErrorMessage(error, '保存邀请设置失败'))
   } finally {
     savingSettings.value = false
   }

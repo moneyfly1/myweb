@@ -424,6 +424,7 @@ import UpgradeDevicesDrawer from '@/components/UpgradeDevicesDrawer.vue'
 import { drawQRCodeToCanvas } from '@/utils/qrcode'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
+import { apiErrorMessage } from '@/utils/format'
 dayjs.extend(timezone)
 export default {
   name: 'Subscription',
@@ -716,7 +717,7 @@ export default {
         await refreshSubscription()
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error(error.response?.data?.message || '重置失败')
+          ElMessage.error(apiErrorMessage(error, '重置失败'))
         }
       } finally {
         resetLoading.value = false
@@ -734,7 +735,7 @@ export default {
         }
         ElMessage.success('订阅地址已发送到您的邮箱')
       } catch (error) {
-        ElMessage.error(error.response?.data?.message || '发送失败')
+        ElMessage.error(apiErrorMessage(error, '发送失败'))
       } finally {
         sendEmailLoading.value = false
         setTimeout(() => {

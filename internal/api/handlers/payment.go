@@ -546,20 +546,9 @@ func sendRechargePaidNotifications(db *gorm.DB, recharge *models.RechargeRecord,
 	}
 }
 
-func PaymentNotify(c *gin.Context) {
-	paymentType := c.Param("type")
-
-	// 未认证回调端点：只记一条精简日志，避免攻击者刷请求造成日志洪水
-	utils.LogInfo("PaymentNotify: 收到回调 payment_type=%s method=%s", paymentType, c.Request.Method)
-
-	db := database.GetDB()
-
-	// ===== Stripe / PayPal Webhook 特殊处理（JSON body + 签名头，非表单参数）=====
-	if paymentType == "stripe" || paymentType == "paypal" {
-		handleWebhookNotify(c, db, paymentType)
-		return
-	}
-
+// parseNotifyParams 解析回调参数：按 Content-Type 读取 POST body（form / multipart / json / xml），
+// 再合并 URL Query 参数，并修正重复参数（平台可能在 return_url 中自动追加同名参数）。
+func parseNotifyParams(c *gin.Context, paymentType string) map[string]string {
 	params := make(map[string]string)
 
 	if c.Request.Method == "POST" {
@@ -628,6 +617,12 @@ func PaymentNotify(c *gin.Context) {
 
 	utils.LogInfo("PaymentNotify: 回调参数解析完成 payment_type=%s params_count=%d", paymentType, len(params))
 
+	return params
+}
+
+// resolveNotifyPaymentConfig 查询启用的支付配置。
+// ok=false 表示已写出「支付配置不存在」的响应，调用方应立即返回。
+func resolveNotifyPaymentConfig(c *gin.Context, db *gorm.DB, paymentType string) (models.PaymentConfig, bool) {
 	paymentConfig, err := utils.FindEnabledPaymentConfig(db, paymentType)
 	if err != nil {
 		// Fallback: codepay 与 yipay 使用相同协议族，后台配置的 notify_url
@@ -649,18 +644,19 @@ func PaymentNotify(c *gin.Context) {
 			"payment_type": paymentType,
 		})
 		c.String(http.StatusBadRequest, "支付配置不存在")
-		return
+		return models.PaymentConfig{}, false
 	}
 
 	utils.LogInfo("PaymentNotify: 找到支付配置 - payment_type=%s, config_id=%d, config_pay_type=%s",
 		paymentType, paymentConfig.ID, paymentConfig.PayType)
 
-	// 使用数据库中实际 pay_type 选择验签服务，而非 URL 路径中的 type 参数，
-	// 避免因 notify_url 路径与 pay_type 不一致导致使用错误的签名算法。
-	effectivePayType := paymentConfig.PayType
-	utils.LogInfo("PaymentNotify: using effective pay_type=%s (url_type=%s)", effectivePayType, paymentType)
+	return paymentConfig, true
+}
 
-	var verified bool
+// verifyNotifySign 按数据库中的实际 pay_type 分发验签。
+// verified=false 且 ok=true 表示验签不通过；ok=false 表示已写出错误响应（不支持的类型 / 验签失败），
+// 两种情况调用方都应立即返回，不再继续履约。
+func verifyNotifySign(c *gin.Context, paymentType string, paymentConfig models.PaymentConfig, effectivePayType string, params map[string]string) (verified bool, ok bool) {
 	switch {
 	case effectivePayType == "alipay":
 		alipayService, err := payment.NewAlipayService(&paymentConfig)
@@ -712,7 +708,7 @@ func PaymentNotify(c *gin.Context) {
 			"url_type":           paymentType,
 		})
 		c.String(http.StatusBadRequest, "不支持的支付方式")
-		return
+		return false, false
 	}
 
 	if !verified {
@@ -726,10 +722,15 @@ func PaymentNotify(c *gin.Context) {
 			"order_no":     params["out_trade_no"],
 		})
 		paymentCallbackAck(c, paymentType, false, "签名验证失败")
-		return
+		return false, false
 	}
 
-	orderNo := params["out_trade_no"]
+	return verified, true
+}
+
+// resolveNotifyOrderNo 解析订单号与外部交易号，并修正平台重复追加的同名参数。
+func resolveNotifyOrderNo(params map[string]string) (orderNo string, externalTransactionID string) {
+	orderNo = params["out_trade_no"]
 	if orderNo == "" {
 		orderNo = params["order_id"] // 兼容部分码支付平台
 	}
@@ -743,7 +744,7 @@ func PaymentNotify(c *gin.Context) {
 		orderNo = strings.Split(orderNo, ",")[0]
 		utils.LogWarn("PaymentNotify: 检测到重复的订单号参数，已修正为: %s", orderNo)
 	}
-	externalTransactionID := params["trade_no"]
+	externalTransactionID = params["trade_no"]
 	if externalTransactionID == "" {
 		externalTransactionID = params["pay_no"] // 兼容部分码支付平台
 	}
@@ -756,6 +757,12 @@ func PaymentNotify(c *gin.Context) {
 		utils.LogWarn("PaymentNotify: 检测到重复的交易号参数，已修正为: %s", externalTransactionID)
 	}
 
+	return orderNo, externalTransactionID
+}
+
+// checkNotifyTradeStatus 按支付平台判定交易状态是否成功。
+// proceed=false 表示已按平台要求回复（视为已处理完成），调用方应立即返回。
+func checkNotifyTradeStatus(c *gin.Context, paymentType string, orderNo string, params map[string]string) bool {
 	if paymentType == "yipay" || strings.HasPrefix(paymentType, "yipay_") ||
 		paymentType == "codepay" || strings.HasPrefix(paymentType, "codepay_") {
 		tradeStatus := params["trade_status"]
@@ -770,7 +777,7 @@ func PaymentNotify(c *gin.Context) {
 				"trade_status": tradeStatus,
 			})
 			c.String(http.StatusOK, "success")
-			return
+			return false
 		}
 
 		if tradeStatus == "TRADE_UNFREEZE" {
@@ -780,7 +787,7 @@ func PaymentNotify(c *gin.Context) {
 				"trade_status": tradeStatus,
 			})
 			c.String(http.StatusOK, "success")
-			return
+			return false
 		}
 
 		// 兼容不同平台的成功状态标识：TRADE_SUCCESS, SUCCESS, 1, 2, 200，或者如果平台不传状态字段也视为成功（依赖签名）
@@ -791,7 +798,7 @@ func PaymentNotify(c *gin.Context) {
 				"trade_status": tradeStatus,
 			})
 			c.String(http.StatusOK, "success")
-			return
+			return false
 		}
 
 		utils.LogInfo("PaymentNotify: 支付订单状态为成功，继续处理 - order_no=%s, trade_status=%s", orderNo, tradeStatus)
@@ -806,7 +813,7 @@ func PaymentNotify(c *gin.Context) {
 				"trade_status": tradeStatus,
 			})
 			c.String(http.StatusOK, "success")
-			return
+			return false
 		}
 	}
 
@@ -821,26 +828,31 @@ func PaymentNotify(c *gin.Context) {
 				"result_code":  resultCode,
 			})
 			paymentCallbackAck(c, paymentType, true, "OK")
-			return
+			return false
 		}
 	}
 
+	return true
+}
+
+// resolveNotifyOrder 校验订单号并定位订单或充值记录。
+// isRecharge=true 表示命中充值记录；ok=false 表示已写出错误响应，调用方应立即返回。
+func resolveNotifyOrder(c *gin.Context, db *gorm.DB, paymentType string, orderNo string, externalTransactionID string) (order *models.Order, isRecharge bool, ok bool) {
 	if orderNo == "" {
 		utils.LogError("PaymentNotify: missing order number", nil, map[string]interface{}{
 			"payment_type": paymentType,
 		})
 		c.String(http.StatusBadRequest, "订单号不存在")
-		return
+		return nil, false, false
 	}
 
 	utils.LogInfo("PaymentNotify: 收到支付回调 - payment_type=%s, order_no=%s, external_transaction_id=%s",
 		paymentType, orderNo, externalTransactionID)
 
-	var order models.Order
 	var recharge models.RechargeRecord
-	isRecharge := false
+	order = &models.Order{}
 
-	if err := db.Preload("Package").Where("order_no = ?", orderNo).First(&order).Error; err != nil {
+	if err := db.Preload("Package").Where("order_no = ?", orderNo).First(order).Error; err != nil {
 		if err2 := db.Where("order_no = ?", orderNo).First(&recharge).Error; err2 == nil {
 			isRecharge = true
 		} else {
@@ -851,36 +863,41 @@ func PaymentNotify(c *gin.Context) {
 				"order_no": orderNo, "payment_type": paymentType,
 			})
 			paymentCallbackAck(c, paymentType, false, "订单或充值记录不存在")
-			return
+			return nil, false, false
 		}
 	}
 
-	if isRecharge {
-		processedRecharge, err := processPaidRecharge(db, orderNo, paymentType, paymentConfig.ID, externalTransactionID, params, utils.GetRealClientIP(c))
-		if err != nil {
-			utils.LogError("PaymentNotify: failed to process recharge transaction", err, map[string]interface{}{
-				"order_no": orderNo,
-			})
-			utils.CreateBusinessLog(c, "payment_callback_process_failed", "支付回调处理失败（充值入账失败）", "error", map[string]interface{}{
-				"order_no": orderNo, "payment_type": paymentType, "reason": err.Error(),
-			})
-			paymentCallbackAck(c, paymentType, false, "处理失败")
-			return
-		}
+	return order, isRecharge, true
+}
 
-		utils.LogInfo("PaymentNotify: 充值回调处理成功 - order_no=%s, user_id=%d, amount=%.2f, payment_type=%s",
-			orderNo, processedRecharge.UserID, processedRecharge.Amount, paymentType)
-
-		utils.CreateBusinessLog(c, "payment_callback_success", "支付回调处理成功（充值）", "info", map[string]interface{}{
-			"order_no":     orderNo,
-			"amount":       processedRecharge.Amount,
-			"payment_type": paymentType,
+// applyRechargePayment 处理充值回调入账并回复平台。
+func applyRechargePayment(c *gin.Context, db *gorm.DB, paymentType string, orderNo string, externalTransactionID string, paymentConfigID uint, params map[string]string) {
+	processedRecharge, err := processPaidRecharge(db, orderNo, paymentType, paymentConfigID, externalTransactionID, params, utils.GetRealClientIP(c))
+	if err != nil {
+		utils.LogError("PaymentNotify: failed to process recharge transaction", err, map[string]interface{}{
+			"order_no": orderNo,
 		})
-
-		paymentCallbackAck(c, paymentType, true, "OK")
+		utils.CreateBusinessLog(c, "payment_callback_process_failed", "支付回调处理失败（充值入账失败）", "error", map[string]interface{}{
+			"order_no": orderNo, "payment_type": paymentType, "reason": err.Error(),
+		})
+		paymentCallbackAck(c, paymentType, false, "处理失败")
 		return
 	}
 
+	utils.LogInfo("PaymentNotify: 充值回调处理成功 - order_no=%s, user_id=%d, amount=%.2f, payment_type=%s",
+		orderNo, processedRecharge.UserID, processedRecharge.Amount, paymentType)
+
+	utils.CreateBusinessLog(c, "payment_callback_success", "支付回调处理成功（充值）", "info", map[string]interface{}{
+		"order_no":     orderNo,
+		"amount":       processedRecharge.Amount,
+		"payment_type": paymentType,
+	})
+
+	paymentCallbackAck(c, paymentType, true, "OK")
+}
+
+// applyOrderPayment 校验回调金额、履约订单、发送通知并回复平台。
+func applyOrderPayment(c *gin.Context, db *gorm.DB, order *models.Order, paymentType string, orderNo string, externalTransactionID string, paymentConfigID uint, params map[string]string) {
 	if callbackAmount, amountVerified := parseCallbackAmount(paymentType, params); amountVerified {
 		expectedAmount := order.Amount
 		if order.AmountDueOnline.Valid {
@@ -912,9 +929,9 @@ func PaymentNotify(c *gin.Context) {
 		callbackData = string(data)
 	}
 	orderService := orderServicePkg.NewOrderService()
-	_, err = orderService.FinalizePaidOrder(orderNo, orderServicePkg.FinalizePaidOrderOptions{
+	_, err := orderService.FinalizePaidOrder(orderNo, orderServicePkg.FinalizePaidOrderOptions{
 		PaymentMethodName:     paymentType,
-		PaymentMethodID:       paymentConfig.ID,
+		PaymentMethodID:       paymentConfigID,
 		ExternalTransactionID: externalTransactionID,
 		CallbackData:          callbackData,
 		IPAddress:             utils.GetRealClientIP(c),
@@ -941,6 +958,65 @@ func PaymentNotify(c *gin.Context) {
 	})
 
 	paymentCallbackAck(c, paymentType, true, "OK")
+}
+
+// PaymentNotify 统一的支付异步回调入口，按阶段拆分：参数解析 → 配置回退 → 验签分发 →
+// 状态判定 → 订单/充值分流 → 金额校验 → 履约。
+func PaymentNotify(c *gin.Context) {
+	paymentType := c.Param("type")
+
+	// 未认证回调端点：只记一条精简日志，避免攻击者刷请求造成日志洪水
+	utils.LogInfo("PaymentNotify: 收到回调 payment_type=%s method=%s", paymentType, c.Request.Method)
+
+	db := database.GetDB()
+
+	// ===== Stripe / PayPal Webhook 特殊处理（JSON body + 签名头，非表单参数）=====
+	if paymentType == "stripe" || paymentType == "paypal" {
+		handleWebhookNotify(c, db, paymentType)
+		return
+	}
+
+	// 解析回调参数与重复参数修正
+	params := parseNotifyParams(c, paymentType)
+
+	// 查找支付配置（codepay / yipay 协议同族，失败时互查兜底）
+	paymentConfig, configOK := resolveNotifyPaymentConfig(c, db, paymentType)
+	if !configOK {
+		return
+	}
+
+	// 使用数据库中实际 pay_type 选择验签服务，而非 URL 路径中的 type 参数，
+	// 避免因 notify_url 路径与 pay_type 不一致导致使用错误的签名算法。
+	effectivePayType := paymentConfig.PayType
+	utils.LogInfo("PaymentNotify: using effective pay_type=%s (url_type=%s)", effectivePayType, paymentType)
+
+	// 验签分发（不支持的类型与验签失败都在这里回复）
+	verified, verifiedOK := verifyNotifySign(c, paymentType, paymentConfig, effectivePayType, params)
+	if !verifiedOK || !verified {
+		return
+	}
+
+	// 解析订单号 / 外部交易号（并修正平台重复追加的参数）
+	orderNo, externalTransactionID := resolveNotifyOrderNo(params)
+
+	// 交易状态判定（未成功的回调按平台要求直接应答）
+	if !checkNotifyTradeStatus(c, paymentType, orderNo, params) {
+		return
+	}
+
+	// 定位订单或充值记录
+	order, isRecharge, orderOK := resolveNotifyOrder(c, db, paymentType, orderNo, externalTransactionID)
+	if !orderOK {
+		return
+	}
+
+	// 分流：充值入账 / 订单履约
+	if isRecharge {
+		applyRechargePayment(c, db, paymentType, orderNo, externalTransactionID, paymentConfig.ID, params)
+		return
+	}
+
+	applyOrderPayment(c, db, order, paymentType, orderNo, externalTransactionID, paymentConfig.ID, params)
 }
 
 // handleWebhookNotify 处理 Stripe / PayPal 的 Webhook 回调（JSON body + 签名头）。

@@ -859,7 +859,7 @@
 
 <script>
 import { adminAPI } from '@/utils/api'
-import { unwrapList } from '@/utils/format'
+import { unwrapList, apiErrorMessage } from '@/utils/format'
 import { formatDateTimeSafe, formatLocation } from '@/utils/date'
 import { getDeviceTypeName as deviceTypeName, getDeviceTypeColor as deviceTypeColor } from '@/utils/device'
 import { qqFromEmail as parseQQFromEmail, openQQChat, copyQQ } from '@/utils/qq'
@@ -1490,7 +1490,7 @@ export default {
         })
       } catch (error) {
         this.syncLineModeForm()
-        ElMessage.error('线路模式更新失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '线路模式更新失败'))
       } finally {
         this.savingLineMode = false
       }
@@ -1535,7 +1535,7 @@ export default {
       } catch (error) {
         this.checkinLogs = []
         this.checkinPagination.total = 0
-        ElMessage.error('加载签到日志失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '加载签到日志失败'))
       } finally {
         this.loadingCheckins = false
       }
@@ -1581,7 +1581,7 @@ export default {
             ElMessage.error('导出签到日志失败')
           }
         } else {
-          ElMessage.error('导出签到日志失败: ' + (error.response?.data?.message || error.message))
+          ElMessage.error(apiErrorMessage(error, '导出签到日志失败'))
         }
       } finally {
         this.exportingCheckins = false
@@ -1683,7 +1683,7 @@ export default {
         }
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error('删除设备失败: ' + (error.response?.data?.message || error.message))
+          ElMessage.error(apiErrorMessage(error, '删除设备失败'))
         }
       } finally {
         this.deletingDeviceId = null
@@ -1735,7 +1735,7 @@ export default {
         }
       } catch (error) {
         console.error('搜索用户失败:', error)
-        ElMessage.error('搜索用户失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '搜索用户失败'))
       } finally {
         this.searchingUsers = false
       }
@@ -1769,7 +1769,7 @@ export default {
         }
       } catch (error) {
         console.error('搜索节点失败:', error)
-        ElMessage.error('搜索节点失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '搜索节点失败'))
       } finally {
         this.searchingNodes = false
       }
@@ -1825,7 +1825,7 @@ export default {
         }
       } catch (error) {
         console.error('分配节点失败:', error)
-        ElMessage.error('分配节点失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '分配节点失败'))
       } finally {
         this.assigning = false
       }
@@ -1869,7 +1869,7 @@ export default {
       } catch (error) {
         if (error !== 'cancel') {
           console.error('取消分配失败:', error)
-          ElMessage.error('取消分配失败: ' + (error.response?.data?.message || error.message))
+          ElMessage.error(apiErrorMessage(error, '取消分配失败'))
         }
       }
     },
@@ -1910,7 +1910,7 @@ export default {
         }
       } catch (error) {
         console.error('批量取消分配失败:', error)
-        ElMessage.error('批量取消分配失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '批量取消分配失败'))
       } finally {
         this.batchUnassigning = false
       }
@@ -1944,7 +1944,7 @@ export default {
         }
       } catch (error) {
         console.error('清空专线节点失败:', error)
-        ElMessage.error('清空专线节点失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '清空专线节点失败'))
       } finally {
         this.clearingNodes = false
       }

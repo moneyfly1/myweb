@@ -406,7 +406,7 @@ import { Loading, Wallet } from '@element-plus/icons-vue'
 import { useApi, rechargeAPI, paymentAPI, pendingPaymentStorage, cachedAPI } from '@/utils/api'
 import { formatDateTime } from '@/utils/date'
 import { getOrderStatusType, getOrderStatusText, getPaymentMethodType, getPaymentMethodText as getPaymentMethodTextShared } from '@/utils/statusMaps'
-import { formatMoney, unwrapList } from '@/utils/format'
+import { formatMoney, unwrapList, apiErrorMessage } from '@/utils/format'
 import { confirmWarning } from '@/utils/confirmAction'
 import { safeNavigate } from '@/utils/safeOpen'
 import { usePaymentStatusPolling } from '@/composables/usePaymentStatusPolling'
@@ -737,7 +737,7 @@ export default {
           mergeRecords()
         }
       } catch (error) {
-        ElMessage.error('加载订单列表失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '加载订单列表失败'))
         } finally {
         isLoading.value = false
       }
@@ -981,10 +981,7 @@ export default {
           ElMessage.error(errorMsg)
         }
       } catch (error) {
-        const errorMsg = error.response?.data?.detail || 
-                        error.response?.data?.message || 
-                        error.message || 
-                        '创建支付订单失败，请重试'
+        const errorMsg = apiErrorMessage(error, '创建支付订单失败，请重试')
         ElMessage.error(errorMsg)
       }
     }
@@ -1221,10 +1218,7 @@ export default {
           ElMessage.error(errorMsg)
         }
       } catch (error) {
-        const errorMsg = error.response?.data?.detail || 
-                        error.response?.data?.message || 
-                        error.message || 
-                        '获取充值支付链接失败，请重试'
+        const errorMsg = apiErrorMessage(error, '获取充值支付链接失败，请重试')
         ElMessage.error(errorMsg)
       }
     }
@@ -1249,9 +1243,7 @@ export default {
         await loadOrderStats()
       } catch (error) {
         if (error !== 'cancel') {
-          const errorMsg = error.response?.data?.detail || 
-                          error.response?.data?.message || 
-                          '取消充值订单失败'
+          const errorMsg = apiErrorMessage(error, '取消充值订单失败')
           ElMessage.error(errorMsg)
           }
       }

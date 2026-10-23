@@ -489,7 +489,7 @@ import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Promotion, DocumentCopy, Refresh, RefreshLeft, Search, Setting, Operation, ArrowDown, Connection, VideoPlay, Edit } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatDateTimeSafe } from '@/utils/date'
-import { formatFileSize, unwrapList } from '@/utils/format'
+import { formatFileSize, unwrapList, apiErrorMessage } from '@/utils/format'
 import { copyToClipboard } from '@/utils/textSelection'
 import { confirmAction } from '@/utils/confirmAction'
 import { useMobile } from '@/composables/useMobile'
@@ -638,7 +638,7 @@ const doBatch = async (payload) => {
       ElMessage.error(res.data?.message || '批量操作失败')
     }
   } catch (e) {
-    ElMessage.error('批量操作失败: ' + (e.response?.data?.message || e.message))
+    ElMessage.error(apiErrorMessage(e, '批量操作失败'))
   } finally {
     batchRunning.value = false
   }
@@ -679,7 +679,7 @@ const setAssignmentQuota = async (node, a) => {
     loadAssignments(node)
     loadSelfHostNodes()
   } catch (e) {
-    ElMessage.error('设置失败: ' + (e.response?.data?.message || e.message))
+    ElMessage.error(apiErrorMessage(e, '设置失败'))
   }
 }
 
@@ -960,7 +960,7 @@ const createManualNode = async () => {
       ElMessage.error(res.data?.message || '创建失败')
     }
   } catch (e) {
-    ElMessage.error('创建失败: ' + (e.response?.data?.message || e.message))
+    ElMessage.error(apiErrorMessage(e, '创建失败'))
   } finally {
     creatingManual.value = false
   }
@@ -989,7 +989,7 @@ const selfHostManage = async (node, action, extra = {}) => {
       ElMessage.error(res.data?.message || '操作失败')
     }
   } catch (e) {
-    ElMessage.error('操作失败: ' + (e.response?.data?.message || e.message))
+    ElMessage.error(apiErrorMessage(e, '操作失败'))
   } finally {
     managingSelfHostId.value = null
   }
@@ -1061,7 +1061,7 @@ const onSelfHostManage = async (node, action) => {
       ElMessage.success('SSH 凭据已更新')
       loadSelfHostNodes()
     } catch (e) {
-      ElMessage.error('更新失败: ' + (e.response?.data?.message || e.message))
+      ElMessage.error(apiErrorMessage(e, '更新失败'))
     } finally {
       managingSelfHostId.value = null
     }
@@ -1074,7 +1074,7 @@ const onSelfHostManage = async (node, action) => {
       ElMessage.success('流量已清零')
       loadSelfHostNodes()
     } catch (e) {
-      ElMessage.error('清零失败: ' + (e.response?.data?.message || e.message))
+      ElMessage.error(apiErrorMessage(e, '清零失败'))
     } finally {
       managingSelfHostId.value = null
     }

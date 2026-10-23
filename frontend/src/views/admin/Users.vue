@@ -858,7 +858,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, onActivated, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { unwrapList } from '@/utils/format'
+import { unwrapList, apiErrorMessage } from '@/utils/format'
 import {
   Plus, Edit, Delete, Search, Refresh, Switch, Key, Close, Filter,
   Connection, Monitor, Unlock, Check, Message, Bell, Loading, CircleCheck, View,
@@ -1241,7 +1241,7 @@ export default {
         ElMessage.success('线路模式已更新')
         await loadUsers()
       } catch (error) {
-        ElMessage.error(`线路模式更新失败: ${error.response?.data?.message || error.message}`)
+        ElMessage.error(apiErrorMessage(error, '线路模式更新失败'))
       } finally {
         lineModeSaving.value[user.id] = false
       }
@@ -1322,7 +1322,7 @@ export default {
         }
       } catch (error) {
         if (seq !== loadUsersSeq) return
-        ElMessage.error(`加载用户列表失败: ${error.response?.data?.message || error.message}`)
+        ElMessage.error(apiErrorMessage(error, '加载用户列表失败'))
         users.value = []
         total.value = 0
       } finally {
@@ -1425,7 +1425,7 @@ export default {
           savedIndicatorTimers.delete(user.id)
         }, 2000))
       } catch (error) {
-        ElMessage.error(`保存备注失败: ${error.response?.data?.message || error.message}`)
+        ElMessage.error(apiErrorMessage(error, '保存备注失败'))
         user.notes = originalNote
       } finally {
         user.savingNotes = false
@@ -1461,7 +1461,7 @@ export default {
           ElMessage.error('获取用户详情失败: ' + (response?.data?.message || response?.message || '未知错误'))
         }
       } catch (error) {
-        ElMessage.error('获取用户详情失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '获取用户详情失败'))
       }
     }
     const viewUserBalance = async (userId) => {
@@ -1515,7 +1515,7 @@ export default {
           userDevices.value = []
         }
       } catch (error) {
-        ElMessage.error('加载设备列表失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '加载设备列表失败'))
         userDevices.value = []
       } finally {
         loadingDevices.value = false
@@ -1536,7 +1536,7 @@ export default {
         }
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error('删除设备失败: ' + (error.response?.data?.message || error.message))
+          ElMessage.error(apiErrorMessage(error, '删除设备失败'))
         }
       } finally {
         deletingDevice.value = null
@@ -1557,7 +1557,7 @@ export default {
           throw new Error(response.data?.message || '加载专线节点失败')
         }
       } catch (error) {
-        ElMessage.error('加载专线节点失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '加载专线节点失败'))
         userCustomNodes.value = []
       } finally {
         loadingCustomNodes.value = false
@@ -1583,7 +1583,7 @@ export default {
           availableNodes.value = response.data.data?.nodes || response.data.data || []
         }
       } catch (error) {
-        ElMessage.error('加载可用节点失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '加载可用节点失败'))
       }
     }
     const handleNodeSearch = async () => {
@@ -1601,7 +1601,7 @@ export default {
           searchedNodes.value = response.data.data?.nodes || response.data.data || []
         }
       } catch (error) {
-        ElMessage.error('搜索节点失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '搜索节点失败'))
       }
     }
     const handleNodeSearchClear = () => {
@@ -1639,7 +1639,7 @@ export default {
           throw new Error(response.data?.message || '分配失败')
         }
       } catch (error) {
-        ElMessage.error('分配专线节点失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '分配专线节点失败'))
       } finally {
         assigningNode.value = false
       }
@@ -1664,7 +1664,7 @@ export default {
         }
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error('取消分配失败: ' + (error.response?.data?.message || error.message))
+          ElMessage.error(apiErrorMessage(error, '取消分配失败'))
         }
       }
     }
@@ -1701,7 +1701,7 @@ export default {
         ElMessage.success('用户删除成功')
         loadUsers()
       } catch (error) {
-        ElMessage.error(`删除失败: ${error.response?.data?.message || error.message || '删除失败'}`)
+        ElMessage.error(apiErrorMessage(error, '删除失败'))
       }
     }
     const toggleUserStatus = async (user) => {
@@ -1720,7 +1720,7 @@ export default {
         ElMessage.success(`用户${action}成功`)
         loadUsers()
       } catch (error) {
-        ElMessage.error(`状态更新失败: ${error.response?.data?.message || error.message}`)
+        ElMessage.error(apiErrorMessage(error, '状态更新失败'))
       }
     }
     // 打开与用户的 QQ 对话（本机 QQ 已登录时直接弹窗；不能预填内容）
@@ -1766,7 +1766,7 @@ export default {
         resetPasswordFormRef.value?.clearValidate()
       } catch (error) {
         if (error?.response || error?.message) {
-          ElMessage.error(`密码重置失败: ${error.response?.data?.message || error.message}`)
+          ElMessage.error(apiErrorMessage(error, '密码重置失败'))
         }
       } finally {
         resettingPassword.value = false
@@ -1785,7 +1785,7 @@ export default {
         const result = await adminAPI.unlockUserLogin(user.id)
         ElMessage.success(result.message || '登录限制已解除')
       } catch (error) {
-        ElMessage.error(`解除限制失败: ${error.response?.data?.message || error.message}`)
+        ElMessage.error(apiErrorMessage(error, '解除限制失败'))
       }
     }
     const handleSelectionChange = (selection) => {
@@ -1818,7 +1818,7 @@ export default {
           ElMessage.error(response.data?.message || '操作失败')
         }
       } catch (error) {
-        ElMessage.error(`操作失败: ${error.response?.data?.message || error.message}`)
+        ElMessage.error(apiErrorMessage(error, '操作失败'))
       } finally {
         batchOperating.value = false
       }
@@ -1853,7 +1853,7 @@ export default {
         clearSelection()
         loadUsers()
       } catch (error) {
-        ElMessage.error(`批量删除失败: ${error.response?.data?.message || error.message}`)
+        ElMessage.error(apiErrorMessage(error, '批量删除失败'))
       } finally {
         batchDeleting.value = false
       }

@@ -231,6 +231,7 @@ import { useThemeStore } from '@/store/theme'
 import { ticketAPI, api } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
 import { confirmClear } from '@/utils/confirmAction'
+import { apiErrorMessage } from '@/utils/format'
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
@@ -426,7 +427,7 @@ const flushCache = async () => {
     if (res.data.success) ElMessage.success('缓存已清除')
     else ElMessage.error(res.data.message || '清除失败')
   } catch (e) {
-    if (e !== 'cancel') ElMessage.error('清除失败: ' + (e.response?.data?.message || e.message))
+    if (e !== 'cancel') ElMessage.error(apiErrorMessage(e, '清除失败'))
   } finally {
     cacheClearing.value = false
   }

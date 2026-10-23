@@ -574,6 +574,7 @@ import { formatDateTimeSafe } from '@/utils/date'
 import AppDrawer from '@/components/AppDrawer.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import { useMobile } from '@/composables/useMobile'
+import { apiErrorMessage } from '@/utils/format'
 
 const isMobile = useMobile()
 
@@ -664,7 +665,7 @@ const loadData = async () => {
     osStats.value = dev.os_stats || []
     updatedAt.value = new Date()
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || '加载数据失败')
+    ElMessage.error(apiErrorMessage(e, '加载数据失败'))
   } finally {
     if (seq === loadSeq) loading.value = false
   }
@@ -717,7 +718,7 @@ const loadDeviceUsage = async (page = 1) => {
     if (Array.isArray(data.dims) && data.dims.length) duDims.value = data.dims
     selectedGroups.value = []
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || '设备数据加载失败')
+    ElMessage.error(apiErrorMessage(e, '设备数据加载失败'))
   } finally {
     loadingGroups.value = false
   }
@@ -764,7 +765,7 @@ const loadDeviceUsers = async (page = 1) => {
     duUserTotal.value = data.total || 0
     selectedUsers.value = []
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || '用户列表加载失败')
+    ElMessage.error(apiErrorMessage(e, '用户列表加载失败'))
   } finally {
     loadingUsers.value = false
   }
@@ -829,7 +830,7 @@ const loadDetail = async (page = 1) => {
     detail.distinctUsers = data.distinct_users || 0
     detail.selected = []
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || '明细加载失败')
+    ElMessage.error(apiErrorMessage(e, '明细加载失败'))
   } finally {
     detail.loading = false
   }
@@ -937,7 +938,7 @@ const previewNotify = async (silent = false) => {
       else ElMessage.warning('当前条件下没有可发送的用户')
     }
   } catch (e) {
-    if (!silent) ElMessage.error(e.response?.data?.message || '生成预览失败')
+    if (!silent) ElMessage.error(apiErrorMessage(e, '生成预览失败'))
   } finally {
     notify.previewing = false
   }
@@ -959,7 +960,7 @@ const sendNotify = async () => {
     if (data.failed && data.fail_reasons?.length) ElMessage.warning(data.fail_reasons[0])
     notify.visible = false
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || '发送失败')
+    ElMessage.error(apiErrorMessage(e, '发送失败'))
   } finally {
     notify.sending = false
   }
@@ -1013,7 +1014,7 @@ const sendEmail = async () => {
     ElMessage.success('邮件发送成功')
     contactDialogVisible.value = false
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || '邮件发送失败')
+    ElMessage.error(apiErrorMessage(e, '邮件发送失败'))
   } finally {
     sending.value = false
   }

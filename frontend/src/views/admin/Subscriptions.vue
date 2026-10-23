@@ -792,7 +792,7 @@
 import { ref, reactive, onMounted, onUnmounted, computed, watch, onActivated} from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { unwrapList } from '@/utils/format'
+import { unwrapList, apiErrorMessage } from '@/utils/format'
 import {
   Download, Delete, Setting, Apple, Monitor, ArrowDown, View, Refresh, HomeFilled,
   Search, Filter, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch, Connection,
@@ -1046,7 +1046,7 @@ export default {
         ElMessage.success('线路模式已更新')
         await loadSubscriptions()
       } catch (error) {
-        ElMessage.error(`线路模式更新失败: ${error.response?.data?.message || error.message}`)
+        ElMessage.error(apiErrorMessage(error, '线路模式更新失败'))
       } finally {
         lineModeSaving.value[user.id] = false
       }
@@ -1083,7 +1083,7 @@ export default {
         })
         ElMessage.success('到期时间更新成功')
       } catch (error) {
-        ElMessage.error('更新到期时间失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '更新到期时间失败'))
         loadSubscriptions()
       }
     }
@@ -1109,7 +1109,7 @@ export default {
         subscription.expire_time = newDate.format('YYYY-MM-DD')
         await updateExpireTime(subscription)
       } catch (error) {
-        ElMessage.error('添加时间失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '添加时间失败'))
         loadSubscriptions()
       }
     }
@@ -1124,7 +1124,7 @@ export default {
           detail: { subscriptionId: subscription.id, deviceLimit: subscription.device_limit }
         }))
       } catch (error) {
-        ElMessage.error('更新设备限制失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '更新设备限制失败'))
         loadSubscriptions()
       }
     }
@@ -1261,7 +1261,7 @@ export default {
           throw new Error(userResponse.data?.message || '获取用户详情失败')
         }
       } catch (error) {
-        ElMessage.error('加载用户详情失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '加载用户详情失败'))
       }
     }
     const loadUserDevices = async () => {
@@ -1324,7 +1324,7 @@ export default {
           console.error('加载设备列表失败:', error)
         }
         userDevices.value = []
-        ElMessage.error('加载设备列表失败: ' + (error.response?.data?.message || error.message || '未知错误'))
+        ElMessage.error(apiErrorMessage(error, '加载设备列表失败'))
         if (selectedUser.value) {
           selectedUser.value.online_devices = 0
           selectedUser.value.current_devices = 0
@@ -1353,7 +1353,7 @@ export default {
         }
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error('删除设备失败: ' + (error.response?.data?.message || error.message))
+          ElMessage.error(apiErrorMessage(error, '删除设备失败'))
         }
       } finally {
         deletingDevice.value = null
@@ -1583,10 +1583,7 @@ export default {
           if (process.env.NODE_ENV === 'development') {
             console.error('登录失败:', error)
           }
-          const errorMessage = error.response?.data?.message ||
-                             error.response?.data?.detail ||
-                             error.message ||
-                             '登录失败'
+          const errorMessage = apiErrorMessage(error, '登录失败')
           ElMessage.error(errorMessage)
         }
       } finally {
@@ -1614,7 +1611,7 @@ export default {
         }
       } catch (error) {
         if (error !== 'cancel') {
-          const errorMsg = error.response?.data?.message || error.message || '重置订阅失败'
+          const errorMsg = apiErrorMessage(error, '重置订阅失败')
           ElMessage.error(`重置订阅失败: ${errorMsg}`)
         }
       }
@@ -1643,7 +1640,7 @@ export default {
           ElMessage.success('订阅邮件已加入发送队列')
         }
       } catch (error) {
-        const errorMessage = error.response?.data?.message || error.response?.data?.detail || error.message || '发送订阅邮件失败'
+        const errorMessage = apiErrorMessage(error, '发送订阅邮件失败')
         ElMessage.error(errorMessage)
         console.error('发送订阅邮件失败:', error)
       } finally {
@@ -1683,7 +1680,7 @@ export default {
         loadSubscriptions()
       } catch (error) {
         if (error !== 'cancel') {
-          const errorMsg = error.response?.data?.message || error.message || '删除用户失败'
+          const errorMsg = apiErrorMessage(error, '删除用户失败')
           ElMessage.error(`删除用户失败: ${errorMsg}`)
         }
       }
@@ -1707,7 +1704,7 @@ export default {
         }
       } catch (error) {
         if (error !== 'cancel') {
-          const errorMsg = error.response?.data?.message || error.message || '清理设备失败'
+          const errorMsg = apiErrorMessage(error, '清理设备失败')
           ElMessage.error(`清理设备失败: ${errorMsg}`)
         }
       }
@@ -1728,7 +1725,7 @@ export default {
         loadSubscriptions()
       } catch (error) {
         if (error !== 'cancel') {
-          const errorMsg = error.response?.data?.message || error.message || '批量清理设备失败'
+          const errorMsg = apiErrorMessage(error, '批量清理设备失败')
           ElMessage.error(`批量清理设备失败: ${errorMsg}`)
         }
       }
@@ -1758,7 +1755,7 @@ export default {
         if (subNotesSavedTimers.has(userId)) clearTimeout(subNotesSavedTimers.get(userId))
         subNotesSavedTimers.set(userId, setTimeout(() => { row.notesSaved = false; subNotesSavedTimers.delete(userId) }, 2000))
       } catch (error) {
-        ElMessage.error(`保存备注失败: ${error.response?.data?.message || error.message}`)
+        ElMessage.error(apiErrorMessage(error, '保存备注失败'))
         row.user_notes = original
       } finally { row.savingNotes = false }
     }
@@ -1824,7 +1821,7 @@ export default {
               ElMessage.error('导出失败：无法读取错误信息')
             })
           } else if (error.response.data?.message || error.response.data?.detail) {
-            ElMessage.error(error.response.data.message || error.response.data.detail || '导出失败')
+            ElMessage.error(apiErrorMessage(error, '导出失败'))
           } else {
             ElMessage.error(`导出失败：${error.response.status} ${error.response.statusText}`)
           }
@@ -1881,7 +1878,7 @@ export default {
         }
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error(`批量删除失败: ${error.response?.data?.message || error.message}`)
+          ElMessage.error(apiErrorMessage(error, '批量删除失败'))
         }
       } finally {
         batchOperating.value = false
@@ -1904,7 +1901,7 @@ export default {
           ElMessage.error(response.data?.message || '批量启用失败')
         }
       } catch (error) {
-        ElMessage.error(`批量启用失败: ${error.response?.data?.message || error.message}`)
+        ElMessage.error(apiErrorMessage(error, '批量启用失败'))
       } finally {
         batchOperating.value = false
       }
@@ -1931,7 +1928,7 @@ export default {
         }
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error(`批量禁用失败: ${error.response?.data?.message || error.message}`)
+          ElMessage.error(apiErrorMessage(error, '批量禁用失败'))
         }
       } finally {
         batchOperating.value = false
@@ -1963,7 +1960,7 @@ export default {
         }
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error(`批量重置失败: ${error.response?.data?.message || error.message}`)
+          ElMessage.error(apiErrorMessage(error, '批量重置失败'))
         }
       } finally {
         batchOperating.value = false
@@ -1987,7 +1984,7 @@ export default {
           ElMessage.error(response.data?.message || '批量发送邮件失败')
         }
       } catch (error) {
-        ElMessage.error(`批量发送邮件失败: ${error.response?.data?.message || error.message}`)
+        ElMessage.error(apiErrorMessage(error, '批量发送邮件失败'))
       } finally {
         batchOperating.value = false
       }

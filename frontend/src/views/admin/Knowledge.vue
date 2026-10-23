@@ -298,7 +298,7 @@ defineOptions({ name: 'AdminKnowledge' })
 
 import { ref, onMounted, reactive, onActivated} from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { unwrapList } from '@/utils/format'
+import { unwrapList, apiErrorMessage } from '@/utils/format'
 import { FolderAdd, DocumentAdd, Search, Folder, Document, Reading, Files, Setting, Star, InfoFilled, QuestionFilled, Notebook, Clock, View } from '@element-plus/icons-vue'
 import { knowledgeAPI } from '@/utils/api'
 import { formatDateTimeSafe } from '@/utils/date'
@@ -458,7 +458,7 @@ const saveCategory = async () => {
       loadArticles()
     }
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || '保存失败')
+    ElMessage.error(apiErrorMessage(e, '保存失败'))
   } finally {
     saving.value = false
   }
@@ -477,7 +477,7 @@ const deleteCategory = async (id) => {
       loadArticles()
     }
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || '删除失败')
+    ElMessage.error(apiErrorMessage(e, '删除失败'))
   }
 }
 
@@ -521,7 +521,7 @@ const saveArticle = async () => {
     articleDrawerVisible.value = false
     loadArticles()
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || '保存失败')
+    ElMessage.error(apiErrorMessage(e, '保存失败'))
   } finally {
     saving.value = false
   }
@@ -537,7 +537,7 @@ const deleteArticle = async (id) => {
     ElMessage.success('删除成功')
     loadArticles()
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || '删除失败')
+    ElMessage.error(apiErrorMessage(e, '删除失败'))
   }
 }
 

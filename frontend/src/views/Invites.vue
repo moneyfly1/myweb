@@ -310,7 +310,7 @@ import { useMobile } from '@/composables/useMobile'
 import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
 import { confirmDelete } from '@/utils/confirmAction'
 import { formatDateTimeSafe } from '@/utils/date'
-import { formatMoney } from '@/utils/format'
+import { formatMoney, apiErrorMessage } from '@/utils/format'
 import AppDialog from '@/components/AppDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
@@ -489,7 +489,7 @@ const loadInviteCodes = async () => {
       inviteCodes.value = []
     }
   } catch (error) {
-    const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '未知错误'
+    const errorMsg = apiErrorMessage(error, '未知错误')
     ElMessage.error('获取邀请码列表失败: ' + errorMsg)
     inviteCodes.value = []
   } finally {
@@ -520,7 +520,7 @@ const loadStats = async () => {
       recent_invites: Array.isArray(recordsData.records) ? recordsData.records : []
     }
   } catch (error) {
-    const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '未知错误'
+    const errorMsg = apiErrorMessage(error, '未知错误')
     ElMessage.error('获取邀请统计失败: ' + errorMsg)
   }
 }
@@ -566,7 +566,7 @@ const generateCode = async () => {
     if (process.env.NODE_ENV === 'development') {
       console.error('生成邀请码错误:', error)
     }
-    const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '未知错误'
+    const errorMsg = apiErrorMessage(error, '未知错误')
     ElMessage.error('生成邀请码失败: ' + errorMsg)
   } finally {
     generating.value = false
@@ -586,7 +586,7 @@ const deleteCode = async (code) => {
     await loadStats()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('删除失败: ' + (error.response?.data?.message || error.message))
+      ElMessage.error(apiErrorMessage(error, '删除失败'))
     }
   }
 }

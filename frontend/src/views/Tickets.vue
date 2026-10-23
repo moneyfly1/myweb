@@ -330,7 +330,7 @@
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { unwrapList } from '@/utils/format'
+import { unwrapList, apiErrorMessage } from '@/utils/format'
 import { UserFilled } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
 import { useMobile } from '@/composables/useMobile'
@@ -471,7 +471,7 @@ const loadTickets = async () => {
       ElMessage.error(response.data?.message || '加载工单列表失败')
     }
   } catch (error) {
-    const errorMsg = error.response?.data?.message || error.message || '加载工单列表失败'
+    const errorMsg = apiErrorMessage(error, '加载工单列表失败')
     ElMessage.error(errorMsg)
   } finally {
     loading.value = false
@@ -529,7 +529,7 @@ const viewTicket = async (ticketId) => {
   } catch (error) {
     console.error('[用户前端] 加载工单详情异常:', error)
     console.error('[用户前端] 错误详情:', error.response?.data)
-    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '加载工单详情失败')
+    ElMessage.error(apiErrorMessage(error, '加载工单详情失败'))
   }
 }
 const markTicketReadLocally = (ticketId) => {
@@ -573,7 +573,7 @@ const addReply = async () => {
   } catch (error) {
     console.error('[用户前端] 回复异常:', error)
     console.error('[用户前端] 错误详情:', error.response?.data)
-    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '回复失败')
+    ElMessage.error(apiErrorMessage(error, '回复失败'))
   } finally {
     replying.value = false
   }

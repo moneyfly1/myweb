@@ -564,7 +564,7 @@ import {
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatDateTimeSafe } from '@/utils/date'
-import { formatFileSize, unwrapList } from '@/utils/format'
+import { formatFileSize, unwrapList, apiErrorMessage } from '@/utils/format'
 import { copyToClipboard } from '@/utils/textSelection'
 import AppDrawer from '@/components/AppDrawer.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
@@ -754,7 +754,7 @@ export default {
         tableRef.value?.clearSelection()
         loadNodes()
       } catch (error) {
-        if (error !== 'cancel') ElMessage.error('删除节点失败: ' + (error.response?.data?.message || error.message))
+        if (error !== 'cancel') ElMessage.error(apiErrorMessage(error, '删除节点失败'))
       }
     }
     const subUrlInput = ref('')
@@ -782,7 +782,7 @@ export default {
         if (e.code === 'ECONNABORTED' || (e.message && e.message.includes('timeout'))) {
           ElMessage.error('订阅导入超时：订阅源响应过慢，请检查链接是否可访问后重试')
         } else {
-          ElMessage.error('导入订阅失败: ' + (e.response?.data?.message || e.message))
+          ElMessage.error(apiErrorMessage(e, '导入订阅失败'))
         }
       } finally {
         importingSubscription.value = false
@@ -825,7 +825,7 @@ export default {
           ElMessage.error(res.data?.message || '创建自建节点失败')
         }
       } catch (e) {
-        ElMessage.error('创建失败: ' + (e.response?.data?.message || e.message))
+        ElMessage.error(apiErrorMessage(e, '创建失败'))
       } finally {
         creatingSelfHost.value = false
       }
@@ -914,7 +914,7 @@ export default {
           selfHostList.value = unwrapList(res)
         }
       } catch (e) {
-        ElMessage.error('加载自建节点列表失败: ' + (e.response?.data?.message || e.message))
+        ElMessage.error(apiErrorMessage(e, '加载自建节点列表失败'))
       } finally {
         selfHostListLoading.value = false
       }
@@ -1033,7 +1033,7 @@ export default {
         await loadNodes()
       } catch (error) {
         if (error === 'cancel') return
-        const msg = error.response?.data?.message || error.message
+        const msg = apiErrorMessage(error)
         // 旧版后端返回 404"未删除任何节点"/"节点不存在"说明所选节点实际已删除
         // （页面显示的是旧数据），此时直接从本地移除并刷新列表即可，不再提示失败
         if (msg && (msg.includes('未删除任何节点') || msg.includes('节点不存在'))) {

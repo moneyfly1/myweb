@@ -405,7 +405,7 @@ defineOptions({ name: 'AdminTickets' })
 
 import { ref, reactive, computed, onMounted, onActivated} from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { unwrapList } from '@/utils/format'
+import { unwrapList, apiErrorMessage } from '@/utils/format'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { ticketAPI } from '@/utils/api'
 import { formatDateTimeSafe } from '@/utils/date'
@@ -499,7 +499,7 @@ const loadTickets = async () => {
       ElMessage.error(response.data?.message || '加载工单列表失败')
     }
   } catch (error) {
-    const errorMsg = error.response?.data?.message || error.message || '加载工单列表失败'
+    const errorMsg = apiErrorMessage(error, '加载工单列表失败')
     ElMessage.error(errorMsg)
   } finally {
     loading.value = false
@@ -527,7 +527,7 @@ const viewTicket = async (ticketId) => {
       await loadTickets()
     }
   } catch (error) {
-    ElMessage.error('加载工单详情失败: ' + (error.response?.data?.message || error.message))
+    ElMessage.error(apiErrorMessage(error, '加载工单详情失败'))
   }
 }
 const isAdminReply = (reply) => {
@@ -574,7 +574,7 @@ const addReply = async () => {
   } catch (error) {
     console.error('[前端] 回复异常:', error)
     console.error('[前端] 错误详情:', error.response?.data)
-    ElMessage.error(error.response?.data?.detail || error.response?.data?.message || '回复失败')
+    ElMessage.error(apiErrorMessage(error, '回复失败'))
   } finally {
     replying.value = false
   }

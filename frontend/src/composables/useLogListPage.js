@@ -2,6 +2,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { debounce } from '@/composables/useDebounce'
 import { useMobile } from '@/composables/useMobile'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
+import { apiErrorMessage } from '@/utils/format'
 
 /**
  * 日志列表页公共逻辑（7 个日志页此前各自复制实现约 80% 同构代码）：
@@ -100,7 +101,7 @@ export function useLogListPage({ fetcher, defaultFilter = () => ({ keyword: '', 
       page.value = 1
       await fetchLogs()
     } catch (e) {
-      ElMessage.error(e?.response?.data?.message || '清理失败')
+      ElMessage.error(apiErrorMessage(e, '清理失败'))
     } finally {
       clearing.value = false
     }

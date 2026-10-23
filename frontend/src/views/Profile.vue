@@ -260,6 +260,7 @@ import { usernameValidator } from '@/utils/usernameRules'
 import FormActionBar from '@/components/FormActionBar.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import { useMobile } from '@/composables/useMobile'
+import { apiErrorMessage } from '@/utils/format'
 export default {
   name: 'Profile',
   components: { AppDialog, EmptyState, FormActionBar, LoadingState, Lock, User },
@@ -411,7 +412,7 @@ export default {
           profileForm.nickname = userInfo.value.nickname
           profileForm.avatar = userInfo.value.avatar
         } else {
-          ElMessage.error(`获取用户信息失败: ${error.response?.data?.message || error.message || '未知错误'}`)
+          ElMessage.error(apiErrorMessage(error, '获取用户信息失败'))
         }
       }
     }
@@ -485,7 +486,7 @@ export default {
           ElMessage.error(response.data?.message || '密码修改失败：响应格式错误')
         }
       } catch (error) {
-        const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '未知错误'
+        const errorMsg = apiErrorMessage(error, '未知错误')
         ElMessage.error(`密码修改失败: ${errorMsg}`)
       } finally {
         passwordLoading.value = false

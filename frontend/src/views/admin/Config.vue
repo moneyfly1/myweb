@@ -409,7 +409,7 @@
 <script>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { unwrapList } from '@/utils/format'
+import { unwrapList, apiErrorMessage } from '@/utils/format'
 import { configAPI, softwareConfigAPI, cloudAPI } from '@/utils/api'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 export default {
@@ -524,7 +524,7 @@ export default {
           ElMessage.error(response.data?.message || '保存失败')
         }
       } catch (error) {
-        ElMessage.error(error.response?.data?.message || '保存失败')
+        ElMessage.error(apiErrorMessage(error, '保存失败'))
       } finally {
         emailLoading.value = false
       }
@@ -584,7 +584,7 @@ export default {
           return false
         }
       } catch (error) {
-        ElMessage.error(error.response?.data?.message || '保存失败')
+        ElMessage.error(apiErrorMessage(error, '保存失败'))
         return false
       } finally {
         panSaving.value = false
@@ -657,7 +657,7 @@ export default {
           ElMessage.error(response.data?.message || '触发同步失败')
         }
       } catch (error) {
-        ElMessage.error(error.response?.data?.message || '触发同步失败')
+        ElMessage.error(apiErrorMessage(error, '触发同步失败'))
       } finally {
         panSyncing.value = false
       }

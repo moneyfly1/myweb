@@ -260,7 +260,7 @@ defineOptions({ name: 'AdminPromotions' })
 
 import { ref, onMounted, reactive, onActivated} from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { unwrapList } from '@/utils/format'
+import { unwrapList, apiErrorMessage } from '@/utils/format'
 import { Plus } from '@element-plus/icons-vue'
 import { promotionAPI } from '@/utils/api'
 import { formatDateTimeSafe } from '@/utils/date'
@@ -460,7 +460,7 @@ const save = async () => {
     drawerVisible.value = false
     loadData()
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || '保存失败')
+    ElMessage.error(apiErrorMessage(e, '保存失败'))
   } finally {
     saving.value = false
   }
@@ -476,7 +476,7 @@ const remove = async (id) => {
     ElMessage.success('删除成功')
     loadData()
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || '删除失败')
+    ElMessage.error(apiErrorMessage(e, '删除失败'))
   }
 }
 

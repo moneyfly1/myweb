@@ -785,7 +785,7 @@ import {
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatDateTimeSafe } from '@/utils/date'
-import { formatFileSize, unwrapList } from '@/utils/format'
+import { formatFileSize, unwrapList, apiErrorMessage } from '@/utils/format'
 import { copyToClipboard } from '@/utils/textSelection'
 import { confirmDelete, confirmWarning, confirmAction } from '@/utils/confirmAction'
 import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
@@ -1141,7 +1141,7 @@ export default {
         tableRef.value?.clearSelection()
         loadCustomNodes()
       } catch (error) {
-        if (error !== 'cancel') ElMessage.error('删除节点失败: ' + (error.response?.data?.message || error.message))
+        if (error !== 'cancel') ElMessage.error(apiErrorMessage(error, '删除节点失败'))
       }
     }
     const toggleNodeStatus = async (node) => {
@@ -1273,7 +1273,7 @@ export default {
         tableRef.value?.clearSelection()
         loadCustomNodes()
       } catch (error) {
-        if (error !== 'cancel') ElMessage.error('批量删除失败: ' + (error.response?.data?.message || error.message))
+        if (error !== 'cancel') ElMessage.error(apiErrorMessage(error, '批量删除失败'))
       } finally { batchDeleting.value = false }
     }
     const batchUnassign = async () => {
@@ -1307,7 +1307,7 @@ export default {
         ElMessage.success(res.data?.message || '批量取消成功')
         if (assigningNode.value) loadAssignedUsers(assigningNode.value.id)
       } catch (error) {
-        if (error !== 'cancel') ElMessage.error('批量取消失败: ' + (error.response?.data?.message || error.message))
+        if (error !== 'cancel') ElMessage.error(apiErrorMessage(error, '批量取消失败'))
       } finally {
         batchUnassigning.value = false
       }
@@ -1401,7 +1401,7 @@ export default {
         if (e.code === 'ECONNABORTED' || (e.message && e.message.includes('timeout'))) {
           ElMessage.error('订阅导入超时：订阅源响应过慢，请检查链接是否可访问后重试')
         } else {
-          ElMessage.error('导入订阅失败: ' + (e.response?.data?.message || e.message))
+          ElMessage.error(apiErrorMessage(e, '导入订阅失败'))
         }
       } finally {
         importingSubscription.value = false
@@ -1456,7 +1456,7 @@ export default {
           ElMessage.warning(res.data?.message || '订阅中没有解析到可更新的节点')
         }
       } catch (e) {
-        ElMessage.error('更新订阅失败: ' + (e.response?.data?.message || e.message))
+        ElMessage.error(apiErrorMessage(e, '更新订阅失败'))
       } finally {
         importingSubscription.value = false
       }
@@ -1481,7 +1481,7 @@ export default {
           ElMessage.error(res.data?.message || '删除失败')
         }
       } catch (e) {
-        ElMessage.error('删除订阅节点失败: ' + (e.response?.data?.message || e.message))
+        ElMessage.error(apiErrorMessage(e, '删除订阅节点失败'))
       }
     }
     // ==================== VPS 自动搭建 ====================
@@ -1503,7 +1503,7 @@ export default {
           ElMessage.error(res.data?.message || '搭建失败')
         }
       } catch (e) {
-        ElMessage.error('搭建失败: ' + (e.response?.data?.message || e.message))
+        ElMessage.error(apiErrorMessage(e, '搭建失败'))
       } finally {
         deployingVPS.value = false
       }
@@ -1538,7 +1538,7 @@ export default {
           ElMessage.error(res.data?.message || '操作失败')
         }
       } catch (e) {
-        ElMessage.error('操作失败: ' + (e.response?.data?.message || e.message))
+        ElMessage.error(apiErrorMessage(e, '操作失败'))
       } finally {
         managingSelfHostId.value = null
       }
@@ -1643,7 +1643,7 @@ export default {
         const res = await adminAPI.getCustomNodeUsers(nodeId)
         assignedUsers.value = res.data.data || []
       } catch (error) {
-        ElMessage.error('加载用户列表失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '加载用户列表失败'))
       }
     }
     const batchUnassignAssignedUsers = async () => {
@@ -1658,7 +1658,7 @@ export default {
         ElMessage.success('已批量取消分配')
         await loadAssignedUsers(assigningNode.value.id)
       } catch (error) {
-        if (error !== 'cancel') ElMessage.error('批量取消失败: ' + (error.response?.data?.message || error.message))
+        if (error !== 'cancel') ElMessage.error(apiErrorMessage(error, '批量取消失败'))
       } finally {
         batchUnassigning.value = false
       }
@@ -1669,7 +1669,7 @@ export default {
         ElMessage.success('已移除')
         loadAssignedUsers(assigningNode.value.id)
       } catch (error) {
-        ElMessage.error('移除用户失败: ' + (error.response?.data?.message || error.message))
+        ElMessage.error(apiErrorMessage(error, '移除用户失败'))
       }
     }
     const loadMigrateTargetNodes = async (sourceNodeId) => {
@@ -1709,7 +1709,7 @@ export default {
         selectedNodes.value = []
         await loadCustomNodes()
       } catch (error) {
-        if (error !== 'cancel') ElMessage.error('迁移失败: ' + (error.response?.data?.message || error.message))
+        if (error !== 'cancel') ElMessage.error(apiErrorMessage(error, '迁移失败'))
       } finally {
         migratingAssignments.value = false
       }

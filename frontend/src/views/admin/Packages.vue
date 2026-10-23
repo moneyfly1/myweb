@@ -488,6 +488,7 @@ import FormActionBar from '@/components/FormActionBar.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
 import { confirmDelete } from '@/utils/confirmAction'
+import { apiErrorMessage } from '@/utils/format'
 export default {
   name: 'AdminPackages',
   components: {
@@ -754,7 +755,7 @@ export default {
         fetchPackages()
       } catch (error) {
         if (error.response?.data?.message) {
-          ElMessage.error(error.response.data.message)
+          ElMessage.error(apiErrorMessage(error))
         } else {
           ElMessage.error('操作失败')
         }
@@ -784,7 +785,7 @@ export default {
         }
       } catch (error) {
         if (error !== 'cancel') {
-          const errorMsg = error.response?.data?.message || error.message || '删除失败'
+          const errorMsg = apiErrorMessage(error, '删除失败')
           ElMessage.error(errorMsg)
         }
       }
@@ -858,7 +859,7 @@ export default {
         ElMessage.success('自定义套餐设置保存成功')
         customPackageDialogVisible.value = false
       } catch (error) {
-        ElMessage.error(error.response?.data?.message || '保存失败')
+        ElMessage.error(apiErrorMessage(error, '保存失败'))
       } finally {
         customPackageLoading.value = false
       }

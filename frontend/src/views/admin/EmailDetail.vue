@@ -218,6 +218,7 @@ import { EMAIL_STATUS_MAP } from '@/utils/statusMaps'
 import { confirmDelete, confirmWarning } from '@/utils/confirmAction'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
+import { apiErrorMessage } from '@/utils/format'
 export default {
   name: 'EmailDetail',
   components: {
@@ -246,7 +247,7 @@ export default {
           ElMessage.error(response?.data?.message || '获取邮件详情失败')
         }
       } catch (error) {
-        ElMessage.error(error?.response?.data?.message || '获取邮件详情失败')
+        ElMessage.error(apiErrorMessage(error, '获取邮件详情失败'))
       } finally {
         loading.value = false
       }
@@ -268,7 +269,7 @@ export default {
         }
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error(error?.response?.data?.message || '邮件重试失败')
+          ElMessage.error(apiErrorMessage(error, '邮件重试失败'))
         }
       } finally {
         retryLoading.value = false
@@ -290,7 +291,7 @@ export default {
         }
       } catch (error) {
         if (error !== 'cancel') {
-          ElMessage.error(error?.response?.data?.message || '邮件删除失败')
+          ElMessage.error(apiErrorMessage(error, '邮件删除失败'))
         }
       }
     }
