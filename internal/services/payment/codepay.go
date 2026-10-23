@@ -159,7 +159,7 @@ func (s *CodepayService) CreatePayment(order *models.Order, amount float64, paym
 		body, readErr := io.ReadAll(resp.Body)
 		if readErr == nil && resp.StatusCode == http.StatusOK {
 			respStr := strings.TrimSpace(string(body))
-			utils.LogInfo("码支付mapi响应: %s", truncateString(respStr, 500))
+			utils.LogInfo("码支付mapi响应: %s", utils.TruncateRunesEllipsis(respStr, 500, "..."))
 
 			// 如果直接返回 URL
 			if strings.HasPrefix(respStr, "http://") || strings.HasPrefix(respStr, "https://") {

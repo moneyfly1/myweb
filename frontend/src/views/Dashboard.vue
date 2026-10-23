@@ -595,7 +595,7 @@ import FormActionBar from '@/components/FormActionBar.vue'
 import SkeletonLoader from '@/components/SkeletonLoader.vue'
 import UpgradeDevicesDrawer from '@/components/UpgradeDevicesDrawer.vue'
 import { userAPI, subscriptionAPI, softwareConfigAPI, rechargeAPI, settingsAPI, checkinAPI, useApi, cachedAPI, pendingPaymentStorage, orderAPI } from '@/utils/api'
-import { formatDateTimeSafe, getRemainingDays, isExpired as isExpiredUtil } from '@/utils/date'
+import { EMPTY_UNKNOWN, formatDateTimeSafe, getRemainingDays, isExpired as isExpiredUtil } from '@/utils/date'
 import { formatMoney, apiErrorMessage } from '@/utils/format'
 import { getOrderStatusText, getOrderStatusType } from '@/utils/statusMaps'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
@@ -809,7 +809,7 @@ const handleUpgradeSuccess = async () => {
 }
 
 const formatDate = (dateString) => {
-  return formatDateTimeSafe(dateString, 'YYYY-MM-DD HH:mm:ss', '未知')
+  return formatDateTimeSafe(dateString, 'YYYY-MM-DD HH:mm:ss', EMPTY_UNKNOWN)
 }
 const getRecentOrderTitle = (order) => {
   return order?.package_name || order?.package?.name || order?.order_no || '订单'

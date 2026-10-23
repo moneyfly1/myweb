@@ -28,6 +28,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/geoip"
+	"cboard-go/internal/utils"
 
 	"gorm.io/gorm"
 )
@@ -201,7 +202,7 @@ func MarkSubscriptionFetch(userID uint, ua, ip, format, software string) {
 		}
 	}
 	m := Meta{
-		UA:            truncate(ua, 255),
+		UA:            utils.TruncateRunes(ua, 255),
 		IP:            ip,
 		Location:      location,
 		Format:        format,

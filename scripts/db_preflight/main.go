@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
+	"cboard-go/internal/core/dbtool"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -328,7 +328,7 @@ func repairCorruptSQLite() bool {
 			_ = os.Remove(dbPath + suffix)
 		}
 	}
-	if err := copyFile(latest, dbPath); err != nil {
+	if err := dbtool.CopyFile(latest, dbPath); err != nil {
 		fmt.Printf("   恢复失败: %v\n", err)
 		return false
 	}
@@ -345,21 +345,6 @@ func resolveDBPath() string {
 	// 复用数据库层的路径解析：手抄一份的下场是规则漂移（这里曾漏掉 filepath.Join(".", ...) 分支），
 	// 而"路径算错"的后果是预检读了另一个库，结论全错还看不出来。
 	return database.ResolveSQLitePath(cfg.DatabaseURL)
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	_, err = io.Copy(out, in)
-	return err
 }
 
 func tableExists(db *gorm.DB, dialect, table string) bool {

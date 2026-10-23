@@ -488,7 +488,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import { Promotion, DocumentCopy, Refresh, RefreshLeft, Search, Setting, Operation, ArrowDown, Connection, VideoPlay, Edit } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
-import { formatDateTimeSafe } from '@/utils/date'
+import { EMPTY_DASH, formatDateTimeSafe } from '@/utils/date'
 import { formatFileSize, unwrapList, apiErrorMessage } from '@/utils/format'
 import { copyToClipboard } from '@/utils/textSelection'
 import { confirmAction } from '@/utils/confirmAction'
@@ -505,7 +505,7 @@ const selfHostStatusTypeMap = { pending: 'warning', online: 'success', offline: 
 
 const formatBytes = formatFileSize
 const formatTime = (t) => {
-  return formatDateTimeSafe(t, 'YYYY-MM-DD HH:mm', '-')
+  return formatDateTimeSafe(t, 'YYYY-MM-DD HH:mm', EMPTY_DASH)
 }
 
 // 搜索（与其他管理列表一致：后端过滤 + 重置回第一页）

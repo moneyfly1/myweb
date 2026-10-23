@@ -163,13 +163,6 @@ func detectDeviceType(userAgent string, paymentType string) string {
 	return "pc"
 }
 
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
-}
-
 func NewYipayService(paymentConfig *models.PaymentConfig) (*YipayService, error) {
 	configData := parseConfigData(paymentConfig.ConfigJSON)
 
@@ -291,7 +284,7 @@ func (s *YipayService) CreatePaymentWithDevice(order *models.Order, amount float
 
 	deviceType := detectDeviceType(userAgent, paymentType)
 	utils.LogInfo("易支付设备类型检测: order_no=%s, userAgent长度=%d, userAgent前50字符=%s, paymentType=%s, device=%s",
-		order.OrderNo, len(userAgent), truncateString(userAgent, 50), paymentType, deviceType)
+		order.OrderNo, len(userAgent), utils.TruncateRunesEllipsis(userAgent, 50, "..."), paymentType, deviceType)
 
 	params := map[string]string{
 		"pid":          s.PID,

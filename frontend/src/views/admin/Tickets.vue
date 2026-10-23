@@ -634,9 +634,8 @@ const handleDetailDrawerChange = (value) => {
   }
   closeDetailDialog()
 }
-const formatTime = (timeStr) => {
-  return formatDateTimeSafe(timeStr, 'YYYY-MM-DD HH:mm:ss', '-')
-}
+// 默认 format/empty 与 formatDateTimeSafe 完全一致，直接别名
+const formatTime = formatDateTimeSafe
 const resetFilters = () => {
   filters.keyword = ''
   filters.status = ''

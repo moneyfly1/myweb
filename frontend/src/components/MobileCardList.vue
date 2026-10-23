@@ -101,8 +101,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import dayjs from 'dayjs'
-import { formatDateTimeSafe } from '@/utils/date'
+import { EMPTY_DASH, formatDateTimeSafe } from '@/utils/date'
 import { formatMoneyPlain } from '@/utils/format'
 import SkeletonLoader from './SkeletonLoader.vue'
 import ErrorState from './ErrorState.vue'
@@ -217,10 +216,9 @@ const errorMessage = computed(() => {
 })
 
 const formatDate = (date, format) => {
-  if (!date) return '-'
-  const parsed = dayjs(date)
-  if (!parsed.isValid()) return '-'
-  return formatDateTimeSafe(date, format || props.dateFormat, '-')
+  // isValid() 预检查已删除：formatDateTimeSafe 内部已统一兜底空值与非法日期（均返回 EMPTY_DASH）。
+  if (!date) return EMPTY_DASH
+  return formatDateTimeSafe(date, format || props.dateFormat, EMPTY_DASH)
 }
 
 const formatMoney = formatMoneyPlain

@@ -32,6 +32,7 @@ import (
 
 	"cboard-go/internal/core/config"
 	"cboard-go/internal/core/database"
+	"cboard-go/internal/core/dbtool"
 	"cboard-go/internal/services/invite"
 )
 
@@ -84,14 +85,11 @@ func main() {
 		}
 	}
 
-	if err := database.InitDatabase(); err != nil {
-		log.Fatalf("数据库初始化失败: %v", err)
+	db, err := dbtool.Open()
+	if err != nil {
+		log.Fatalf("%v", err)
 	}
 	defer database.CloseDatabase()
-	db := database.GetDB()
-	if db == nil {
-		log.Fatal("数据库未就绪")
-	}
 
 	if *migrate {
 		migrated, err := invite.MigrateLegacySettings(db)

@@ -342,7 +342,7 @@ export default {
       }
       return priorityMap[priority] || priority
     }
-    const formatDate = (dateString) => formatDateTimeSafe(dateString, 'YYYY-MM-DD HH:mm:ss', '-')
+    const formatDate = formatDateTimeSafe // 默认 format/empty 一致，纯别名
     onMounted(() => {
       fetchEmailDetail()
     })

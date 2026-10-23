@@ -197,7 +197,7 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { userAPI } from '@/utils/api'
 import { Clock } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
-import { formatDateTimeSafe, getLocationText as getLocationTextUtil } from '@/utils/date'
+import { EMPTY_UNKNOWN, formatDateTimeSafe, getLocationText as getLocationTextUtil } from '@/utils/date'
 import { getDeviceTypeFromUA as getDeviceInfo } from '@/utils/device'
 import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
 import EmptyState from '@/components/EmptyState.vue'
@@ -319,7 +319,7 @@ export default {
       }
     }
     const formatTime = (time) => {
-      return formatDateTimeSafe(time, 'YYYY-MM-DD HH:mm:ss', '未知')
+      return formatDateTimeSafe(time, 'YYYY-MM-DD HH:mm:ss', EMPTY_UNKNOWN)
     }
     const handleSizeChange = (val) => {
       pageSize.value = val

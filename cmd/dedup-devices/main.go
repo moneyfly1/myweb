@@ -29,8 +29,7 @@ import (
 	"fmt"
 	"log"
 
-	"cboard-go/internal/core/config"
-	"cboard-go/internal/core/database"
+	"cboard-go/internal/core/dbtool"
 	devicesvc "cboard-go/internal/services/device"
 )
 
@@ -40,14 +39,10 @@ func main() {
 	subID := flag.Uint("sub", 0, "只处理该订阅 ID，留空 = 全部")
 	flag.Parse()
 
-	if _, err := config.LoadConfig(); err != nil {
-		log.Fatalf("加载配置失败: %v", err)
+	db, err := dbtool.Open()
+	if err != nil {
+		log.Fatalf("%v", err)
 	}
-	if err := database.InitDatabase(); err != nil {
-		log.Fatalf("连接数据库失败: %v", err)
-	}
-
-	db := database.GetDB()
 	mode := "预演（不写库）"
 	if *apply {
 		mode = "执行（写库）"

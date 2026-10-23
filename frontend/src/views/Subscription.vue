@@ -415,7 +415,7 @@ import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { DocumentCopy } from '@element-plus/icons-vue'
 import { subscriptionAPI, userAPI } from '@/utils/api'
-import { formatDateTimeSafe, getRemainingDays as getRemainingDaysUtil, isExpired as isExpiredUtil } from '@/utils/date'
+import { EMPTY_NONE, formatDateTimeSafe, getRemainingDays as getRemainingDaysUtil, isExpired as isExpiredUtil } from '@/utils/date'
 import { getSubscriptionStatus } from '@/utils/statusMaps'
 import { confirmReset } from '@/utils/confirmAction'
 import { copyToClipboard as copyText } from '@/utils/textSelection'
@@ -743,7 +743,7 @@ export default {
         }, 2000)
       }
     }
-    const formatDate = (dateString) => formatDateTimeSafe(dateString, 'YYYY-MM-DD HH:mm', '未设置')
+    const formatDate = (dateString) => formatDateTimeSafe(dateString, 'YYYY-MM-DD HH:mm', EMPTY_NONE)
     const getRemainingDays = (subscription) => {
       if (!subscription || !subscription.expire_time) return 0
       return getRemainingDaysUtil(subscription.expire_time)

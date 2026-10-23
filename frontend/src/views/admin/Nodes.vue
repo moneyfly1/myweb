@@ -889,9 +889,8 @@ export default {
       expired: 'info',
       canceled: 'info'
     }[selfHostStatus.value] || 'info'))
-    const formatTime = (t) => {
-      return formatDateTimeSafe(t, 'YYYY-MM-DD HH:mm:ss', '-')
-    }
+    // 默认 format/empty 与 formatDateTimeSafe 完全一致，直接别名
+    const formatTime = formatDateTimeSafe
     // 纯转发的包装已删除：模板里直接调用 utils 的 formatFileSize
     const formatBytes = formatFileSize
 

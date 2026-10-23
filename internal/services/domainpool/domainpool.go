@@ -380,16 +380,9 @@ func runCmd(ctx context.Context, timeout time.Duration, name string, args ...str
 		if text == "" {
 			text = err.Error()
 		}
-		return text, fmt.Errorf("%s %s 失败: %s", filepath.Base(name), strings.Join(args, " "), truncate(text, 400))
+		return text, fmt.Errorf("%s %s 失败: %s", filepath.Base(name), strings.Join(args, " "), utils.TruncateRunesEllipsis(text, 400, "…"))
 	}
 	return text, nil
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "…"
 }
 
 // RenewResult 手动续期结果（后台「立即续期」按钮用）
@@ -461,7 +454,7 @@ func (m *Manager) Renew(ctx context.Context, domains []string, force bool) (Rene
 		out, rerr := runCmd(ctx, 240*time.Second, "certbot", args...)
 		if rerr != nil {
 			res.Failed = append(res.Failed, name)
-			addStep("续期 "+name, false, truncate(out, 300))
+			addStep("续期 "+name, false, utils.TruncateRunesEllipsis(out, 300, "…"))
 			continue
 		}
 		if !force && (strings.Contains(out, "not yet due") || strings.Contains(out, "not due for renewal")) {
@@ -470,7 +463,7 @@ func (m *Manager) Renew(ctx context.Context, domains []string, force bool) (Rene
 			continue
 		}
 		res.Renewed = append(res.Renewed, name)
-		addStep("续期 "+name, true, truncate(strings.TrimSpace(out), 200))
+		addStep("续期 "+name, true, utils.TruncateRunesEllipsis(strings.TrimSpace(out), 200, "…"))
 	}
 
 	// 再重载一次：一是 certbot 未真正续期时也确认 nginx 状态正常，二是确保新证书生效

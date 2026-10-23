@@ -18,11 +18,10 @@ import (
 	"fmt"
 	"os"
 
+	"cboard-go/internal/core/dbtool"
 	"cboard-go/internal/services/config_update"
 
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 func main() {
@@ -31,13 +30,10 @@ func main() {
 	asJSON := flag.Bool("json", false, "以 JSON 输出")
 	flag.Parse()
 
-	// 只读打开，物理上杜绝误写
-	dsn := fmt.Sprintf("file:%s?mode=ro", *dbPath)
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
-	})
+	// 只读打开，物理上杜绝误写（实现见 dbtool.OpenReadOnly）
+	db, err := dbtool.OpenReadOnly(*dbPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "打开数据库失败(%s): %v\n", dsn, err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 
@@ -190,9 +186,7 @@ func main() {
 
 // mustDB 只读打开数据库（供全格式结构校验复用）
 func mustDB(path string) *gorm.DB {
-	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=ro", path)), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
-	})
+	db, err := dbtool.OpenReadOnly(path)
 	if err != nil {
 		return nil
 	}

@@ -125,20 +125,13 @@ const refreshRotateReplayWindow = 24 * time.Hour
 // 只记原因码与用户 id，不记 token 明文。
 func logRefreshReject(c *gin.Context, reason string, userID uint) {
 	utils.LogWarn("刷新令牌被拒绝: reason=%s user_id=%d ip=%s ua=%s",
-		reason, userID, c.ClientIP(), truncateUA(c.GetHeader("User-Agent")))
+		reason, userID, c.ClientIP(), utils.TruncateRunes(c.GetHeader("User-Agent"), 60))
 }
 
 // logRefreshReplay 记录「轮换重放」：说明客户端确实丢了响应，但会话被救回来了。
 func logRefreshReplay(c *gin.Context, userID uint, since time.Duration) {
 	utils.LogInfo("刷新令牌轮换重放: user_id=%d 距轮换=%s ip=%s ua=%s",
-		userID, since.Round(time.Second), c.ClientIP(), truncateUA(c.GetHeader("User-Agent")))
-}
-
-func truncateUA(ua string) string {
-	if len(ua) > 60 {
-		return ua[:60]
-	}
-	return ua
+		userID, since.Round(time.Second), c.ClientIP(), utils.TruncateRunes(c.GetHeader("User-Agent"), 60))
 }
 
 // canReplayRotatedToken 判断一条黑名单记录能否按「轮换重放」放行。

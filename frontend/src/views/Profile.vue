@@ -250,7 +250,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { useSettingsStore } from '@/store/settings'
 import { userAPI, subscriptionAPI, authAPI, api } from '@/utils/api'
-import { formatDateTimeSafe, getLocationText as getLocationTextUtil } from '@/utils/date'
+import { EMPTY_UNKNOWN, formatDateTimeSafe, getLocationText as getLocationTextUtil } from '@/utils/date'
 import { getUserStatusType, getUserStatusText, getSubscriptionStatusText as getSubscriptionStatusTextShared } from '@/utils/statusMaps'
 import { getDeviceTypeFromUA as getDeviceInfo } from '@/utils/device'
 import { Lock, User } from '@element-plus/icons-vue'
@@ -539,9 +539,9 @@ export default {
     }
     const formatTime = (time) => {
       if (!time || time === 'null' || time === 'None') {
-        return '未知'
+        return EMPTY_UNKNOWN
       }
-      return formatDateTimeSafe(time, 'YYYY-MM-DD HH:mm:ss', '未知')
+      return formatDateTimeSafe(time, 'YYYY-MM-DD HH:mm:ss', EMPTY_UNKNOWN)
     }
     const getAccountStatusType = (userInfo) => {
       if (!userInfo || !userInfo.status) return 'info'

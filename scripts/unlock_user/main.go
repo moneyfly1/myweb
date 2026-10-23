@@ -5,8 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"cboard-go/internal/core/config"
-	"cboard-go/internal/core/database"
+	"cboard-go/internal/core/dbtool"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 )
@@ -26,23 +25,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	cfg, err := config.LoadConfig()
+	db, err := dbtool.Open()
 	if err != nil {
-		fmt.Printf("❌ 配置加载失败: %v\n", err)
+		fmt.Printf("❌ %v\n", err)
 		os.Exit(1)
 	}
-
-	if cfg == nil {
-		fmt.Println("❌ 配置未正确加载")
-		os.Exit(1)
-	}
-
-	if err := database.InitDatabase(); err != nil {
-		fmt.Printf("❌ 数据库连接失败: %v\n", err)
-		os.Exit(1)
-	}
-
-	db := database.GetDB()
 
 	var user models.User
 	query := db.Model(&models.User{})

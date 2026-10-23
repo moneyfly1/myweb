@@ -97,19 +97,8 @@ func resolveRegion(name, server string) string {
 	return matcher.MatchRegion(name, server)
 }
 
-// truncateNodeName 将节点名称截断到 varchar(100) 长度以内（按 rune 计数）。
-// MySQL 严格模式下超长名称会导致写入失败；SQLite 不校验长度，本地不会复现此问题。
-func truncateNodeName(name string) string {
-	const maxLen = 100
-	runes := []rune(name)
-	if len(runes) <= maxLen {
-		return name
-	}
-	return string(runes[:maxLen])
-}
-
 func buildNodeModel(node *config_update.ProxyNode, isManual bool) models.Node {
-	node.Name = truncateNodeName(node.Name)
+	node.Name = utils.TruncateRunes(node.Name, 100)
 	// #nosec G117 - Password field is proxy node password, not user credential
 	configJSON, _ := json.Marshal(node) // #nosec G117
 	configStr := string(configJSON)
@@ -648,7 +637,7 @@ func CreateNode(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "请填写节点名称、地区和类型", nil)
 		return
 	}
-	req.Node.Name = truncateNodeName(req.Node.Name)
+	req.Node.Name = utils.TruncateRunes(req.Node.Name, 100)
 	req.Node.Status, req.Node.IsManual, req.Node.IsActive = "offline", true, true
 
 	// 第一层防御：Config 里是 ProxyNode JSON，先做凭据规范化 + 白名单/必填字段校验，
@@ -1460,7 +1449,7 @@ func BatchDeleteNodes(c *gin.Context) {
 	// 清理所有节点和订阅缓存
 	clearNodeCaches()
 
-	utils.CreateAuditLogSimple(c, "batch_delete_nodes", "node", 0, fmt.Sprintf("管理员操作: 批量删除节点 %d 个 [%s]", deletedCount, truncateDesc(strings.Join(deletingNodeNames, "、"))))
+	utils.CreateAuditLogSimple(c, "batch_delete_nodes", "node", 0, fmt.Sprintf("管理员操作: 批量删除节点 %d 个 [%s]", deletedCount, utils.TruncateRunesEllipsis(strings.Join(deletingNodeNames, "、"), 500, "...")))
 	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("成功删除 %d 个节点", deletedCount), gin.H{"deleted_count": deletedCount})
 }
 

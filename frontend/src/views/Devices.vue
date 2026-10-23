@@ -363,7 +363,7 @@ import {
   Monitor
 } from '@element-plus/icons-vue'
 import { subscriptionAPI } from '@/utils/api'
-import { formatDateTimeSafe, formatLocation } from '@/utils/date'
+import { EMPTY_UNKNOWN, formatDateTimeSafe, formatLocation } from '@/utils/date'
 import { getDeviceTypeIcon as getDeviceIcon, getDeviceTypeName, getDeviceTypeColor, truncateText } from '@/utils/device'
 import { confirmWarning } from '@/utils/confirmAction'
 import { usePersistentTableColumns } from '@/composables/usePersistentTableColumns'
@@ -664,7 +664,7 @@ export default {
       }
     }
     const formatTime = (time) => {
-      return formatDateTimeSafe(time, 'YYYY-MM-DD HH:mm:ss', '未知')
+      return formatDateTimeSafe(time, 'YYYY-MM-DD HH:mm:ss', EMPTY_UNKNOWN)
     }
     const truncateUserAgent = truncateText // 50 正是 truncateText 的默认长度
     // 设备状态文案/颜色：后端已算好 activity_state，这里只做展示映射。
