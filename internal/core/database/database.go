@@ -833,6 +833,10 @@ func NullTime(t time.Time) sql.NullTime {
 // resolveSQLitePath 解析 sqlite 数据库文件绝对路径。
 // 相对路径统一锚定到可执行文件所在目录，避免因启动目录不同而静默新建数据库
 // （例如从其它目录手动启动 ./server 会在该目录生成一个全新的空库，造成"数据丢失"假象）。
+// ResolveSQLitePath 把 DATABASE_URL 解析成本地 SQLite 文件路径
+// （去前缀 + 相对路径锚定到可执行文件目录）。供需要"落盘前检查库文件"的命令复用。
+func ResolveSQLitePath(databaseURL string) string { return resolveSQLitePath(databaseURL) }
+
 func resolveSQLitePath(databaseURL string) string {
 	dbPath := strings.Replace(databaseURL, "sqlite:///./", "", 1)
 	dbPath = strings.Replace(dbPath, "sqlite:///", "", 1)
