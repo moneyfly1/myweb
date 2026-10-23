@@ -48,6 +48,25 @@
           </div>
         </div>
       </template>
+      <!-- 搜索：节点名 / 域名 / VPS 地址 / 协议（与其它管理列表同款） -->
+      <div class="list-filter-bar">
+        <el-input
+          v-model="selfHostSearch"
+          placeholder="搜索节点名 / 域名 / VPS 地址 / 协议"
+          clearable
+          class="list-search-input"
+          @keyup.enter="applySelfHostSearch"
+          @clear="applySelfHostSearch"
+        >
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
+        <el-button type="primary" @click="applySelfHostSearch">
+          <el-icon><Search /></el-icon>查询
+        </el-button>
+        <el-button @click="resetSelfHostSearch">
+          <el-icon><RefreshLeft /></el-icon>重置
+        </el-button>
+      </div>
       <div class="batch-toolbar" v-if="selfHostNodes.length">
         <el-checkbox
           :model-value="selfHostNodes.length > 0 && selectedSelfHost.length === selfHostNodes.length"
@@ -107,114 +126,123 @@
         </div>
 
         <el-empty v-if="!selfHostLoading && selfHostNodes.length === 0" description="暂无自建节点，点击右上角「VPS自动搭建」创建" :image-size="100" />
-        <div v-for="n in selfHostNodes" :key="n.id" class="selfhost-node-card">
-          <div class="selfhost-node-head">
-            <div class="selfhost-node-title">
-              <el-checkbox :model-value="isSelected(n)" @change="(v) => toggleSelect(n, v)" class="node-checkbox" />
-              <span class="selfhost-node-name">{{ n.name || '-' }}</span>
-              <el-tag size="small" :type="selfHostStatusTypeMap[n.status] || 'info'" effect="light">{{ selfHostStatusMap[n.status] || n.status }}</el-tag>
-              <el-tag v-if="n.is_active" type="success" size="small" effect="plain">已启用</el-tag>
-              <el-tag v-else type="danger" size="small" effect="plain">已屏蔽</el-tag>
-            </div>
-            <el-dropdown trigger="click" @command="(cmd) => onSelfHostManage(n, cmd)">
-              <el-button size="small" text bg :loading="managingSelfHostId === n.id">
-                <el-icon><Setting /></el-icon>管理
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <template v-if="n.ssh_host">
-                    <el-dropdown-item command="status">查看远程状态</el-dropdown-item>
-                    <el-dropdown-item command="reset" divided>重置节点（重新生成UUID）</el-dropdown-item>
-                    <el-dropdown-item command="change-password">更改密码</el-dropdown-item>
-                    <el-dropdown-item command="change-port">更改端口</el-dropdown-item>
-                    <el-dropdown-item command="reinstall" divided class="danger-menu-item">重新搭建</el-dropdown-item>
-                    <el-dropdown-item divided command="traffic-limit">设置流量配额</el-dropdown-item>
-                    <el-dropdown-item command="reset-traffic">清零流量</el-dropdown-item>
-                    <el-dropdown-item command="update-ssh">更新SSH凭据</el-dropdown-item>
-                  </template>
-                  <template v-else>
-                    <el-dropdown-item command="update-ssh">配置SSH凭据（转为远程管理）</el-dropdown-item>
-                    <el-dropdown-item command="traffic-limit" divided>设置流量配额</el-dropdown-item>
-                    <el-dropdown-item command="reset-traffic">清零流量</el-dropdown-item>
-                  </template>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </div>
-          <div class="selfhost-node-grid">
-            <div class="selfhost-node-item">
-              <span class="detail-label">协议</span>
-              <span class="detail-value">{{ n.protocol_display || n.protocol || '-' }}</span>
-            </div>
-            <div class="selfhost-node-item">
-              <span class="detail-label">服务器</span>
-              <span class="detail-value">{{ n.ssh_host || n.domain || '-' }}<template v-if="n.ssh_port">:{{ n.ssh_port }}</template></span>
-            </div>
-            <div class="selfhost-node-item">
-              <span class="detail-label">监听端口</span>
-              <span class="detail-value">{{ n.port || '-' }}</span>
-            </div>
-            <div class="selfhost-node-item">
-              <span class="detail-label">上行流量</span>
-              <span class="detail-value">{{ formatBytes(n.traffic_up) }}</span>
-            </div>
-            <div class="selfhost-node-item">
-              <span class="detail-label">下行流量</span>
-              <span class="detail-value">{{ formatBytes(n.traffic_down) }}</span>
-            </div>
-            <div class="selfhost-node-item">
-              <span class="detail-label">最近心跳</span>
-              <span class="detail-value">{{ formatTime(n.last_heartbeat_at) }}</span>
-            </div>
-            <div class="selfhost-node-item">
-              <span class="detail-label">SSH</span>
-              <span class="detail-value">{{ n.ssh_host ? n.ssh_user + '@' + n.ssh_host + ':' + (n.ssh_port || 22) : '手动模式' }}</span>
-            </div>
-            <div class="selfhost-node-item">
-              <span class="detail-label">创建时间</span>
-              <span class="detail-value">{{ formatTime(n.created_at) }}</span>
-            </div>
-          </div>
-          <!-- 流量配额（节点级） -->
-          <div v-if="n.traffic_limit_enabled" class="traffic-limit-bar">
-            <div class="traffic-limit-head">
-              <span class="detail-label">节点流量配额</span>
-              <span class="detail-value">{{ formatBytes(n.traffic_up + n.traffic_down) }} / {{ formatBytes(n.traffic_limit_bytes) }}</span>
-            </div>
-            <el-progress
-              :percentage="trafficPercent(n)"
-              :color="trafficColor(n)"
-              :stroke-width="8"
-            />
-            <div class="traffic-limit-tip">已用 {{ trafficPercent(n) }}%，超过 100% 将自动屏蔽</div>
-          </div>
-          <!-- 分配客户（客户独享节点配额） -->
-          <div v-if="n.assignments && n.assignments.length" class="assignments-section">
-            <div class="assignments-head">
-              <span class="detail-label">分配客户</span>
-              <el-button size="small" text bg @click="loadAssignments(n)">刷新</el-button>
-            </div>
-            <div v-for="a in n.assignments" :key="a.user_id" class="assignment-row">
-              <div class="assignment-user">
-                <span class="assignment-name">{{ a.username }}</span>
-                <span class="assignment-email">{{ a.email }}</span>
+        <el-table
+          v-else
+          ref="selfHostTableRef"
+          :data="selfHostNodes"
+          v-loading="selfHostLoading"
+          class="data-table selfhost-table"
+          row-key="id"
+          @selection-change="onSelfHostSelectionChange"
+        >
+          <el-table-column type="selection" width="44" />
+          <el-table-column label="节点" min-width="180">
+            <template #default="{ row }">
+              <div class="node-name-cell">
+                <span class="node-name-text">{{ row.name || '-' }}</span>
+                <span class="node-name-tags">
+                  <el-tag size="small" effect="plain">{{ row.protocol_display || row.protocol || '-' }}</el-tag>
+                  <el-tag v-if="row.deploy_mode === 'multi'" size="small" type="info" effect="plain">多协议</el-tag>
+                </span>
               </div>
-              <div class="assignment-quota">
-                <template v-if="a.traffic_limit_enabled">
-                  <el-progress
-                    :percentage="assignmentPercent(a)"
-                    :color="trafficColor(a)"
-                    :stroke-width="6"
-                    class="assignment-progress"
-                  />
-                  <span class="assignment-quota-text">{{ formatBytes(a.traffic_used) }} / {{ formatBytes(a.traffic_limit_bytes) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="92" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="selfHostStatusTypeMap[row.status] || 'info'" effect="light">{{ selfHostStatusMap[row.status] || row.status }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="启用" width="70" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.is_active ? 'success' : 'danger'" effect="plain">{{ row.is_active ? '是' : '否' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="服务器" min-width="170" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span>{{ row.domain || row.ssh_host || '-' }}</span>
+              <span v-if="row.port" class="sub-text">:{{ row.port }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="流量 ↑/↓" width="150">
+            <template #default="{ row }">
+              <span class="traffic-inline">{{ formatBytes(row.traffic_up) }} / {{ formatBytes(row.traffic_down) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="最近心跳" width="145">
+            <template #default="{ row }">
+              <span :class="{ 'sub-text': !row.last_heartbeat_at }">{{ formatTime(row.last_heartbeat_at) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="170" fixed="right">
+            <template #default="{ row }">
+              <el-button size="small" type="primary" plain @click="openSelfHostLink(row)">链接</el-button>
+              <el-dropdown trigger="click" @command="(cmd) => onSelfHostManage(row, cmd)">
+                <el-button size="small" text bg :loading="managingSelfHostId === row.id">
+                  管理<el-icon><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <template v-if="row.ssh_host">
+                      <el-dropdown-item command="status">查看远程状态</el-dropdown-item>
+                      <el-dropdown-item command="reset" divided>重置节点（重新生成UUID）</el-dropdown-item>
+                      <el-dropdown-item command="change-password">更改密码</el-dropdown-item>
+                      <el-dropdown-item command="change-port">更改端口</el-dropdown-item>
+                      <el-dropdown-item command="reinstall" divided class="danger-menu-item">重新搭建</el-dropdown-item>
+                      <el-dropdown-item divided command="traffic-limit">设置流量配额</el-dropdown-item>
+                      <el-dropdown-item command="reset-traffic">清零流量</el-dropdown-item>
+                      <el-dropdown-item command="update-ssh">更新SSH凭据</el-dropdown-item>
+                    </template>
+                    <template v-else>
+                      <el-dropdown-item command="update-ssh">配置SSH凭据（转为远程管理）</el-dropdown-item>
+                      <el-dropdown-item command="traffic-limit" divided>设置流量配额</el-dropdown-item>
+                      <el-dropdown-item command="reset-traffic">清零流量</el-dropdown-item>
+                    </template>
+                  </el-dropdown-menu>
                 </template>
-                <span v-else class="assignment-noquota">无限流量</span>
+              </el-dropdown>
+            </template>
+          </el-table-column>
+          <el-table-column type="expand" width="1">
+            <template #default="{ row }">
+              <div class="selfhost-expand">
+                <div class="expand-grid">
+                  <div class="expand-item"><span class="detail-label">服务器</span><span class="detail-value">{{ row.ssh_host || row.domain || '-' }}<template v-if="row.ssh_port">:{{ row.ssh_port }}</template></span></div>
+                  <div class="expand-item"><span class="detail-label">监听端口</span><span class="detail-value">{{ row.port || '-' }}</span></div>
+                  <div class="expand-item"><span class="detail-label">SSH</span><span class="detail-value">{{ row.ssh_host ? (row.ssh_user || 'root') + '@' + row.ssh_host + ':' + (row.ssh_port || 22) : '手动模式' }}</span></div>
+                  <div class="expand-item"><span class="detail-label">创建时间</span><span class="detail-value">{{ formatTime(row.created_at) }}</span></div>
+                </div>
+                <div v-if="row.traffic_limit_enabled" class="traffic-limit-bar">
+                  <div class="traffic-limit-head">
+                    <span class="detail-label">节点流量配额</span>
+                    <span class="detail-value">{{ formatBytes(row.traffic_up + row.traffic_down) }} / {{ formatBytes(row.traffic_limit_bytes) }}</span>
+                  </div>
+                  <el-progress :percentage="trafficPercent(row)" :color="trafficColor(row)" :stroke-width="8" />
+                  <div class="traffic-limit-tip">已用 {{ trafficPercent(row) }}%，超过 100% 将自动屏蔽</div>
+                </div>
+                <div v-if="row.assignments && row.assignments.length" class="assignments-section">
+                  <div class="assignments-head">
+                    <span class="detail-label">分配客户</span>
+                    <el-button size="small" text bg @click="loadAssignments(row)">刷新</el-button>
+                  </div>
+                  <div v-for="a in row.assignments" :key="a.user_id" class="assignment-row">
+                    <div class="assignment-user">
+                      <span class="assignment-name">{{ a.username }}</span>
+                      <span class="assignment-email">{{ a.email }}</span>
+                    </div>
+                    <div class="assignment-quota">
+                      <template v-if="a.traffic_limit_enabled">
+                        <el-progress :percentage="assignmentPercent(a)" :color="trafficColor(a)" :stroke-width="6" class="assignment-progress" />
+                        <span class="assignment-quota-text">{{ formatBytes(a.traffic_used) }} / {{ formatBytes(a.traffic_limit_bytes) }}</span>
+                      </template>
+                      <span v-else class="assignment-noquota">无限流量</span>
+                    </div>
+                    <el-button size="small" link type="primary" @click="setAssignmentQuota(row, a)">设配额</el-button>
+                  </div>
+                </div>
               </div>
-              <el-button size="small" link type="primary" @click="setAssignmentQuota(n, a)">设配额</el-button>
-            </div>
-          </div>
-        </div>
+            </template>
+          </el-table-column>
+        </el-table>
         <!-- 分页（与其它管理页一致的公共组件） -->
         <div class="pagination-wrapper" v-if="selfHostPagination.total > 0">
           <PaginationBar
@@ -412,7 +440,7 @@ defineOptions({ name: 'AdminSelfHostNodes' })
 
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
-import { Promotion, DocumentCopy, Refresh, Setting, Operation, ArrowDown, Connection, VideoPlay, Edit } from '@element-plus/icons-vue'
+import { Promotion, DocumentCopy, Refresh, RefreshLeft, Search, Setting, Operation, ArrowDown, Connection, VideoPlay, Edit } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { formatDateTimeSafe } from '@/utils/date'
 import { formatFileSize, unwrapList } from '@/utils/format'
@@ -436,12 +464,45 @@ const formatTime = (t) => {
   return formatDateTimeSafe(t, 'YYYY-MM-DD HH:mm', '-')
 }
 
+// 搜索（与其他管理列表一致：后端过滤 + 重置回第一页）
+const selfHostSearch = ref('')
+const selfHostTableRef = ref(null)
+const onSelfHostSelectionChange = (rows) => { selectedSelfHost.value = rows || [] }
+const applySelfHostSearch = () => {
+  selfHostPagination.page = 1
+  loadSelfHostNodes()
+}
+const resetSelfHostSearch = () => {
+  selfHostSearch.value = ''
+  selfHostPagination.page = 1
+  loadSelfHostNodes()
+}
+
+// 打开节点分享链接（与专线节点列表同一接口）
+const openSelfHostLink = async (row) => {
+  try {
+    const res = await adminAPI.getCustomNodeLink(row.id)
+    if (res.data?.success && res.data.data?.link) {
+      ElMessageBox.alert(
+        `<div style="word-break:break-all;font-family:monospace;font-size:12px;line-height:1.6">${res.data.data.link}</div>`,
+        '节点链接',
+        { dangerouslyUseHTMLString: true, confirmButtonText: '关闭' }
+      )
+    } else {
+      ElMessage.warning(res.data?.data?.link || '暂时无法生成链接')
+    }
+  } catch (e) {
+    ElMessage.error('获取链接失败')
+  }
+}
+
 const loadSelfHostNodes = async () => {
   selfHostLoading.value = true
   try {
     const res = await adminAPI.getSelfHostNodes({
       page: selfHostPagination.page,
       page_size: selfHostPagination.size,
+      q: selfHostSearch.value || undefined,
     })
     if (res.data?.success) {
       selfHostNodes.value = unwrapList(res)
@@ -972,6 +1033,67 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 与其它管理列表一致的筛选条（搜索 + 查询 + 重置） */
+.list-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.list-search-input {
+  flex: 1 1 260px;
+  max-width: 420px;
+}
+
+/* 表格内紧凑展示 */
+.selfhost-table .node-name-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.selfhost-table .node-name-text {
+  font-weight: 600;
+  color: #303133;
+}
+.selfhost-table .node-name-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.selfhost-table .traffic-inline {
+  font-variant-numeric: tabular-nums;
+  color: #606266;
+  font-size: 12px;
+}
+.selfhost-table .sub-text {
+  color: #909399;
+}
+
+/* 展开行：流量配额 / 分配客户 / SSH 信息 */
+.selfhost-expand {
+  padding: 4px 12px 10px;
+}
+.expand-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 6px 16px;
+  margin-bottom: 8px;
+}
+.expand-item {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+}
+.expand-item .detail-label {
+  color: #909399;
+  flex: 0 0 64px;
+}
+.expand-item .detail-value {
+  color: #303133;
+  word-break: break-all;
+}
+
 .admin-selfhost-nodes {
   padding: 12px;
 }
