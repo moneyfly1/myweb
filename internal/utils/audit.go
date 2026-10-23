@@ -615,16 +615,15 @@ func CreateSystemErrorLog(c *gin.Context, statusCode int, message string, err er
 		AfterData:         sql.NullString{Valid: false},
 	}
 
-	errDetail := err
 	if saveErr := db.Create(&auditLog).Error; saveErr != nil {
 		if AppLogger != nil {
-			AppLogger.Error("[系统错误日志保存失败] %s: %v, 错误: %v", message, errDetail, saveErr)
+			AppLogger.Error("[系统错误日志保存失败] %s: %v, 错误: %v", message, err, saveErr)
 		}
 	} else {
 		if AppLogger != nil {
 			errorMsg := fmt.Sprintf("[系统错误] 状态码:%d | 路径:%s | 错误:%s", statusCode, c.Request.URL.Path, message)
-			if errDetail != nil {
-				errorMsg += fmt.Sprintf(" | 详细错误:%v", errDetail)
+			if err != nil {
+				errorMsg += fmt.Sprintf(" | 详细错误:%v", err)
 			}
 			AppLogger.Error("%s", errorMsg)
 		}

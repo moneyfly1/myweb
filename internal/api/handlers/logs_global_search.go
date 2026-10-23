@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -382,13 +383,9 @@ func GetGlobalLogSearch(c *gin.Context) {
 
 	wg.Wait()
 
-	// 合并排序（时间倒序；同一时刻按来源稳定排序）
+	// 合并排序（时间倒序；sort.SliceStable 保持同一时刻的来源顺序）
 	items := out
-	for i := 1; i < len(items); i++ {
-		for j := i; j > 0 && items[j].unix > items[j-1].unix; j-- {
-			items[j], items[j-1] = items[j-1], items[j]
-		}
-	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].unix > items[j].unix })
 
 	total := len(items)
 	start := (page - 1) * limit

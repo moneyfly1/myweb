@@ -403,6 +403,9 @@ func RefreshToken(c *gin.Context) {
 
 	if claims.ExpiresAt != nil {
 		_ = models.AddToBlacklist(db, tokenHash, user.ID, claims.ExpiresAt.Time)
+		// 同步进缓存：否则该 token 若曾被查过「未拉黑」，本地缓存要等 TTL 到期才失效，
+		// 刷新轮换后的旧 access token 在这段时间里还能继续用。
+		middleware.AddTokenToBlacklistCache(tokenHash)
 	}
 
 	accessToken, err := utils.CreateAccessToken(user.ID, user.Email, user.IsAdmin)
@@ -1172,14 +1175,7 @@ func ForgotPassword(c *gin.Context) {
 		"用户请求密码重置验证码",
 		map[string]interface{}{"email": req.Email, "ip": ipAddress})
 
-	b := make([]byte, 4)
-	if _, err := rand.Read(b); err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "生成验证码失败", err)
-		return
-	}
-	codeInt := int(b[0])<<24 | int(b[1])<<16 | int(b[2])<<8 | int(b[3])
-	codeInt = 100000 + (codeInt % 900000)
-	code := fmt.Sprintf("%06d", codeInt)
+	code := generateVerificationCode()
 
 	expiresAt := utils.GetBeijingTime().Add(10 * time.Minute)
 
@@ -1400,14 +1396,9 @@ func SendVerificationCode(c *gin.Context) {
 
 	db := database.GetDB()
 
-	if req.Type == "email" {
-		var registrationConfig models.SystemConfig
-		if err := db.Where("key = ? AND category = ?", "registration_enabled", "registration").First(&registrationConfig).Error; err == nil {
-			if registrationConfig.Value != "true" {
-				utils.ErrorResponse(c, http.StatusForbidden, "注册功能已禁用，请联系管理员", nil)
-				return
-			}
-		}
+	if req.Type == "email" && !registrationEnabled(db) {
+		utils.ErrorResponse(c, http.StatusForbidden, "注册功能已禁用，请联系管理员", nil)
+		return
 	}
 
 	code := generateVerificationCode()

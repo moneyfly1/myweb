@@ -275,16 +275,7 @@ func hostOfBase(base string) string {
 }
 
 func GetDomainFromDB(db *gorm.DB) string {
-	if db == nil {
-		return ""
-	}
-	var cfg models.SystemConfig
-	if err := db.Where("key = ? AND category = ?", "domain_name", "general").First(&cfg).Error; err == nil {
-		return strings.TrimSpace(cfg.Value)
-	} else if err := db.Where("key = ? AND category = ?", "domain_name", "system").First(&cfg).Error; err == nil {
-		return strings.TrimSpace(cfg.Value)
-	}
-	return ""
+	return strings.TrimSpace(configValueOf(db, "domain_name"))
 }
 
 func FormatDomainURL(domain string) string {
@@ -458,10 +449,6 @@ func ParseIP(ip string) string {
 		if parsedIPv4 := net.ParseIP(ipv4); parsedIPv4 != nil && parsedIPv4.To4() != nil {
 			return ipv4
 		}
-	}
-
-	if parsedIP.To4() != nil {
-		return ip
 	}
 
 	return ip

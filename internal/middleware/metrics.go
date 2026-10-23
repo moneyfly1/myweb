@@ -57,7 +57,9 @@ func MetricsMiddleware() gin.HandlerFunc {
 
 		route := c.FullPath()
 		if route == "" {
-			route = c.Request.URL.Path // 未匹配路由，回退原始路径
+			// 未匹配路由（含扫描器随机路径）不落原始路径：否则每条 404 都会新建一个
+			// route 标签，指标基数无上限。
+			route = "unmatched"
 		}
 		status := strconv.Itoa(c.Writer.Status())
 		httpRequestsTotal.WithLabelValues(c.Request.Method, route, status).Inc()

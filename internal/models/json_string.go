@@ -3,7 +3,6 @@ package models
 import (
 	"database/sql/driver"
 	"encoding/json"
-	"errors"
 	"fmt"
 )
 
@@ -84,9 +83,3 @@ func (s JSONString) Value() (driver.Value, error) {
 
 // IsZero 便于在需要时判断
 func (s JSONString) IsZero() bool { return !s.Valid || s.String == "" }
-
-// 确保实现了标准接口
-var (
-	_ driver.Valuer = JSONString{}
-	_ error         = errors.New("")
-)

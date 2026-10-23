@@ -249,15 +249,12 @@ func main() {
 	}
 
 	// ---------- 损坏修复（--repair） ----------
-	if repairMode && tableExists(db, dialect, "sqlite_master") == false {
-		// sqlite_master 都读不到说明库损坏
-		report("fail", "数据库文件损坏，尝试自动修复...")
-		if repairCorruptSQLite() {
-			report("ok", "已从最近备份自动修复，请重新运行预检确认")
-		} else {
-			report("fail", "自动修复失败，请人工处理或使用 install.sh 选项13 回退")
-		}
-	} else if repairMode && dialect == "sqlite" {
+	//
+	// 注意：这里**不能**用 tableExists(..., "sqlite_master") 判断损坏 ——
+	// sqlite_master 自身不会被记进 sqlite_master，该查询恒为 0，
+	// 于是任何一次 --repair 都会把健康库当成"损坏"：留底后拿旧备份覆盖，
+	// 等于把线上数据回滚。损坏与否只能看 sqlite_master 能否读出来。
+	if repairMode && dialect == "sqlite" {
 		var n int
 		err := db.Raw("SELECT COUNT(*) FROM sqlite_master").Scan(&n).Error
 		if err != nil {

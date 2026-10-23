@@ -945,7 +945,11 @@ export default {
         batchTestTimer = null
       }
     }
-    onBeforeUnmount(stopBatchTestPoll)
+    // 离开页面时同时停掉两个轮询，避免定时器泄漏（在已卸载组件上继续发请求）
+    onBeforeUnmount(() => {
+      stopBatchTestPoll()
+      stopSelfHostPolling()
+    })
     const pollBatchTest = (jobId) => {
       stopBatchTestPoll()
       const startedAt = Date.now()

@@ -217,11 +217,10 @@ func LoginRateLimitMiddleware() gin.HandlerFunc {
 		allowed, resetAt, locked := loginRateLimiter.Check(key)
 
 		rate, lockDuration := loginRateLimiter.GetConfig()
-		lockMinutes := int(lockDuration.Minutes())
-		rateLimitStr := fmt.Sprintf("%d", rate)
-		lockStr := fmt.Sprintf("%d分钟", lockMinutes)
+		rateLimitStr := strconv.Itoa(rate)
 
 		if !allowed {
+			lockStr := fmt.Sprintf("%d分钟", int(lockDuration.Minutes()))
 			if locked {
 				utils.CreateSecurityLog(c, "ip_blocked", "HIGH",
 					fmt.Sprintf("IP被封禁: %s (登录失败次数过多，已锁定%s)", key, lockStr),

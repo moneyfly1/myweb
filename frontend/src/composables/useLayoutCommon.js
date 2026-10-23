@@ -69,7 +69,10 @@ export function useLayoutCommon({ storageKey = 'sidebarCollapsed', initThemeLoad
   const loadUnreadCount = async (apiCall) => {
     if (unreadCountRequest) return unreadCountRequest
     try {
-      unreadCountRequest = (apiCall || ticketAPI.getUnreadCount())()
+      // 注意优先级：不能写成 (apiCall || ticketAPI.getUnreadCount())() —— 那样会把
+      // ticketAPI 返回的 Promise 再当函数调用一次，抛 TypeError 并被下面的 catch 吞掉，
+      // 未读角标因此恒为 0，还每 30 秒白跑一次请求。
+      unreadCountRequest = typeof apiCall === 'function' ? apiCall() : ticketAPI.getUnreadCount()
       const response = await unreadCountRequest
       if (response.data && response.data.success) {
         unreadCount.value = response.data.data?.count || 0

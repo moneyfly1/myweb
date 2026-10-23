@@ -7,6 +7,8 @@ import (
 	"cboard-go/internal/utils"
 	"net/http"
 	"os"
+	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -48,8 +50,11 @@ func SetupRouter() *gin.Engine {
 	r.GET("/static/*filepath", serveImmutableAsset)
 	r.StaticFile("/favicon.ico", "./frontend/dist/favicon.ico")
 	r.StaticFile("/vite.svg", "./frontend/dist/vite.svg")
-	// 上传文件静态访问（工单附件等存于 uploads/）
-	r.Static("/uploads", "./uploads")
+	// 上传文件静态访问：只放行工单附件与站点图片等公开资源。
+	// 不能对 ./uploads 整目录 r.Static —— 该目录下还有数据库备份（backups/*.db）、
+	// 内核临时配置（config/）与仓库同步文件（repo_sync/），整目录暴露等于把
+	// 全站数据库备份挂到公网可下载地址。
+	r.GET("/uploads/*filepath", serveUploadFile)
 
 	// GitHub 仓库同步的节点文件公开访问（维护模式下仍可用）
 	r.GET("/repo-sync/*filepath", handlers.ServeRepoSyncFile)
@@ -701,4 +706,36 @@ func trustedProxiesForGin() []string {
 		}
 	}
 	return parts
+}
+
+// serveUploadFile 提供 uploads 下的公开文件，拒绝敏感子目录与数据库文件。
+func serveUploadFile(c *gin.Context) {
+	rel := strings.TrimPrefix(path.Clean("/"+c.Param("filepath")), "/")
+	if rel == "" || rel == "." || strings.Contains(rel, "..") || !isPublicUploadPath(rel) {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	root := "uploads"
+	if cfg := config.AppConfig; cfg != nil && cfg.UploadDir != "" {
+		root = cfg.UploadDir
+	}
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.File(filepath.Join(root, filepath.FromSlash(rel)))
+}
+
+// isPublicUploadPath 上传目录的公开白名单：敏感子目录与数据库/备份文件一律不公开。
+func isPublicUploadPath(rel string) bool {
+	first := rel
+	if i := strings.IndexByte(rel, '/'); i >= 0 {
+		first = rel[:i]
+	}
+	switch first {
+	case "backups", "config", "repo_sync", "geoip", "logs", ".selfcheck":
+		return false
+	}
+	switch strings.ToLower(filepath.Ext(rel)) {
+	case ".db", ".sqlite", ".sqlite3", ".db3", ".bak", ".log":
+		return false
+	}
+	return true
 }

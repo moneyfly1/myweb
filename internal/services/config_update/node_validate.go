@@ -224,11 +224,6 @@ func NormalizeNodeType(t string) string {
 	return t
 }
 
-// IsMihomoSupportedType 该类型是否在内核协议白名单内
-func IsMihomoSupportedType(t string) bool {
-	return NormalizeNodeType(t) != ""
-}
-
 // IsClashInfoNode 判定是否为面板注入的占位提示节点（不参与校验）
 func isPlaceholderInfoNode(n *ProxyNode) bool {
 	return n != nil && n.Type == "ss" && n.Server == "baidu.com" && n.Port == 1234

@@ -404,6 +404,10 @@
                           QQ
                         </el-button>
                       </el-tooltip>
+                      <el-button size="small" type="success" plain @click="openAssignNodeDialog(scope.row)">
+                        <el-icon><Share /></el-icon>
+                        分配节点
+                      </el-button>
                       <el-button size="small" type="danger" @click="deleteUser(scope.row)">
                         <el-icon><Delete /></el-icon>
                         删除
@@ -532,6 +536,10 @@
               <el-button type="warning" @click="unlockUserLogin(item)" class="mobile-action-btn">
                 <el-icon><Unlock /></el-icon>
                 解除限制
+              </el-button>
+              <el-button type="success" plain @click="openAssignNodeDialog(item)" class="mobile-action-btn">
+                <el-icon><Share /></el-icon>
+                分配节点
               </el-button>
               <el-button type="danger" @click="deleteUser(item)" class="mobile-action-btn">
                 <el-icon><Delete /></el-icon>
@@ -854,7 +862,7 @@ import { unwrapList } from '@/utils/format'
 import {
   Plus, Edit, Delete, Search, Refresh, Switch, Key, Close, Filter,
   Connection, Monitor, Unlock, Check, Message, Bell, Loading, CircleCheck, View,
-  ChatDotRound
+  ChatDotRound, Share
 } from '@element-plus/icons-vue'
 import { qqFromEmail, openQQChat, copyQQ } from '@/utils/qq'
 import { adminAPI } from '@/utils/api'
@@ -1555,6 +1563,19 @@ export default {
         loadingCustomNodes.value = false
       }
     }
+    // 打开「分配专线节点」：此前只有弹窗模板，没有任何入口（loadAvailableNodes 也从未被调用），
+    // 导致下拉框恒为空、整个功能不可用。
+    const openAssignNodeDialog = async (user) => {
+      if (!user?.id) return
+      selectedUser.value = { user: { id: user.id, username: user.username, email: user.email } }
+      selectedNodeId.value = null
+      nodeSearchKeyword.value = ''
+      searchedNodes.value = []
+      assignSubscriptionType.value = 'both'
+      assignDeviceLimitMode.value = 'system'
+      showAssignNodeDialog.value = true
+      await loadAvailableNodes()
+    }
     const loadAvailableNodes = async () => {
       try {
         const response = await adminAPI.getCustomNodes({ page: 1, page_size: 1000 })
@@ -1921,13 +1942,6 @@ export default {
       showUserDialog,
       editingUser,
       selectedUser,
-      activeBalanceTab,
-      detailActiveTab,
-      userDevices,
-      loadingDevices,
-      deletingDevice,
-      userCustomNodes,
-      loadingCustomNodes,
       showAssignNodeDialog,
       availableNodes,
       searchedNodes,
@@ -1960,26 +1974,11 @@ export default {
       handleCurrentChange,
       viewUserDetails,
       viewUserBalance,
-      loadUserDevices,
-      deleteDevice,
-      loadUserCustomNodes,
-      loadAvailableNodes,
+      loadAvailableNodes, openAssignNodeDialog,
       handleNodeSearch,
       handleNodeSearchClear,
       assignCustomNode,
-      unassignCustomNode,
       handleCustomNodesUpdated,
-      getDeviceTypeTag,
-      getDeviceTypeText,
-      getResetTypeTag,
-      getResetTypeText,
-      getResetByTag,
-      getResetByText,
-      getOrderStatusType,
-      getOrderStatusText,
-      getPaymentMethodText,
-      copyToClipboard,
-      formatLocation,
       editUser,
       deleteUser,
       toggleUserStatus,
@@ -2009,7 +2008,6 @@ export default {
       formatDeviceLimit,
       settingsStore,
       mobileUserFields,
-      handleUserSaved,
       saveNotes,
       debounceSaveNotes,
       defaultSort,

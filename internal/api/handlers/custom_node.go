@@ -612,17 +612,22 @@ func ListCustomNodeSubscriptions(c *gin.Context) {
 		NodeCount int64  `json:"node_count"`
 	}
 	items := make([]subItem, 0)
-	var subURLs []string
+	// 一条 GROUP BY 查出各订阅的节点数（此前是「查 URL 列表 + 每个 URL 再 COUNT」的 N+1）
+	var rows []struct {
+		SourceURL string `gorm:"column:source_url"`
+		NodeCount int64  `gorm:"column:node_count"`
+	}
 	if err := db.Model(&models.CustomNode{}).
+		Select("source_url, COUNT(*) AS node_count").
 		Where("source = ? AND source_url <> ''", "subscription").
-		Distinct("source_url").Pluck("source_url", &subURLs).Error; err != nil {
+		Group("source_url").
+		Order("source_url").
+		Scan(&rows).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "查询订阅列表失败", err)
 		return
 	}
-	for _, u := range subURLs {
-		var cnt int64
-		db.Model(&models.CustomNode{}).Where("source_url = ?", u).Count(&cnt)
-		items = append(items, subItem{URL: u, NodeCount: cnt})
+	for _, r := range rows {
+		items = append(items, subItem{URL: r.SourceURL, NodeCount: r.NodeCount})
 	}
 	utils.SuccessResponse(c, http.StatusOK, "", gin.H{"list": items, "total": len(items)})
 }
@@ -1094,9 +1099,7 @@ func UpdateCustomNode(c *gin.Context) {
 	if req.Name != "" {
 		node.Name = req.Name
 	}
-	if req.DisplayName != "" || req.DisplayName == "" {
-		node.DisplayName = req.DisplayName
-	}
+	node.DisplayName = req.DisplayName
 	if req.Protocol != "" {
 		node.Protocol = req.Protocol
 	}
@@ -1180,7 +1183,11 @@ func DeleteCustomNode(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除失败: "+err.Error(), err)
 		return
 	}
-	utils.CreateAuditLogSimple(c, "delete_custom_node", "custom_node", node.ID, fmt.Sprintf("管理员操作: 删除专线节点 %s，同时取消 %d 个用户的分配"+(map[bool]string{true: "，并联动删除 %d 个自建子节点"})[siblingCount > 0], node.Name, len(affectedUserIDs), siblingCount))
+	detail := fmt.Sprintf("管理员操作: 删除专线节点 %s，同时取消 %d 个用户的分配", node.Name, len(affectedUserIDs))
+	if siblingCount > 0 {
+		detail += fmt.Sprintf("，并联动删除 %d 个自建子节点", siblingCount)
+	}
+	utils.CreateAuditLogSimple(c, "delete_custom_node", "custom_node", node.ID, detail)
 	for _, uid := range affectedUserIDs {
 		clearUserCustomNodeCache(uid)
 		resetSpecialNodeFieldsIfNoCustomNodes(db, uid)
