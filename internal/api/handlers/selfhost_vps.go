@@ -944,7 +944,6 @@ func SelfHostBatchManage(c *gin.Context) {
 	utils.ErrorResponse(c, http.StatusBadRequest, "未知的管理动作: "+req.Action, nil)
 }
 
-// replaceUUIDInConfig 替换 sing-box 配置中的 UUID（vless/vmess 用户字段）。
 // syncNodeConfigField 更新节点 DB 中 config JSON 的指定字段（Port/UUID/Password），
 // 确保订阅生成的链接与实际生效的节点配置一致（改端口/重置/改密码后必须调用）。
 func syncNodeConfigField(db *gorm.DB, node *models.CustomNode, field string, value interface{}) {

@@ -94,9 +94,12 @@ type ConfigUpdateService struct {
 	runningMutex sync.Mutex
 	// stopCh 管理员「停止任务」信号：任务体在检查点读取，关闭即退出。
 	// nil 表示没有运行中的任务。
-	stopCh    chan struct{}
-	siteURL   string
-	supportQQ string
+	stopCh chan struct{}
+	// configRefreshedAt 上次同步系统配置的时间：NewConfigUpdateService 每个订阅请求都会调，
+	// 不加节流就是每请求 3 次 system_configs 查询。
+	configRefreshedAt time.Time
+	siteURL           string
+	supportQQ         string
 	// deviceLimitSoft 设备数超限时是否走"软限制"（**默认 false = 硬限制**）：
 	// false = 硬限制（默认）：超限设备只拿到错误节点，连不上 —— 用户明确要求
 	//         "上限 5 台时第 6 台才拒绝"，所以默认必须是硬的；
@@ -194,9 +197,22 @@ func NewConfigUpdateService() *ConfigUpdateService {
 		}
 	})
 
-	// 每次调用自动刷新并同步最新系统配置（configMutex 保护）
-	globalService.refreshSystemConfig()
+	globalService.refreshSystemConfigIfStale()
 	return globalService
+}
+
+// systemConfigTTL 系统配置在内存里的最短复用时间（后台改配置 30 秒内生效）。
+const systemConfigTTL = 30 * time.Second
+
+// refreshSystemConfigIfStale 距上次同步超过 TTL 才真正查库。
+func (s *ConfigUpdateService) refreshSystemConfigIfStale() {
+	s.configMutex.RLock()
+	fresh := !s.configRefreshedAt.IsZero() && time.Since(s.configRefreshedAt) < systemConfigTTL
+	s.configMutex.RUnlock()
+	if fresh {
+		return
+	}
+	s.refreshSystemConfig()
 }
 
 func (s *ConfigUpdateService) refreshSystemConfig() {
@@ -227,6 +243,7 @@ func (s *ConfigUpdateService) refreshSystemConfig() {
 		s.deviceLimitSoft = strings.TrimSpace(strings.ToLower(limitMode.Value)) == "soft"
 	}
 	s.deviceLimitModeLoaded = true
+	s.configRefreshedAt = time.Now()
 }
 
 // getProtocolFilter reads allowed protocols for a subscription type from DB.
@@ -622,6 +639,14 @@ func (s *ConfigUpdateService) logUpdateStats(stats updateStats, success int) {
 }
 
 func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[string]interface{}, filterKeywords []string, urlFilterFlags []bool) ([]nodeWithOrder, updateStats) {
+	// 校验事件攒起来一次性落库：此前每个节点单独 INSERT 一次，
+	// 上千节点的订阅一轮同步就是上千条单行写。
+	var validationEvents []NodeValidationEvent
+	defer func() {
+		if len(validationEvents) > 0 {
+			RecordNodeValidationEvents(s.db, validationEvents)
+		}
+	}()
 	var nodesWithOrder []nodeWithOrder
 	stats := updateStats{}
 	stats.aliveSources = make(map[int]bool)
@@ -683,13 +708,15 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 				if scheme := knownUnsupportedScheme(result.Link); scheme != "" {
 					stats.invalidNodes++
 					counts.Invalid++
-					s.recordNodeValidationEvents([]NodeValidationEvent{{
+					ev := NodeValidationEvent{
 						Event:    models.NodeValidationDroppedAtIngest,
 						Source:   url,
 						NodeName: linkDisplayName(result.Link),
 						NodeType: scheme,
 						Reason:   ReasonUnsupportedType + ": mihomo 不支持 " + scheme + " 协议，保留它会让整份配置失效",
-					}})
+					}
+					logNodeValidationEvent(ev)
+					validationEvents = append(validationEvents, ev)
 					continue
 				}
 				stats.parseFailed++
@@ -710,15 +737,15 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 			// 可安全修正的问题（如 ss 2022 密钥被 URL 编码污染）先就地修正；
 			// 其余不合法节点在「入库之前」丢弃并落库原因，绝不进入配置生成。
 			if corrected, detail := NormalizeNodeName(result.Node); corrected {
-				s.recordNodeValidationEvents([]NodeValidationEvent{
-					NewNodeValidationEvent(models.NodeValidationCorrectedAtIngest, url, result.Node, ReasonNameSanitized, detail),
-				})
+				ev := NewNodeValidationEvent(models.NodeValidationCorrectedAtIngest, url, result.Node, ReasonNameSanitized, detail)
+				logNodeValidationEvent(ev)
+				validationEvents = append(validationEvents, ev)
 				s.warnf("🔧 已净化节点名: %s", detail)
 			}
 			if corrected, detail := NormalizeSS2022Key(result.Node); corrected {
-				s.recordNodeValidationEvents([]NodeValidationEvent{
-					NewNodeValidationEvent(models.NodeValidationCorrectedAtIngest, url, result.Node, ReasonCredentialURLDecoded, detail),
-				})
+				ev := NewNodeValidationEvent(models.NodeValidationCorrectedAtIngest, url, result.Node, ReasonCredentialURLDecoded, detail)
+				logNodeValidationEvent(ev)
+				validationEvents = append(validationEvents, ev)
 				s.warnf("🔧 已修正节点密钥编码: %s (%s)", result.Node.Name, detail)
 			}
 			if verr := ValidateProxyNode(result.Node); verr != nil {
@@ -728,9 +755,9 @@ func (s *ConfigUpdateService) processFetchedNodes(urls []string, nodes []map[str
 				if !ok {
 					ve = &NodeValidationError{Code: ReasonKernelInvalid, Detail: verr.Error()}
 				}
-				s.recordNodeValidationEvents([]NodeValidationEvent{
-					NewNodeValidationEvent(models.NodeValidationDroppedAtIngest, url, result.Node, ve.Code, ve.Detail),
-				})
+				ev := NewNodeValidationEvent(models.NodeValidationDroppedAtIngest, url, result.Node, ve.Code, ve.Detail)
+				logNodeValidationEvent(ev)
+				validationEvents = append(validationEvents, ev)
 				continue
 			}
 

@@ -202,7 +202,9 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
 
-	if s.encryption == "ssl" {
+	var client *smtp.Client
+	switch s.encryption {
+	case "ssl":
 		tlsConfig := &tls.Config{
 			InsecureSkipVerify: false,
 			ServerName:         s.host,
@@ -213,55 +215,18 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 			return fmt.Errorf("SSL连接失败: %v", err)
 		}
 		defer conn.Close()
-
-		client, err := smtp.NewClient(conn, s.host)
-		if err != nil {
+		if client, err = smtp.NewClient(conn, s.host); err != nil {
 			return fmt.Errorf("创建SMTP客户端失败: %v", err)
 		}
-		defer client.Close()
-
-		if err = client.Auth(auth); err != nil {
-			return fmt.Errorf("SMTP认证失败: %v", err)
-		}
-
-		if err = client.Mail(s.from); err != nil {
-			return fmt.Errorf("设置发件人失败: %v", err)
-		}
-
-		if err = client.Rcpt(to); err != nil {
-			return fmt.Errorf("设置收件人失败: %v", err)
-		}
-
-		writer, err := client.Data()
-		if err != nil {
-			return fmt.Errorf("创建数据写入器失败: %v", err)
-		}
-
-		_, err = writer.Write([]byte(message))
-		if err != nil {
-			if closeErr := writer.Close(); closeErr != nil {
-				log.Printf("failed to close writer: %v", closeErr)
-			}
-			return fmt.Errorf("写入邮件内容失败: %v", err)
-		}
-
-		err = writer.Close()
-		if err != nil {
-			return fmt.Errorf("关闭数据写入器失败: %v", err)
-		}
-
-		return client.Quit()
-	} else if s.encryption == "tls" {
-		client, err := smtp.Dial(addr)
+	case "tls":
+		c, err := smtp.Dial(addr)
 		if err != nil {
 			return fmt.Errorf("连接SMTP服务器失败: %v", err)
 		}
-		defer client.Close()
-
+		client = c
 		if err = client.Hello("localhost"); err != nil {
 			return fmt.Errorf("发送EHLO失败: %v", err)
 		}
-
 		tlsConfig := &tls.Config{
 			InsecureSkipVerify: false,
 			ServerName:         s.host,
@@ -270,41 +235,35 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 		if err = client.StartTLS(tlsConfig); err != nil {
 			return fmt.Errorf("启动TLS失败: %v", err)
 		}
-
-		if err = client.Auth(auth); err != nil {
-			return fmt.Errorf("SMTP认证失败: %v", err)
-		}
-
-		if err = client.Mail(s.from); err != nil {
-			return fmt.Errorf("设置发件人失败: %v", err)
-		}
-
-		if err = client.Rcpt(to); err != nil {
-			return fmt.Errorf("设置收件人失败: %v", err)
-		}
-
-		writer, err := client.Data()
-		if err != nil {
-			return fmt.Errorf("创建数据写入器失败: %v", err)
-		}
-
-		_, err = writer.Write([]byte(message))
-		if err != nil {
-			if closeErr := writer.Close(); closeErr != nil {
-				log.Printf("failed to close writer: %v", closeErr)
-			}
-			return fmt.Errorf("写入邮件内容失败: %v", err)
-		}
-
-		err = writer.Close()
-		if err != nil {
-			return fmt.Errorf("关闭数据写入器失败: %v", err)
-		}
-
-		return client.Quit()
-	} else {
+	default:
 		return smtp.SendMail(addr, auth, s.from, []string{to}, []byte(message))
 	}
+	defer client.Close()
+
+	// SSL/TLS 建立连接之后完全同一条发送链路（此前这里两份逐行重复的实现）
+	if err := client.Auth(auth); err != nil {
+		return fmt.Errorf("SMTP认证失败: %v", err)
+	}
+	if err := client.Mail(s.from); err != nil {
+		return fmt.Errorf("设置发件人失败: %v", err)
+	}
+	if err := client.Rcpt(to); err != nil {
+		return fmt.Errorf("设置收件人失败: %v", err)
+	}
+	writer, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("创建数据写入器失败: %v", err)
+	}
+	if _, err = writer.Write([]byte(message)); err != nil {
+		if closeErr := writer.Close(); closeErr != nil {
+			log.Printf("failed to close writer: %v", closeErr)
+		}
+		return fmt.Errorf("写入邮件内容失败: %v", err)
+	}
+	if err = writer.Close(); err != nil {
+		return fmt.Errorf("关闭数据写入器失败: %v", err)
+	}
+	return client.Quit()
 }
 
 func (s *EmailService) getTemplateContent(templateName string, variables map[string]string, fallbackBuilder func() (string, string)) (string, string) {
