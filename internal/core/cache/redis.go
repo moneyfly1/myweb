@@ -348,13 +348,16 @@ redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3])
 return 1
 `
 
-// delWithGenerationScript 原子删除缓存并递增版本号
+// delWithGenerationScript 原子删除缓存并递增版本号。
+// 代际键带 7 天过期：否则每删一次就永久多一个键（数量与数据键同量级）。
 const delWithGenerationScript = `
 for i = 1, #KEYS do
   redis.call('DEL', KEYS[i])
-  redis.call('INCR', KEYS[i] .. ':gen')
+  local genKey = KEYS[i] .. ':gen'
+  redis.call('INCR', genKey)
+  redis.call('EXPIRE', genKey, 604800)
 end
-return 1
+return #KEYS
 `
 
 // Generation 读取缓存键的版本号（键不存在时为 0）。
@@ -443,6 +446,11 @@ func FlushAll() error {
 }
 
 // ClearPrefix 按本应用前缀删除匹配的键（pattern 不需要带前缀），返回删除数量。
+//
+// 重要：删除时**必须同时递增每个键的代际**（<key>:gen），否则会破坏防陈旧回填：
+// 场景是「管理员改节点 → 清缓存 → 某请求在改之前已经开始生成、改之后才写回」，
+// 只 DEL 不递增的话，那次写回的旧配置会通过代际校验、被重新塞进缓存最长一个 TTL，
+// 表现就是「改了节点，部分用户 10 分钟内仍拿到旧节点」。
 func ClearPrefix(pattern string) (int, error) {
 	client := GetRedisClient()
 	if client == nil || !redisReady.Load() {
@@ -459,23 +467,28 @@ func ClearPrefix(pattern string) (int, error) {
 			return deleted, err
 		}
 		if len(keys) > 0 {
-			// 任务队列（asynq）可能与前缀重叠，永远不删
-			keep := keys[:0]
+			batch := make([]string, 0, len(keys))
 			for _, key := range keys {
-				if strings.HasPrefix(strings.TrimPrefix(key, keyPrefix), "asynq:") {
+				trimmed := strings.TrimPrefix(key, keyPrefix)
+				// 任务队列（asynq）可能与前缀重叠，永远不删
+				if strings.HasPrefix(trimmed, "asynq:") {
 					continue
 				}
-				keep = append(keep, key)
+				// 代际键本身不参与“删除 + 递增”，否则会把 gen 越推越远、且无限累积
+				if strings.HasSuffix(trimmed, ":gen") {
+					continue
+				}
+				batch = append(batch, key)
 			}
-			if len(keep) > 0 {
+			if len(batch) > 0 {
 				opCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-				if err := client.Del(opCtx, keep...).Err(); err != nil {
+				if err := client.Eval(opCtx, delWithGenerationScript, batch).Err(); err != nil {
 					cancel()
 					markDown(err)
 					return deleted, err
 				}
 				cancel()
-				deleted += len(keep)
+				deleted += len(batch)
 			}
 		}
 		cursor = next
