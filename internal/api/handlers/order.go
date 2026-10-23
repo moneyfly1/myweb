@@ -40,45 +40,51 @@ func resolveUserInfo(user models.User) gin.H {
 }
 
 func resolvePackageInfo(order models.Order) (uint, string, interface{}) {
+	return resolvePackageInfoWithExtra(order, nil)
+}
+
+// resolvePackageInfoWithExtra 允许调用方复用已解析的 extra_data（列表场景一次解析即可）。
+func resolvePackageInfoWithExtra(order models.Order, parsed map[string]interface{}) (uint, string, interface{}) {
 	if order.PackageID == 0 {
-		name := "设备升级"
-		itemType := "device_upgrade"
-		if order.ExtraData.Valid && order.ExtraData.String != "" {
-			var extraData map[string]interface{}
+		const (
+			defaultName = "设备升级"
+			upgradeName = "设备升级订单"
+		)
+		extraData, hasExtra := parsed, parsed != nil
+		if !hasExtra && order.ExtraData.Valid && order.ExtraData.String != "" {
 			if err := json.Unmarshal([]byte(order.ExtraData.String), &extraData); err == nil {
-				if orderType, ok := extraData["type"].(string); ok && orderType == "custom_package" {
-					devices := 0
-					months := 0
-					if devicesVal, ok := extraData["devices"].(float64); ok {
-						devices = int(devicesVal)
-					}
-					if monthsVal, ok := extraData["months"].(float64); ok {
-						months = int(monthsVal)
-					}
-					name = fmt.Sprintf("自定义套餐 (%d设备/%d月)", devices, months)
-					itemType = "custom_package"
-					return 0, name, gin.H{"id": 0, "name": name, "type": itemType}
-				}
-				if orderType, ok := extraData["type"].(string); ok && orderType == "device_upgrade" {
-					oldLimit := 0
-					newLimit := 0
-					if v, ok := extraData["old_device_limit"].(float64); ok {
-						oldLimit = int(v)
-					}
-					if v, ok := extraData["new_device_limit"].(float64); ok {
-						newLimit = int(v)
-					}
-					if oldLimit > 0 && newLimit > 0 {
-						name = fmt.Sprintf("设备升级 (%d→%d台)", oldLimit, newLimit)
-					} else {
-						name = "设备升级订单"
-					}
-					return 0, name, gin.H{"id": 0, "name": name, "type": itemType, "old_device_limit": oldLimit, "new_device_limit": newLimit}
-				}
+				hasExtra = true
 			}
-			name = "设备升级订单"
 		}
-		return 0, name, gin.H{"id": 0, "name": name, "type": itemType}
+		if hasExtra {
+			if orderType, _ := extraData["type"].(string); orderType == "custom_package" {
+				devices, months := 0, 0
+				if v, ok := extraData["devices"].(float64); ok {
+					devices = int(v)
+				}
+				if v, ok := extraData["months"].(float64); ok {
+					months = int(v)
+				}
+				name := fmt.Sprintf("自定义套餐 (%d设备/%d月)", devices, months)
+				return 0, name, gin.H{"id": 0, "name": name, "type": "custom_package"}
+			}
+			if orderType, _ := extraData["type"].(string); orderType == "device_upgrade" {
+				oldLimit, newLimit := 0, 0
+				if v, ok := extraData["old_device_limit"].(float64); ok {
+					oldLimit = int(v)
+				}
+				if v, ok := extraData["new_device_limit"].(float64); ok {
+					newLimit = int(v)
+				}
+				name := upgradeName
+				if oldLimit > 0 && newLimit > 0 {
+					name = fmt.Sprintf("设备升级 (%d→%d台)", oldLimit, newLimit)
+				}
+				return 0, name, gin.H{"id": 0, "name": name, "type": "device_upgrade", "old_device_limit": oldLimit, "new_device_limit": newLimit}
+			}
+			return 0, upgradeName, gin.H{"id": 0, "name": upgradeName, "type": "device_upgrade"}
+		}
+		return 0, defaultName, gin.H{"id": 0, "name": defaultName, "type": "device_upgrade"}
 	}
 
 	if order.Package.ID > 0 && order.Package.ID == order.PackageID {
@@ -117,7 +123,7 @@ func formatOrderData(order models.Order) gin.H {
 	}
 
 	userInfo := resolveUserInfo(order.User)
-	pkgID, pkgName, pkgInfo := resolvePackageInfo(order)
+	pkgID, pkgName, pkgInfo := resolvePackageInfoWithExtra(order, parsedExtraData)
 
 	return gin.H{
 		"id":                     order.ID,

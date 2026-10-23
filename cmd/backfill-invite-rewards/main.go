@@ -35,22 +35,13 @@ import (
 	"cboard-go/internal/services/invite"
 )
 
-// resolveDBPath 复刻 database 层的 sqlite 路径解析规则（含可执行文件目录锚定），
-// 仅用于在初始化前做存在性检查。
+// resolveDBPath 复用 database 层的 sqlite 路径解析（含可执行文件目录锚定），
+// 仅用于在初始化前做存在性检查 —— 不要在这里再抄一份，抄的第二份迟早与主路径漂移。
 func resolveDBPath(databaseURL string) (string, bool) {
 	if !strings.Contains(strings.ToLower(databaseURL), "sqlite") {
 		return "", false
 	}
-	dbPath := strings.Replace(databaseURL, "sqlite:///./", "", 1)
-	dbPath = strings.Replace(dbPath, "sqlite:///", "", 1)
-	if !filepath.IsAbs(dbPath) {
-		if exePath, err := os.Executable(); err == nil {
-			dbPath = filepath.Join(filepath.Dir(exePath), dbPath)
-		} else {
-			dbPath = filepath.Join(".", dbPath)
-		}
-	}
-	return dbPath, true
+	return database.ResolveSQLitePath(databaseURL), true
 }
 
 func mustGetwd() string {
