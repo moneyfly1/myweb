@@ -433,13 +433,46 @@ func AgentReportBatch(c *gin.Context) {
 		if protoKey == "" {
 			protoKey = parsed.Type
 		}
-		// 去重：同 install_id + 完整协议标识 已存在则跳过（避免重复回传创建重复子节点）
-		var dupCount int64
-		db.Model(&models.CustomNode{}).Where("install_id = ? AND self_host_protocol = ? AND self_hosted = ?", req.InstallID, protoKey, true).Count(&dupCount)
-		if dupCount > 0 {
-			if firstErr == nil {
-				firstErr = fmt.Errorf("协议 %s 已存在（跳过重复回传）", protoKey)
+		// 去重：同 install_id + 完整协议标识 已存在时，
+		//   · 该记录是**重装留下的占位**（status=pending 或 config 为空）→ 用本次回传覆盖；
+		//   · 已有完整配置 → 跳过（避免重复回传创建重复子节点）。
+		//
+		// 为什么必须覆盖：复用节点重装（redeploy）时 prepareSelfHostNodeForDeploy 会把
+		// 全部同 install_id 的节点置为 pending 并清空 config，随后脚本回传。
+		// 旧逻辑一律按「已存在」跳过 → 回传返回 400「没有成功回传任何节点」，
+		// 节点被心跳标成 online 但 config 永远为空，面板点「查看链接/编辑」就会提示
+		// 「无法生成链接: 配置格式错误或协议不支持」。
+		var existing models.CustomNode
+		if err := db.Where("install_id = ? AND self_host_protocol = ? AND self_hosted = ?",
+			req.InstallID, protoKey, true).First(&existing).Error; err == nil {
+			if existing.Status != selfhost.StatusPending && existing.Config != "" {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("协议 %s 已存在（跳过重复回传）", protoKey)
+				}
+				continue
 			}
+			if req.ServerIP != "" && (parsed.Server == "" || parsed.Server == "127.0.0.1" || parsed.Server == "0.0.0.0") {
+				parsed.Server = strings.TrimSpace(req.ServerIP)
+			}
+			cfgJSON, _ := json.Marshal(parsed)
+			if err := db.Model(&models.CustomNode{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
+				"config":    string(cfgJSON),
+				"protocol":  parsed.Type,
+				"domain":    parsed.Server,
+				"port":      parsed.Port,
+				"status":    selfhost.StatusOnline,
+				"is_active": true,
+				"name":      fmt.Sprintf("%s-%s", mainNode.Name, strings.ToUpper(protoKey)),
+				"ssh_host":  mainNode.SSHHost,
+				"ssh_port":  mainNode.SSHPort,
+				"ssh_user":  mainNode.SSHUser,
+			}).Error; err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			created = append(created, gin.H{"node_id": existing.ID, "name": existing.Name, "type": parsed.Type, "reused": true})
 			continue
 		}
 		if req.ServerIP != "" && (parsed.Server == "" || parsed.Server == "127.0.0.1" || parsed.Server == "0.0.0.0") {
