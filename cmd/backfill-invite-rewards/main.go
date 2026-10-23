@@ -55,7 +55,9 @@ func mustGetwd() string {
 
 func main() {
 	dryRun := flag.Bool("dry-run", false, "只统计不写库（演练）")
-	rule := flag.String("rule", invite.RuleRegistration, "补发规则：registration | paid")
+	// 默认只补「被邀请人已付款」的关系：奖励的业务口径是消费后结算，
+	// 按 registration 补发会把「注册了但没花钱」的用户也算进去（线上曾因此超发 800 元）。
+	rule := flag.String("rule", invite.RulePaid, "补发规则：paid（默认，仅已消费）| registration（含未消费，谨慎）")
 	fallback := flag.Float64("fallback-amount", 0, "全局配置读不到时的兜底金额（默认 0 = 不补）")
 	migrate := flag.Bool("migrate-settings", true, "补发前先把旧键值迁移到当前键")
 	flag.Parse()

@@ -191,14 +191,11 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// 事务提交后发放即时邀请奖励
-	if req.InviteCode != "" {
-		go func() {
-			if err := invite.GrantForNewInvitee(db, user.ID); err != nil {
-				utils.LogError("注册后发放邀请奖励失败", err, map[string]interface{}{"invitee_id": user.ID})
-			}
-		}()
-	}
+	// 邀请奖励**不在注册时发放**：业务规则是「被邀请人真正消费后」才结算，
+	// 由订单支付路径（order.processInviteRewardsTx）在首单支付成功时发放。
+	// 此前这里会调 invite.GrantForNewInvitee：只要邀请码没设最低消费就注册即发，
+	// 于是出现「邀请 4 人只有 2 人付费，却按 4 人发了奖励」的超发问题。
+	// 关系记录本身已在注册事务里创建，消费时自然能找到并结算。
 
 	db.Where("id = ?", user.ID).First(&user)
 
@@ -985,9 +982,10 @@ func processInviteCode(db *gorm.DB, inviteCodeStr string, newUserID uint) *uint 
 			tx.Save(&newUser)
 		}
 
-		// 无最低消费要求时，由事务外 invite.GrantForNewInvitee 发放奖励（金额按当前配置实时解析）
-		if inviteCode.MinOrderAmount > 0 && utils.AppLogger != nil {
-			utils.AppLogger.Info("processInviteCode: ⏳ 等待订单支付后发放奖励 - invitee_id=%d, min_order_amount=%.2f", newUserID, inviteCode.MinOrderAmount)
+		// 奖励一律等被邀请人「首单支付成功」后由订单路径发放（不再区分邀请码是否设最低消费）。
+		// 关系与金额已经落库，支付时按当前配置实时结算即可。
+		if utils.AppLogger != nil {
+			utils.AppLogger.Info("processInviteCode: ⏳ 已创建邀请关系，等待被邀请人消费后发放奖励 - invitee_id=%d", newUserID)
 		}
 
 		return nil
