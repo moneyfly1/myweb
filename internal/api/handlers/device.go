@@ -289,9 +289,33 @@ func BatchDeleteDevices(c *gin.Context) {
 		if err := tx.Where("id IN ?", req.DeviceIDs).Delete(&models.Device{}).Error; err != nil {
 			return err
 		}
+		// 一次 GROUP BY 拿到所有受影响订阅的在线设备数，再逐条回写：
+		// 此前是「每个订阅一次 COUNT + 一次 UPDATE」，批量删除涉及几十个订阅就是上百条 SQL。
+		subIDs := make([]uint, 0, len(subscriptionIDMap))
 		for subID := range subscriptionIDMap {
-			count, _ := devicesvc.CountActiveDevices(tx, subID)
-			if err := tx.Model(&models.Subscription{}).Where("id = ?", subID).Update("current_devices", count).Error; err != nil {
+			subIDs = append(subIDs, subID)
+		}
+		type countRow struct {
+			SubscriptionID uint  `gorm:"column:subscription_id"`
+			Cnt            int64 `gorm:"column:cnt"`
+		}
+		var counts []countRow
+		if len(subIDs) > 0 {
+			if err := tx.Model(&models.Device{}).
+				Select("subscription_id, COUNT(*) AS cnt").
+				Where("subscription_id IN ? AND is_active = ?", subIDs, true).
+				Group("subscription_id").
+				Scan(&counts).Error; err != nil {
+				return err
+			}
+		}
+		bySub := make(map[uint]int64, len(counts))
+		for _, c := range counts {
+			bySub[c.SubscriptionID] = c.Cnt
+		}
+		for _, subID := range subIDs {
+			if err := tx.Model(&models.Subscription{}).Where("id = ?", subID).
+				Update("current_devices", bySub[subID]).Error; err != nil {
 				return err
 			}
 		}
