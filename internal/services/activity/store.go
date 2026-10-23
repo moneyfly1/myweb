@@ -113,6 +113,20 @@ func (r *redisStore) scoreOf(key string, member uint) (int64, bool) {
 	return int64(score), true
 }
 
+func (r *redisStore) prune(key string, cutoff int64) int64 {
+	client := cache.GetRedisClient()
+	if client == nil {
+		return 0
+	}
+	ctx, cancel := opCtx()
+	defer cancel()
+	n, err := client.ZRemRangeByScore(ctx, key, "-inf", strconv.FormatInt(cutoff, 10)).Result()
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
 func (r *redisStore) setStr(key, val string, ttl time.Duration) {
 	client := cache.GetRedisClient()
 	if client == nil {
@@ -226,6 +240,19 @@ func (m *memStore) scoreOf(key string, member uint) (int64, bool) {
 	defer m.mu.Unlock()
 	score, ok := m.zs[key][member]
 	return score, ok
+}
+
+func (m *memStore) prune(key string, cutoff int64) int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	removed := int64(0)
+	for member, score := range m.zs[key] {
+		if score < cutoff {
+			delete(m.zs[key], member)
+			removed++
+		}
+	}
+	return removed
 }
 
 func (m *memStore) setStr(key, val string, ttl time.Duration) {

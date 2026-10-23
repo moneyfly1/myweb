@@ -166,30 +166,28 @@ func main() {
 	}
 	defer geoip.Close()
 
-	// 初始化 Redis（可选，如果连接失败会自动禁用缓存）
+	// 初始化 Redis（可选）。连不上不会永久禁用：core/cache 会起后台协程每 10s 探活，
+	// 恢复后自动重新启用（Redis 与面板常同时重启，谁先起来并不确定）。
 	if err := cache.InitRedis(); err != nil {
-		log.Printf("Redis 初始化失败（缓存功能已禁用）: %v", err)
+		log.Printf("Redis 初始化失败（缓存暂时降级为直连数据库，后台会自动重试）: %v", err)
 		log.Println("提示: 如需启用缓存功能，请配置 REDIS_ADDR 环境变量")
 	} else {
 		log.Println("Redis 缓存已启用，GeoIP 查询将使用缓存加速")
-		// 预热缓存
 		cache_service.WarmupCache()
+	}
 
-		// 初始化任务队列（基于 Redis），并启动 worker 消费任务
-		redisAddr := os.Getenv("REDIS_ADDR")
-		if redisAddr == "" {
-			redisAddr = "localhost:6379"
-		}
-		if err := queue.InitQueue(redisAddr); err != nil {
-			log.Printf("任务队列初始化失败: %v", err)
-		} else {
-			go func() {
-				if err := queue.StartWorker(queue.RegisterHandlers()); err != nil {
-					utils.LogErrorMsg("任务队列 worker 异常退出: %v", err)
-				}
-			}()
-			log.Println("任务队列 worker 已启动")
-		}
+	// 任务队列与缓存解耦：Redis 起得晚也要能把 worker 拉起来。
+	// 连接参数由 cache.CurrentRedisConn() 统一提供（含密码/DB/TLS），
+	// 否则配了密码的 Redis 上每次入队都会失败。
+	if err := queue.InitQueue(""); err != nil {
+		log.Printf("任务队列初始化失败（将退化为同步执行）: %v", err)
+	} else {
+		go func() {
+			if err := queue.StartWorker(queue.RegisterHandlers()); err != nil {
+				utils.LogErrorMsg("任务队列 worker 异常退出: %v", err)
+			}
+		}()
+		log.Println("任务队列 worker 已启动")
 	}
 	defer cache.Close()
 	defer queue.Close()

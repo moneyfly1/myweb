@@ -330,6 +330,9 @@ func (s *Scheduler) cleanupExpiredData() {
 func (s *Scheduler) cleanupExpiredDataNow() {
 	now := utils.GetBeijingTime()
 
+	// 每天顺带更新一次 SQLite 查询计划统计（低峰期执行，成本远低于全量 ANALYZE）
+	database.OptimizeDB()
+
 	// 读取自动清理保留天数（system_configs, category=cleanup，可在设置页配置）。
 	// 各类型默认保留天数：历史短数据少留，审计/资金日志多留。
 	cleanupRetention := s.loadCleanupRetention()
@@ -835,7 +838,12 @@ func (s *Scheduler) runAutoBackup() error {
 
 	// WAL checkpoint: 将 WAL 文件内容刷入主数据库文件
 	if strings.Contains(cfg.DatabaseURL, "sqlite") {
-		s.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+		// 检查结果：有活跃读者时 checkpoint 返回 busy 且不报错（真正的一致性由
+		// 后续 VACUUM INTO 快照保证，这里只记录以便排查）
+		var busy, logFrames, checkpointed int64
+		if err := s.db.Raw("PRAGMA wal_checkpoint(TRUNCATE)").Row().Scan(&busy, &logFrames, &checkpointed); err == nil && busy != 0 {
+			utils.LogWarn("自动备份: WAL checkpoint 未完成（有活跃读者）busy=%d log=%d done=%d", busy, logFrames, checkpointed)
+		}
 	}
 
 	wd, err := os.Getwd()
@@ -908,7 +916,14 @@ func (s *Scheduler) runAutoBackup() error {
 		}
 	}
 	if _, err := os.Stat(sourcePath); err == nil {
-		if copyErr := backup_service.WriteDBEntryToZip(zipWriter, sourcePath); copyErr != nil {
+		var copyErr error
+		if dbSourcePath == "" && strings.Contains(cfg.DatabaseURL, "sqlite") {
+			// 一致性快照（WAL 下裸拷会丢尾部事务）
+			copyErr = backup_service.WriteDBSnapshotToZip(zipWriter, sourcePath)
+		} else {
+			copyErr = backup_service.WriteDBEntryToZip(zipWriter, sourcePath)
+		}
+		if copyErr != nil {
 			log.Printf("failed to copy database file: %v", copyErr)
 		}
 	}

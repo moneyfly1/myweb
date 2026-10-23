@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -1505,6 +1506,7 @@ func autoDisableTimeoutEnabled(db *gorm.DB) bool {
 
 func (s *ConfigUpdateService) appendSystemNodes(proxies *[]*ProxyNode, processed map[string]bool) {
 	cache := &CacheService{}
+	nodesGen := cache.SystemNodesGeneration()
 	if cached, ok := cache.GetSystemNodesCache(); ok {
 		for _, n := range cached {
 			if key := fmt.Sprintf("%s:%s:%d:%s", n.Type, n.Server, n.Port, n.Name); !processed[key] {
@@ -1541,7 +1543,9 @@ func (s *ConfigUpdateService) appendSystemNodes(proxies *[]*ProxyNode, processed
 		}
 	}
 	if len(sysNodes) > 0 {
-		go cache.SetSystemNodesCache(sysNodes)
+		if err := cache.SetSystemNodesCacheIfUnchanged(sysNodes, nodesGen); err != nil {
+			log.Printf("write system nodes cache failed: %v", err)
+		}
 	}
 }
 
@@ -1578,14 +1582,29 @@ func (s *ConfigUpdateService) renderLinksPayload(nodes []*ProxyNode, useSSRForma
 }
 
 func (s *ConfigUpdateService) GenerateClashConfig(token, clientIP, userAgent string, mfHeaders ...map[string]string) (string, error) {
+	config, _, err := s.GenerateClashConfigWithContext(token, clientIP, userAgent, mfHeaders...)
+	return config, err
+}
+
+// GenerateClashConfigWithContext 同上，但把生成过程中的订阅上下文一并返回。
+//
+// 调用方（订阅接口）还需要用 ctx 生成 HTTP 头里的订阅名（到期时间）。此前它会在
+// 生成完后再调一次 GetSubscriptionContext —— 那次调用会把「查订阅 + 查用户 + 自定义节点
+// JOIN + 活跃设备统计 + 设备探测」整套再跑一遍（5~8 条查询），只为拼一个 header 字符串。
+// 缓存命中时 ctx 为 nil，调用方按需回退。
+func (s *ConfigUpdateService) GenerateClashConfigWithContext(token, clientIP, userAgent string, mfHeaders ...map[string]string) (string, *SubscriptionContext, error) {
 	cache := &CacheService{}
 	if cached, ok := cache.GetSubscriptionConfigCache(token, "clash"); ok {
-		return cached, nil
+		return cached, nil, nil
 	}
+	// 代际必须在查库/生成之前取：若期间管理员改了节点或清过缓存，
+	// 这次生成的旧配置会被 SetSubscriptionConfigCacheIfUnchanged 丢弃，不会写回缓存。
+	cacheGen := cache.SubscriptionConfigGeneration(token, "clash")
 
 	ctx := s.GetSubscriptionContext(token, clientIP, userAgent, mfHeaders...)
 	var nodes []*ProxyNode
-	s.refreshSystemConfig()
+	// 系统配置（域名/QQ/软硬限制）按 30s TTL 复用：此前每个订阅请求都无条件查 3 条 system_configs
+	s.refreshSystemConfigIfStale()
 	nodes = s.buildSubscriptionNodes(ctx)
 
 	filtered := s.filterProxiesByProtocol(nodes, s.getProtocolFilter("clash_protocols"))
@@ -1600,13 +1619,23 @@ func (s *ConfigUpdateService) GenerateClashConfig(token, clientIP, userAgent str
 	config := rc.Payload
 	if ctx.Status == StatusNormal {
 		if ttl := s.calculateCacheTTL(&ctx.Subscription); ttl > 0 {
-			go cache.SetSubscriptionConfigCache(token, "clash", config, ttl)
+			// 同步写（带代际校验），不再 `go` 异步：
+			// 异步写回会在"清缓存之后"把清理前生成的旧配置重新塞回去（套餐曾踩过同样的问题）。
+			if err := cache.SetSubscriptionConfigCacheIfUnchanged(token, "clash", config, ttl, cacheGen); err != nil {
+				log.Printf("write clash config cache failed: %v", err)
+			}
 		}
 	}
-	return config, nil
+	return config, ctx, nil
 }
 
 func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent, format string, mfHeaders ...map[string]string) (string, error) {
+	config, _, err := s.GenerateUniversalConfigWithContext(token, clientIP, userAgent, format, mfHeaders...)
+	return config, err
+}
+
+// GenerateUniversalConfigWithContext 同 GenerateUniversalConfig，附带订阅上下文（见上）
+func (s *ConfigUpdateService) GenerateUniversalConfigWithContext(token, clientIP, userAgent, format string, mfHeaders ...map[string]string) (string, *SubscriptionContext, error) {
 	cache, cacheFormat := &CacheService{}, "base64"
 	if format == "ssr" {
 		cacheFormat = "ssr"
@@ -1615,12 +1644,13 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent
 	// 过滤掉 socks 节点。该前提已证实为**错误**（v2rayN 支持 socks/socks5），过滤已移除，
 	// 两个 UA 的产物完全相同，因此独立缓存 key 也一并去掉，避免留下"v2rayN 内容特殊"的误导。
 	if cached, ok := cache.GetSubscriptionConfigCache(token, cacheFormat); ok {
-		return cached, nil
+		return cached, nil, nil
 	}
+	cacheGen := cache.SubscriptionConfigGeneration(token, cacheFormat)
 
 	ctx := s.GetSubscriptionContext(token, clientIP, userAgent, mfHeaders...)
 	var nodes []*ProxyNode
-	s.refreshSystemConfig()
+	s.refreshSystemConfigIfStale()
 	nodes = s.buildSubscriptionNodes(ctx)
 
 	nodes = s.filterProxiesByProtocol(nodes, s.getProtocolFilter("universal_protocols"))
@@ -1636,10 +1666,12 @@ func (s *ConfigUpdateService) GenerateUniversalConfig(token, clientIP, userAgent
 	config := rv.Payload
 	if ctx.Status == StatusNormal {
 		if ttl := s.calculateCacheTTL(&ctx.Subscription); ttl > 0 {
-			go cache.SetSubscriptionConfigCache(token, cacheFormat, config, ttl)
+			if err := cache.SetSubscriptionConfigCacheIfUnchanged(token, cacheFormat, config, ttl, cacheGen); err != nil {
+				log.Printf("write %s config cache failed: %v", cacheFormat, err)
+			}
 		}
 	}
-	return config, nil
+	return config, ctx, nil
 }
 
 func (s *ConfigUpdateService) loadTemplateFile(path string) []byte {
@@ -2858,7 +2890,7 @@ func (s *ConfigUpdateService) GenerateClientConfigWithExcludedProtocols(token, c
 }
 
 func (s *ConfigUpdateService) generateClientConfig(token, clientIP, userAgent, subType string, excludedProtocols map[string]bool, mfHeaders ...map[string]string) (responseData, contentType, fileName string) {
-	s.refreshSystemConfig()
+	s.refreshSystemConfigIfStale()
 
 	ctx := s.GetSubscriptionContext(token, clientIP, userAgent, mfHeaders...)
 	var nodes []*ProxyNode
@@ -3620,10 +3652,8 @@ func (s *ConfigUpdateService) pruneNodeValidationLogs(keep int) {
 	if s.db == nil || keep <= 0 {
 		return
 	}
-	var total int64
-	if err := s.db.Model(&models.NodeValidationLog{}).Count(&total).Error; err != nil || total <= int64(keep) {
-		return
-	}
+	// 不再先 COUNT(*)：那是 node_validation_logs（最大表之一）上的无条件全表聚合，
+	// 而下面的 OFFSET 查询本身就能回答"是否超出保留条数"（取不到即为不足）。
 	var cutoff struct{ ID uint }
 	if err := s.db.Model(&models.NodeValidationLog{}).
 		Select("id").Order("id DESC").Offset(keep - 1).Limit(1).Scan(&cutoff).Error; err != nil || cutoff.ID == 0 {

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"archive/zip"
-	"context"
 	"fmt"
 	"io"
 	"log"
@@ -10,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"cboard-go/internal/core/cache"
 	"cboard-go/internal/core/config"
@@ -26,10 +24,17 @@ import (
 func CreateBackup(c *gin.Context) {
 	cfg := config.AppConfig
 
-	// WAL checkpoint: 将 WAL 文件内容刷入主数据库文件
+	// WAL checkpoint: 将 WAL 文件内容刷入主数据库文件。
+	// 有活跃读者时 checkpoint 会返回 BUSY 且**不报错**，所以必须看结果；
+	// 不过即使 BUSY 也安全——真正的一致性由下面的 VACUUM INTO 快照保证。
 	if strings.Contains(cfg.DatabaseURL, "sqlite") {
 		db := database.GetDB()
-		db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+		if db != nil {
+			var busy, logFrames, checkpointed int64
+			if err := db.Raw("PRAGMA wal_checkpoint(TRUNCATE)").Row().Scan(&busy, &logFrames, &checkpointed); err == nil && busy != 0 {
+				utils.LogWarn("WAL checkpoint 未完成（有活跃读者），备份将走 VACUUM INTO 快照: busy=%d log=%d done=%d", busy, logFrames, checkpointed)
+			}
+		}
 	}
 
 	wd, err := os.Getwd()
@@ -129,7 +134,15 @@ func CreateBackup(c *gin.Context) {
 		}
 	}
 	if _, err := os.Stat(sourcePath); err == nil {
-		if copyErr := backup_service.WriteDBEntryToZip(zipWriter, sourcePath); copyErr != nil {
+		// 未走「清理临时副本」路径时，用 VACUUM INTO 快照而不是直接拷文件：
+		// WAL 下主库文件不含最近提交（尾部在 -wal 里），裸拷会丢数据。
+		var copyErr error
+		if dbSourcePath == "" && strings.Contains(cfg.DatabaseURL, "sqlite") {
+			copyErr = backup_service.WriteDBSnapshotToZip(zipWriter, sourcePath)
+		} else {
+			copyErr = backup_service.WriteDBEntryToZip(zipWriter, sourcePath)
+		}
+		if copyErr != nil {
 			utils.ErrorResponse(c, http.StatusInternalServerError, "写入数据库备份失败", copyErr)
 			return
 		}
@@ -628,13 +641,11 @@ func applySiteIdentity(saved map[string]string) []string {
 // flushAppCache 恢复数据库后清理缓存：Redis 里可能残留恢复前的会话/配置缓存，
 // 不清会出现"库已经换回来了、页面还是老数据"的错觉。
 func flushAppCache() {
-	client := cache.GetRedisClient()
-	if client == nil || !cache.IsRedisEnabled() {
+	if !cache.IsRedisEnabled() {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := client.FlushAll(ctx).Err(); err != nil {
+	// 只清本应用前缀下的键：FlushAll 会连任务队列（asynq）和同库的其它环境一起清掉
+	if _, err := cache.ClearPrefix("*"); err != nil {
 		log.Printf("恢复备份后清空 Redis 缓存失败（忽略）: %v", err)
 	}
 }

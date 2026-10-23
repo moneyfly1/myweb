@@ -67,7 +67,12 @@ func fetchSubscriptionAdmin(c *gin.Context, db *gorm.DB, subID string) (*models.
 // 域名池 = subscription_domain + subscription_backup_domains + 网站域名；
 // token 相同、同一后端，某个域名被墙时前端/客户端可以换下一个。
 func backupClashURLs(c *gin.Context, subURL string) []string {
-	bases := utils.SubscriptionBaseURLs(c.Request, database.GetDB())
+	return clashURLsFromBases(utils.SubscriptionBaseURLs(c.Request, database.GetDB()), subURL)
+}
+
+// clashURLsFromBases 纯字符串拼装（不查库）：列表场景在循环外取一次 bases 复用，
+// 否则每行都要查 system_configs（此前 subscription 管理列表每行 4~8 条 SQL）。
+func clashURLsFromBases(bases []string, subURL string) []string {
 	out := make([]string, 0, len(bases))
 	for _, b := range bases {
 		out = append(out, fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=clash", b, subURL))
@@ -677,6 +682,7 @@ func buildSubscriptionListData(db *gorm.DB, subscriptions []models.Subscription,
 	list := make([]gin.H, 0, len(subscriptions))
 	// 订阅域名只解析一次，避免每行都查 system_configs
 	baseURL := utils.SubscriptionBaseURL(c.Request, database.GetDB())
+	baseURLs := utils.SubscriptionBaseURLs(c.Request, database.GetDB())
 
 	for _, sub := range subscriptions {
 		online := onlineMap[sub.ID]
@@ -734,7 +740,7 @@ func buildSubscriptionListData(db *gorm.DB, subscriptions []models.Subscription,
 			"universal_url":    universal,
 			"clash_url":        clash,
 			// 备用订阅域名（主地址打不开的地区可用）：前端展示、客户端可逐一尝试
-			"subscribe_urls":    backupClashURLs(c, sub.SubscriptionURL),
+			"subscribe_urls":    clashURLsFromBases(baseURLs, sub.SubscriptionURL),
 			"status":            sub.Status,
 			"is_active":         sub.IsActive,
 			"device_limit":      sub.DeviceLimit,
@@ -1994,15 +2000,18 @@ func GetSubscriptionConfig(c *gin.Context) {
 
 	// 生成 Clash 配置
 	configService := config_update.NewConfigUpdateService()
-	config, err := configService.GenerateClashConfig(clashURL, clientIP, userAgent, extractMFHeaders(c))
+	config, subCtx, err := configService.GenerateClashConfigWithContext(clashURL, clientIP, userAgent, extractMFHeaders(c))
 	if err != nil {
 		c.String(200, generateErrorConfigBase64("错误", "生成配置失败", baseURL))
 		return
 	}
 
-	// 生成订阅名称（用于 HTTP 响应头）
-	ctx := configService.GetSubscriptionContext(clashURL, clientIP, userAgent, extractMFHeaders(c))
-	subscriptionName := configService.GenerateSubscriptionName(ctx)
+	// 生成订阅名称（用于 HTTP 响应头）：优先复用生成过程中的 ctx（省掉整套再查一遍）；
+	// 仅当命中缓存（ctx 为 nil）时才补查一次。
+	if subCtx == nil {
+		subCtx = configService.GetSubscriptionContext(clashURL, clientIP, userAgent, extractMFHeaders(c))
+	}
+	subscriptionName := configService.GenerateSubscriptionName(subCtx)
 
 	// 生成文件名（格式：到期时间2026-02-XX 或 无限期订阅）
 	fileName := subscriptionName

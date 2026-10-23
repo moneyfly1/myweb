@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"os"
 	"time"
+
+	"cboard-go/internal/core/cache"
 
 	"github.com/hibiken/asynq"
 )
@@ -27,10 +31,16 @@ type Handler func(ctx context.Context, payload []byte) error
 // InitQueue 初始化队列客户端和服务端（基于 Redis）。
 // 若 Redis 未启用，本函数不应被调用（调用方先判断 cache 是否可用）。
 func InitQueue(redisAddr string) error {
-	if redisAddr == "" {
+	conn := cache.CurrentRedisConn()
+	if redisAddr != "" {
+		conn.Addr = redisAddr
+	}
+	if conn.Addr == "" {
 		return fmt.Errorf("队列初始化失败：REDIS_ADDR 为空")
 	}
-	opts := asynq.RedisClientOpt{Addr: redisAddr}
+	// 连接参数必须与缓存共用（密码/DB/TLS）：此前只传 Addr，
+	// 配了密码的 Redis 上每一次入队都会失败，而调用方只看到"队列未就绪"的兜底路径。
+	opts := asynq.RedisClientOpt{Addr: conn.Addr, Password: conn.Password, DB: conn.DB, TLSConfig: conn.TLS}
 	client = asynq.NewClient(opts)
 	server = asynq.NewServer(opts, asynq.Config{
 		Concurrency: 10,
@@ -39,16 +49,28 @@ func InitQueue(redisAddr string) error {
 			"default":  3, // 默认
 			"low":      1, // 低优先级（如审计日志）
 		},
-		// 失败重试：间隔递增（1min、2min、4min...），最多 5 次
+		// 失败重试：间隔递增（1min、2min、4min...）。重试次数在入队时用 asynq.MaxRetry(5)
+		// 指定（asynq 服务端默认 25 次，与"最多 5 次"的预期不符，见 EnqueueWithRetry）。
 		RetryDelayFunc: func(n int, e error, t *asynq.Task) time.Duration {
 			return time.Duration(1<<uint(n-1)) * time.Minute
 		},
+		// 失败任务打日志，避免"邮件没发出去"完全无声
+		ErrorHandler: asynq.ErrorHandlerFunc(func(ctx context.Context, t *asynq.Task, err error) {
+			defaultQueueLogger.Printf("任务失败: type=%s payload=%s err=%v", t.Type(), string(t.Payload()), err)
+		}),
 	})
 	return nil
 }
 
+// defaultQueueLogger 队列侧日志（不引入循环依赖，直接标准库输出）
+var defaultQueueLogger = log.New(os.Stdout, "[queue] ", log.LstdFlags)
+
+// defaultMaxRetry 默认重试次数（覆盖 asynq 服务端的 25 次默认值）
+const defaultMaxRetry = 5
+
 // Enqueue 入队任务（JSON 序列化 payload）。Redis 不可用时返回 error，
 // 调用方应 fallback 到同步执行，保证核心逻辑不因队列故障而丢失。
+// 未显式指定重试次数时用 defaultMaxRetry。
 func Enqueue(ctx context.Context, taskType string, payload interface{}, opts ...asynq.Option) error {
 	if client == nil {
 		return fmt.Errorf("队列客户端未初始化")
@@ -58,6 +80,9 @@ func Enqueue(ctx context.Context, taskType string, payload interface{}, opts ...
 		return fmt.Errorf("序列化任务负载失败: %w", err)
 	}
 	task := asynq.NewTask(taskType, data)
+	if !hasRetryOption(opts) {
+		opts = append(opts, asynq.MaxRetry(defaultMaxRetry))
+	}
 	_, err = client.EnqueueContext(ctx, task, opts...)
 	return err
 }
@@ -76,6 +101,16 @@ func StartWorker(handlers map[string]Handler) error {
 		})
 	}
 	return server.Run(mux)
+}
+
+// hasRetryOption 调用方是否已显式指定重试次数
+func hasRetryOption(opts []asynq.Option) bool {
+	for _, opt := range opts {
+		if opt.Type() == asynq.MaxRetryOpt {
+			return true
+		}
+	}
+	return false
 }
 
 // Close 关闭队列客户端连接

@@ -756,14 +756,67 @@ func loadAbnormalUserRiskMetrics(db *gorm.DB, userIDs []uint, startTime, endTime
 
 	loadSubscriptionPullAbuseMetrics(db, userIDs, metrics)
 
-	var loginFailedCounts []abnormalUserMetric
-	loginFailedQuery := db.Table("login_attempts").
-		Select("users.id AS user_id, COUNT(login_attempts.id) AS count").
-		Joins("JOIN users ON lower(login_attempts.username) = lower(users.email) OR lower(login_attempts.username) = lower(users.username)").
-		Where("login_attempts.success = ? AND login_attempts.created_at >= ? AND login_attempts.created_at <= ?", false, startTime, endTime)
-	applyUserFilter(loginFailedQuery, "users.id").Group("users.id").Scan(&loginFailedCounts)
-	for _, row := range loginFailedCounts {
-		metrics.loginFailedCounts[row.UserID] = row.Count
+	// 登录失败次数：按「账号名」聚合（login_attempts 只有 username），再一次性映射到 user_id。
+	//
+	// 历史实现是 `JOIN users ON lower(la.username)=lower(users.email) OR lower(la.username)=lower(users.username)`：
+	// 这个 lower()=lower() 的 OR 关联让两边都走不了索引，SQLite 只能对**每条**失败记录
+	// 全表扫一遍 users —— 实测 30k 用户的库上 500 条记录就要 2.8 秒，失败记录多时直接超时，
+	// 「异常用户」页面打不开。改成两次索引点查 + Go 侧合并，复杂度从 O(N×M) 降到 O(N+M)。
+	type failedNameCount struct {
+		Username string `gorm:"column:username"`
+		Count    int64  `gorm:"column:count"`
+	}
+	var nameCounts []failedNameCount
+	db.Model(&models.LoginAttempt{}).
+		Select("username, COUNT(*) AS count").
+		Where("success = ? AND created_at >= ? AND created_at <= ?", false, startTime, endTime).
+		Group("username").
+		Scan(&nameCounts)
+
+	if len(nameCounts) > 0 {
+		lowered := make([]string, 0, len(nameCounts))
+		for _, nc := range nameCounts {
+			if key := strings.ToLower(strings.TrimSpace(nc.Username)); key != "" {
+				lowered = append(lowered, key)
+			}
+		}
+		allowedUsers := make(map[uint]bool, len(userIDs))
+		for _, id := range userIDs {
+			allowedUsers[id] = true
+		}
+		if len(lowered) > 0 {
+			type userIdent struct {
+				ID       uint
+				Username string
+				Email    string
+			}
+			var idents []userIdent
+			db.Model(&models.User{}).
+				Select("id, username, email").
+				Where("LOWER(username) IN ? OR LOWER(email) IN ?", lowered, lowered).
+				Scan(&idents)
+			if len(idents) > 0 {
+				byIdent := make(map[string]uint, len(idents)*2)
+				for _, it := range idents {
+					if u := strings.ToLower(strings.TrimSpace(it.Username)); u != "" {
+						byIdent[u] = it.ID
+					}
+					if e := strings.ToLower(strings.TrimSpace(it.Email)); e != "" {
+						byIdent[e] = it.ID
+					}
+				}
+				for _, nc := range nameCounts {
+					uid, ok := byIdent[strings.ToLower(strings.TrimSpace(nc.Username))]
+					if !ok {
+						continue
+					}
+					if len(allowedUsers) > 0 && !allowedUsers[uid] {
+						continue
+					}
+					metrics.loginFailedCounts[uid] += nc.Count
+				}
+			}
+		}
 	}
 
 	return metrics
