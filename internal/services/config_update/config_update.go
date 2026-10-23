@@ -1290,6 +1290,14 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrderTx(db *gorm.DB, node
 	}
 
 	var newNodes []models.Node
+	// 已存在节点的更新先攒起来，循环结束后在一个事务里执行：
+	// 此前每个节点一次 Updates（= 一次自动提交事务），一轮同步 500~2000 个节点就是
+	// 同样数量的 fsync；包进单事务后写盘次数从 N 降到 1。
+	type pendingNodeUpdate struct {
+		id      uint
+		updates map[string]interface{}
+	}
+	var pendingUpdates []pendingNodeUpdate
 
 	for _, item := range nodes {
 		item.node.Name = truncateProxyNodeName(item.node.Name)
@@ -1318,9 +1326,7 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrderTx(db *gorm.DB, node
 				"source_index": item.sourceIndex,
 				"is_manual":    false,
 			}
-			if db.Model(&models.Node{}).Where("id = ?", exist.ID).Updates(updates).Error == nil {
-				stats.Updated++
-			}
+			pendingUpdates = append(pendingUpdates, pendingNodeUpdate{id: exist.ID, updates: updates})
 		} else {
 			if manualKeys[item.node.Type+":"+item.node.Name] {
 				stats.Skipped++
@@ -1330,6 +1336,21 @@ func (s *ConfigUpdateService) importNodesToDatabaseWithOrderTx(db *gorm.DB, node
 				Name: item.node.Name, Type: item.node.Type, Status: "online", IsActive: true, IsManual: false,
 				Config: &cfgStr, Region: region, OrderIndex: item.orderIndex, SourceIndex: item.sourceIndex,
 			})
+		}
+	}
+
+	if len(pendingUpdates) > 0 {
+		if err := db.Transaction(func(tx *gorm.DB) error {
+			for _, pu := range pendingUpdates {
+				if err := tx.Model(&models.Node{}).Where("id = ?", pu.id).Updates(pu.updates).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			s.warnf("批量更新采集节点失败: %v (本批 %d 个节点未更新)", err, len(pendingUpdates))
+		} else {
+			stats.Updated = len(pendingUpdates)
 		}
 	}
 

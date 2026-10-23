@@ -27,6 +27,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -62,42 +63,7 @@ func updateSettingsCommon(c *gin.Context, category string) {
 	}
 
 	err := database.GetDB().Transaction(func(tx *gorm.DB) error {
-		for key, val := range settings {
-			targetCat := category
-			if key == "domain_name" && category == CatGeneral {
-				targetCat = CatSystem
-			}
-
-			// 密钥类字段收到脱敏占位符时跳过，避免把掩码写回覆盖真实密钥
-			if isSensitiveConfigKey(key) {
-				if vs, ok := val.(string); ok && vs == maskedSecretValue {
-					continue
-				}
-			}
-
-			valStr := fmt.Sprintf("%v", val)
-			if arr, ok := val.([]interface{}); ok {
-				if b, err := json.Marshal(arr); err == nil {
-					valStr = string(b)
-				}
-			}
-
-			var conf models.SystemConfig
-			// Check existence by Key + Category
-			if err := tx.Where("key = ? AND category = ?", key, targetCat).FirstOrInit(&conf).Error; err != nil {
-				return err
-			}
-
-			conf.Key = key
-			conf.Category = targetCat
-			conf.Value = valStr
-			ensureSystemConfigMetadata(&conf, val)
-
-			if err := tx.Save(&conf).Error; err != nil {
-				return err
-			}
-		}
-		return nil
+		return upsertSystemConfigs(tx, category, settings)
 	})
 
 	if err != nil {
@@ -131,6 +97,68 @@ func updateSettingsCommon(c *gin.Context, category string) {
 
 	utils.CreateAuditLogSimple(c, "update_settings", "settings", 0, fmt.Sprintf("管理员操作: 更新设置 category=%s", category))
 	utils.SuccessResponse(c, http.StatusOK, "设置已保存", nil)
+}
+
+// upsertSystemConfigs 在一个事务里批量写入某分类下的系统配置。
+//
+// 此前是逐键 "FirstOrInit + Save"：30~80 个键就是 30~80 次 SELECT + 30~80 次写，
+// 而这里只有 (key, category) 一个唯一约束，完全可以一次 SELECT 读出现有行、
+// 再一条 INSERT ... ON CONFLICT(key, category) DO UPDATE 批量落库。
+// 只更新 value/type/display_name，其它列（is_public/description/sort_order）保持不动，
+// 避免把后台从未下发的元数据覆盖成零值。
+func upsertSystemConfigs(tx *gorm.DB, category string, settings map[string]interface{}) error {
+	if len(settings) == 0 {
+		return nil
+	}
+	var existing []models.SystemConfig
+	if err := tx.Where("category IN ?", []string{category, CatSystem}).Find(&existing).Error; err != nil {
+		return err
+	}
+	type keyCat struct{ key, cat string }
+	byKeyCat := make(map[keyCat]models.SystemConfig, len(existing))
+	for _, c := range existing {
+		byKeyCat[keyCat{c.Key, c.Category}] = c
+	}
+
+	rows := make([]models.SystemConfig, 0, len(settings))
+	for key, val := range settings {
+		targetCat := category
+		if key == "domain_name" && category == CatGeneral {
+			targetCat = CatSystem
+		}
+		// 密钥类字段收到脱敏占位符时跳过，避免把掩码写回覆盖真实密钥
+		if isSensitiveConfigKey(key) {
+			if vs, ok := val.(string); ok && (vs == maskedSecretValue || isMaskedSecretPlaceholder(vs)) {
+				continue
+			}
+		}
+		valStr := fmt.Sprintf("%v", val)
+		if arr, ok := val.([]interface{}); ok {
+			if b, err := json.Marshal(arr); err == nil {
+				valStr = string(b)
+			}
+		}
+		row := models.SystemConfig{Key: key, Category: targetCat, Value: valStr}
+		if old, ok := byKeyCat[keyCat{key, targetCat}]; ok {
+			// 复用现有行的元数据（Type/DisplayName/Description/IsPublic/SortOrder）
+			row.ID = old.ID
+			row.Type = old.Type
+			row.DisplayName = old.DisplayName
+			row.Description = old.Description
+			row.IsPublic = old.IsPublic
+			row.SortOrder = old.SortOrder
+			row.CreatedAt = old.CreatedAt
+		}
+		ensureSystemConfigMetadata(&row, val)
+		rows = append(rows, row)
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	return tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "key"}, {Name: "category"}},
+		DoUpdates: clause.AssignmentColumns([]string{"value", "type", "display_name", "updated_at"}),
+	}).CreateInBatches(&rows, 50).Error
 }
 
 func ensureSystemConfigMetadata(conf *models.SystemConfig, value interface{}) {
@@ -256,28 +284,13 @@ func UpdateSystemConfig(c *gin.Context) {
 		// 的唯一约束是 (key, category)，并不存在 key 单列唯一约束，因此该语句在任何数据库上
 		// 都会报 "ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint"，
 		// 接口恒返回 500（前端目前未调用，但接口本身不可用）。
+		// 与 updateSettings 共用同一套批量 upsert（唯一约束是 (key, category)）
+		settings := make(map[string]interface{}, len(req))
+		for k, v := range req {
+			settings[k] = v
+		}
 		err := db.Transaction(func(tx *gorm.DB) error {
-			for k, v := range req {
-				val := fmt.Sprintf("%v", v)
-				// 脱敏回显保护：前端拿到 ****** 后原样提交时必须跳过，
-				// 否则真实密钥会被占位符覆盖（与 /admin/settings 的处理保持一致）
-				if isSensitiveConfigKey(k) && isMaskedSecretPlaceholder(val) {
-					continue
-				}
-
-				var conf models.SystemConfig
-				if err := tx.Where("key = ? AND category = ?", k, CatSystem).FirstOrInit(&conf).Error; err != nil {
-					return err
-				}
-				conf.Key = k
-				conf.Category = CatSystem
-				conf.Value = val
-				ensureSystemConfigMetadata(&conf, v)
-				if err := tx.Save(&conf).Error; err != nil {
-					return err
-				}
-			}
-			return nil
+			return upsertSystemConfigs(tx, CatSystem, settings)
 		})
 
 		if err != nil {
@@ -779,6 +792,14 @@ func UploadFile(c *gin.Context) {
 }
 
 func GetPublicSettings(c *gin.Context) {
+	// 30 秒快照：这是匿名高频接口，内容由 system_configs 多次筛选 + 类型转换拼成。
+	// 配置更新会走 utils.InvalidateAllSettingCache()（本函数缓存在那里一并失效）。
+	if cached, ok := utils.GetPublicSettingsCache(); ok {
+		c.Header("Cache-Control", "public, max-age=600")
+		utils.SuccessResponse(c, http.StatusOK, "", cached)
+		return
+	}
+
 	// Consolidate queries
 	db := database.GetDB()
 	var configs []models.SystemConfig
@@ -883,6 +904,7 @@ func GetPublicSettings(c *gin.Context) {
 		}
 	}
 
+	utils.SetPublicSettingsCache(settings)
 	c.Header("Cache-Control", "public, max-age=600")
 	utils.SuccessResponse(c, http.StatusOK, "", settings)
 }

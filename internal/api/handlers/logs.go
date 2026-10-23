@@ -901,8 +901,15 @@ func GetAuditLogs(c *gin.Context) {
 			"security_%", "business_%", "scheduler_%", "system_error")
 	query = applyAuditLogFilters(query, c)
 
-	var total int64
-	query.Count(&total)
+	// COUNT(*) 是列表页第二大开销（对 audit_logs 是第二次全表扫描），而它只用于显示
+	// "共 N 条"。用 15s 计数缓存：翻页不再重扫，新增日志最多滞后十几秒。
+	// 缓存 key 必须覆盖全部过滤参数，否则不同筛选会互相串数据。
+	countKey := "audit_logs|" + c.Request.URL.RawQuery
+	total, _ := utils.CachedCount(countKey, 15*time.Second, func() (int64, error) {
+		var n int64
+		err := query.Session(&gorm.Session{}).Count(&n).Error
+		return n, err
+	})
 
 	var logs []models.AuditLog
 	query.Preload("User").Order("audit_logs.created_at DESC").

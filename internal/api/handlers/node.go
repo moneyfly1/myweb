@@ -199,6 +199,7 @@ func processAndImportLinks(db *gorm.DB, links []string) (int, []importedNodeReje
 	importedCount := 0
 	seenKeys := make(map[string]bool)
 	var newNodes []models.Node
+	var updated []models.Node
 
 	var rejects []importedNodeReject
 	for _, link := range links {
@@ -231,7 +232,22 @@ func processAndImportLinks(db *gorm.DB, links []string) (int, []importedNodeReje
 			if existing.Status == "offline" {
 				existing.Status = "online"
 			}
-			db.Save(existing)
+			// 攒批后统一 Save：此前每个节点一次 db.Save（整行写 + 一次自动提交），
+			// 200 个节点的订阅导入就是 200 次写盘。这里改为单事务批量写。
+			updated = append(updated, *existing)
+		}
+	}
+
+	if len(updated) > 0 {
+		if err := db.Transaction(func(tx *gorm.DB) error {
+			for i := range updated {
+				if err := tx.Save(&updated[i]).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			utils.LogError("批量更新订阅导入节点失败", err, nil)
 		}
 	}
 
@@ -668,6 +684,24 @@ func ImportNodeLinks(c *gin.Context) {
 
 // importNodeLinks 批量解析并创建普通节点，返回成功/跳过/失败数与失败原因。
 func importNodeLinks(db *gorm.DB, links []string) (imp, skp, fail int, failReasons []string, rejects []importedNodeReject) {
+	// 现有节点一次性读进内存建 map：此前每个链接都调用一次 findExistingNode，
+	// 而它会把「该类型的全部节点」整表查出来再逐个比对（O(N×M)），
+	// 批量导入 200 个链接 = 200 次全表查询。
+	existingByKey := make(map[string]bool, 256)
+	{
+		var existing []models.Node
+		if err := db.Select("id, name, type, config").Where("is_active = ?", true).Find(&existing).Error; err == nil {
+			for i := range existing {
+				n := &existing[i]
+				if n.Config == nil {
+					continue
+				}
+				existingByKey[generateNodeKey(n.Type, n.Name, n.Config)] = true
+			}
+		}
+	}
+	var pending []models.Node
+
 	for _, link := range links {
 		parsed, err := config_update.ParseNodeLink(strings.TrimSpace(link))
 		if err != nil {
@@ -698,18 +732,24 @@ func importNodeLinks(db *gorm.DB, links []string) (imp, skp, fail int, failReaso
 			continue
 		}
 		node := buildNodeModel(parsed, true)
-		if findExistingNode(db, generateNodeKey(node.Type, node.Name, node.Config), node.Type) != nil {
+		key := generateNodeKey(node.Type, node.Name, node.Config)
+		if existingByKey[key] {
 			skp++
 			continue
 		}
-		if err := db.Create(&node).Error; err != nil {
-			fail++
+		existingByKey[key] = true // 同一批内的重复链接也要跳过
+		pending = append(pending, node)
+	}
+
+	if len(pending) > 0 {
+		if err := db.CreateInBatches(pending, 100).Error; err != nil {
+			fail += len(pending)
 			if len(failReasons) < 3 {
 				failReasons = append(failReasons, fmt.Sprintf("写入失败: %v", err))
 			}
-			continue
+		} else {
+			imp = len(pending)
 		}
-		imp++
 	}
 	return
 }
