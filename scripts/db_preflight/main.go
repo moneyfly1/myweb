@@ -321,6 +321,13 @@ func repairCorruptSQLite() bool {
 	if err := os.Rename(dbPath, dbPath+".corrupt."+time.Now().Format("20060102_150405")); err != nil {
 		fmt.Printf("   留底损坏文件失败: %v\n", err)
 	}
+	// 必须同时处理 -wal / -shm：只换主库文件、留着旧的 WAL，SQLite 下次打开会尝试
+	// 重放那些**属于旧库**的事务（日志里出现"换了库数据还是老的"或直接再报损坏）。
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if _, statErr := os.Stat(dbPath + suffix); statErr == nil {
+			_ = os.Remove(dbPath + suffix)
+		}
+	}
 	if err := copyFile(latest, dbPath); err != nil {
 		fmt.Printf("   恢复失败: %v\n", err)
 		return false
@@ -335,14 +342,9 @@ func resolveDBPath() string {
 	if cfg == nil || !strings.Contains(cfg.DatabaseURL, "sqlite") {
 		return ""
 	}
-	p := strings.Replace(cfg.DatabaseURL, "sqlite:///./", "", 1)
-	p = strings.Replace(p, "sqlite:///", "", 1)
-	if !filepath.IsAbs(p) {
-		if exe, err := os.Executable(); err == nil {
-			p = filepath.Join(filepath.Dir(exe), p)
-		}
-	}
-	return p
+	// 复用数据库层的路径解析：手抄一份的下场是规则漂移（这里曾漏掉 filepath.Join(".", ...) 分支），
+	// 而"路径算错"的后果是预检读了另一个库，结论全错还看不出来。
+	return database.ResolveSQLitePath(cfg.DatabaseURL)
 }
 
 func copyFile(src, dst string) error {

@@ -353,7 +353,7 @@ import { ElMessage } from '@/utils/elementPlusServices'
 import { useRouter } from 'vue-router'
 import { useApi } from '@/utils/api'
 import { adminAPI } from '@/utils/api'
-import { formatMoney as formatMoneyUtil, unwrapList, apiErrorMessage } from '@/utils/format'
+import { formatMoneyPlain, unwrapList, apiErrorMessage } from '@/utils/format'
 import { confirmAction } from '@/utils/confirmAction'
 import { getOrderStatusType, getOrderStatusText } from '@/utils/statusMaps'
 import {
@@ -640,9 +640,7 @@ dashboardActivity.value = unwrapList(data).slice(0, 20)
         ElMessage.warning('该订单号不存在')
       }
     }
-    const formatMoney = (value) => {
-      return formatMoneyUtil(value, { prefix: '' })
-    }
+    const formatMoney = formatMoneyPlain
     const formatTimeAgo = (dateString) => {
       if (!dateString) return '未知'
       const date = new Date(dateString)

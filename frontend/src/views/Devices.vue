@@ -666,9 +666,7 @@ export default {
     const formatTime = (time) => {
       return formatDateTimeSafe(time, 'YYYY-MM-DD HH:mm:ss', '未知')
     }
-    const truncateUserAgent = (ua) => {
-      return truncateText(ua, 50)
-    }
+    const truncateUserAgent = truncateText // 50 正是 truncateText 的默认长度
     // 设备状态文案/颜色：后端已算好 activity_state，这里只做展示映射。
     // 早期版本前端自己按 24 小时算 isOnline，与后端判定不一致（且 20 小时前拉过也显示"在线"）。
     const deviceActivityLabel = (state) => ({

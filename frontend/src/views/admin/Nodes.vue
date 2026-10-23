@@ -892,9 +892,8 @@ export default {
     const formatTime = (t) => {
       return formatDateTimeSafe(t, 'YYYY-MM-DD HH:mm:ss', '-')
     }
-    const formatBytes = (bytes) => {
-      return formatFileSize(bytes)
-    }
+    // 纯转发的包装已删除：模板里直接调用 utils 的 formatFileSize
+    const formatBytes = formatFileSize
 
     // ==================== 自建节点列表视图 ====================
     const showSelfHostList = ref(false)

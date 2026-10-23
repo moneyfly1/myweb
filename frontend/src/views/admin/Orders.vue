@@ -749,7 +749,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useApi, adminAPI } from '@/utils/api'
 import { formatDateTimeSafe, formatLocation } from '@/utils/date'
-import { formatMoney as formatMoneyUtil, unwrapList, apiErrorMessage } from '@/utils/format'
+import { formatMoneyPlain, unwrapList, apiErrorMessage } from '@/utils/format'
 import { getOrderStatusType as getStatusType, getOrderStatusText as getStatusText } from '@/utils/statusMaps'
 import { useMobile } from '@/composables/useMobile'
 import { debounce } from '@/composables/useDebounce'
@@ -1411,9 +1411,7 @@ export default {
 
     // Utilities
     const formatDateTime = (d) => formatDateTimeSafe(d, 'YYYY-MM-DD HH:mm:ss', '-')
-    const formatMoney = (v) => {
-      return formatMoneyUtil(v, { prefix: '' })
-    }
+    const formatMoney = formatMoneyPlain
 
     // Lifecycle
     //

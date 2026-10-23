@@ -326,7 +326,7 @@ import { ref, reactive, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { Refresh, User, Connection, ShoppingCart, Money } from '@element-plus/icons-vue'
 import { statisticsAPI } from '@/utils/api'
-import { formatMoney as formatMoneyUtil } from '@/utils/format'
+import { formatMoneyPlain } from '@/utils/format'
 import { useMobile } from '@/composables/useMobile'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
@@ -491,9 +491,7 @@ export default {
 				console.error(error)
 			}
 		}
-		const formatMoney = (value) => {
-			return formatMoneyUtil(value, { prefix: '' })
-		}
+		const formatMoney = formatMoneyPlain
 		const loadRegionStats = async () => {
 			try {
 				loadingRegions.value = true

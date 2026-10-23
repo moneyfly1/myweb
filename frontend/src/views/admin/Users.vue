@@ -805,6 +805,9 @@
         <div v-else-if="nodeSearchKeyword && searchedNodes.length === 0" class="search-result-tip empty">
           未找到匹配的节点
         </div>
+        <div v-else-if="availableNodesTruncated" class="search-result-tip empty">
+          专线节点超过 500 个，下拉仅显示前 500 个，请用搜索定位
+        </div>
       </div>
 
       <el-form label-width="100px" class="assign-node-form">
@@ -1576,12 +1579,27 @@ export default {
       showAssignNodeDialog.value = true
       await loadAvailableNodes()
     }
+    // 后端单页上限是 100（utils.ParsePagination 会 clamp），此前传 page_size:1000
+    // 只会静默拿到前 100 个节点 —— 超过 100 个专线节点时下拉框缺项且没有任何提示。
+    // 这里分页拉取（最多 5 页 = 500 个），仍超出则提示改用搜索。
+    const availableNodesTruncated = ref(false)
     const loadAvailableNodes = async () => {
+      const pageSize = 100
+      const maxPages = 5
+      const all = []
+      availableNodesTruncated.value = false
       try {
-        const response = await adminAPI.getCustomNodes({ page: 1, page_size: 1000 })
-        if (response.data && response.data.success) {
-          availableNodes.value = response.data.data?.nodes || response.data.data || []
+        for (let page = 1; page <= maxPages; page++) {
+          const response = await adminAPI.getCustomNodes({ page, page_size: pageSize })
+          if (!response.data || !response.data.success) break
+          const data = response.data.data || {}
+          const list = Array.isArray(data) ? data : (data.nodes || data.data || [])
+          all.push(...list)
+          const total = Number(data.total || 0)
+          if (list.length < pageSize || (total > 0 && all.length >= total)) break
+          if (page === maxPages && total > all.length) availableNodesTruncated.value = true
         }
+        availableNodes.value = all
       } catch (error) {
         ElMessage.error(apiErrorMessage(error, '加载可用节点失败'))
       }
@@ -1974,7 +1992,7 @@ export default {
       handleCurrentChange,
       viewUserDetails,
       viewUserBalance,
-      loadAvailableNodes, openAssignNodeDialog,
+      loadAvailableNodes, openAssignNodeDialog, availableNodesTruncated,
       handleNodeSearch,
       handleNodeSearchClear,
       assignCustomNode,

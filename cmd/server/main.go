@@ -70,6 +70,16 @@ func main() {
 	}
 	utils.InitTrustedProxies(trustedProxies)
 
+	// 日志必须先于数据库初始化：InitDatabase 里的迁移/恢复告警此前只能进 stderr，
+	// 不进 app.log —— 出事时按日志排查会一片空白（与"静默失败"同类问题）。
+	logDir := filepath.Join(cfg.UploadDir, "logs")
+	if err := os.MkdirAll(logDir, 0750); err != nil {
+		log.Printf("创建日志目录失败: %v", err)
+	}
+	if err := utils.InitLogger(logDir); err != nil {
+		log.Printf("初始化日志失败: %v", err)
+	}
+
 	if err := database.InitDatabase(); err != nil {
 		log.Fatalf("数据库初始化失败: %v", err)
 	}
@@ -113,15 +123,6 @@ func main() {
 
 	if err := os.MkdirAll(cfg.UploadDir, 0750); err != nil {
 		log.Printf("创建上传目录失败: %v", err)
-	}
-
-	logDir := filepath.Join(cfg.UploadDir, "logs")
-	if err := os.MkdirAll(logDir, 0750); err != nil {
-		log.Printf("创建日志目录失败: %v", err)
-	}
-
-	if err := utils.InitLogger(logDir); err != nil {
-		log.Printf("初始化日志失败: %v", err)
 	}
 
 	geoipPath := os.Getenv("GEOIP_DB_PATH")
@@ -176,18 +177,27 @@ func main() {
 		cache_service.WarmupCache()
 	}
 
-	// 任务队列与缓存解耦：Redis 起得晚也要能把 worker 拉起来。
-	// 连接参数由 cache.CurrentRedisConn() 统一提供（含密码/DB/TLS），
-	// 否则配了密码的 Redis 上每次入队都会失败。
-	if err := queue.InitQueue(""); err != nil {
-		log.Printf("任务队列初始化失败（将退化为同步执行）: %v", err)
-	} else {
+	// 任务队列：Redis 已连上就立刻起 worker；没连上则注册恢复回调，
+	// 等 core/cache 的探活协程把 Redis 拉起来后再启动（此前队列被绑在"启动时 Redis 成功"
+	// 这一个条件上，Redis 起晚就只能重启进程）。
+	// 连接参数由 cache.CurrentRedisConn() 统一提供（含密码/DB/TLS）。
+	startQueue := func() {
+		if err := queue.InitQueue(""); err != nil {
+			log.Printf("任务队列初始化失败（将退化为同步执行）: %v", err)
+			return
+		}
 		go func() {
 			if err := queue.StartWorker(queue.RegisterHandlers()); err != nil {
 				utils.LogErrorMsg("任务队列 worker 异常退出: %v", err)
 			}
 		}()
 		log.Println("任务队列 worker 已启动")
+	}
+	cache.RegisterRecoverHook(startQueue)
+	if cache.IsRedisEnabled() {
+		startQueue()
+	} else {
+		log.Println("Redis 未就绪：任务队列将在 Redis 恢复后自动启动（当前退化为同步执行）")
 	}
 	defer cache.Close()
 	defer queue.Close()

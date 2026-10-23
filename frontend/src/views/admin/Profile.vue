@@ -613,9 +613,7 @@ export default {
         }
     }
     const formatDate = (dateString) => formatDateTimeSafe(dateString, 'YYYY-MM-DD HH:mm:ss', '')
-    const getLocationText = (location, ipAddress) => {
-      return getLocationTextUtil(location, ipAddress)
-    }
+    const getLocationText = getLocationTextUtil
     const getDeviceInfo = (userAgent) => {
       if (!userAgent) return '未知设备'
       const ua = userAgent.toLowerCase()
