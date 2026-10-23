@@ -518,24 +518,26 @@ export default {
     const handleUpgradeSuccess = async () => {
       await refreshSubscription()
     }
+    // handler 与卸载清理写在 onMounted 之外：在 onMounted 回调里注册 onUnmounted
+    // 没有活跃组件实例，Vue 只告警不登记，window 监听会永久泄漏。
+    const handleSubscriptionUpdate = async () => {
+      if (!refreshPromise) {
+        await refreshSubscription()
+      }
+    }
+    const handleUserInfoUpdate = async () => {
+      if (!refreshPromise) {
+        await refreshSubscription()
+      }
+    }
     onMounted(() => {
       refreshSubscription()
-      const handleSubscriptionUpdate = async () => {
-        if (!refreshPromise) {
-          await refreshSubscription()
-        }
-      }
-      const handleUserInfoUpdate = async () => {
-        if (!refreshPromise) {
-          await refreshSubscription()
-        }
-      }
       window.addEventListener('subscription-updated', handleSubscriptionUpdate)
       window.addEventListener('user-info-updated', handleUserInfoUpdate)
-      onUnmounted(() => {
-        window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
-        window.removeEventListener('user-info-updated', handleUserInfoUpdate)
-      })
+    })
+    onUnmounted(() => {
+      window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
+      window.removeEventListener('user-info-updated', handleUserInfoUpdate)
     })
     watch(selectedExcludedProtocols, () => {
       generateQRCodes()

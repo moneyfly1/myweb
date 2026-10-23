@@ -14,14 +14,6 @@ const (
 	CouponTypeFreeDays CouponType = "free_days" // 赠送天数
 )
 
-type CouponStatus string
-
-const (
-	CouponStatusActive   CouponStatus = "active"   // 有效
-	CouponStatusInactive CouponStatus = "inactive" // 无效
-	CouponStatusExpired  CouponStatus = "expired"  // 已过期
-)
-
 type Coupon struct {
 	ID                 uint            `gorm:"primaryKey" json:"id"`
 	Code               string          `gorm:"type:varchar(50);uniqueIndex;not null" json:"code"`

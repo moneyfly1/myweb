@@ -732,22 +732,15 @@ func (s *YipayService) buildRefundURL() (string, bool) {
 	}
 
 	if strings.Contains(refundURL, "api.php") {
-		// 如果已经包含api.php，添加或替换act参数
-		if strings.Contains(apiURL, "act=") {
-			// 替换现有的act参数
-			refundURL = strings.Split(apiURL, "act=")[0] + "act=refund"
-			if idx := strings.Index(apiURL, "&"); idx > 0 && strings.Contains(apiURL[idx:], "&") {
-				// 保留其他参数
-				parts := strings.Split(apiURL, "&")
-				for _, part := range parts {
-					if !strings.HasPrefix(part, "act=") {
-						refundURL += "&" + part
-					}
-				}
-			}
-		} else {
-			refundURL = refundURL + "?act=refund"
+		// 用 url 解析改写 act 参数：手写字符串拼接会把 act 重复一次
+		// （如 ...?a=1&act=x → ...?act=refund&a=1&act=x），支付网关直接报 400。
+		if u, err := url.Parse(apiURL); err == nil {
+			q := u.Query()
+			q.Set("act", "refund")
+			u.RawQuery = q.Encode()
+			return u.String(), false
 		}
+		refundURL = refundURL + "?act=refund"
 	} else {
 		// 如果不包含api.php，添加路径
 		if strings.HasSuffix(refundURL, "/") {

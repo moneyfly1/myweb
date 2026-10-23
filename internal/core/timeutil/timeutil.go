@@ -30,9 +30,7 @@ var BeijingTZ = func() *time.Location {
 const (
 	LayoutDateTime = "2006-01-02 15:04:05"
 	LayoutDate     = "2006-01-02"
-	LayoutCompact  = "20060102"
 	LayoutMonth    = "200601"
-	LayoutClock    = "15:04:05"
 )
 
 // Now 返回当前北京时间。写库/比较一律用这个函数。

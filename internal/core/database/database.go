@@ -867,16 +867,7 @@ func IsSQLiteFreshDB() bool {
 	if cfg == nil || !strings.Contains(cfg.DatabaseURL, "sqlite") {
 		return false
 	}
-	path := strings.Replace(cfg.DatabaseURL, "sqlite:///./", "", 1)
-	path = strings.Replace(path, "sqlite:///", "", 1)
-	if !filepath.IsAbs(path) {
-		if exePath, exeErr := os.Executable(); exeErr == nil {
-			path = filepath.Join(filepath.Dir(exePath), path)
-		} else {
-			path = filepath.Join(".", path)
-		}
-	}
-	_, err := os.Stat(path)
+	_, err := os.Stat(resolveSQLitePath(cfg.DatabaseURL))
 	return os.IsNotExist(err)
 }
 
@@ -978,7 +969,10 @@ func sqliteSelfCheckAndRecover(dbPath string) bool {
 	if err == nil {
 		_ = sqlDB.Close()
 	}
-	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	DB, err = gorm.Open(sqlite.Open(sqliteDSN(dbPath)), &gorm.Config{
+		Logger:  logger.Discard,
+		NowFunc: timeutil.NowForDB,
+	})
 	if err != nil {
 		log.Printf("❌ 恢复后重新打开失败: %v", err)
 		return false

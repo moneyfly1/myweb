@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"cboard-go/internal/core/database"
@@ -61,6 +62,34 @@ type cachedBlacklist struct {
 
 const blacklistCacheTTL = 5 * time.Minute
 
+// blacklistCacheMaxEntries 缓存条目上限：命中上限时先清理过期项。
+// 黑名单条目按「token 过期时间」自然失效，但缓存本身不会自动回收，长期运行会无界增长。
+const blacklistCacheMaxEntries = 20000
+
+var blacklistCacheCount atomic.Int64
+
+func blacklistCacheStore(tokenHash string, cb *cachedBlacklist) {
+	tokenBlacklistCache.Store(tokenHash, cb)
+	blacklistCacheCount.Add(1)
+	pruneBlacklistCache()
+}
+
+// pruneBlacklistCache 条目过多时清理过期项（只删已过期的，不影响正常条目）。
+func pruneBlacklistCache() {
+	if blacklistCacheCount.Load() < blacklistCacheMaxEntries {
+		return
+	}
+	now := time.Now()
+	tokenBlacklistCache.Range(func(k, v any) bool {
+		cb, ok := v.(*cachedBlacklist)
+		if !ok || !now.Before(cb.expireAt) {
+			tokenBlacklistCache.Delete(k)
+			blacklistCacheCount.Add(-1)
+		}
+		return true
+	})
+}
+
 func isTokenBlacklistedCached(tokenHash string) bool {
 	if val, ok := tokenBlacklistCache.Load(tokenHash); ok {
 		cb := val.(*cachedBlacklist)
@@ -68,18 +97,20 @@ func isTokenBlacklistedCached(tokenHash string) bool {
 			return cb.blacklisted
 		}
 		tokenBlacklistCache.Delete(tokenHash)
+		blacklistCacheCount.Add(-1)
 	}
 	result := models.IsTokenBlacklisted(database.GetDB(), tokenHash)
-	tokenBlacklistCache.Store(tokenHash, &cachedBlacklist{
+	blacklistCacheStore(tokenHash, &cachedBlacklist{
 		blacklisted: result,
 		expireAt:    time.Now().Add(blacklistCacheTTL),
 	})
 	return result
 }
 
-// AddTokenToBlacklistCache 登出时主动写入缓存
+// AddTokenToBlacklistCache 登出/轮换时主动写入缓存。
+// 必须调用：若缓存里还留着「未拉黑(false)」的结果，旧 token 在 TTL 内仍能通过校验。
 func AddTokenToBlacklistCache(tokenHash string) {
-	tokenBlacklistCache.Store(tokenHash, &cachedBlacklist{
+	blacklistCacheStore(tokenHash, &cachedBlacklist{
 		blacklisted: true,
 		expireAt:    time.Now().Add(blacklistCacheTTL),
 	})

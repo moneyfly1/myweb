@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"cboard-go/internal/core/cache"
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
@@ -80,14 +79,28 @@ func backupClashURLs(c *gin.Context, subURL string) []string {
 // 用订阅域名（subscription_domain）而不是网站域名：官网域名在部分地区被屏蔽时，
 // 客户仍能用订阅域名更新节点；两者指向同一后端、token 通用，老地址继续有效。
 func getSubscriptionURLs(c *gin.Context, subURL string) (string, string) {
-	baseURL := utils.SubscriptionBaseURL(c.Request, database.GetDB())
+	return subscriptionURLsFromBase(utils.SubscriptionBaseURL(c.Request, database.GetDB()), subURL)
+}
+
+// subscriptionURLsFromBase 纯字符串拼装（不查库），供列表循环复用同一个 base。
+func subscriptionURLsFromBase(baseURL, subURL string) (string, string) {
 	return fmt.Sprintf("%s/api/v1/client/subscribe?token=%s", baseURL, subURL),
 		fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=clash", baseURL, subURL)
 }
 
 // getMultiClientSubscriptionURLs 返回所有支持的客户端订阅地址
 func getMultiClientSubscriptionURLs(c *gin.Context, subURL string) gin.H {
-	baseURL := utils.SubscriptionBaseURL(c.Request, database.GetDB())
+	return multiClientSubscriptionURLsFromBase(c, utils.SubscriptionBaseURL(c.Request, database.GetDB()), subURL)
+}
+
+// multiClientSubscriptionURLsFromBase 同 getMultiClientSubscriptionURLs，但 base 由调用方给，
+// 列表场景在循环外算一次即可（此前每行都要查 2 次 system_configs，100 行 = 数百次查询）。
+func multiClientSubscriptionURLsFromBase(c *gin.Context, baseURL, subURL string) gin.H {
+	return multiClientSubscriptionURLsFromBases(baseURL, utils.SubscriptionBaseURLs(c.Request, database.GetDB()), subURL)
+}
+
+// multiClientSubscriptionURLsFromBases 与上者相同，bases 由调用方传入（列表循环外算一次）
+func multiClientSubscriptionURLsFromBases(baseURL string, bases []string, subURL string) gin.H {
 	h := gin.H{
 		"universal_url":    fmt.Sprintf("%s/api/v1/client/subscribe?token=%s", baseURL, subURL),
 		"clash_url":        fmt.Sprintf("%s/api/v1/client/subscribe?token=%s&type=clash", baseURL, subURL),
@@ -101,7 +114,6 @@ func getMultiClientSubscriptionURLs(c *gin.Context, subURL string) gin.H {
 
 	// 备用域名（同一 token、同一后端）：主地址打不开的地区，客户端可逐个尝试备用地址，
 	// 不必换 token、不必找客服。列表由 subscription_domain + subscription_backup_domains 决定。
-	bases := utils.SubscriptionBaseURLs(c.Request, database.GetDB())
 	if len(bases) > 1 {
 		clashURLs := make([]string, 0, len(bases))
 		universalURLs := make([]string, 0, len(bases))
@@ -162,12 +174,12 @@ func asyncSubscriptionLog(
 	}
 
 	go func() {
-		// 设置超时，避免goroutine永久阻塞
-		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		// 用 Background 而不是请求 ctx：handler 返回后请求 ctx 立即取消，
+		// 那样这条日志必然写失败（此前这里既用请求 ctx 建超时、又没把 ctx 传给 DB）。
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		// 使用WithContext确保数据库操作可以取消
-		if err := utils.CreateSubscriptionLog(subID, userID, actionType, actionBy, actionByUserID, clientIP, beforeData, afterData, reason); err != nil {
+		if err := utils.CreateSubscriptionLogWithContext(ctx, subID, userID, actionType, actionBy, actionByUserID, clientIP, beforeData, afterData, reason); err != nil {
 			// 只记录错误，不阻塞主流程
 			select {
 			case <-ctx.Done():
@@ -320,20 +332,8 @@ func performSubscriptionReset(db *gorm.DB, sub *models.Subscription, resetType, 
 			return err
 		}
 
-		// 事务提交后再清理旧 token 配置缓存（带超时）
-		go func(url string) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-
-			if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, url); err != nil {
-				select {
-				case <-ctx.Done():
-					// 超时，不记录错误
-				default:
-					log.Printf("failed to clear subscription config cache: %v", err)
-				}
-			}
-		}(oldURL)
+		// 事务提交后再清理旧 token 配置缓存
+		clearSubConfigCacheAsync(oldURL)
 
 		// 记录日志
 		beforeData := map[string]interface{}{
@@ -676,6 +676,8 @@ func buildSubscriptionListData(db *gorm.DB, subscriptions []models.Subscription,
 
 	now := utils.GetBeijingTime()
 	list := make([]gin.H, 0, len(subscriptions))
+	// 订阅域名只解析一次，避免每行都查 system_configs
+	baseURL := utils.SubscriptionBaseURL(c.Request, database.GetDB())
 
 	for _, sub := range subscriptions {
 		online := onlineMap[sub.ID]
@@ -684,7 +686,7 @@ func buildSubscriptionListData(db *gorm.DB, subscriptions []models.Subscription,
 			curr = int(online)
 		}
 
-		universal, clash := getSubscriptionURLs(c, sub.SubscriptionURL)
+		universal, clash := subscriptionURLsFromBase(baseURL, sub.SubscriptionURL)
 
 		var userInfo gin.H
 		var userNotes string
@@ -873,24 +875,32 @@ func BatchClearDevices(c *gin.Context) {
 	}
 	db := database.GetDB()
 	var subs []models.Subscription
-	db.Select("subscription_url").Where("id IN ?", req.SubscriptionIDs).Find(&subs)
-	db.Where("subscription_id IN ?", req.SubscriptionIDs).Delete(&models.Device{})
-	db.Model(&models.Subscription{}).Where("id IN ?", req.SubscriptionIDs).Update("current_devices", 0)
-	go func(subscriptions []models.Subscription) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		for _, sub := range subscriptions {
-			if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, sub.SubscriptionURL); err != nil {
-				select {
-				case <-ctx.Done():
-					return // 超时，停止处理
-				default:
-					log.Printf("failed to clear subscription config cache: %v", err)
-				}
-			}
-		}
-	}(subs)
+	if err := db.Select("subscription_url").Where("id IN ?", req.SubscriptionIDs).Find(&subs).Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "查询订阅失败", err)
+		return
+	}
+	// 删设备与清零计数必须同事务：中途失败会留下「设备已删、计数还是旧值」，
+	// 用户侧看到"已用 5/3 台"却查不到任何设备。
+	tx := db.Begin()
+	if tx.Error != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "系统繁忙，请稍后重试", tx.Error)
+		return
+	}
+	if err := tx.Where("subscription_id IN ?", req.SubscriptionIDs).Delete(&models.Device{}).Error; err != nil {
+		tx.Rollback()
+		utils.ErrorResponse(c, http.StatusInternalServerError, "清除设备失败", err)
+		return
+	}
+	if err := tx.Model(&models.Subscription{}).Where("id IN ?", req.SubscriptionIDs).Update("current_devices", 0).Error; err != nil {
+		tx.Rollback()
+		utils.ErrorResponse(c, http.StatusInternalServerError, "重置设备计数失败", err)
+		return
+	}
+	if err := tx.Commit().Error; err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "保存失败", err)
+		return
+	}
+	clearSubConfigCachesAsync(subscriptionURLs(subs))
 	utils.CreateAuditLog(c, "batch_clear_devices", "subscription", 0,
 		fmt.Sprintf("管理员批量清除 %d 个订阅的设备", len(req.SubscriptionIDs)),
 		map[string]interface{}{"subscription_ids": req.SubscriptionIDs, "count": len(req.SubscriptionIDs)},
@@ -1012,19 +1022,7 @@ func UpdateSubscription(c *gin.Context) {
 			fmt.Sprintf("管理员更新 %s(%s) 订阅: %s", targetUsername, targetEmail, changeDesc),
 			beforeData, afterData)
 	}
-	go func(subURL string) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-		defer cancel()
-
-		if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, subURL); err != nil {
-			select {
-			case <-ctx.Done():
-				// 超时，不记录错误
-			default:
-				log.Printf("failed to clear subscription config cache: %v", err)
-			}
-		}
-	}(sub.SubscriptionURL)
+	clearSubConfigCacheAsync(sub.SubscriptionURL)
 	utils.SuccessResponse(c, http.StatusOK, "更新成功", nil)
 }
 
@@ -1056,7 +1054,8 @@ func ResetSubscription(c *gin.Context) {
 		map[string]interface{}{
 			"new_subscription_url": sub.SubscriptionURL,
 		})
-	go sendResetEmail(c, *sub, sub.User, "管理员重置")
+	payload := buildResetEmailPayload(c, *sub)
+	go sendResetEmail(payload, sub.User, "管理员重置")
 	utils.SuccessResponse(c, http.StatusOK, "订阅已重置", sub)
 }
 
@@ -1190,21 +1189,7 @@ func ClearUserDevices(c *gin.Context) {
 		db.Model(&models.Device{}).Where("subscription_id IN ?", subIDs).Count(&totalDevices)
 		db.Where("subscription_id IN ?", subIDs).Delete(&models.Device{})
 		db.Model(&models.Subscription{}).Where("id IN ?", subIDs).Update("current_devices", 0)
-		go func(subscriptions []models.Subscription) {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-
-			for _, sub := range subscriptions {
-				if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, sub.SubscriptionURL); err != nil {
-					select {
-					case <-ctx.Done():
-						return // 超时，停止处理
-					default:
-						log.Printf("failed to clear subscription config cache: %v", err)
-					}
-				}
-			}
-		}(subs)
+		clearSubConfigCachesAsync(subscriptionURLs(subs))
 	}
 	utils.CreateAuditLog(c, "clear_user_devices", "user", 0,
 		fmt.Sprintf("管理员清理用户(ID:%s)全部设备，共 %d 台", userID, totalDevices),
@@ -1236,7 +1221,8 @@ func ResetUserSubscriptionSelf(c *gin.Context) {
 		return
 	}
 
-	go sendResetEmail(c, sub, *user, reason)
+	payload := buildResetEmailPayload(c, sub)
+	go sendResetEmail(payload, *user, reason)
 	utils.SuccessResponse(c, http.StatusOK, "订阅已重置", sub)
 }
 
@@ -1399,14 +1385,32 @@ func ExportSubscriptions(c *gin.Context) {
 	c.Data(http.StatusOK, "text/csv; charset=utf-8", []byte(csv.String()))
 }
 
-func sendResetEmail(c *gin.Context, sub models.Subscription, user models.User, reason string) {
+// resetEmailPayload 订阅重置邮件的静态内容。
+// 由 handler 在请求内同步构建，异步发信只读这份数据 —— 不能在 goroutine 里
+// 继续使用 *gin.Context：请求结束后它会被回收复用，读写即是数据竞争。
+type resetEmailPayload struct {
+	Univ, Clash, Exp, ResetTime string
+	AllURLs                     gin.H
+}
+
+func buildResetEmailPayload(c *gin.Context, sub models.Subscription) resetEmailPayload {
 	univ, clash := getSubscriptionURLs(c, sub.SubscriptionURL)
-	allURLs := getMultiClientSubscriptionURLs(c, sub.SubscriptionURL)
 	exp := "未设置"
 	if !sub.ExpireTime.IsZero() {
 		exp = utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout)
 	}
-	resetTime := utils.FormatBeijingTime(utils.GetBeijingTime())
+	return resetEmailPayload{
+		Univ:      univ,
+		Clash:     clash,
+		Exp:       exp,
+		ResetTime: utils.FormatBeijingTime(utils.GetBeijingTime()),
+		AllURLs:   getMultiClientSubscriptionURLs(c, sub.SubscriptionURL),
+	}
+}
+
+func sendResetEmail(p resetEmailPayload, user models.User, reason string) {
+	univ, clash, allURLs := p.Univ, p.Clash, p.AllURLs
+	exp, resetTime := p.Exp, p.ResetTime
 	content := email.NewEmailTemplateBuilder().GetMultiSubscriptionResetTemplate(user.Username, map[string]string{
 		"universal":    univ,
 		"clash":        clash,
@@ -1509,19 +1513,7 @@ func BatchDeleteSubscriptions(c *gin.Context) {
 			"expire_time":     utils.FormatBeijingLayout(sub.ExpireTime, TimeLayout),
 		}
 		asyncSubscriptionLog(c.Request.Context(), sub.ID, sub.UserID, "delete", actionBy, actionByUserID, ipAddress, beforeData, nil, "批量删除订阅")
-		go func(subURL string) {
-			ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-			defer cancel()
-
-			if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, subURL); err != nil {
-				select {
-				case <-ctx.Done():
-					// 超时，不记录错误
-				default:
-					log.Printf("failed to clear subscription config cache: %v", err)
-				}
-			}
-		}(sub.SubscriptionURL)
+		clearSubConfigCacheAsync(sub.SubscriptionURL)
 	}
 	utils.CreateAuditLog(c, "batch_delete_subscriptions", "subscription", 0,
 		fmt.Sprintf("管理员批量删除 %d 个订阅", len(req.SubscriptionIDs)),
@@ -1591,19 +1583,7 @@ func batchUpdateSubscriptionStatus(c *gin.Context, isActive bool, status string)
 			"status":    status,
 		}
 		asyncSubscriptionLog(c.Request.Context(), sub.ID, sub.UserID, actionType, actionBy, actionByUserID, ipAddress, beforeData, afterData, fmt.Sprintf("批量%s订阅", actionName))
-		go func(subURL string) {
-			ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-			defer cancel()
-
-			if err := cache.ClearSubscriptionConfigCacheWithContext(ctx, subURL); err != nil {
-				select {
-				case <-ctx.Done():
-					// 超时，不记录错误
-				default:
-					log.Printf("failed to clear subscription config cache: %v", err)
-				}
-			}
-		}(sub.SubscriptionURL)
+		clearSubConfigCacheAsync(sub.SubscriptionURL)
 	}
 	// 构建批量操作详情
 	subDetails := make([]map[string]interface{}, 0, len(subsToUpdate))
@@ -1662,7 +1642,8 @@ func BatchResetSubscriptions(c *gin.Context) {
 			failCount++
 			continue
 		}
-		go sendResetEmail(c, subCopy, subCopy.User, "管理员批量重置")
+		payload := buildResetEmailPayload(c, subCopy)
+		go sendResetEmail(payload, subCopy.User, "管理员批量重置")
 		successCount++
 	}
 	utils.CreateAuditLog(c, "batch_reset_subscriptions", "subscription", 0,
@@ -2550,9 +2531,14 @@ func StartConfigUpdate(c *gin.Context) {
 }
 
 func StopConfigUpdate(c *gin.Context) {
-	// 这里假设有一个 Stop 方法或类似的机制，原代码只有响应
+	service := config_update.NewConfigUpdateService()
+	if !service.StopTask() {
+		// 之前这里无条件回「停止指令已发送」，实际什么都没停：误导管理员以为任务已中止。
+		utils.SuccessResponse(c, http.StatusOK, "当前没有正在运行的配置更新任务", gin.H{"stopped": false})
+		return
+	}
 	utils.CreateAuditLogSimple(c, "stop_config_update", "config_update", 0, "管理员操作: 停止配置更新任务")
-	utils.SuccessResponse(c, http.StatusOK, "配置更新任务停止指令已发送", nil)
+	utils.SuccessResponse(c, http.StatusOK, "已请求停止，任务将在当前阶段结束后退出", gin.H{"stopped": true})
 }
 
 func TestConfigUpdate(c *gin.Context) {

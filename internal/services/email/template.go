@@ -7,18 +7,12 @@ import (
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
-
-	"gorm.io/gorm"
 )
 
-type EmailTemplateService struct {
-	db *gorm.DB
-}
+type EmailTemplateService struct{}
 
 func NewEmailTemplateService() *EmailTemplateService {
-	return &EmailTemplateService{
-		db: database.GetDB(),
-	}
+	return &EmailTemplateService{}
 }
 
 func (s *EmailTemplateService) GetTemplate(name string) (*models.EmailTemplate, error) {

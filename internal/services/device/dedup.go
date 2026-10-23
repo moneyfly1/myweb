@@ -123,7 +123,6 @@ func MergeDuplicateDevicesFiltered(db *gorm.DB, apply bool, filter DedupFilter) 
 			if !ok {
 				continue
 			}
-			d := d
 			groups[key] = append(groups[key], d)
 		}
 
@@ -220,24 +219,17 @@ func MergeDuplicateDevicesFiltered(db *gorm.DB, apply bool, filter DedupFilter) 
 // hasVersionSpread 同组内是否存在「软件名相同但版本不同」的行。
 // 这是"同一台设备因升级被重复登记"的判定依据；版本全同说明证据不足。
 func hasVersionSpread(group []models.Device) bool {
-	seen := map[string]bool{}
+	seen := map[string]struct{}{}
 	for _, d := range group {
-		v := ""
-		if d.SoftwareVersion != nil {
-			v = strings.TrimSpace(*d.SoftwareVersion)
-		}
-		if seen[v] && v != "" {
+		if d.SoftwareVersion == nil {
 			continue
 		}
-		seen[v] = true
-	}
-	// 至少两个不同的非空版本
-	distinct := 0
-	for v := range seen {
-		if v != "" {
-			distinct++
+		if v := strings.TrimSpace(*d.SoftwareVersion); v != "" {
+			seen[v] = struct{}{}
 		}
 	}
+	// 至少两个不同的非空版本
+	distinct := len(seen)
 	return distinct >= 2
 }
 

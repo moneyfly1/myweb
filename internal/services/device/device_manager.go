@@ -38,6 +38,13 @@ var (
 	reIOSToken = regexp.MustCompile(`(?i)(?:^|[/\s(])ios(?:[\s/),]|$)`)
 	// macOS 版本号（"macOS 12.6.9" / "Mac OS X 10.15.7" 之外的写法）
 	reMacOSVersion = regexp.MustCompile(`(?i)mac(?:\s?os\s?x?)\s*(\d+[._]\d+(?:[._]\d+)?)`)
+	// iOS 系统版本号（含旧式 "iPhone OS 16_6_1"）
+	iosVersionPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`OS\s+(\d+)[._](\d+)(?:[._](\d+))?`),          // OS 16_6_1, OS 16.6.1
+		regexp.MustCompile(`iPhone\s+OS\s+(\d+)[._](\d+)(?:[._](\d+))?`), // iPhone OS 16_6_1
+		regexp.MustCompile(`Version/(\d+)[._](\d+)(?:[._](\d+))?`),       // Version/16.6.1
+		regexp.MustCompile(`iOS\s+(\d+)[._](\d+)(?:[._](\d+))?`),         // iOS 16.6.1
+	}
 	// UA 里显式的 iOS 版本号（"iOS 26.5.2"）
 	reIOSVersion = regexp.MustCompile(`(?i)ios\s+(\d+)[._](\d+)(?:[._](\d+))?`)
 )
@@ -893,14 +900,8 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 		} else {
 			result["os_name"] = "iOS"
 		}
-		patterns := []string{
-			`OS\s+(\d+)[._](\d+)(?:[._](\d+))?`,          // OS 16_6_1, OS 16.6.1
-			`iPhone\s+OS\s+(\d+)[._](\d+)(?:[._](\d+))?`, // iPhone OS 16_6_1
-			`Version/(\d+)[._](\d+)(?:[._](\d+))?`,       // Version/16.6.1
-			`iOS\s+(\d+)[._](\d+)(?:[._](\d+))?`,         // iOS 16.6.1
-		}
-		for _, pattern := range patterns {
-			if match := regexp.MustCompile(pattern).FindStringSubmatch(userAgent); len(match) > 1 {
+		for _, re := range iosVersionPatterns {
+			if match := re.FindStringSubmatch(userAgent); len(match) > 1 {
 				version := match[1] + "." + match[2]
 				if len(match) > 3 && match[3] != "" {
 					version += "." + match[3]

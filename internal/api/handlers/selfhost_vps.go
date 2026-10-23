@@ -1010,7 +1010,15 @@ func fetchSystemListenPorts(client *sshdeploy.Client) map[int]bool {
 	if client == nil {
 		return ports
 	}
-	out, err := client.RunWithTimeout("ss -tln 2>/dev/null | awk '{print $4}' | grep -oE ':[0-9]+$' | grep -oE '[0-9]+' | sort -u", 10*time.Second)
+	return parseListenPorts(client.RunWithTimeout(listenPortsCmd, 10*time.Second))
+}
+
+// listenPortsCmd 列出当前监听中的 TCP 端口（去重）
+const listenPortsCmd = "ss -tln 2>/dev/null | awk '{print $4}' | grep -oE ':[0-9]+$' | grep -oE '[0-9]+' | sort -u"
+
+// parseListenPorts 把 ss 输出解析成端口集合（命令失败时返回空集合）
+func parseListenPorts(out string, err error) map[int]bool {
+	ports := make(map[int]bool)
 	if err != nil {
 		return ports
 	}
@@ -1019,7 +1027,7 @@ func fetchSystemListenPorts(client *sshdeploy.Client) map[int]bool {
 		if line == "" {
 			continue
 		}
-		if p, err := strconv.Atoi(line); err == nil {
+		if p, convErr := strconv.Atoi(line); convErr == nil {
 			ports[p] = true
 		}
 	}
@@ -1255,18 +1263,5 @@ func fetchSystemListenPortsByHost(host string, port int, pass, user string) map[
 		return ports
 	}
 	defer client.Close()
-	out, err := client.RunWithTimeout("ss -tln 2>/dev/null | awk '{print $4}' | grep -oE ':[0-9]+$' | grep -oE '[0-9]+' | sort -u", 10*time.Second)
-	if err != nil {
-		return ports
-	}
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if p, err := strconv.Atoi(line); err == nil {
-			ports[p] = true
-		}
-	}
-	return ports
+	return parseListenPorts(client.RunWithTimeout(listenPortsCmd, 10*time.Second))
 }

@@ -1,7 +1,6 @@
 package selfhost
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -267,5 +266,3 @@ func protoLabel(k string) string {
 		return strings.ToUpper(k)
 	}
 }
-
-var _ = json.Marshal

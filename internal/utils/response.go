@@ -334,7 +334,7 @@ func logErrorAt(level int, operation string, err error, context map[string]inter
 	errMsg := err.Error()
 	if errMsg != "" {
 		// 移除文件路径中的敏感信息
-		errMsg = sanitizeErrorPath(errMsg)
+		errMsg = SanitizeErrorPath(errMsg)
 	}
 
 	msg := fmt.Sprintf("Operation: %s, Error: %v", operation, errMsg)
@@ -370,25 +370,6 @@ func logErrorAt(level int, operation string, err error, context map[string]inter
 	} else {
 		log.Printf("[WARN] %s", msg)
 	}
-}
-
-// sanitizeErrorPath 清理错误信息中的文件路径
-func sanitizeErrorPath(errMsg string) string {
-	// 移除绝对路径，只保留文件名
-	// 例如: /Users/apple/Downloads/goweb/file.go -> file.go
-	parts := strings.Split(errMsg, "/")
-	if len(parts) > 0 {
-		lastPart := parts[len(parts)-1]
-		// 如果包含文件名，尝试提取
-		if strings.Contains(lastPart, ".") {
-			// 保留最后两个部分（目录名和文件名），只有一段时直接返回该段
-			if len(parts) >= 2 {
-				return strings.Join(parts[len(parts)-2:], "/")
-			}
-			return lastPart
-		}
-	}
-	return errMsg
 }
 
 // sanitizeSensitiveValue 清理值中的敏感信息

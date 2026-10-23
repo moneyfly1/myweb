@@ -92,8 +92,11 @@ type ConfigUpdateService struct {
 	db           *gorm.DB
 	isRunning    bool
 	runningMutex sync.Mutex
-	siteURL      string
-	supportQQ    string
+	// stopCh 管理员「停止任务」信号：任务体在检查点读取，关闭即退出。
+	// nil 表示没有运行中的任务。
+	stopCh    chan struct{}
+	siteURL   string
+	supportQQ string
 	// deviceLimitSoft 设备数超限时是否走"软限制"（**默认 false = 硬限制**）：
 	// false = 硬限制（默认）：超限设备只拿到错误节点，连不上 —— 用户明确要求
 	//         "上限 5 台时第 6 台才拒绝"，所以默认必须是硬的；
@@ -161,7 +164,7 @@ func NewConfigUpdateService() *ConfigUpdateService {
 			db:         database.GetDB(),
 			parserPool: NewParserPool(10),
 			sseManager: NewSSEManager(),
-			logBuffer:  make([]map[string]interface{}, 0, 500),
+			logBuffer:  make([]map[string]interface{}, 0, MaxHistoryLogs),
 		}
 
 		// 启动时仅加载一次历史日志，提升极速体验
@@ -169,8 +172,8 @@ func NewConfigUpdateService() *ConfigUpdateService {
 		if err := globalService.db.Where("key = ?", configKeyLogs).First(&logConfig).Error; err == nil && logConfig.Value != "" {
 			var logs []map[string]interface{}
 			if err := json.Unmarshal([]byte(logConfig.Value), &logs); err == nil {
-				if len(logs) > 500 {
-					logs = logs[len(logs)-500:]
+				if len(logs) > MaxHistoryLogs {
+					logs = logs[len(logs)-MaxHistoryLogs:]
 				}
 				globalService.logBuffer = logs
 			}
@@ -279,6 +282,37 @@ func (s *ConfigUpdateService) IsRunning() bool {
 	return s.isRunning
 }
 
+// StopTask 请求停止正在运行的更新任务。返回 false 表示当前没有任务在跑。
+// 任务是分阶段执行的（拉取 → 解析 → 入库），这里只置停止信号，
+// 任务体在下一个检查点退出 —— 不会打断正在写库的事务。
+func (s *ConfigUpdateService) StopTask() bool {
+	s.runningMutex.Lock()
+	defer s.runningMutex.Unlock()
+	if !s.isRunning || s.stopCh == nil {
+		return false
+	}
+	close(s.stopCh)
+	s.stopCh = nil
+	return true
+}
+
+// stopped 读取停止信号（无任务时恒为 false）。
+func (s *ConfigUpdateService) stopped() bool {
+	s.runningMutex.Lock()
+	ch := s.stopCh
+	running := s.isRunning
+	s.runningMutex.Unlock()
+	if !running || ch == nil {
+		return false
+	}
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *ConfigUpdateService) GetStatus() map[string]interface{} {
 	var lastUpdate string
 	var config models.SystemConfig
@@ -309,7 +343,7 @@ func (s *ConfigUpdateService) GetLogs(limit int) []map[string]interface{} {
 
 func (s *ConfigUpdateService) ClearLogs() error {
 	s.logMutex.Lock()
-	s.logBuffer = make([]map[string]interface{}, 0, 500)
+	s.logBuffer = make([]map[string]interface{}, 0, MaxHistoryLogs)
 	s.logMutex.Unlock()
 
 	if s.sseManager != nil {
@@ -343,8 +377,8 @@ func (s *ConfigUpdateService) log(level, message string) {
 
 	s.logMutex.Lock()
 	s.logBuffer = append(s.logBuffer, entry)
-	if len(s.logBuffer) > 500 {
-		s.logBuffer = s.logBuffer[len(s.logBuffer)-500:]
+	if len(s.logBuffer) > MaxHistoryLogs {
+		s.logBuffer = s.logBuffer[len(s.logBuffer)-MaxHistoryLogs:]
 	}
 	s.logMutex.Unlock()
 
@@ -415,6 +449,7 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 	}
 
 	s.isRunning = true
+	s.stopCh = make(chan struct{})
 	s.runningMutex.Unlock()
 
 	// 完全脱离主线程异步跑，响应API秒回成功
@@ -431,6 +466,10 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 
 		s.logSeparator()
 		s.infof("🚀 开始执行配置更新任务 (节点源: %d 个)", len(urls))
+		if s.stopped() {
+			s.warnf("⏹ 任务已被管理员停止")
+			return
+		}
 		time.Sleep(300 * time.Millisecond) // 制造动态加载感
 
 		nodes, err := s.FetchNodesFromURLs(urls)
@@ -443,6 +482,10 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 			return
 		}
 
+		if s.stopped() {
+			s.warnf("⏹ 任务已被管理员停止（解析前）")
+			return
+		}
 		s.infof("✅ 成功提取 %d 个订阅节点链接，准备并行解析", len(nodes))
 		time.Sleep(300 * time.Millisecond)
 
@@ -459,6 +502,10 @@ func (s *ConfigUpdateService) RunUpdateTask() error {
 		// 事务保护：增量导入新节点 + 清理已消失节点，避免中间崩溃导致节点全空。
 		// 注意：这里不再"先整表删除再重建"——那会让所有采集节点每次同步都换 ID，
 		// 健康检查的结果会全部落到已删除的行上（详见 importNodesToDatabaseWithOrderTx 内注释）。
+		if s.stopped() {
+			s.warnf("⏹ 任务已被管理员停止（入库前）")
+			return
+		}
 		var importResult importStats
 		txErr := s.db.Transaction(func(tx *gorm.DB) error {
 			importResult = s.importNodesToDatabaseWithOrderTx(tx, nodesWithOrder, stats.aliveSources, len(urls))
@@ -3496,8 +3543,10 @@ func (s *ConfigUpdateService) generateLoonConfig(proxies []*ProxyNode, siteURL s
 	return sb.String()
 }
 
+var unescapeUnicodeRe = regexp.MustCompile(`\\U([0-9A-Fa-f]{8})`)
+
 func unescapeUnicode(s string) string {
-	return regexp.MustCompile(`\\U([0-9A-Fa-f]{8})`).ReplaceAllStringFunc(s, func(m string) string {
+	return unescapeUnicodeRe.ReplaceAllStringFunc(s, func(m string) string {
 		if cp, err := strconv.ParseInt(m[2:], 16, 64); err == nil {
 			return string(utils.MustSafeInt64ToRune(cp))
 		}

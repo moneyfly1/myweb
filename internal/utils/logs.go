@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -112,9 +113,17 @@ func CreateRegistrationLogFailed(username, email, ipAddress, userAgent, reason s
 
 // CreateSubscriptionLog 创建订阅日志
 func CreateSubscriptionLog(subscriptionID, userID uint, actionType, actionBy string, actionByUserID *uint, ipAddress string, beforeData, afterData map[string]interface{}, description string) error {
+	return CreateSubscriptionLogWithContext(context.Background(), subscriptionID, userID, actionType, actionBy, actionByUserID, ipAddress, beforeData, afterData, description)
+}
+
+// CreateSubscriptionLogWithContext 带 ctx 的订阅日志落库（异步任务用，超时可取消）。
+func CreateSubscriptionLogWithContext(ctx context.Context, subscriptionID, userID uint, actionType, actionBy string, actionByUserID *uint, ipAddress string, beforeData, afterData map[string]interface{}, description string) error {
 	db := database.GetDB()
 	if db == nil {
 		return fmt.Errorf("数据库未初始化")
+	}
+	if ctx != nil {
+		db = db.WithContext(ctx)
 	}
 
 	var beforeDataJSON, afterDataJSON sql.NullString
@@ -204,15 +213,6 @@ func CreateBalanceLogWithDB(db *gorm.DB, userID uint, changeType string, amount,
 // ==========================================
 // 佣金日志记录
 // ==========================================
-
-// CreateCommissionLog 创建佣金日志
-func CreateCommissionLog(inviterID, inviteeID uint, commissionType string, amount float64, inviteRelationID, relatedOrderID *uint, description string) error {
-	db := database.GetDB()
-	if db == nil {
-		return fmt.Errorf("数据库未初始化")
-	}
-	return CreateCommissionLogWithDB(db, inviterID, inviteeID, commissionType, amount, inviteRelationID, relatedOrderID, description)
-}
 
 func CreateCommissionLogWithDB(db *gorm.DB, inviterID, inviteeID uint, commissionType string, amount float64, inviteRelationID, relatedOrderID *uint, description string) error {
 	// 佣金余额在发放点即时到账（见 auth.go/order.go 的 balance + reward），

@@ -216,11 +216,7 @@ func UpdateCurrentUser(c *gin.Context) {
 		}
 		user.Username = req.Username
 	}
-	if req.Nickname != "" {
-		user.Nickname = database.NullString(req.Nickname)
-	} else if req.Nickname == "" {
-		user.Nickname = database.NullString("")
-	}
+	user.Nickname = database.NullString(req.Nickname)
 	if req.Avatar != "" {
 		user.Avatar = database.NullString(req.Avatar)
 	}
@@ -631,6 +627,10 @@ func GetUserDetails(c *gin.Context) {
 		onlineMap[oc.SubscriptionID] = oc.Count
 	}
 
+	// 订阅域名只解析一次（含备用域名列表），循环内只做字符串拼装
+	subBaseURL := utils.SubscriptionBaseURL(c.Request, db)
+	subBaseURLs := utils.SubscriptionBaseURLs(c.Request, db)
+
 	formattedSubs := make([]gin.H, 0, len(subs))
 	for _, sub := range subs {
 		online := onlineMap[sub.ID]
@@ -645,10 +645,10 @@ func GetUserDetails(c *gin.Context) {
 		universalCount := sub.UniversalCount
 		clashCount := sub.ClashCount
 
-		// 生成通用订阅和Clash订阅URL
-		universalURL, clashURL := getSubscriptionURLs(c, sub.SubscriptionURL)
+		// 生成通用订阅和Clash订阅URL（base 在循环外已算好，避免逐行查库）
+		universalURL, clashURL := subscriptionURLsFromBase(subBaseURL, sub.SubscriptionURL)
 		// 多客户端订阅地址
-		multiURLs := getMultiClientSubscriptionURLs(c, sub.SubscriptionURL)
+		multiURLs := multiClientSubscriptionURLsFromBases(subBaseURL, subBaseURLs, sub.SubscriptionURL)
 
 		formattedSubs = append(formattedSubs, gin.H{
 			"id":                sub.ID,
@@ -2509,12 +2509,6 @@ func BatchDeleteUsers(c *gin.Context) {
 	if err := tx.Where("user_id IN ?", req.UserIDs).Delete(&models.Subscription{}).Error; err != nil {
 		tx.Rollback()
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户订阅失败", err)
-		return
-	}
-
-	if err := tx.Where("subscription_id IN (SELECT id FROM subscriptions WHERE user_id IN ?)", req.UserIDs).Delete(&models.Device{}).Error; err != nil {
-		tx.Rollback()
-		utils.ErrorResponse(c, http.StatusInternalServerError, "删除用户设备失败", err)
 		return
 	}
 

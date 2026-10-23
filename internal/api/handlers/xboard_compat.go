@@ -330,13 +330,7 @@ func safeSubTypeForDB(t string) string {
 		return "clash"
 	case "surge":
 		return "surge"
-	case "shadowrocket":
-		return "universal"
-	case "quantumultx", "quantumult":
-		return "universal"
-	case "singbox", "sing-box":
-		return "universal"
-	case "loon":
+	case "shadowrocket", "quantumultx", "quantumult", "singbox", "sing-box", "loon":
 		return "universal"
 	default:
 		return "universal"

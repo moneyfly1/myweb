@@ -15,9 +15,8 @@ import (
 )
 
 type CSRFManager struct {
-	tokens    map[string]*CSRFToken
-	mu        sync.RWMutex
-	secretKey string
+	tokens map[string]*CSRFToken
+	mu     sync.RWMutex
 }
 
 type CSRFToken struct {
@@ -31,20 +30,11 @@ var csrfOnce sync.Once
 func GetCSRFManager() *CSRFManager {
 	csrfOnce.Do(func() {
 		csrfManager = &CSRFManager{
-			tokens:    make(map[string]*CSRFToken),
-			secretKey: generateSecretKey(),
+			tokens: make(map[string]*CSRFToken),
 		}
 		go csrfManager.cleanup()
 	})
 	return csrfManager
-}
-
-func generateSecretKey() string {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return ""
-	}
-	return base64.URLEncoding.EncodeToString(b)
 }
 
 func (cm *CSRFManager) cleanup() {

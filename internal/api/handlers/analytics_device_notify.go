@@ -393,9 +393,3 @@ func maskEmail(s string) string {
 	}
 	return s[:3] + "***"
 }
-
-// isSMTPConfigured 兼容旧调用
-func isSMTPConfigured(db *gorm.DB) bool {
-	ok, _, _ := smtpStatus(db)
-	return ok
-}

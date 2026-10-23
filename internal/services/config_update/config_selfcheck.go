@@ -715,9 +715,6 @@ func (s *ConfigUpdateService) selfCheckCache() *kernelSelfCheckCache { return ke
 
 // ---------------------------------------------------------------- 后台可见性
 
-// MihomoBinaryPath 返回当前生效的内核二进制路径（空串 = 不可用，第二层会降级）
-func MihomoBinaryPath() string { return mihomoBinaryPath() }
-
 // KernelSelfCheckDisabled 内核自检是否被运维开关（MF_KERNEL_SELFCHECK=0）关闭
 func KernelSelfCheckDisabled() bool { return kernelSelfCheckDisabled() }
 

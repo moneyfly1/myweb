@@ -49,10 +49,6 @@ func (v *VerificationCode) IsExpired() bool {
 	return time.Now().After(v.ExpiresAt)
 }
 
-func (v *VerificationCode) IsUsed() bool {
-	return v.Used == 1
-}
-
 func (v *VerificationCode) MarkAsUsed() {
 	v.Used = 1
 }

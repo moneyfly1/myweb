@@ -55,13 +55,22 @@ func getMaintenanceConfig() *maintenanceCacheData {
 	}
 
 	// 一次查出所有需要的配置（兼容 logo_url 和 site_logo 两个 key）
+	if db == nil {
+		return data
+	}
 	var configs []models.SystemConfig
-	db.Where("(key = ? AND category = ?) OR (key = ? AND category = ?) OR (key = ? AND category IN (?,?)) OR (key IN (?,?) AND category IN (?,?))",
+	if err := db.Where("(key = ? AND category = ?) OR (key = ? AND category = ?) OR (key = ? AND category IN (?,?)) OR (key IN (?,?) AND category IN (?,?))",
 		"maintenance_mode", "system",
 		"maintenance_message", "system",
 		"site_name", "general", "system",
 		"logo_url", "site_logo", "general", "system",
-	).Find(&configs)
+	).Find(&configs).Error; err != nil {
+		// 查询失败时返回默认值（放行），但要记录：否则运维以为维护页已生效，实际没生效
+		if utils.AppLogger != nil {
+			utils.AppLogger.Warn("读取维护模式配置失败，按未开启处理: %v", err)
+		}
+		return data
+	}
 
 	for _, cfg := range configs {
 		switch {

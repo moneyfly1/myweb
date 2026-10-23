@@ -1371,27 +1371,27 @@ onMounted(() => {
     console.error('Dashboard 初始化失败:', err)
   })
 
-  const handleSubscriptionUpdate = async (event) => {
-    if (event?.detail?.refreshed) return
-    cachedAPI.clearUserCache()
-    await Promise.all([
-      loadSubscriptionInfo(),
-      loadUserInfo()
-    ])
-  }
-  const handleUserInfoUpdate = async (event) => {
-    if (event?.detail?.refreshed) return
-    cachedAPI.clearUserCache()
-    await loadUserInfo()
-  }
   window.addEventListener('subscription-updated', handleSubscriptionUpdate)
   window.addEventListener('user-info-updated', handleUserInfoUpdate)
-  onUnmounted(() => {
-    window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
-    window.removeEventListener('user-info-updated', handleUserInfoUpdate)
-  })
 })
+// handler 与卸载清理必须写在 onMounted 之外：在 onMounted 回调里注册 onUnmounted
+// 没有活跃组件实例，Vue 只会告警而不登记，监听器就永久泄漏了。
+const handleSubscriptionUpdate = async (event) => {
+  if (event?.detail?.refreshed) return
+  cachedAPI.clearUserCache()
+  await Promise.all([
+    loadSubscriptionInfo(),
+    loadUserInfo()
+  ])
+}
+const handleUserInfoUpdate = async (event) => {
+  if (event?.detail?.refreshed) return
+  cachedAPI.clearUserCache()
+  await loadUserInfo()
+}
 onUnmounted(() => {
+  window.removeEventListener('subscription-updated', handleSubscriptionUpdate)
+  window.removeEventListener('user-info-updated', handleUserInfoUpdate)
   cleanupRechargeStatusCheck()
   if (typeof window !== 'undefined' && resizeRafId !== null) {
     window.cancelAnimationFrame(resizeRafId)

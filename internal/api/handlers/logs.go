@@ -536,7 +536,7 @@ func formatAuditLogForAPIWithUsername(log models.AuditLog, username string) gin.
 	return result
 }
 
-func formatLogForCSV(db *gorm.DB, log models.AuditLog) string {
+func formatLogForCSV(log models.AuditLog) string {
 	level := getLogLevel(log, true) // Use CN
 	username := getCommonUserName(&log.User)
 
@@ -1047,7 +1047,7 @@ func ExportLogs(c *gin.Context) {
 	csvContent.WriteString("时间,级别,模块,用户,IP地址,操作类型,日志内容\n")
 
 	for _, log := range logs {
-		csvContent.WriteString(formatLogForCSV(db, log))
+		csvContent.WriteString(formatLogForCSV(log))
 	}
 
 	c.Header("Content-Type", "text/csv; charset=utf-8")

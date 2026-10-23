@@ -2,34 +2,6 @@ package models
 
 import "time"
 
-type TicketStatus string
-
-const (
-	TicketStatusPending    TicketStatus = "pending"
-	TicketStatusProcessing TicketStatus = "processing"
-	TicketStatusResolved   TicketStatus = "resolved"
-	TicketStatusClosed     TicketStatus = "closed"
-	TicketStatusCancelled  TicketStatus = "cancelled"
-)
-
-type TicketType string
-
-const (
-	TicketTypeTechnical TicketType = "technical"
-	TicketTypeBilling   TicketType = "billing"
-	TicketTypeAccount   TicketType = "account"
-	TicketTypeOther     TicketType = "other"
-)
-
-type TicketPriority string
-
-const (
-	TicketPriorityLow    TicketPriority = "low"
-	TicketPriorityNormal TicketPriority = "normal"
-	TicketPriorityHigh   TicketPriority = "high"
-	TicketPriorityUrgent TicketPriority = "urgent"
-)
-
 type Ticket struct {
 	ID            uint       `gorm:"primaryKey" json:"id"`
 	TicketNo      string     `gorm:"type:varchar(50);uniqueIndex;not null" json:"ticket_no"`
