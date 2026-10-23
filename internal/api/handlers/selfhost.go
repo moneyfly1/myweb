@@ -129,6 +129,14 @@ func GetSelfHostNodes(c *gin.Context) {
 
 	query := db.Model(&models.CustomNode{}).Where("self_hosted = ?", true)
 
+	// 搜索：节点名 / 域名 / VPS 地址 / 协议（与其他管理列表一致的关键词搜索）
+	if q := strings.TrimSpace(c.Query("q")); q != "" {
+		like := "%" + strings.ToLower(q) + "%"
+		query = query.Where(
+			"LOWER(name) LIKE ? OR LOWER(domain) LIKE ? OR LOWER(ssh_host) LIKE ? OR LOWER(self_host_protocol) LIKE ?",
+			like, like, like, like)
+	}
+
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取自建节点列表失败", err)
