@@ -33,6 +33,12 @@ func TestParseUserAgentReclassifiesUnknown(t *testing.T) {
 		{"okhttp/4.12.0", "OkHttp", "自动化/非客户端"},
 		// 正常客户端不受影响
 		{"MoneyFly/2.2.30 (Windows NT 10.0; Win64; x64)", "MoneyFly", "Windows"},
+		// MBox：MoneyFly 改名后的自有客户端（sing-box 内核），四端都要认成 MBox，
+		// 不能落成 Unknown（否则后台「软件」列空白、设备指纹也不稳定）
+		{"MBox/0.0.1 (Macintosh; Mac OS X 26_6)", "MBox", "macOS"},
+		{"MBox/0.0.1 (Windows NT 10.0)", "MBox", "Windows"},
+		{"MBox/0.0.1 (Linux; Android 14; sdk_gphone64_arm64 Build/UE1A.230829.036.A4)", "MBox", "Android"},
+		{"MBox/0.0.1 (iPhone14,3; iOS 16.6.1)", "MBox", "iOS"},
 		{"Shadowrocket/3860.700.2 CFNetwork/3860.700.1 Darwin/24.6.0", "Shadowrocket", "iOS"},
 		{"v2rayN/7.14.12", "v2rayN", "Windows"},
 	}
