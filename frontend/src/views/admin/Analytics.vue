@@ -771,9 +771,11 @@ const loadDeviceUsers = async (page = 1) => {
   }
 }
 
-/// 某条客户端标签是不是官方客户端（MoneyFly）
-const isOfficialClient = (label) =>
-    (label || '').toLowerCase().startsWith('moneyfly')
+/// 某条客户端标签是不是官方客户端（MoneyFly 与它的后续版本 MBox 并存）
+const isOfficialClient = (label) => {
+  const k = (label || '').toLowerCase().trim()
+  return k.startsWith('moneyfly') || k.startsWith('mbox')
+}
 
 /// 给「选中的用户」或「指定用户」发升级通知：直接进预览抽屉，确认后才发送
 const notifySelectedUsers = (rows) => {

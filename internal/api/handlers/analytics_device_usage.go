@@ -33,7 +33,35 @@ import (
 //     所有维度都是单列，跨 SQLite/MySQL/PostgreSQL 都能跑。
 // ---------------------------------------------------------------------------
 
+// 官方（自研）客户端名单：MoneyFly 与它的后续版本 MBox 并存 ——
+// 品牌改名不代表老客户端不再是我们自己的客户端，两套 UA 都要算「官方」，
+// 否则后台「官方 / 第三方」口径会把 MBox 用户错算成「待升级的第三方用户」。
+var officialClientNames = []string{"MoneyFly", "MBox"}
+
+// officialClientName 保留单值形式，仅用于展示/日志等只想要一个代表名的场景。
 const officialClientName = "MoneyFly"
+
+func lowerOfficialClientNames() []string {
+	out := make([]string, 0, len(officialClientNames))
+	for _, n := range officialClientNames {
+		out = append(out, strings.ToLower(n))
+	}
+	return out
+}
+
+// isOfficialClientName 判断软件名是否属于官方客户端（大小写/空白不敏感）
+func isOfficialClientName(name string) bool {
+	key := strings.ToLower(strings.TrimSpace(name))
+	if key == "" {
+		return false
+	}
+	for _, n := range officialClientNames {
+		if key == strings.ToLower(n) {
+			return true
+		}
+	}
+	return false
+}
 
 // deviceUsageDim 分组维度（Column 只允许是白名单里写死的列名，杜绝注入）
 type deviceUsageDim struct {
@@ -72,14 +100,14 @@ func deviceUsageBaseQuery(db *gorm.DB, q, official, days string, dim deviceUsage
 
 	switch strings.ToLower(strings.TrimSpace(official)) {
 	case "official":
-		tx = tx.Where("LOWER(TRIM(COALESCE(software_name, ''))) = ?", strings.ToLower(officialClientName))
+		tx = tx.Where("LOWER(TRIM(COALESCE(software_name, ''))) IN ?", lowerOfficialClientNames())
 	case "third_party", "unofficial":
 		// 第三方客户端 = 用户设备上的其它客户端。**排除自动化/抓取类 UA**
 		// （curl / Go-http-client / python-requests / okhttp / 链接预览爬虫 …）：
 		// 它们不是用户设备，混进来会让"待升级用户"数字虚高（用户反馈
 		// "很多未知设备"，其中一部分就是这些）。口径与 UA 归类保持一致：
 		// 软件名命中自动化名单，或系统已被归为「自动化/非客户端」。
-		tx = tx.Where("LOWER(TRIM(COALESCE(software_name, ''))) <> ?", strings.ToLower(officialClientName)).
+		tx = tx.Where("LOWER(TRIM(COALESCE(software_name, ''))) NOT IN ?", lowerOfficialClientNames()).
 			Where("LOWER(COALESCE(software_name, '')) NOT IN ?", automationSoftwareNames()).
 			Where("LOWER(TRIM(COALESCE(os_name, ''))) <> ?", "自动化/非客户端")
 	}
@@ -209,7 +237,7 @@ func GetDeviceUsageAnalytics(c *gin.Context) {
 			Key: key, Label: label, Devices: r.Devices, Users: r.Users,
 			Share:      round2(share),
 			LastAccess: last,
-			Official:   strings.EqualFold(key, officialClientName),
+			Official:   isOfficialClientName(key),
 		})
 	}
 
@@ -341,7 +369,7 @@ func GetDeviceUsageDetail(c *gin.Context) {
 			IPAddress:       strVal(d.IPAddress),
 			Location:        strVal(d.Location),
 			Remark:          strVal(d.Remark),
-			Official:        strings.EqualFold(strVal(d.SoftwareName), officialClientName),
+			Official:        isOfficialClientName(strVal(d.SoftwareName)),
 			LastAccess:      d.LastAccess.Format("2006-01-02 15:04"),
 			SubscriptionID:  d.SubscriptionID,
 		}
@@ -577,7 +605,7 @@ func GetDeviceUsageUsers(c *gin.Context) {
 			if !dup {
 				a.clients = append(a.clients, label)
 			}
-			if strings.EqualFold(sw, officialClientName) {
+			if isOfficialClientName(sw) {
 				a.officialUse = true
 			} else {
 				a.third = true

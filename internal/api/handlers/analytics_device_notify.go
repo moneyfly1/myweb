@@ -283,7 +283,7 @@ func currentThirdPartyClientOf(db *gorm.DB, userIDs []uint) map[uint]string {
 			continue
 		}
 		name := strings.TrimSpace(r.SoftwareName)
-		if name == "" || strings.EqualFold(name, officialClientName) {
+		if name == "" || isOfficialClientName(name) {
 			continue
 		}
 		out[uid] = name
