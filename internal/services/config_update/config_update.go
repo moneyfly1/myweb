@@ -1964,7 +1964,11 @@ func isMoneyFlyRequest(userAgent string, headers map[string]string) bool {
 	if headers != nil && strings.TrimSpace(headers["X-MF-Device-Id"]) != "" {
 		return true
 	}
-	return strings.Contains(strings.ToLower(userAgent), "moneyfly")
+	lower := strings.ToLower(userAgent)
+	// MBox 是 MoneyFly 的后续版本（同一条自研客户端线，sing-box 内核），
+	// 品牌改名后 UA 前缀变成 MBox/，这里必须一并认，否则「设备数超限」的
+	// 软限制对 MBox 用户失效（会变成硬失败）。
+	return strings.Contains(lower, "moneyfly") || strings.Contains(lower, "mbox")
 }
 
 // isDeviceLimitSoft 设备数超限是否走软限制（未加载配置时默认**硬限制**，与线上默认一致）

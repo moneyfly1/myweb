@@ -832,6 +832,11 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		{"clash party", "Clash Party"},
 		{"clash-party", "Clash Party"},
 		{"moneyfly", "MoneyFly"},
+		// MBox：sing-box 内核的自有客户端，UA 形如
+		// `MBox/0.0.1 (Macintosh; Mac OS X 26_6)`。必须排在 sing-box / mihomo /
+		// clash 之前 —— 它的 UA 里可能带内核串，排后面会被认成内核名
+		// （和 MoneyFly 当年被认成 Mihomo 是同一个坑）。
+		{"mbox", "MBox"},
 		{"hiddifynext", "Hiddify"},
 		{"hiddify-next", "Hiddify"},
 		{"hiddify next", "Hiddify"},
