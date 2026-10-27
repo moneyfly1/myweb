@@ -899,7 +899,7 @@ func GetUserSubscription(c *gin.Context) {
 	if !subscription.ExpireTime.IsZero() {
 		remainingDays, isExpired = utils.RemainingDays(utils.ToBeijingTime(subscription.ExpireTime), utils.GetBeijingTime())
 	}
-	onlineDevices, _ := device.CountOnlineDevices(db, subscription.ID)
+	onlineDevices, _ := device.CountRecentDevices(db, subscription.ID, device.DisplayWindow)
 	var specialNodeCount int64
 	db.Model(&models.UserCustomNode{}).Where("user_id = ?", user.ID).Count(&specialNodeCount)
 

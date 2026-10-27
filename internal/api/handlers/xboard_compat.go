@@ -85,7 +85,7 @@ func GetUserSubscriptionXBoardCompat(c *gin.Context) {
 		remainingDays, isExpired = utils.RemainingDays(subscription.ExpireTime, utils.GetBeijingTime())
 	}
 
-	onlineDevices, _ := device.CountOnlineDevices(db, subscription.ID)
+	onlineDevices, _ := device.CountRecentDevices(db, subscription.ID, device.DisplayWindow)
 
 	responseData := gin.H{
 		"subscribe_url":   clashURL,     // XBoard 期望的字段名

@@ -34,8 +34,30 @@ func CountActiveDevices(db *gorm.DB, subscriptionID uint) (int64, error) {
 // last_access；15 分钟既能容忍短暂离线，也不会让"昨天用过"的旧行长期占名额。
 const OnlineWindow = 15 * time.Minute
 
+// DisplayWindow 「展示」口径：多久之内活跃过的设备计入"已用设备数"（首页/订阅页展示）。
+//
+// 为什么比限制口径宽：限制判定看"当前是否同时在用"（15 分钟），
+// 而用户看到的"设备 x/9"应反映"我今天用过几台"——用 15 分钟会让大部分用户
+// 看到 0/1，与他们实际在用 3~4 台设备的认知冲突。24 小时更接近直觉，
+// 同时仍然能过滤掉几个月前遗留的历史行。
+const DisplayWindow = 24 * time.Hour
+
+// CountRecentDevices 统计最近 window 内活跃过的设备数（展示口径）。
+func CountRecentDevices(db *gorm.DB, subscriptionID uint, window time.Duration) (int64, error) {
+	if window <= 0 {
+		window = DisplayWindow
+	}
+	cutoff := utils.GetBeijingTime().Add(-window)
+	var count int64
+	err := db.Model(&models.Device{}).
+		Where("subscription_id = ? AND is_active = ? AND (last_access >= ? OR last_seen >= ?)",
+			subscriptionID, true, cutoff, cutoff).
+		Count(&count).Error
+	return count, err
+}
+
 // CountOnlineDevices 统计指定订阅下「最近 OnlineWindow 内活跃」的设备数（= 当前在线设备数）。
-// 设备数限制判定与 current_devices 展示统一使用这个口径。
+// 设备数限制判定使用这个口径（15 分钟窗口）。
 func CountOnlineDevices(db *gorm.DB, subscriptionID uint) (int64, error) {
 	cutoff := utils.GetBeijingTime().Add(-OnlineWindow)
 	var count int64

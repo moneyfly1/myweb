@@ -632,7 +632,7 @@ func (dm *DeviceManager) ReviveKickedDeviceWithHeaders(subscriptionID uint, devi
 			Updates(updates).Error; err != nil {
 			return err
 		}
-		newCount, cErr := CountOnlineDevices(tx, subscriptionID)
+		newCount, cErr := CountRecentDevices(tx, subscriptionID, DisplayWindow)
 		if cErr != nil {
 			return cErr
 		}
@@ -673,7 +673,7 @@ func (dm *DeviceManager) deactivateClashMetaAndroidAliasDuplicates(canonical *mo
 	}
 
 	if deactivated {
-		deviceCount, _ := CountOnlineDevices(dm.db, canonical.SubscriptionID)
+		deviceCount, _ := CountRecentDevices(dm.db, canonical.SubscriptionID, DisplayWindow)
 		return dm.db.Model(&models.Subscription{}).Where("id = ?", canonical.SubscriptionID).Update("current_devices", deviceCount).Error
 	}
 
@@ -2064,7 +2064,7 @@ func (dm *DeviceManager) RecordDeviceAccessWithHeaders(subscriptionID uint, user
 			return nil, err
 		}
 
-		deviceCount, _ := CountOnlineDevices(dm.db, subscriptionID)
+		deviceCount, _ := CountRecentDevices(dm.db, subscriptionID, DisplayWindow)
 		dm.db.Model(&models.Subscription{}).Where("id = ?", subscriptionID).Update("current_devices", deviceCount)
 
 		return &device, nil
