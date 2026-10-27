@@ -202,7 +202,7 @@ func MergeDuplicateDevicesFiltered(db *gorm.DB, apply bool, filter DedupFilter) 
 				if err := tx.Where("id IN ?", ids).Delete(&models.Device{}).Error; err != nil {
 					return err
 				}
-				count, cErr := CountActiveDevices(tx, subID)
+				count, cErr := CountOnlineDevices(tx, subID)
 				if cErr != nil {
 					return cErr
 				}

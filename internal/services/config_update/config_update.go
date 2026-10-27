@@ -1423,7 +1423,8 @@ func (s *ConfigUpdateService) GetSubscriptionContext(token, clientIP, userAgent 
 
 	// 设置了专线到期时间且未过期 或 开启了不限制设备 → 跳过设备数量限制
 	if !specialActive && !user.SpecialNodeUnlimitedDevices {
-		devices, _ := device.CountActiveDevices(s.db, sub.ID)
+		// 用在线设备数判定「设备超限」：换网络产生的历史行不该把用户挡在门外
+		devices, _ := device.CountOnlineDevices(s.db, sub.ID)
 		ctx.CurrentDevices, ctx.DeviceLimit = int(devices), sub.DeviceLimit
 
 		// 设备数上限 0 = **拒绝**（不是"不限制"）：只下发错误节点，

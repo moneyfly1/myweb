@@ -18,7 +18,13 @@ type Device struct {
 	//     避免每次重装都多出一行幽灵设备白占名额（用户实测 susanzhang1230：
 	//     一台 Windows 因为 2.2.25→2.2.28 升级被算成两台）。
 	// 存量行为空，不影响老数据；只在客户端上报时参与匹配。
-	DeviceHwFp       *string `gorm:"type:varchar(64);index" json:"device_hw_fp,omitempty"`
+	DeviceHwFp *string `gorm:"type:varchar(64);index" json:"device_hw_fp,omitempty"`
+	// NetworkSegments 该设备**历史出现过的网络段**（JSON 数组，最多 5 个，LRU）。
+	//
+	// 用途：第三方客户端（Shadowrocket 等）不上报设备 ID，服务端只能靠「UA + 网络段」
+	// 区分设备。把历史网络段记下来，用户换回旧网络（家里↔公司↔老家）时仍能认回同一台，
+	// 不会因为 IP 变了就多算一台；而全新的网络段在名额未满时才视为新设备。
+	NetworkSegments  *string `gorm:"type:text" json:"network_segments,omitempty"`
 	DeviceUA         *string `gorm:"type:varchar(255)" json:"device_ua,omitempty"`
 	DeviceName       *string `gorm:"type:varchar(100)" json:"device_name,omitempty"`
 	DeviceType       *string `gorm:"type:varchar(50)" json:"device_type,omitempty"`

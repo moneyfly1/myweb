@@ -85,7 +85,7 @@ func GetUserSubscriptionXBoardCompat(c *gin.Context) {
 		remainingDays, isExpired = utils.RemainingDays(subscription.ExpireTime, utils.GetBeijingTime())
 	}
 
-	onlineDevices, _ := device.CountActiveDevices(db, subscription.ID)
+	onlineDevices, _ := device.CountOnlineDevices(db, subscription.ID)
 
 	responseData := gin.H{
 		"subscribe_url":   clashURL,     // XBoard 期望的字段名
@@ -210,7 +210,7 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 			map[string]interface{}{"subscription_id": subscription.ID, "device_id": kickGate.DeviceID})
 	}
 
-	count, _ := device.CountActiveDevices(db, subscription.ID)
+	count, _ := device.CountOnlineDevices(db, subscription.ID)
 
 	shouldRecord := true
 	if !deviceExists && !user.SpecialNodeUnlimitedDevices {
