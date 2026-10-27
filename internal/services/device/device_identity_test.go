@@ -183,3 +183,45 @@ func TestKickedStillMatchesAfterVersionUpgrade(t *testing.T) {
 }
 
 func strPtr(s string) *string { return &s }
+
+// 同型号同版本的第三方客户端（Shadowrocket 等）在两台设备上 UA 完全相同，
+// 必须靠「网络段」区分：不同网络 = 不同设备；同网络段 = 同一台（IP 微变仍认回）。
+// 线上用户反馈：两台 iPhone 11 + 同版本 Shadowrocket，面板只显示 1 台。
+func TestSameUADifferentNetworkMeansDifferentDevice(t *testing.T) {
+	dm := NewDeviceManager()
+	ua := "Shadowrocket/3445 CFNetwork/3896.100.1.2.1 Darwin/27.0.0 iPhone12,1"
+
+	h1 := dm.GenerateDeviceHash(ua, "27.151.104.171", "")
+	h2 := dm.GenerateDeviceHash(ua, "117.136.52.88", "") // 另一台：完全不同的网络
+	if h1 == h2 {
+		t.Fatal("同 UA 但不同网络段必须得到不同设备哈希（否则两台设备会被合并）")
+	}
+
+	// 同一网络段内 IP 微变（DHCP 换址/运营商短暂改址）仍应视为同一台
+	h3 := dm.GenerateDeviceHash(ua, "27.151.104.200", "")
+	if h1 != h3 {
+		t.Fatal("同网络段内 IP 变化不应改变设备身份（否则每次换 IP 都多一台幽灵设备）")
+	}
+
+	// 显式设备 ID 仍然最权威：忽略网络差异
+	idUA := "MoneyFly/2.2.33 (Windows NT 10.0)"
+	a := dm.GenerateDeviceHashWithHeaders(idUA, "1.1.1.1", "", map[string]string{"X-MF-Device-Id": "dev-abc"})
+	b := dm.GenerateDeviceHashWithHeaders(idUA, "9.9.9.9", "", map[string]string{"X-MF-Device-Id": "dev-abc"})
+	if a != b {
+		t.Fatal("带 X-MF-Device-Id 时设备身份不应受网络影响")
+	}
+}
+
+// 存量迁移：老行 hash 是「不含网络段」的算法，新请求必须认回同一行并改写，
+// 不能因为升级算法而给每个用户多出一台幽灵设备。
+func TestHashMigrationFromPreviousAlgorithm(t *testing.T) {
+	dm := NewDeviceManager()
+	ua := "Shadowrocket/3445 CFNetwork/3896.100.1.2.1 Darwin/27.0.0 iPhone12,1"
+	ip := "27.151.104.171"
+
+	prev := dm.GenerateDeviceHashWithoutNetwork(ua, nil)
+	cur := dm.GenerateDeviceHashWithHeaders(ua, ip, "", nil)
+	if prev == cur {
+		t.Fatal("新算法必须与旧算法不同（否则本测试无意义）")
+	}
+}

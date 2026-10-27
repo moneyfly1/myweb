@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"regexp"
 	"strings"
 	"time"
@@ -285,6 +286,23 @@ func (dm *DeviceManager) FindExistingDeviceWithHeaders(subscriptionID uint, user
 		return nil, false, err
 	}
 
+	// 存量迁移：新算法把「网络段」并入了身份，老行的 hash 是旧算法（不含网络段）。
+	// 先用旧算法精确认回那一行并改写为新哈希 —— 否则每个存量设备上线后
+	// 首次拉订阅都会多出一行幽灵设备、白占一个名额。
+	if prevHash := dm.GenerateDeviceHashWithoutNetwork(userAgent, headers); prevHash != "" && prevHash != deviceHash {
+		if err := dm.db.Where("device_hash = ? AND subscription_id = ?", prevHash, subscriptionID).
+			First(&device).Error; err == nil {
+			if updErr := dm.db.Model(&models.Device{}).Where("id = ?", device.ID).
+				Update("device_hash", deviceHash).Error; updErr != nil {
+				return nil, false, updErr
+			}
+			device.DeviceHash = &deviceHash
+			return &device, true, nil
+		} else if err != gorm.ErrRecordNotFound {
+			return nil, false, err
+		}
+	}
+
 	// 存量自愈：这一行是旧算法（含版本号）写的 → 认领它并改写为新稳定哈希，
 	// 避免升级 App/系统后重复注册出幽灵设备（旧行会一直占着名额）
 	if legacyHash := dm.GenerateLegacyDeviceHash(userAgent, headers); legacyHash != "" && legacyHash != deviceHash {
@@ -319,14 +337,24 @@ func (dm *DeviceManager) FindExistingDeviceWithHeaders(subscriptionID uint, user
 	}
 
 	if userAgent != "" {
-		err = dm.db.Where("subscription_id = ? AND user_agent = ? AND is_active = ?", subscriptionID, userAgent, true).
+		var candidates []models.Device
+		if err := dm.db.Where("subscription_id = ? AND user_agent = ? AND is_active = ?", subscriptionID, userAgent, true).
 			Order("last_access DESC").
-			First(&device).Error
-		if err == nil {
-			return &device, true, nil
-		}
-		if err != gorm.ErrRecordNotFound {
+			Limit(10).
+			Find(&candidates).Error; err != nil {
 			return nil, false, err
+		}
+		// 同 UA 只说明「同型号同版本客户端」，不等于同一台设备：
+		// 必须是**同一网络段**才认回，否则用户的两台同型号手机（一台 WiFi 一台 4G）
+		// 会被合并成 1 台，设备数限制形同虚设（线上用户反馈：2 台设备只显示 1 台）。
+		for i := range candidates {
+			rowIP := ""
+			if candidates[i].IPAddress != nil {
+				rowIP = *candidates[i].IPAddress
+			}
+			if ipAddress == "" || rowIP == "" || sameNetworkSegment(rowIP, ipAddress) {
+				return &candidates[i], true, nil
+			}
 		}
 	}
 
@@ -1499,6 +1527,44 @@ func (dm *DeviceManager) GenerateDeviceHash(userAgent, ipAddress, deviceID strin
 	return dm.GenerateDeviceHashWithHeaders(userAgent, ipAddress, deviceID, nil)
 }
 
+// ipSegmentOf 取网络段（IPv4 前三段 / IPv6 前四组），用于把「同一网络」作为设备区分特征。
+//
+// 为什么需要：第三方客户端（Shadowrocket 等）的 UA 只有「软件名+系统名+机型」，
+// 同型号同版本的两台手机 UA 完全相同；此前设备哈希也不含任何网络信息，于是
+// 第二台设备直接命中第一台的哈希，被当成同一台（用户实际 2 台，面板只显示 1 台）。
+// 把出口网络段并入身份后，不同网络下的同型号设备就能区分。
+//
+// 取 /24（IPv4）与 /64（IPv6）而不是完整 IP：同一网络内 DHCP 换地址、运营商
+// 短暂换 IP 归属同一段时，身份仍保持稳定，不会每次都变成"新设备"。
+func ipSegmentOf(ip string) string {
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return ""
+	}
+	if host, _, err := net.SplitHostPort(ip); err == nil {
+		ip = host
+	}
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return ""
+	}
+	if v4 := parsed.To4(); v4 != nil {
+		return fmt.Sprintf("%d.%d.%d", v4[0], v4[1], v4[2])
+	}
+	// IPv6 取前 4 组（/64）
+	groups := strings.Split(parsed.String(), ":")
+	if len(groups) < 4 {
+		return parsed.String()
+	}
+	return strings.Join(groups[:4], ":")
+}
+
+// sameNetworkSegment 两个 IP 是否属于同一网络段（用于 UA 兜底匹配时的同设备判定）
+func sameNetworkSegment(ipA, ipB string) bool {
+	segA, segB := ipSegmentOf(ipA), ipSegmentOf(ipB)
+	return segA != "" && segA == segB
+}
+
 // fingerprintKeyOf 稳定指纹：软件名 + 系统名 + 机型 + 品牌（四者必须齐备且非 Unknown）。
 // **不含版本号** —— 见 GenerateDeviceHashWithHeaders 的说明。
 func fingerprintKeyOf(sw, osName, model, brand string) (string, bool) {
@@ -1642,11 +1708,58 @@ func (dm *DeviceManager) GenerateDeviceHashWithHeaders(userAgent, ipAddress, dev
 		}
 	}
 
+	// 网络段：第三方客户端的 UA 常常完全一致（同型号同版本），
+	// 只看 UA 无法区分「同一用户的第二台设备」，补上网络段作为区分特征。
+	if seg := ipSegmentOf(ipAddress); seg != "" {
+		features = append(features, "net:"+seg)
+	}
+
 	deviceString := strings.Join(features, "|")
 	if deviceString == "" {
 		deviceString = userAgent
 	}
 
+	hash := sha256.Sum256([]byte(deviceString))
+	return hex.EncodeToString(hash[:])
+}
+
+// GenerateDeviceHashWithoutNetwork 上一版算法（不含网络段），仅用于**存量行迁移**：
+// 部署「含网络段」的新算法后，老行的 device_hash 仍是旧值；先用它精确认回那一行，
+// 再改写成新哈希，避免每个存量设备都多出一行幽灵设备。
+// 新代码不要用它写库。
+func (dm *DeviceManager) GenerateDeviceHashWithoutNetwork(userAgent string, headers map[string]string) string {
+	if headers != nil {
+		if id := strings.TrimSpace(headers["X-MF-Device-Id"]); id != "" {
+			hash := sha256.Sum256([]byte("device_id:" + id))
+			return hex.EncodeToString(hash[:])
+		}
+	}
+	info := dm.ParseUserAgentWithHeaders(userAgent, headers)
+	features := []string{}
+	if info.SoftwareName != "Unknown" {
+		features = append(features, "software:"+info.SoftwareName)
+	}
+	if info.OSName != "Unknown" {
+		features = append(features, "os:"+info.OSName)
+	}
+	if info.DeviceModel != "" {
+		features = append(features, "model:"+info.DeviceModel)
+	}
+	if info.DeviceBrand != "" {
+		features = append(features, "brand:"+info.DeviceBrand)
+	}
+	if headers != nil {
+		if v := headers["X-MF-Device-Model"]; v != "" && info.DeviceModel == "" {
+			features = append(features, "mf_model:"+v)
+		}
+		if v := headers["X-MF-OS"]; v != "" && info.OSName == "Unknown" {
+			features = append(features, "mf_os:"+v)
+		}
+	}
+	deviceString := strings.Join(features, "|")
+	if deviceString == "" {
+		deviceString = userAgent
+	}
 	hash := sha256.Sum256([]byte(deviceString))
 	return hex.EncodeToString(hash[:])
 }
