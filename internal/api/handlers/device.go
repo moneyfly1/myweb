@@ -154,7 +154,7 @@ func DeleteDevice(c *gin.Context) {
 			}).Error; err != nil {
 			return err
 		}
-		count, _ := devicesvc.CountActiveDevices(tx, device.SubscriptionID)
+		count, _ := devicesvc.CountOnlineDevices(tx, device.SubscriptionID)
 		return tx.Model(&models.Subscription{}).Where("id = ?", device.SubscriptionID).Update("current_devices", count).Error
 	}); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除设备失败", err)
@@ -240,7 +240,7 @@ func RemoveDevice(c *gin.Context) {
 		if err := tx.Delete(&device).Error; err != nil {
 			return err
 		}
-		count, _ := devicesvc.CountActiveDevices(tx, subscriptionID)
+		count, _ := devicesvc.CountOnlineDevices(tx, subscriptionID)
 		return tx.Model(&models.Subscription{}).Where("id = ?", subscriptionID).Update("current_devices", count).Error
 	}); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "删除设备失败", err)

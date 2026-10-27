@@ -3,6 +3,7 @@ package device
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"regexp"
@@ -344,17 +345,31 @@ func (dm *DeviceManager) FindExistingDeviceWithHeaders(subscriptionID uint, user
 			Find(&candidates).Error; err != nil {
 			return nil, false, err
 		}
-		// 同 UA 只说明「同型号同版本客户端」，不等于同一台设备：
-		// 必须是**同一网络段**才认回，否则用户的两台同型号手机（一台 WiFi 一台 4G）
-		// 会被合并成 1 台，设备数限制形同虚设（线上用户反馈：2 台设备只显示 1 台）。
+		// 同 UA 只说明「同型号同版本客户端」，不等于同一台设备。判定顺序：
+		//   ① 当前网络段在该设备的**历史画像**里 → 同一台（换回家里/公司等旧网络）；
+		//   ② 当前网络段与该行当前 IP 同段 → 同一台（IP 微变）；
+		//   ③ 都不命中：名额未满 → 视为**另一台设备**（同型号两台手机要能分开）；
+		//      名额已满 → 复用最近活跃行（视作这台设备换了新网络，不额外占名额、
+		//      也不让用户因为换网被"设备超限"挡住）。
+		if ipAddress == "" {
+			return &candidates[0], true, nil
+		}
+		for i := range candidates {
+			if knowsNetwork(&candidates[i], ipAddress) {
+				return &candidates[i], true, nil
+			}
+		}
 		for i := range candidates {
 			rowIP := ""
 			if candidates[i].IPAddress != nil {
 				rowIP = *candidates[i].IPAddress
 			}
-			if ipAddress == "" || rowIP == "" || sameNetworkSegment(rowIP, ipAddress) {
+			if rowIP == "" || sameNetworkSegment(rowIP, ipAddress) {
 				return &candidates[i], true, nil
 			}
+		}
+		if len(candidates) > 0 && dm.quotaExhausted(subscriptionID) {
+			return &candidates[0], true, nil
 		}
 	}
 
@@ -594,7 +609,7 @@ func (dm *DeviceManager) ReviveKickedDeviceWithHeaders(subscriptionID uint, devi
 		return false, "not-kicked", nil
 	}
 
-	count, err := CountActiveDevices(dm.db, subscriptionID)
+	count, err := CountOnlineDevices(dm.db, subscriptionID)
 	if err != nil {
 		return false, "", err
 	}
@@ -617,7 +632,7 @@ func (dm *DeviceManager) ReviveKickedDeviceWithHeaders(subscriptionID uint, devi
 			Updates(updates).Error; err != nil {
 			return err
 		}
-		newCount, cErr := CountActiveDevices(tx, subscriptionID)
+		newCount, cErr := CountOnlineDevices(tx, subscriptionID)
 		if cErr != nil {
 			return cErr
 		}
@@ -658,7 +673,7 @@ func (dm *DeviceManager) deactivateClashMetaAndroidAliasDuplicates(canonical *mo
 	}
 
 	if deactivated {
-		deviceCount, _ := CountActiveDevices(dm.db, canonical.SubscriptionID)
+		deviceCount, _ := CountOnlineDevices(dm.db, canonical.SubscriptionID)
 		return dm.db.Model(&models.Subscription{}).Where("id = ?", canonical.SubscriptionID).Update("current_devices", deviceCount).Error
 	}
 
@@ -1559,6 +1574,96 @@ func ipSegmentOf(ip string) string {
 	return strings.Join(groups[:4], ":")
 }
 
+// networksOf 解析设备的历史网络段列表（JSON 数组，坏数据按空处理）
+func networksOf(d *models.Device) []string {
+	if d == nil || d.NetworkSegments == nil || strings.TrimSpace(*d.NetworkSegments) == "" {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(*d.NetworkSegments), &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+// addNetworkSegment 把当前网络段并进画像（去重、最多保留 5 个、最近的排最后）
+func addNetworkSegment(d *models.Device, seg string) bool {
+	if d == nil || seg == "" {
+		return false
+	}
+	list := networksOf(d)
+	for _, existing := range list {
+		if existing == seg {
+			// 已存在：移到末尾表示"最近用过"
+			reordered := make([]string, 0, len(list))
+			for _, v := range list {
+				if v != seg {
+					reordered = append(reordered, v)
+				}
+			}
+			reordered = append(reordered, seg)
+			if len(reordered) == len(list) {
+				// 顺序未变也写回，保证调用方不需要额外判断
+				encoded, _ := json.Marshal(reordered)
+				val := string(encoded)
+				d.NetworkSegments = &val
+				return false
+			}
+			encoded, _ := json.Marshal(reordered)
+			val := string(encoded)
+			d.NetworkSegments = &val
+			return true
+		}
+	}
+	list = append(list, seg)
+	if len(list) > 5 {
+		list = list[len(list)-5:]
+	}
+	encoded, err := json.Marshal(list)
+	if err != nil {
+		return false
+	}
+	val := string(encoded)
+	d.NetworkSegments = &val
+	return true
+}
+
+// quotaExhausted 该订阅的活跃设备数是否已经达到设备名额上限。
+//
+// 只影响「同 UA + 全新网络段」这一种情形的判定：名额没满时允许登记新设备
+// （同型号的两台手机要能分开），名额已满时把新网络段当作「这台设备换了网络」
+// 复用旧行，避免用户换个 WiFi 就被判成新设备、直接超额断连。
+func (dm *DeviceManager) quotaExhausted(subscriptionID uint) bool {
+	var sub models.Subscription
+	if err := dm.db.Select("id, device_limit").First(&sub, subscriptionID).Error; err != nil {
+		return false
+	}
+	if sub.DeviceLimit <= 0 {
+		return false // 0 = 该订阅不开放设备（由上层按"超限"处理），这里不算名额已满
+	}
+	var count int64
+	if err := dm.db.Model(&models.Device{}).
+		Where("subscription_id = ? AND is_active = ?", subscriptionID, true).
+		Count(&count).Error; err != nil {
+		return false
+	}
+	return int(count) >= sub.DeviceLimit
+}
+
+// knowsNetwork 该设备历史上是否用过这个网络段（换回旧网络时认回同一台）
+func knowsNetwork(d *models.Device, ip string) bool {
+	seg := ipSegmentOf(ip)
+	if seg == "" {
+		return false
+	}
+	for _, s := range networksOf(d) {
+		if s == seg {
+			return true
+		}
+	}
+	return false
+}
+
 // sameNetworkSegment 两个 IP 是否属于同一网络段（用于 UA 兜底匹配时的同设备判定）
 func sameNetworkSegment(ipA, ipB string) bool {
 	segA, segB := ipSegmentOf(ipA), ipSegmentOf(ipB)
@@ -1811,6 +1916,9 @@ func (dm *DeviceManager) GenerateLegacyDeviceHash(userAgent string, headers map[
 
 func (dm *DeviceManager) updateExistingDeviceAccess(device *models.Device, deviceInfo *DeviceInfo, deviceHash, userAgent, ipAddress, subscriptionType string) error {
 	now := utils.GetBeijingTime()
+	// 记住用过的网络段：用户换回旧网络时能认回同一台（第三方客户端没有设备 ID，
+	// 这是能拿到的唯一"稳定"特征）
+	addNetworkSegment(device, ipSegmentOf(ipAddress))
 	device.IPAddress = &ipAddress
 	device.LastAccess = now
 	device.LastSeen = &now
@@ -1949,11 +2057,14 @@ func (dm *DeviceManager) RecordDeviceAccessWithHeaders(subscriptionID uint, user
 			AccessCount:       1,
 		}
 
+		// 记下首次出现的网络段，供之后「换回旧网络」时认回同一台设备
+		addNetworkSegment(&device, ipSegmentOf(ipAddress))
+
 		if err := dm.db.Create(&device).Error; err != nil {
 			return nil, err
 		}
 
-		deviceCount, _ := CountActiveDevices(dm.db, subscriptionID)
+		deviceCount, _ := CountOnlineDevices(dm.db, subscriptionID)
 		dm.db.Model(&models.Subscription{}).Where("id = ?", subscriptionID).Update("current_devices", deviceCount)
 
 		return &device, nil

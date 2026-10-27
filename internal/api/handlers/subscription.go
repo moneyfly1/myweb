@@ -1790,7 +1790,7 @@ func GetExpiringSubscriptions(c *gin.Context) {
 //   - 客户端按关键词分类：带「设备 + 已达」会落到「设备数量已达上限」引导面板
 //     （MoneyFly ≥2.2.15 直接给「设备管理」入口），避免误导用户反复重登。
 func kickedDeviceFullMessage(subscription *models.Subscription) string {
-	count, _ := device.CountActiveDevices(database.GetDB(), subscription.ID)
+	count, _ := device.CountOnlineDevices(database.GetDB(), subscription.ID)
 	return fmt.Sprintf("设备数量已达上限（当前 %d/%d），本机无法自动恢复。请先在「设备管理」删除不再使用的设备后重试，或重新登录。",
 		count, subscription.DeviceLimit)
 }
@@ -1809,7 +1809,9 @@ func validateSubscription(subscription *models.Subscription, user *models.User, 
 		return "订阅已失效或被禁用，请联系客服", 0, subscription.DeviceLimit, false
 	}
 
-	count, _ := device.CountActiveDevices(db, subscription.ID)
+	// 名额判定用「在线设备数」（15 分钟窗口）：第三方客户端换网络会多登记一行，
+	// 若按历史行数计名额，用户只是切个 WiFi 就会被判超限断连。
+	count, _ := device.CountOnlineDevices(db, subscription.ID)
 
 	// 如果用户开启了不限制设备数量，跳过设备数量限制检查
 	if user.SpecialNodeUnlimitedDevices {
@@ -1934,7 +1936,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 			map[string]interface{}{"subscription_id": subscription.ID, "device_id": kickGate.DeviceID})
 	}
 
-	count, _ := device.CountActiveDevices(db, subscription.ID)
+	count, _ := device.CountOnlineDevices(db, subscription.ID)
 
 	// 检查设备限制（不拦截请求，交由 GenerateClashConfig 返回 YAML 格式错误节点）
 	// 上限 0 = 拒绝：不登记任何新设备（下发错误节点由配置生成环节完成）
@@ -2201,7 +2203,7 @@ func GetUniversalSubscription(c *gin.Context) {
 			log.Printf("failed to check existing device: %v", findDeviceErr)
 		}
 
-		count, _ := device.CountActiveDevices(db, sub.ID)
+		count, _ := device.CountOnlineDevices(db, sub.ID)
 
 		shouldRecord := true
 		if !deviceExists && !unlimitedDevices {

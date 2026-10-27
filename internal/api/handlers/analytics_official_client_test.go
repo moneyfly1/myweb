@@ -9,10 +9,10 @@ import "testing"
 // 本来就用着官方客户端的人。
 func TestOfficialClientNamesIncludeMoneyFlyAndMBox(t *testing.T) {
 	cases := map[string]bool{
-		"MoneyFly":   true,
-		"MBox":       true,
-		"  mbox  ":   true, // 大小写/空白不敏感
-		"moneyfly":   true,
+		"MoneyFly":    true,
+		"MBox":        true,
+		"  mbox  ":    true, // 大小写/空白不敏感
+		"moneyfly":    true,
 		"Clash Verge": false,
 		"v2rayN":      false,
 		"Unknown":     false,
