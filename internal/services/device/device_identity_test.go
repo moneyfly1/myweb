@@ -252,3 +252,26 @@ func TestAutomationUANotCountedAsDevice(t *testing.T) {
 		}
 	}
 }
+
+// Apple 客户端 UA 常只有 Darwin 内核版本、没有 iOS 版本号
+// （Shadowrocket：CFNetwork/3896.100.1.2.1 Darwin/27.0.0 iPhone12,1）。
+// 此前"系统版本"整列 3290 台空白，用户分析里全是"未知"。
+func TestAppleDarwinVersionFilled(t *testing.T) {
+	dm := NewDeviceManager()
+	info := dm.ParseUserAgent("Shadowrocket/3445 CFNetwork/3896.100.1.2.1 Darwin/27.0.0 iPhone12,1")
+	if info.OSName != "iOS" {
+		t.Fatalf("平台应为 iOS，实际 %q", info.OSName)
+	}
+	if info.OSVersion == "" {
+		t.Fatal("Darwin 版本应被识别，不能留空（否则分析页显示未知）")
+	}
+	if info.DeviceModel != "iPhone 11" {
+		t.Fatalf("机型应为 iPhone 11，实际 %q", info.DeviceModel)
+	}
+
+	// 明确写了 iOS 版本时，优先用真实版本号，不被 Darwin 覆盖
+	info2 := dm.ParseUserAgent("V2Box/10.1.5 CFNetwork/3860.700.1 Darwin/24.6.0 iOS 18.2")
+	if info2.OSVersion != "18.2" {
+		t.Fatalf("有 iOS 版本时应优先用 18.2，实际 %q", info2.OSVersion)
+	}
+}
