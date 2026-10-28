@@ -672,7 +672,10 @@ const loadData = async () => {
 }
 
 // ---------------- 设备与客户端使用 ----------------
-const du = reactive({ dim: 'client', q: '', official: 'all', days: '0', page: 1, limit: 20 })
+// limit 默认 50：客户端软件这类维度取值本来就少（线上 27 种真实客户端），
+// 原来 20 条/页会把排名靠后的小众客户端（MBox 2 台、V2Box、PassWall …）直接截断，
+// 看起来就像"页面里没有这个客户端"。
+const du = reactive({ dim: 'client', q: '', official: 'all', days: '0', page: 1, limit: 50 })
 // 视图：user = 按用户（谁在用哪个软件/版本，可直接发升级通知）；group = 按分组统计
 const duView = ref('user')
 const duUsers = ref([])

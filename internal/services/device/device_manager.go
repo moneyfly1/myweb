@@ -121,6 +121,14 @@ func (dm *DeviceManager) ParseUserAgentWithHeaders(userAgent string, headers map
 		info.OSVersion = osVersion
 		info.DeviceType = "mobile"
 		info.DeviceName = "Android 设备（客户端未上报 UA）"
+		// Dalvik/x.y.z 里的数字是 **Android 运行时版本**，不是客户端版本：
+		// 早期版本把它当 software_version 存了，线上 15 台安卓设备因此在
+		// 「客户端版本」维度里凭空多出一个 "2.1.0" 版本。真版本只能来自
+		// UA 里的客户端标识（这里没有）→ 留空。
+		info.SoftwareVersion = ""
+		// 官方安卓客户端可能只带 Dalvik UA 但发送 X-MF-* 头：这里补一次，
+		// 否则头补充会被提前 return 跳过（历史 bug）。
+		dm.applyHeaderHints(headers, info)
 		return info
 	}
 
@@ -164,38 +172,47 @@ func (dm *DeviceManager) ParseUserAgentWithHeaders(userAgent string, headers map
 	info.DeviceName = dm.generateDeviceName(info)
 
 	// X-MF-* 头补充：MoneyFly 客户端发送的设备详情头，填补 UA 解析不全的字段
-	if headers != nil {
-		if info.OSName == "Unknown" {
-			if osStr := headers["X-MF-OS"]; osStr != "" {
-				parts := strings.SplitN(osStr, " ", 2)
-				info.OSName = parts[0]
-				if len(parts) > 1 {
-					info.OSVersion = parts[1]
-				}
-			}
-		}
-		if info.DeviceModel == "" {
-			if model := headers["X-MF-Device-Model"]; model != "" {
-				info.DeviceModel = model
-			}
-		}
-		if info.DeviceBrand == "" {
-			if brand := headers["X-MF-Device-Brand"]; brand != "" {
-				info.DeviceBrand = brand
-			}
-		}
-		if info.DeviceType == "unknown" {
-			if dtype := headers["X-MF-Device-Type"]; dtype != "" {
-				info.DeviceType = dtype
-			}
-		}
-		// 补充后重新生成设备名
-		if headers["X-MF-OS"] != "" || headers["X-MF-Device-Model"] != "" {
-			info.DeviceName = dm.generateDeviceName(info)
-		}
-	}
+	dm.applyHeaderHints(headers, info)
 
 	return info
+}
+
+// applyHeaderHints 用客户端自报的 X-MF-* 头补齐 UA 解析不出来的字段。
+// 单独抽成函数是因为 Dalvik / 纯 "android" 这类 UA 会提前返回（见上），
+// 早期版本那一步直接 return，把整段头补充跳过了 —— 官方安卓客户端如果
+// 只带 Dalvik UA，就只能靠这些头识别。
+func (dm *DeviceManager) applyHeaderHints(headers map[string]string, info *DeviceInfo) {
+	if headers == nil {
+		return
+	}
+	if info.OSName == "Unknown" {
+		if osStr := headers["X-MF-OS"]; osStr != "" {
+			parts := strings.SplitN(osStr, " ", 2)
+			info.OSName = parts[0]
+			if len(parts) > 1 {
+				info.OSVersion = parts[1]
+			}
+		}
+	}
+	if info.DeviceModel == "" {
+		if model := headers["X-MF-Device-Model"]; model != "" {
+			info.DeviceModel = model
+		}
+	}
+	if info.DeviceBrand == "" {
+		if brand := headers["X-MF-Device-Brand"]; brand != "" {
+			info.DeviceBrand = brand
+		}
+	}
+	if info.DeviceType == "unknown" {
+		if dtype := headers["X-MF-Device-Type"]; dtype != "" {
+			info.DeviceType = dtype
+		}
+	}
+	// 补充后重新生成设备名
+	if headers["X-MF-OS"] != "" || headers["X-MF-Device-Model"] != "" {
+		info.DeviceName = dm.generateDeviceName(info)
+	}
 }
 
 func (dm *DeviceManager) IsGenericClashWindowsUA(userAgent string) bool {
