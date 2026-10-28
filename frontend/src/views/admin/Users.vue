@@ -294,33 +294,36 @@
               <el-table-column label="订阅状态" width="150" align="center">
                 <template #default="scope">
                   <div class="subscription-cell">
-                    <div v-if="scope.row.subscription" class="subscription-info">
-                      <div class="subscription-status">
-                        <el-tag :type="getSubscriptionStatusType(scope.row.subscription.status)" size="small" effect="dark">
-                          {{ getSubscriptionStatusText(scope.row.subscription.status) }}
-                        </el-tag>
-                      </div>
-                      <div v-if="scope.row.subscription.days_until_expire !== null" class="expire-info">
-                        <el-text
-                          size="small"
-                          :type="getExpireTextType(scope.row.subscription)"
-                        >
-                          {{ getExpireText(scope.row.subscription) }}
-                        </el-text>
-                      </div>
+                    <!-- 订阅状态与账号启用状态同一行并排 -->
+                    <div class="status-tags-inline">
+                      <el-tag
+                        v-if="scope.row.subscription"
+                        :type="getSubscriptionStatusType(scope.row.subscription.status)"
+                        size="small"
+                        effect="dark"
+                      >
+                        {{ getSubscriptionStatusText(scope.row.subscription.status) }}
+                      </el-tag>
+                      <el-tag v-else type="info" size="small" effect="plain">无订阅</el-tag>
+                      <el-tag
+                        :type="getStatusType(scope.row.status)"
+                        size="small"
+                        effect="plain"
+                      >
+                        {{ getStatusText(scope.row.status) }}
+                      </el-tag>
                     </div>
-                    <div v-else class="no-subscription">
-                      <el-tag type="info" size="small" effect="plain">无订阅</el-tag>
-                    </div>
-                    <!-- 账号启用状态：「状态」列已改为消费金额，这里与订阅状态并列展示 -->
-                    <el-tag
-                      :type="getStatusType(scope.row.status)"
-                      size="small"
-                      effect="plain"
-                      class="account-status-tag"
+                    <div
+                      v-if="scope.row.subscription && scope.row.subscription.days_until_expire !== null"
+                      class="expire-info"
                     >
-                      {{ getStatusText(scope.row.status) }}
-                    </el-tag>
+                      <el-text
+                        size="small"
+                        :type="getExpireTextType(scope.row.subscription)"
+                      >
+                        {{ getExpireText(scope.row.subscription) }}
+                      </el-text>
+                    </div>
                   </div>
                 </template>
               </el-table-column>
@@ -2410,6 +2413,14 @@ export default {
   align-items: center;
   gap: 4px;
 }
+/* 订阅状态 + 账号启用状态同一行并排 */
+.status-tags-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
 .subscription-info {
   display: flex;
   flex-direction: column;
@@ -2579,8 +2590,9 @@ export default {
 }
 .mobile-subscription-summary {
   display: flex;
-  align-items: flex-end;
-  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 4px;
 }
 .mobile-user-actions {
