@@ -235,11 +235,22 @@
                   </div>
                 </template>
               </el-table-column>
-              <el-table-column prop="status" label="状态" width="90">
+              <el-table-column
+                prop="total_consumption"
+                label="消费金额"
+                width="120"
+                align="right"
+                sortable="custom"
+                :sort-orders="['ascending', 'descending', null]"
+                @sort-change="handleSortChange"
+              >
                 <template #default="scope">
-                  <el-tag :type="getStatusType(scope.row.status)" size="small">
-                    {{ getStatusText(scope.row.status) }}
-                  </el-tag>
+                  <span
+                    class="consumption-amount"
+                    :class="{ 'consumption-zero': !Number(scope.row.total_consumption) }"
+                  >
+                    ¥{{ Number(scope.row.total_consumption || 0).toFixed(2) }}
+                  </span>
                 </template>
               </el-table-column>
               <el-table-column 
@@ -455,10 +466,13 @@
           </div>
         </template>
 
-        <template #field-status="{ item }">
-          <el-tag :type="getStatusType(item.status)" size="small">
-            {{ getStatusText(item.status) }}
-          </el-tag>
+        <template #field-total_consumption="{ item }">
+          <span
+            class="consumption-amount"
+            :class="{ 'consumption-zero': !Number(item.total_consumption) }"
+          >
+            ¥{{ Number(item.total_consumption || 0).toFixed(2) }}
+          </span>
         </template>
 
         <template #field-balance="{ item }">
@@ -1303,7 +1317,7 @@ export default {
     }
     const mobileUserFields = computed(() => [
       { key: 'id', label: '用户ID', formatter: value => `#${value}` },
-      { key: 'status', label: '状态' },
+      { key: 'total_consumption', label: '消费金额' },
       { key: 'balance', label: '余额' },
       { key: 'device_info', label: '设备信息' },
       { key: 'subscription', label: '订阅状态' },
@@ -2522,6 +2536,17 @@ export default {
 .saved-indicator .el-icon {
   font-size: 14px;
 }
+.consumption-amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.consumption-amount.consumption-zero {
+  font-weight: 400;
+  color: var(--el-text-color-secondary);
+}
+
 .mobile-user-header {
   display: flex;
   align-items: center;

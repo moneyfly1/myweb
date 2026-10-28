@@ -312,10 +312,11 @@ func GetUsers(c *gin.Context) {
 	if sortField != "" {
 		// 验证排序字段，防止 SQL 注入
 		allowedSortFields := map[string]string{
-			"balance":    "balance",
-			"created_at": "created_at",
-			"username":   "username",
-			"email":      "email",
+			"balance":           "balance",
+			"total_consumption": "total_consumption",
+			"created_at":        "created_at",
+			"username":          "username",
+			"email":             "email",
 		}
 
 		if dbField, ok := allowedSortFields[sortField]; ok {
@@ -478,13 +479,14 @@ func GetUsers(c *gin.Context) {
 		}
 
 		list = append(list, gin.H{
-			"id":        u.ID,
-			"username":  u.Username,
-			"email":     u.Email,
-			"activity":  activityInfo,
-			"balance":   u.Balance,
-			"is_active": u.IsActive,
-			"is_admin":  u.IsAdmin,
+			"id":                u.ID,
+			"username":          u.Username,
+			"email":             u.Email,
+			"activity":          activityInfo,
+			"balance":           u.Balance,
+			"total_consumption": u.TotalConsumption,
+			"is_active":         u.IsActive,
+			"is_admin":          u.IsAdmin,
 			"status": func() string {
 				if !u.IsActive {
 					return "inactive"
