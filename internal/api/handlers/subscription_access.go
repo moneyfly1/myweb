@@ -21,7 +21,7 @@ func shouldBlockBrowserSubscriptionAccess(c *gin.Context) bool {
 	if extractMFHeaders(c) != nil {
 		return false
 	}
-	if !isBrowserUserAgent(c.GetHeader("User-Agent")) {
+	if !isNonClientUserAgent(c.GetHeader("User-Agent")) {
 		return false
 	}
 
@@ -56,21 +56,37 @@ func extractMFHeaders(c *gin.Context) map[string]string {
 	return headers
 }
 
-func isBrowserUserAgent(userAgent string) bool {
+// isNonClientUserAgent 判断这个 UA 是否属于「非客户端」——
+// 浏览器、脚本/抓取工具、订阅转换站、或干脆没有 UA。
+//
+// 业务约定：订阅配置只给**软件客户端**。此前只拦浏览器 UA，
+// 于是 Go-http-client / curl / python-requests / subconverter 这类程序
+// 都能直接拿到完整配置（实测 190KB 全量返回），用户把订阅地址贴到在线转换站
+// 或分享给脚本批量拉取时完全不受限。
+//
+// 判定顺序：
+//  1. 命中已知客户端标记 → 是客户端（放行）；
+//  2. 空 UA → 非客户端（正常客户端都会带 UA）；
+//  3. 命中浏览器标记 → 非客户端；
+//  4. 命中自动化/脚本标记 → 非客户端；
+//  5. 其它未知 UA → 放行（宁可放行也不误伤没收录的小众客户端）。
+func isNonClientUserAgent(userAgent string) bool {
 	ua := strings.ToLower(strings.TrimSpace(userAgent))
-	if ua == "" {
-		return false
-	}
 
 	clientMarkers := []string{
 		"clash", "stash", "surge", "quantumult", "loon", "sing-box", "singbox",
-		"shadowrocket", "v2ray", "v2rayn", "v2rayng", "hiddify", "sing-box",
-		"nekobox", "surfboard", "karing", "openclash", "passwall", "moneyfly",
+		"shadowrocket", "v2ray", "v2rayn", "v2rayng", "hiddify", "nekobox",
+		"surfboard", "karing", "openclash", "passwall", "moneyfly", "mbox",
+		"flclash", "mihomo", "verge", "nekoray", "sfa/", "sfi/", "sfm/",
 	}
 	for _, marker := range clientMarkers {
 		if strings.Contains(ua, marker) {
 			return false
 		}
+	}
+
+	if ua == "" {
+		return true
 	}
 
 	browserMarkers := []string{
@@ -82,6 +98,23 @@ func isBrowserUserAgent(userAgent string) bool {
 			return true
 		}
 	}
+	if strings.Contains(ua, "mozilla/") && strings.Contains(ua, "applewebkit/") {
+		return true
+	}
 
-	return strings.Contains(ua, "mozilla/") && strings.Contains(ua, "applewebkit/")
+	// 自动化/脚本/抓取/转换站：不是软件客户端，不应该拿到配置
+	automationMarkers := []string{
+		"go-http-client", "curl/", "wget/", "python-requests", "python-urllib",
+		"okhttp", "postmanruntime", "axios/", "node-fetch", "apache-httpclient",
+		"libwww-perl", "got (", "got/", "undici", "java/", "java-http-client",
+		"subconverter", "clash-subconverter", "sub-web", "node ", "go-resty",
+		"insomnia", "httpie", "powershell", "winhttp", "libcurl",
+	}
+	for _, marker := range automationMarkers {
+		if strings.Contains(ua, marker) {
+			return true
+		}
+	}
+
+	return false
 }
