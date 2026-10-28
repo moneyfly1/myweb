@@ -98,18 +98,29 @@ func deviceUsageBaseQuery(db *gorm.DB, q, official, days string, dim deviceUsage
 	tx := db.Model(&models.Device{}).
 		Where("is_active = ? AND kicked_at IS NULL", true)
 
-	switch strings.ToLower(strings.TrimSpace(official)) {
+	scope := strings.ToLower(strings.TrimSpace(official))
+
+	// 自动化/抓取类 UA（curl / Go-http-client / python-requests / okhttp /
+	// 链接预览爬虫 …）**不是用户设备**，所有维度默认排除：
+	//   - 混进「待升级的第三方用户」会让数字虚高（用户反馈"很多未知设备"）；
+	//   - 混进分组列表会挤掉真实客户端：线上「客户端软件」维度里爬虫占了 10 组，
+	//     官方客户端 MBox 只有 2 台，被 20 条/页的分页挤到第 2 页，后台完全看不到
+	//     （用户反馈"为什么没有 MBox 的显示"）。
+	// 排除后 summary 仍用 automation_devices 单独给出计数，供解释总设备数.
+	if scope != "automation" {
+		tx = tx.Where("LOWER(TRIM(COALESCE(software_name, ''))) NOT IN ?", automationSoftwareNames()).
+			Where("LOWER(TRIM(COALESCE(os_name, ''))) <> ?", "自动化/非客户端")
+	}
+
+	switch scope {
 	case "official":
 		tx = tx.Where("LOWER(TRIM(COALESCE(software_name, ''))) IN ?", lowerOfficialClientNames())
 	case "third_party", "unofficial":
-		// 第三方客户端 = 用户设备上的其它客户端。**排除自动化/抓取类 UA**
-		// （curl / Go-http-client / python-requests / okhttp / 链接预览爬虫 …）：
-		// 它们不是用户设备，混进来会让"待升级用户"数字虚高（用户反馈
-		// "很多未知设备"，其中一部分就是这些）。口径与 UA 归类保持一致：
-		// 软件名命中自动化名单，或系统已被归为「自动化/非客户端」。
-		tx = tx.Where("LOWER(TRIM(COALESCE(software_name, ''))) NOT IN ?", lowerOfficialClientNames()).
-			Where("LOWER(COALESCE(software_name, '')) NOT IN ?", automationSoftwareNames()).
-			Where("LOWER(TRIM(COALESCE(os_name, ''))) <> ?", "自动化/非客户端")
+		tx = tx.Where("LOWER(TRIM(COALESCE(software_name, ''))) NOT IN ?", lowerOfficialClientNames())
+	case "automation":
+		// 只统计自动化/抓取请求（summary 用；列表维度不展示）
+		tx = tx.Where("LOWER(TRIM(COALESCE(software_name, ''))) IN ? OR LOWER(TRIM(COALESCE(os_name, ''))) = ?",
+			automationSoftwareNames(), "自动化/非客户端")
 	}
 
 	if n, err := strconv.Atoi(strings.TrimSpace(days)); err == nil && n > 0 {
@@ -179,20 +190,13 @@ func GetDeviceUsageAnalytics(c *gin.Context) {
 	deviceUsageBaseQuery(db, q, "official", days, dim).Count(&officialDevices)
 
 	// 自动化请求数（curl/脚本/链接预览爬虫）：单列出来，让"设备总数"能被解释，
-	// 也便于前端提示「其中 N 台不是用户设备」。
+	// 也便于前端提示「其中 N 台不是用户设备」。注意这里必须用 scope=automation
+	// 的独立查询 —— base 已经把这些行排除掉了。
 	var automationDevices int64
-	deviceUsageBaseQuery(db, q, "all", days, dim).
-		Where("LOWER(TRIM(COALESCE(os_name, ''))) = ?", "自动化/非客户端").
-		Count(&automationDevices)
+	deviceUsageBaseQuery(db, q, "automation", days, dim).Count(&automationDevices)
 
-	// 第三方设备数：base 已经把自动化请求排除掉时（official=third_party），
-	// totalDevices 里本来就没有它们，不能重复减。
+	// 第三方设备数：base 已排除自动化请求，totalDevices 里本来就没有它们。
 	thirdPartyDevices := totalDevices - officialDevices
-	switch strings.ToLower(strings.TrimSpace(official)) {
-	case "third_party", "unofficial":
-	default:
-		thirdPartyDevices -= automationDevices
-	}
 	if thirdPartyDevices < 0 {
 		thirdPartyDevices = 0
 	}
