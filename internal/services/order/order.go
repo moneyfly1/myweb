@@ -5,6 +5,7 @@ import (
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/models"
 	discountService "cboard-go/internal/services/discount"
+	"cboard-go/internal/services/userlevel"
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/invite"
 	"cboard-go/internal/services/notification"
@@ -1215,45 +1216,19 @@ func (s *OrderService) processDeviceUpgradeOrderTx(tx *gorm.DB, order *models.Or
 	return &subscription, nil
 }
 
+// updateUserLevelTx 支付成功后按累计消费同步等级（只升不降）。
+// 匹配规则与折扣、前台展示共用 services/userlevel，避免三份实现各自漂移。
 func (s *OrderService) updateUserLevelTx(tx *gorm.DB, user *models.User) {
-	var userLevels []models.UserLevel
-	if err := tx.Where("is_active = ?", true).Order("level_order ASC").Find(&userLevels).Error; err == nil {
-		// 选择满足消费门槛的“最高”达标等级（level_order 越大代表等级越高）
-		var targetLevel *models.UserLevel
-		for i := range userLevels {
-			level := &userLevels[i]
-			if user.TotalConsumption >= level.MinConsumption {
-				if targetLevel == nil || level.LevelOrder > targetLevel.LevelOrder {
-					targetLevel = level
-				}
-			}
+	level, changed, err := userlevel.Sync(tx, user)
+	if err != nil {
+		if utils.AppLogger != nil {
+			utils.AppLogger.Error("更新用户等级失败: %v", err)
 		}
-
-		if targetLevel != nil {
-			if !user.UserLevelID.Valid || user.UserLevelID.Int64 != utils.MustSafeUintToInt64(targetLevel.ID) {
-				var currentLevel models.UserLevel
-				shouldUpdate := true
-				if user.UserLevelID.Valid {
-					if err := tx.First(&currentLevel, user.UserLevelID.Int64).Error; err == nil {
-						// 只升不降：目标等级排序值低于当前等级时不更新
-						if currentLevel.LevelOrder > targetLevel.LevelOrder {
-							shouldUpdate = false
-						}
-					}
-				}
-				if shouldUpdate {
-					user.UserLevelID = sql.NullInt64{Int64: utils.MustSafeUintToInt64(targetLevel.ID), Valid: true}
-					if err := tx.Save(user).Error; err != nil {
-						if utils.AppLogger != nil {
-							utils.AppLogger.Error("更新用户等级失败: %v", err)
-						}
-					} else if utils.AppLogger != nil {
-						utils.AppLogger.Info("ProcessPaidOrder: ✅ 用户等级更新 - user_id=%d, level_id=%d, level_name=%s",
-							user.ID, targetLevel.ID, targetLevel.LevelName)
-					}
-				}
-			}
-		}
+		return
+	}
+	if changed && level != nil && utils.AppLogger != nil {
+		utils.AppLogger.Info("ProcessPaidOrder: ✅ 用户等级更新 - user_id=%d, level_id=%d, level_name=%s",
+			user.ID, level.ID, level.LevelName)
 	}
 }
 

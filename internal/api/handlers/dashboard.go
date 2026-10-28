@@ -12,6 +12,7 @@ import (
 	"cboard-go/internal/middleware"
 	"cboard-go/internal/models"
 	"cboard-go/internal/services/device"
+	"cboard-go/internal/services/userlevel"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -31,12 +32,10 @@ func GetUserDashboard(c *gin.Context) {
 		user = &freshUser
 	}
 
+	// 生效等级：等级被停用或删除时视为"无等级"，展示与折扣口径保持一致
 	var userLevel *models.UserLevel
-	if user.UserLevelID.Valid {
-		var lvl models.UserLevel
-		if err := db.First(&lvl, user.UserLevelID.Int64).Error; err == nil {
-			userLevel = &lvl
-		}
+	if lvl, err := userlevel.ForUser(db, user.ID); err == nil {
+		userLevel = lvl
 	}
 
 	var subscription models.Subscription
@@ -91,11 +90,11 @@ func GetUserDashboard(c *gin.Context) {
 			"id":              userLevel.ID,
 			"name":            userLevel.LevelName,
 			"discount_rate":   userLevel.DiscountRate,
-			"device_limit":    userLevel.DeviceLimit,
 			"color":           userLevel.Color,
 			"benefits":        userLevel.Benefits.String,
 			"level_order":     userLevel.LevelOrder,
 			"min_consumption": userLevel.MinConsumption,
+			"icon_url":        userLevel.IconURL.String,
 		}
 		membershipName = userLevel.LevelName
 	} else {

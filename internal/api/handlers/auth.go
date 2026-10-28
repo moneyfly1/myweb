@@ -20,6 +20,7 @@ import (
 	"cboard-go/internal/services/geoip"
 	"cboard-go/internal/services/invite"
 	"cboard-go/internal/services/notification"
+	"cboard-go/internal/services/userlevel"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -173,6 +174,11 @@ func Register(c *gin.Context) {
 		}
 		if err := createDefaultSubscription(tx, user.ID); err != nil {
 			return fmt.Errorf("创建默认订阅失败: %v", err)
+		}
+		// 注册即按累计消费（0 元）匹配一次等级：配置了 0 元门槛等级时新用户立刻显示，
+		// 不用等到首次付款（此前等级只在支付成功时更新，新用户长期显示"未开通等级"）。
+		if _, _, err := userlevel.Sync(tx, &user); err != nil {
+			return fmt.Errorf("初始化用户等级失败: %v", err)
 		}
 		if req.InviteCode != "" {
 			inviterID = processInviteCode(tx, req.InviteCode, user.ID)

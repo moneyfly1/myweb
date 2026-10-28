@@ -1822,19 +1822,12 @@ func UpgradeDevices(c *gin.Context) {
 	}
 	totalAmount = utils.RoundFloat(totalAmount, 2)
 
-	var userLevel models.UserLevel
+	// 等级折扣统一走 discountService.CalculateLevelDiscount（内含"停用即不生效"判断），
+	// 不再就地复写一份算法。
+	levelDiscountAmount, payableAmount := discountService.CalculateLevelDiscount(db, user.ID, totalAmount)
 	levelDiscount := 1.0
-	levelDiscountAmount := 0.0
-	payableAmount := totalAmount
-	if user.UserLevelID.Valid {
-		if err := db.First(&userLevel, user.UserLevelID.Int64).Error; err == nil && userLevel.DiscountRate > 0 && userLevel.DiscountRate < 1.0 {
-			levelDiscount = userLevel.DiscountRate
-			levelDiscountAmount = utils.RoundFloat(totalAmount*(1-userLevel.DiscountRate), 2)
-			payableAmount = utils.RoundFloat(totalAmount-levelDiscountAmount, 2)
-			if payableAmount < 0 {
-				payableAmount = 0
-			}
-		}
+	if totalAmount > 0 && levelDiscountAmount > 0 {
+		levelDiscount = utils.RoundFloat(payableAmount/totalAmount, 4)
 	}
 
 	// 仅预览：返回费用不创建订单

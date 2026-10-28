@@ -12,7 +12,6 @@ type UserLevel struct {
 	LevelOrder     int            `gorm:"uniqueIndex;not null" json:"level_order"`
 	MinConsumption float64        `gorm:"type:decimal(10,2);default:0" json:"min_consumption"`
 	DiscountRate   float64        `gorm:"type:decimal(5,2);default:1.0" json:"discount_rate"`
-	DeviceLimit    int            `gorm:"default:3" json:"device_limit"`
 	Benefits       sql.NullString `gorm:"type:text" json:"benefits,omitempty"`
 	IconURL        sql.NullString `gorm:"type:varchar(255)" json:"icon_url,omitempty"`
 	Color          string         `gorm:"type:varchar(20);default:#909399" json:"color"`
@@ -33,7 +32,6 @@ type UserLevelResponse struct {
 	LevelOrder     int       `json:"level_order"`
 	MinConsumption float64   `json:"min_consumption"`
 	DiscountRate   float64   `json:"discount_rate"`
-	DeviceLimit    int       `json:"device_limit"`
 	Benefits       *string   `json:"benefits,omitempty"`
 	IconURL        *string   `json:"icon_url,omitempty"`
 	Color          string    `json:"color"`
@@ -49,7 +47,6 @@ func (ul *UserLevel) ToUserLevelResponse() UserLevelResponse {
 		LevelOrder:     ul.LevelOrder,
 		MinConsumption: ul.MinConsumption,
 		DiscountRate:   ul.DiscountRate,
-		DeviceLimit:    ul.DeviceLimit,
 		Color:          ul.Color,
 		IsActive:       ul.IsActive,
 		CreatedAt:      ul.CreatedAt,

@@ -19,6 +19,7 @@ import (
 	"cboard-go/internal/services/activity"
 	"cboard-go/internal/services/email"
 	"cboard-go/internal/services/notification"
+	"cboard-go/internal/services/userlevel"
 	"cboard-go/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -1598,9 +1599,10 @@ func CreateUser(c *gin.Context) {
 		IsVerified  bool    `json:"is_verified"`
 		IsAdmin     bool    `json:"is_admin"`
 		Balance     float64 `json:"balance"`
-		DeviceLimit *int    `json:"device_limit"` // 设备限制；不传=用系统默认，传 0=拒绝（不允许设备使用）
-		ExpireTime  string  `json:"expire_time"`  // 到期时间，格式：YYYY-MM-DDTHH:mm:ss
-		Notes       string  `json:"notes"`        // 备注
+		UserLevelID *uint   `json:"user_level_id"` // 用户等级；不传=按累计消费自动匹配，0=无等级，>0=手工开通
+		DeviceLimit *int    `json:"device_limit"`  // 设备限制；不传=用系统默认，传 0=拒绝（不允许设备使用）
+		ExpireTime  string  `json:"expire_time"`   // 到期时间，格式：YYYY-MM-DDTHH:mm:ss
+		Notes       string  `json:"notes"`         // 备注
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1650,9 +1652,25 @@ func CreateUser(c *gin.Context) {
 		user.Notes = database.NullString(req.Notes)
 	}
 
+	// 手工开通：管理员显式指定等级（不受消费门槛限制）；未指定则按累计消费自动匹配
+	levelAutoMatch := true
+	if req.UserLevelID != nil {
+		levelAutoMatch = false
+		if err := setUserLevelFromID(db, &user, *req.UserLevelID); err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+			return
+		}
+	}
+
 	if err := db.Create(&user).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "创建用户失败", err)
 		return
+	}
+
+	if levelAutoMatch {
+		if _, _, err := userlevel.Sync(db, &user); err != nil && utils.AppLogger != nil {
+			utils.AppLogger.Error("后台建号自动匹配等级失败: user_id=%d err=%v", user.ID, err)
+		}
 	}
 
 	// 注册日志：管理员代建的账号同样计入"注册日志"，来源标注为 admin，
@@ -1823,6 +1841,7 @@ func UpdateUser(c *gin.Context) {
 		Password                    string   `json:"password"`
 		Notes                       *string  `json:"notes"` // 备注
 		DeviceLimit                 *int     `json:"device_limit"`
+		UserLevelID                 *uint    `json:"user_level_id"` // 0=清空等级，>0=手工指定等级
 		ExpireTime                  *string  `json:"expire_time"`
 		SpecialNodeSubscriptionType *string  `json:"special_node_subscription_type"`
 	}
@@ -1933,6 +1952,14 @@ func UpdateUser(c *gin.Context) {
 			user.SpecialNodeSubscriptionType = mode
 		default:
 			utils.ErrorResponse(c, http.StatusBadRequest, "线路模式无效", nil)
+			return
+		}
+	}
+
+	// 手工调整等级（0=清空）：必须在 Save 之前赋值，否则会被整行更新覆盖
+	if req.UserLevelID != nil {
+		if err := setUserLevelFromID(db, &user, *req.UserLevelID); err != nil {
+			utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
 			return
 		}
 	}
@@ -3545,4 +3572,21 @@ func parseUserDateFilter(raw string) time.Time {
 		return time.Date(beijing.Year(), beijing.Month(), beijing.Day(), 0, 0, 0, 0, utils.BeijingTZ)
 	}
 	return time.Time{}
+}
+
+// setUserLevelFromID 按管理员传入的等级 ID 设置用户等级字段（只改内存，不落库）：
+//   - 0  → 清空等级
+//   - >0 → 挂到指定等级；**不校验消费门槛**（后台手工开通/赠送场景），
+//     也不要求等级启用（启用与否只影响折扣是否生效，见 userlevel.ForUser）
+func setUserLevelFromID(db *gorm.DB, user *models.User, levelID uint) error {
+	if levelID == 0 {
+		user.UserLevelID = sql.NullInt64{}
+		return nil
+	}
+	var lvl models.UserLevel
+	if err := db.First(&lvl, levelID).Error; err != nil {
+		return fmt.Errorf("指定的用户等级不存在")
+	}
+	user.UserLevelID = sql.NullInt64{Int64: int64(lvl.ID), Valid: true}
+	return nil
 }
