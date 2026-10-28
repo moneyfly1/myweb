@@ -291,25 +291,36 @@
                   </div>
                 </template>
               </el-table-column>
-              <el-table-column label="订阅状态" width="130" align="center">
+              <el-table-column label="订阅状态" width="150" align="center">
                 <template #default="scope">
-                  <div v-if="scope.row.subscription" class="subscription-info">
-                    <div class="subscription-status">
-                      <el-tag :type="getSubscriptionStatusType(scope.row.subscription.status)" size="small" effect="dark">
-                        {{ getSubscriptionStatusText(scope.row.subscription.status) }}
-                      </el-tag>
+                  <div class="subscription-cell">
+                    <div v-if="scope.row.subscription" class="subscription-info">
+                      <div class="subscription-status">
+                        <el-tag :type="getSubscriptionStatusType(scope.row.subscription.status)" size="small" effect="dark">
+                          {{ getSubscriptionStatusText(scope.row.subscription.status) }}
+                        </el-tag>
+                      </div>
+                      <div v-if="scope.row.subscription.days_until_expire !== null" class="expire-info">
+                        <el-text
+                          size="small"
+                          :type="getExpireTextType(scope.row.subscription)"
+                        >
+                          {{ getExpireText(scope.row.subscription) }}
+                        </el-text>
+                      </div>
                     </div>
-                    <div v-if="scope.row.subscription.days_until_expire !== null" class="expire-info">
-                      <el-text 
-                        size="small" 
-                        :type="getExpireTextType(scope.row.subscription)"
-                      >
-                        {{ getExpireText(scope.row.subscription) }}
-                      </el-text>
+                    <div v-else class="no-subscription">
+                      <el-tag type="info" size="small" effect="plain">无订阅</el-tag>
                     </div>
-                  </div>
-                  <div v-else class="no-subscription">
-                    <el-tag type="info" size="small" effect="plain">无订阅</el-tag>
+                    <!-- 账号启用状态：「状态」列已改为消费金额，这里与订阅状态并列展示 -->
+                    <el-tag
+                      :type="getStatusType(scope.row.status)"
+                      size="small"
+                      effect="plain"
+                      class="account-status-tag"
+                    >
+                      {{ getStatusText(scope.row.status) }}
+                    </el-tag>
                   </div>
                 </template>
               </el-table-column>
@@ -460,9 +471,6 @@
                 </div>
               </button>
             </div>
-            <el-tag :type="getStatusType(item.status)" size="small">
-              {{ getStatusText(item.status) }}
-            </el-tag>
           </div>
         </template>
 
@@ -488,19 +496,24 @@
         </template>
 
         <template #field-subscription="{ item }">
-          <div v-if="item.subscription" class="mobile-subscription-summary">
-            <el-tag :type="getSubscriptionStatusType(item.subscription.status)" size="small" effect="plain">
-              {{ getSubscriptionStatusText(item.subscription.status) }}
+          <div class="mobile-subscription-summary">
+            <template v-if="item.subscription">
+              <el-tag :type="getSubscriptionStatusType(item.subscription.status)" size="small" effect="plain">
+                {{ getSubscriptionStatusText(item.subscription.status) }}
+              </el-tag>
+              <el-text
+                v-if="item.subscription.days_until_expire !== null"
+                size="small"
+                :type="getExpireTextType(item.subscription)"
+              >
+                {{ getExpireText(item.subscription) }}
+              </el-text>
+            </template>
+            <el-tag v-else type="info" size="small" effect="plain">无订阅</el-tag>
+            <el-tag :type="getStatusType(item.status)" size="small" effect="plain">
+              {{ getStatusText(item.status) }}
             </el-tag>
-            <el-text
-              v-if="item.subscription.days_until_expire !== null"
-              size="small"
-              :type="getExpireTextType(item.subscription)"
-            >
-              {{ getExpireText(item.subscription) }}
-            </el-text>
           </div>
-          <el-tag v-else type="info" size="small" effect="plain">无订阅</el-tag>
         </template>
 
         <template #field-notes="{ item }">
@@ -2390,6 +2403,12 @@ export default {
     color: #f56c6c;
     font-weight: 700;
   }
+}
+.subscription-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 .subscription-info {
   display: flex;
