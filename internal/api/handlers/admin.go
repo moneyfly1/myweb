@@ -680,8 +680,13 @@ func GetAdminCoupons(c *gin.Context) {
 }
 
 func GetAdminUserLevels(c *gin.Context) {
+	query := database.GetDB().Order("level_order ASC")
+	// active_only=true：只回启用中的等级（后台「添加用户 → 用户等级」下拉用）
+	if strings.EqualFold(strings.TrimSpace(c.Query("active_only")), "true") {
+		query = query.Where("is_active = ?", true)
+	}
 	var userLevels []models.UserLevel
-	if err := database.GetDB().Order("level_order ASC").Find(&userLevels).Error; err != nil {
+	if err := query.Find(&userLevels).Error; err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "获取用户等级列表失败", err)
 		return
 	}

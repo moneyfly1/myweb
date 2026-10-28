@@ -2,6 +2,7 @@ package discount
 
 import (
 	"cboard-go/internal/models"
+	"cboard-go/internal/services/userlevel"
 	"cboard-go/internal/utils"
 	"database/sql"
 	"encoding/json"
@@ -33,31 +34,11 @@ type CouponQuote struct {
 	FreeDays             int
 }
 
+// CalculateLevelDiscount 按用户等级计算折扣，返回（优惠金额，折后金额）。
+// 实现收敛到 userlevel.ApplyDiscount：等级停用/删除/折扣非法都按"无折扣"处理，
+// 避免出现"后台停了等级、前台还在打折"的分裂口径。
 func CalculateLevelDiscount(db *gorm.DB, userID uint, baseAmount float64) (float64, float64) {
-	baseAmount = utils.RoundFloat(baseAmount, 2)
-	if userID == 0 || baseAmount <= 0 {
-		return 0, baseAmount
-	}
-
-	var user models.User
-	if err := db.First(&user, userID).Error; err != nil || !user.UserLevelID.Valid {
-		return 0, baseAmount
-	}
-
-	var level models.UserLevel
-	if err := db.First(&level, user.UserLevelID.Int64).Error; err != nil {
-		return 0, baseAmount
-	}
-	if level.DiscountRate <= 0 || level.DiscountRate >= 1.0 {
-		return 0, baseAmount
-	}
-
-	discountAmount := utils.RoundFloat(baseAmount*(1.0-level.DiscountRate), 2)
-	amountAfterDiscount := utils.RoundFloat(baseAmount-discountAmount, 2)
-	if amountAfterDiscount < 0 {
-		amountAfterDiscount = 0
-	}
-	return discountAmount, amountAfterDiscount
+	return userlevel.ApplyDiscount(db, userID, baseAmount)
 }
 
 func QuoteCoupon(db *gorm.DB, opts CouponQuoteOptions) (*CouponQuote, error) {

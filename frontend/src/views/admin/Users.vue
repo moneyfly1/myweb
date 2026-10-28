@@ -700,6 +700,25 @@
           />
           <div class="form-item-hint">订阅的到期时间，到期后用户将无法使用服务</div>
         </el-form-item>
+        <el-form-item :label="isMobile ? '' : '用户等级'" prop="user_level_id">
+          <template v-if="isMobile">
+            <div class="form-mobile-label">用户等级</div>
+          </template>
+          <el-select
+            v-model="userForm.user_level_id"
+            placeholder="不设置（按累计消费自动匹配）"
+            clearable
+            class="full-width-control"
+          >
+            <el-option
+              v-for="lv in levelOptions"
+              :key="lv.id"
+              :label="levelOptionLabel(lv)"
+              :value="lv.id"
+            />
+          </el-select>
+          <div class="form-item-hint">手工开通/调整等级（不受消费门槛限制）；留空则按累计消费自动匹配</div>
+        </el-form-item>
         <el-form-item :label="isMobile ? '' : '备注'" prop="note">
           <template v-if="isMobile">
             <div class="form-mobile-label">备注</div>
@@ -868,7 +887,7 @@ import {
   ChatDotRound, Share
 } from '@element-plus/icons-vue'
 import { qqFromEmail, openQQChat, copyQQ } from '@/utils/qq'
-import { adminAPI } from '@/utils/api'
+import { adminAPI, userLevelAPI } from '@/utils/api'
 import { formatDateTimeSafe, formatLocation } from '@/utils/date'
 import { getDeviceTypeColor as getDeviceTypeTag, getDeviceTypeName as getDeviceTypeText } from '@/utils/device'
 import { copyToClipboard } from '@/utils/textSelection'
@@ -979,8 +998,27 @@ export default {
       is_admin: false,
       is_verified: false,
       note: '',
-      balance: 0
+      balance: 0,
+      // 用户等级：null = 不设置（新建时按累计消费自动匹配）；orig_* 用于编辑时判断"是否真的改过"
+      user_level_id: null,
+      orig_user_level_id: null
     })
+    // 等级下拉数据（只在打开表单时拉一次，失败不影响其他字段）
+    const levelOptions = ref([])
+    const loadLevelOptions = async () => {
+      try {
+        const res = await userLevelAPI.getAllLevels(true)
+        const list = res?.data?.data ?? res?.data ?? []
+        levelOptions.value = Array.isArray(list) ? list : (list.levels || [])
+      } catch (error) {
+        levelOptions.value = []
+      }
+    }
+    const levelOptionLabel = (lv) => {
+      const rate = Number(lv.discount_rate)
+      const discount = Number.isFinite(rate) && rate < 1 ? `${(rate * 10).toFixed(1)}折` : '无折扣'
+      return `${lv.level_name}（消费≥${lv.min_consumption}元，${discount}）`
+    }
     const userRules = computed(() => ({
       email: [
         { required: true, message: '请输入邮箱', trigger: 'blur' },
@@ -1067,7 +1105,8 @@ export default {
         email: '', username: '', password: '', status: 'active',
         // 新建用户默认留空 → 由后端按系统设置「默认设备数」决定
         device_limit: null, expire_time: getDefaultExpireTime(),
-        is_admin: false, is_verified: false, note: '', balance: 0
+        is_admin: false, is_verified: false, note: '', balance: 0,
+        user_level_id: null, orig_user_level_id: null
       })
       if (userFormRef.value) {
         userFormRef.value.resetFields()
@@ -1078,7 +1117,11 @@ export default {
       resetUserForm()
     }
     watch(showAddUserDialog, (visible) => {
-      if (!visible) onFormDrawerClosed()
+      if (!visible) {
+        onFormDrawerClosed()
+      } else {
+        loadLevelOptions()
+      }
     })
     watch(editingUser, async (user) => {
       if (user) {
@@ -1096,6 +1139,8 @@ export default {
           balance: user.balance || 0,
           // 用 ?? 而不是 ||：设备上限 0 是合法值（= 拒绝使用），不能被 5 顶掉
           device_limit: user.subscription?.device_limit ?? null,
+          user_level_id: user.user_level_id ?? null,
+          orig_user_level_id: user.user_level_id ?? null,
           expire_time: user.subscription?.expire_time ? dayjs(user.subscription.expire_time).format('YYYY-MM-DDTHH:mm:ss') : ''
         })
 
@@ -1132,7 +1177,11 @@ export default {
             // 留空（null/undefined）表示"不改动"；填了 0 就是"拒绝该订阅使用设备"
             device_limit: userForm.device_limit ?? undefined,
             expire_time: userForm.expire_time,
-            password: userForm.password || undefined
+            password: userForm.password || undefined,
+            // 只在真的改过等级时发送：null/undefined = 不改动，0 = 清空等级
+            user_level_id: (userForm.user_level_id ?? null) !== (userForm.orig_user_level_id ?? null)
+              ? (userForm.user_level_id || 0)
+              : undefined
           })
           ElMessage.success('用户更新成功')
         } else {
@@ -1144,7 +1193,9 @@ export default {
             // 留空 → 不发这个字段，由后端按系统设置「默认设备数」取值
             device_limit: userForm.device_limit ?? undefined,
             expire_time: userForm.expire_time || getDefaultExpireTime(),
-            notes: userForm.note || ''
+            notes: userForm.note || '',
+            // 未选则不发 → 后端按累计消费自动匹配；选了就手工开通
+            user_level_id: userForm.user_level_id || undefined
           })
           if (response.data && response.data.success === false) {
             ElMessage.error(response.data.message || '用户创建失败')

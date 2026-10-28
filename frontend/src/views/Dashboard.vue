@@ -779,16 +779,6 @@ const levelThemeStyle = computed(() => {
     '--level-shadow-strong': hexToRgba(levelColor, 0.34)
   }
 })
-const upgradeProgressStyle = computed(() => {
-  const rawPercentage = Number(userInfo.value.upgrade_progress?.percentage || 0)
-  const percentage = Number.isFinite(rawPercentage) ? Math.min(Math.max(rawPercentage, 0), 100) : 0
-  const nextLevelColor = normalizeHexColor(userInfo.value.next_level?.color, '#67c23a')
-  return {
-    '--upgrade-progress': `${percentage}%`,
-    '--next-level-color': nextLevelColor,
-    '--next-level-color-soft': hexToRgba(nextLevelColor, 0.72)
-  }
-})
 const dashboardUpgradeSubscription = computed(() => ({
   device_limit: userInfo.value.total_devices ?? subscriptionInfo.value.maxDevices ?? 0,
   maxDevices: userInfo.value.total_devices ?? subscriptionInfo.value.maxDevices ?? 0,
