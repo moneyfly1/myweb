@@ -75,7 +75,10 @@ func Sync(tx *gorm.DB, user *models.User) (*models.UserLevel, bool, error) {
 		return target, false, err
 	}
 	user.UserLevelID = sql.NullInt64{Int64: utils.MustSafeUintToInt64(target.ID), Valid: true}
-	if err := tx.Save(user).Error; err != nil {
+	// 只更新等级列：调用方手里的 user 可能只 Select 了少数字段
+	// （回填工具就是分批流式读取），整行 Save 会把未加载的列写成零值。
+	if err := tx.Model(&models.User{}).Where("id = ?", user.ID).
+		Update("user_level_id", user.UserLevelID.Int64).Error; err != nil {
 		return nil, false, err
 	}
 	return target, true, nil
