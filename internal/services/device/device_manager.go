@@ -49,6 +49,10 @@ var (
 	}
 	// UA 里显式的 iOS 版本号（"iOS 26.5.2"）
 	reIOSVersion = regexp.MustCompile(`(?i)ios\s+(\d+)[._](\d+)(?:[._](\d+))?`)
+	// Darwin 内核版本：iOS/Shadowrocket 等 Apple 客户端 UA 里普遍带
+	// （"Shadowrocket/3445 CFNetwork/3896.100.1.2.1 Darwin/27.0.0 iPhone12,1"），
+	// 但 UA 里通常**没有 iOS 版本号**，导致"系统版本"整列空白。
+	reDarwinVersion = regexp.MustCompile(`(?i)darwin/(\d+)\.(\d+)(?:\.(\d+))?`)
 )
 
 type DeviceManager struct {
@@ -971,6 +975,24 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 	return "Unknown"
 }
 
+// darwinVersionLabel 把 UA 里的 Darwin 内核版本转成可展示的标签。
+//
+// 为什么不直接当 iOS 版本：Darwin 与 iOS 的版本号并不一一对应
+// （Darwin 24 = iOS 18、Darwin 25 = iOS 26 —— Apple 2025 起改成按年份命名）。
+// 直接换算容易标错，所以如实标注成 "Darwin 27.0"，让"系统版本"这一列不再空白，
+// 同时不冒充成 iOS 版本号。
+func darwinVersionLabel(userAgent string) string {
+	m := reDarwinVersion.FindStringSubmatch(userAgent)
+	if len(m) < 3 {
+		return ""
+	}
+	v := m[1] + "." + m[2]
+	if len(m) > 3 && m[3] != "" {
+		v += "." + m[3]
+	}
+	return "Darwin " + v
+}
+
 func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]string {
 	result := map[string]string{
 		"os_name":    "Unknown",
@@ -1021,6 +1043,9 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 				break
 			}
 		}
+		if result["os_version"] == "" {
+			result["os_version"] = darwinVersionLabel(userAgent)
+		}
 		return result
 	}
 
@@ -1067,6 +1092,8 @@ func (dm *DeviceManager) parseOSInfo(userAgent, uaLower string) map[string]strin
 				version += "." + match[3]
 			}
 			result["os_version"] = version
+		} else {
+			result["os_version"] = darwinVersionLabel(userAgent)
 		}
 		return result
 	}
