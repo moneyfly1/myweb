@@ -392,6 +392,32 @@ func (dm *DeviceManager) FindExistingDeviceWithHeaders(subscriptionID uint, user
 	return nil, false, nil
 }
 
+// automationSoftwareNames 自动化/抓取类客户端（不是真实用户设备）。
+//
+// 这些 UA 来自脚本、爬虫、监控探针、第三方测速与转发服务：
+// curl / wget / Go-http-client（Go 程序默认 UA）/ python-requests / OkHttp / axios …
+// 它们既不是"用户的设备"，也不该占用设备名额 —— 线上案例：某用户订阅地址泄露后，
+// 被大量海外 VPS 用 Go 脚本轮询，设备列表里堆了几十条 Go-http-client，
+// 每条 IP 都算一台设备，把设备名额吃满。
+var automationSoftwareNames = map[string]bool{
+	"curl": true, "wget": true, "go-http-client": true,
+	"python-requests": true, "python-urllib": true,
+	"okhttp": true, "postman": true, "axios": true, "node-fetch": true,
+	"apache-httpclient": true, "libwww-perl": true, "got": true,
+	"undici": true, "java-http-client": true, "java": true,
+	"直接抓取订阅": true, "链接预览": true, "协议链接请求": true, "反垃圾检测": true,
+}
+
+// IsAutomationSoftware 该软件名是否属于「自动化/抓取类客户端」。
+// 这类请求**不登记为设备**（但访问日志照常记录，供滥用分析）。
+func IsAutomationSoftware(softwareName string) bool {
+	name := strings.ToLower(strings.TrimSpace(softwareName))
+	if name == "" || name == "unknown" {
+		return false
+	}
+	return automationSoftwareNames[name]
+}
+
 // HardwareFingerprintOf 取出客户端上报的硬件指纹（X-MF-Device-Fp）。
 // 客户端没上报（旧版本/第三方客户端）时返回空串，匹配逻辑保持原样。
 func HardwareFingerprintOf(headers map[string]string) string {
@@ -1961,6 +1987,13 @@ func (dm *DeviceManager) updateExistingDeviceAccess(device *models.Device, devic
 // RecordDeviceAccessWithHeaders 记录设备访问（带 X-MF-* 头，MoneyFly 客户端专用）
 func (dm *DeviceManager) RecordDeviceAccessWithHeaders(subscriptionID uint, userID uint, userAgent, ipAddress, subscriptionType string, headers map[string]string) (*models.Device, error) {
 	deviceInfo := dm.ParseUserAgentWithHeaders(userAgent, headers)
+
+	// 自动化/抓取类请求（curl / Go-http-client / python-requests …）不是用户设备：
+	// 不登记、不占设备名额。否则订阅地址一旦泄露被脚本轮询，设备列表会被几十条
+	// 同用途的行塞满，用户真实设备反而加不进来。访问日志仍由调用方记录。
+	if IsAutomationSoftware(deviceInfo.SoftwareName) {
+		return nil, nil
+	}
 
 	if deviceInfo.SoftwareName == "Unknown" {
 		uaLower := strings.ToLower(userAgent)

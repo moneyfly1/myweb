@@ -225,3 +225,30 @@ func TestHashMigrationFromPreviousAlgorithm(t *testing.T) {
 		t.Fatal("新算法必须与旧算法不同（否则本测试无意义）")
 	}
 }
+
+// 自动化/抓取类 UA（curl、Go-http-client、python-requests…）不是用户设备，不该被登记。
+// 线上案例：用户订阅地址泄露后被海外 VPS 用 Go 脚本轮询，设备列表堆满
+// "Go-http-client"，每条 IP 算一台，把设备名额吃满。
+func TestAutomationUANotCountedAsDevice(t *testing.T) {
+	cases := []struct {
+		ua   string
+		want bool
+	}{
+		{"Go-http-client/1.1", true},
+		{"go-http-client/2.0", true},
+		{"curl/8.5.0", true},
+		{"python-requests/2.31.0", true},
+		{"okhttp/4.12.0", true},
+		{"axios/1.6.0", true},
+		{"Shadowrocket/3445 CFNetwork/3896.100.1.2.1 Darwin/27.0.0 iPhone12,1", false},
+		{"mihomo.party/v1.9.5 (clash.meta)", false},
+		{"MoneyFly/2.2.33 (Windows NT 10.0)", false},
+	}
+	dm := NewDeviceManager()
+	for _, c := range cases {
+		info := dm.ParseUserAgentWithHeaders(c.ua, nil)
+		if got := IsAutomationSoftware(info.SoftwareName); got != c.want {
+			t.Fatalf("%q 识别为 %q，自动化判定=%v（期望 %v）", c.ua, info.SoftwareName, got, c.want)
+		}
+	}
+}
