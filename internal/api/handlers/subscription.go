@@ -1875,11 +1875,16 @@ func GetSubscriptionConfig(c *gin.Context) {
 	if err := db.Where("subscription_url = ?", clashURL).First(&subscription).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			utils.CreateBusinessLogAsync(c, "subscription_pull_not_found", "订阅拉取: token 无效或订阅不存在", "warning", nil)
-			c.String(200, generateErrorConfigBase64("订阅不存在", "请检查订阅地址是否正确，或登录官网重新获取", baseURL))
+			// 老地址也要回一份 Clash 能解析的占位配置，否则客户端更新失败会继续用旧节点
+			message, revoked := revokedSubscriptionMessage(db, clashURL)
+			if !revoked {
+				message = "订阅地址无效或已失效，请到官网复制最新地址"
+			}
+			c.String(200, GeneratePlaceholderClashConfig(baseURL, message))
 			return
 		}
 		utils.CreateBusinessLogAsync(c, "subscription_pull_query_failed", "订阅拉取: 查询订阅失败", "error", map[string]interface{}{"reason": err.Error()})
-		c.String(200, generateErrorConfigBase64("错误", "查询订阅失败", baseURL))
+		c.String(200, GeneratePlaceholderClashConfig(baseURL, "订阅查询失败，请稍后重试"))
 		return
 	}
 
@@ -1896,11 +1901,11 @@ func GetSubscriptionConfig(c *gin.Context) {
 	}
 
 	if isExpired && !isSpecialValid {
-		c.String(200, generateErrorConfigBase64("订阅已过期", fmt.Sprintf("到期时间: %s，请续费", utils.FormatBeijingLayout(subscription.ExpireTime, DateFormat)), baseURL))
+		c.String(200, GeneratePlaceholderClashConfig(baseURL, fmt.Sprintf("订阅已过期（%s 到期），请续费", utils.FormatBeijingLayout(subscription.ExpireTime, DateFormat))))
 		return
 	}
 	if isInactive {
-		c.String(200, generateErrorConfigBase64("订阅已失效", "订阅已被禁用或状态异常，请联系客服", baseURL))
+		c.String(200, GeneratePlaceholderClashConfig(baseURL, "订阅已被禁用或状态异常，请联系客服"))
 		return
 	}
 
@@ -1928,7 +1933,8 @@ func GetSubscriptionConfig(c *gin.Context) {
 	if kickGate.Blocked {
 		utils.CreateBusinessLogAsync(c, "subscription_pull_device_kicked", "订阅拉取: 设备被移除且名额已满，拒绝", "warning",
 			map[string]interface{}{"subscription_id": subscription.ID, "device_id": kickGate.DeviceID, "reason": kickGate.Reason})
-		utils.ErrorResponse(c, http.StatusForbidden, kickedDeviceFullMessage(&subscription), nil)
+		// 不再 403：回一份占位配置，客户端能更新（覆盖旧节点）但拿不到可用节点
+		c.String(200, GeneratePlaceholderClashConfig(baseURL, kickedDeviceFullMessage(&subscription)))
 		return
 	}
 	if kickGate.Revived {
@@ -2008,7 +2014,7 @@ func GetSubscriptionConfig(c *gin.Context) {
 	configService := config_update.NewConfigUpdateService()
 	config, subCtx, err := configService.GenerateClashConfigWithContext(clashURL, clientIP, userAgent, extractMFHeaders(c))
 	if err != nil {
-		c.String(200, generateErrorConfigBase64("错误", "生成配置失败", baseURL))
+		c.String(200, GeneratePlaceholderClashConfig(baseURL, "配置生成失败，请到官网重新复制订阅地址"))
 		return
 	}
 
@@ -2108,49 +2114,6 @@ func UpdateSubscriptionConfig(c *gin.Context) {
 	})
 }
 
-// generateErrorConfigBase64 生成Base64编码的错误配置
-func generateErrorConfigBase64(title, message string, baseURL string) string {
-	cleanMessage := strings.ReplaceAll(message, "\n", " ")
-
-	if baseURL == "" {
-		baseURL = "请登录官网"
-	} else if len(baseURL) > 30 {
-		baseURL = baseURL[:27] + "..."
-	}
-
-	errorReason := cleanMessage
-	if len(errorReason) > 30 {
-		errorReason = errorReason[:27] + "..."
-	}
-
-	errorNodes := []string{
-		fmt.Sprintf("🌐 %s", baseURL),
-		fmt.Sprintf("⚠️ %s", errorReason),
-		"💡 请登录官网查看详情",
-		"📞 联系管理员获取帮助",
-	}
-
-	var nodeLinks []string
-	for i, nodeName := range errorNodes {
-		errorData := map[string]interface{}{
-			"v":    "2",
-			"ps":   nodeName,
-			"add":  "baidu.com",
-			"port": i,
-			"id":   "00000000-0000-0000-0000-000000000000",
-			"net":  "tcp",
-			"type": "none",
-		}
-
-		jsonData, _ := json.Marshal(errorData)
-		encoded := base64.StdEncoding.EncodeToString(jsonData)
-		nodeLinks = append(nodeLinks, "vmess://"+encoded)
-	}
-
-	content := strings.Join(nodeLinks, "\n")
-	return base64.StdEncoding.EncodeToString([]byte(content))
-}
-
 func GetUniversalSubscription(c *gin.Context) {
 	// 订阅内容必须实时反映节点增删，禁止任何客户端/代理缓存
 	c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
@@ -2190,7 +2153,7 @@ func GetUniversalSubscription(c *gin.Context) {
 		if kickGate.Blocked {
 			utils.CreateBusinessLogAsync(c, "subscription_pull_device_kicked", "订阅拉取: 设备被移除且名额已满，拒绝", "warning",
 				map[string]interface{}{"subscription_id": sub.ID, "device_id": kickGate.DeviceID, "reason": kickGate.Reason})
-			utils.ErrorResponse(c, http.StatusForbidden, kickedDeviceFullMessage(&sub), nil)
+			c.String(200, GeneratePlaceholderBase64Config(baseURL, kickedDeviceFullMessage(&sub)))
 			return
 		}
 		if kickGate.Revived {
@@ -2242,16 +2205,20 @@ func GetUniversalSubscription(c *gin.Context) {
 
 		// 正常生成配置
 		cfg, err := config_update.NewConfigUpdateService().GenerateUniversalConfig(uurl, deviceIP, deviceUA, "base64", mfHeaders2)
-		if err != nil {
-			c.String(200, generateErrorConfigBase64("错误", "生成配置失败", baseURL))
+		if err != nil || strings.TrimSpace(cfg) == "" {
+			c.String(200, GeneratePlaceholderBase64Config(baseURL, "配置生成失败，请到官网重新复制订阅地址"))
 			return
 		}
 		c.String(200, cfg)
 		return
 	}
 
-	// 订阅未找到
-	c.String(200, generateErrorConfigBase64("订阅不存在", "请检查订阅地址是否正确，或登录官网重新获取", baseURL))
+	// 订阅未找到：旧地址同样返回可解析的占位节点，避免客户端保留旧节点
+	message, revoked := revokedSubscriptionMessage(db, uurl)
+	if !revoked {
+		message = "订阅地址无效或已失效，请到官网复制最新地址"
+	}
+	c.String(200, GeneratePlaceholderBase64Config(baseURL, message))
 }
 
 func GetConfigUpdateStatus(c *gin.Context) {
