@@ -92,10 +92,33 @@ func (dm *DeviceManager) ParseUserAgentWithHeaders(userAgent string, headers map
 	}
 
 	if userAgent == "" {
+		// 无 UA：不是正常客户端（订阅访问控制也会拦掉）。历史行里这类多半是脚本/内部探测，
+		// 明确标出来，避免继续显示成 "Unknown" 让人以为是识别失败。
+		info.SoftwareName = "（无 UA）"
+		info.DeviceName = "未上报 UA 的请求"
 		return info
 	}
 
 	uaLower := strings.ToLower(userAgent)
+
+	// Dalvik = Android 的运行时。原生 App 用 HttpClient 发请求时默认就带
+	// "Dalvik/2.1.0 (Linux; U; Android 14; …)"，里面没有任何客户端名。
+	// 这是**真实设备**，只是软件名未知：识别成 Android 平台，
+	// 而不是丢进 "Unknown"（线上 27 台未知设备里有 17 台是这种）。
+	trimmedUA := strings.TrimSpace(uaLower)
+	if strings.HasPrefix(trimmedUA, "dalvik/") || trimmedUA == "android" {
+		osVersion := ""
+		if m := reAndroidVersion.FindStringSubmatch(userAgent); len(m) > 1 {
+			osVersion = m[1]
+		}
+		// 软件名保持 Unknown：UA 里确实没有任何客户端标识，不能瞎猜（诚实标注）。
+		// 但平台能确定 → 设备名与 OS 显示成 Android，避免列表里只看到干巴巴的 "Unknown"。
+		info.OSName = "Android"
+		info.OSVersion = osVersion
+		info.DeviceType = "mobile"
+		info.DeviceName = "Android 设备（客户端未上报 UA）"
+		return info
+	}
 
 	info.SoftwareName = dm.matchSoftware(userAgent, uaLower)
 
@@ -415,7 +438,17 @@ func IsAutomationSoftware(softwareName string) bool {
 	if name == "" || name == "unknown" {
 		return false
 	}
-	return automationSoftwareNames[name]
+	if automationSoftwareNames[name] {
+		return true
+	}
+	// 预览/抓取类的软件名带来源前缀（如 "WhatsApp 链接预览"、"钉钉链接预览"），
+	// 精确匹配会漏掉它们，这里再按关键词包含判断一次。
+	for _, marker := range []string{"链接预览", "直接抓取订阅", "协议链接请求", "反垃圾检测"} {
+		if strings.Contains(name, strings.ToLower(marker)) {
+			return true
+		}
+	}
+	return false
 }
 
 // HardwareFingerprintOf 取出客户端上报的硬件指纹（X-MF-Device-Fp）。

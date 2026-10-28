@@ -126,3 +126,43 @@ func TestExtractMFHeadersIncludesHardwareFingerprint(t *testing.T) {
 		t.Fatalf("X-MF-Device-Id 必须透传，实际 %q", got)
 	}
 }
+
+// 订阅访问控制必须拦住「非客户端」：脚本、转换站、链接预览爬虫、UA 就是链接本身。
+// 线上事故：开关只拦浏览器 UA，Go-http-client / subconverter 能拿到完整配置（462KB），
+// 导致订阅被转换站与脚本批量抓取。
+func TestNonClientUserAgentsBlocked(t *testing.T) {
+	blocked := []string{
+		"Go-http-client/1.1",
+		"curl/8.5.0",
+		"python-requests/2.31.0",
+		"subconverter/0.9.0",
+		"WhatsApp/2.23.20.0",
+		"DingTalkBot-LinkService/1.0 (+https://open-doc.dingtalk.com)",
+		"TelegramBot (like TwitterBot)",
+		"Mobile/15E148 wxwork/5.0.6 MicroMessenger/7.0.1",
+		"https://dy.moneyfly.top/api/v1/subscriptions/clash/abc", // UA 就是订阅链接（含 clash 字样也要拦）
+		"vmess://YXV0bzpmMmU2",
+		"",
+	}
+	for _, ua := range blocked {
+		if !isNonClientUserAgent(ua) {
+			t.Errorf("应拦截但放行了: %q", ua)
+		}
+	}
+
+	allowed := []string{
+		"clash.meta/1.19.0",
+		"ClashMetaForAndroid/2.11.0",
+		"Shadowrocket/3445 CFNetwork/3896.100.1.2.1 Darwin/27.0.0 iPhone12,1",
+		"MoneyFly/2.2.33 (Windows NT 10.0)",
+		"MBox/1.0 (Windows NT 10.0)",
+		"v2rayN/6.31",
+		"sing-box 1.12.2",
+		"mihomo.party/v1.9.5 (clash.meta)",
+	}
+	for _, ua := range allowed {
+		if isNonClientUserAgent(ua) {
+			t.Errorf("误拦了真实客户端: %q", ua)
+		}
+	}
+}
