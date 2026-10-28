@@ -146,13 +146,19 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 	}
 
 	db := database.GetDB()
+	baseURL := utils.GetBuildBaseURL(c.Request, db)
 	var subscription models.Subscription
 	if err := db.Where("subscription_url = ?", token).First(&subscription).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			utils.ErrorResponse(c, http.StatusNotFound, "订阅不存在", nil)
+			// 旧地址/无效地址也回可解析的占位节点（否则客户端更新失败会继续用旧节点）
+			message, revoked := revokedSubscriptionMessage(db, token)
+			if !revoked {
+				message = "订阅地址无效或已失效，请到官网复制最新地址"
+			}
+			c.String(200, GeneratePlaceholderConfig(subType, baseURL, message))
 			return
 		}
-		utils.ErrorResponse(c, http.StatusInternalServerError, "查询订阅失败", err)
+		c.String(200, GeneratePlaceholderConfig(subType, baseURL, "订阅查询失败，请稍后重试"))
 		return
 	}
 
@@ -168,18 +174,17 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 	}
 
 	if isExpired && !isSpecialValid {
-		baseURL := utils.GetBuildBaseURL(c.Request, db)
 		content, _, _ := config_update.NewConfigUpdateService().GenerateClientConfig(token, utils.GetRealClientIP(c), c.GetHeader("User-Agent"), subType, extractMFHeaders(c))
-		if content != "" {
+		if strings.TrimSpace(content) != "" {
 			c.String(200, content)
 			return
 		}
-		c.String(200, generateErrorConfigBase64("订阅已过期", fmt.Sprintf("到期时间: %s，请续费", utils.FormatBeijingLayout(subscription.ExpireTime, DateFormat)), baseURL))
+		c.String(200, GeneratePlaceholderConfig(subType, baseURL,
+			fmt.Sprintf("订阅已过期（%s 到期），请续费", utils.FormatBeijingLayout(subscription.ExpireTime, DateFormat))))
 		return
 	}
 	if isInactive {
-		baseURL := utils.GetBuildBaseURL(c.Request, db)
-		c.String(200, generateErrorConfigBase64("订阅已失效", "订阅已被禁用或状态异常，请联系客服", baseURL))
+		c.String(200, GeneratePlaceholderConfig(subType, baseURL, "订阅已被禁用或状态异常，请联系客服"))
 		return
 	}
 
@@ -202,7 +207,7 @@ func GetClientSubscribeXBoardCompat(c *gin.Context) {
 	if kickGate.Blocked {
 		utils.CreateBusinessLogAsync(c, "subscription_pull_device_kicked", "订阅拉取: 设备被移除且名额已满，拒绝", "warning",
 			map[string]interface{}{"subscription_id": subscription.ID, "device_id": kickGate.DeviceID, "reason": kickGate.Reason})
-		utils.ErrorResponse(c, http.StatusForbidden, kickedDeviceFullMessage(&subscription), nil)
+		c.String(200, GeneratePlaceholderConfig(subType, baseURL, kickedDeviceFullMessage(&subscription)))
 		return
 	}
 	if kickGate.Revived {
