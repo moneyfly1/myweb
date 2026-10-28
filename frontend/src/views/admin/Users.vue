@@ -1125,6 +1125,7 @@ export default {
     })
     watch(editingUser, async (user) => {
       if (user) {
+        loadLevelOptions()
         let status = user.status
         if (!status) {
           status = user.is_active ? 'active' : 'inactive'
