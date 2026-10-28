@@ -73,6 +73,15 @@ func extractMFHeaders(c *gin.Context) map[string]string {
 func isNonClientUserAgent(userAgent string) bool {
 	ua := strings.ToLower(strings.TrimSpace(userAgent))
 
+	// 注意顺序：先判「UA 本身就是链接」。订阅链接里通常含 "clash" 字样
+	//（/api/v1/subscriptions/clash/<token>），若先走客户端标记就会把这种请求放行。
+	if strings.HasPrefix(ua, "http://") || strings.HasPrefix(ua, "https://") ||
+		strings.HasPrefix(ua, "vmess://") || strings.HasPrefix(ua, "vless://") ||
+		strings.HasPrefix(ua, "ss://") || strings.HasPrefix(ua, "ssr://") ||
+		strings.HasPrefix(ua, "trojan://") {
+		return true
+	}
+
 	clientMarkers := []string{
 		"clash", "stash", "surge", "quantumult", "loon", "sing-box", "singbox",
 		"shadowrocket", "v2ray", "v2rayn", "v2rayng", "hiddify", "nekobox",
@@ -100,6 +109,21 @@ func isNonClientUserAgent(userAgent string) bool {
 	}
 	if strings.Contains(ua, "mozilla/") && strings.Contains(ua, "applewebkit/") {
 		return true
+	}
+
+	// 社交/IM 的链接预览爬虫：用户把订阅链接发进聊天窗口，平台自动抓一次。
+	// 它们既不该拿到配置，也不该被登记成设备（返回空内容即可）。
+	previewMarkers := []string{
+		"whatsapp/", "facebookexternalhit", "facebot", "twitterbot", "telegrambot",
+		"googlemessages", "dingtalkbot", "wxwork", "micromessenger", "slackbot",
+		"discordbot", "linkedinbot", "pinterest", "redditbot", "bingbot",
+		"googlebot", "applebot", "vkshare", "skypeuripreview", "zalo", "kakaotalk",
+		"viber", "lark", "feishu", "mattermost", "rocket.chat",
+	}
+	for _, marker := range previewMarkers {
+		if strings.Contains(ua, marker) {
+			return true
+		}
 	}
 
 	// 自动化/脚本/抓取/转换站：不是软件客户端，不应该拿到配置
