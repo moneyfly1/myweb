@@ -911,6 +911,10 @@ func (dm *DeviceManager) matchSoftware(userAgent, uaLower string) string {
 		{"clashx", "ClashX"},
 		{"v2rayu", "V2rayU"},
 		{"v2box", "V2Box"},
+		// 线上剩余的零散未知客户端（实测 UA）：Happ/NexVPN、SFMainland_Store_Pro、meta/nextin
+		{"happ/", "Happ"},
+		{"nexvpn", "NexVPN"},
+		{"meta/nextin", "Nextin"},
 		{"sagernet", "SagerNet"},
 		{"matsuri", "Matsuri"},
 		{"tomoonclash", "ToMoon Clash"},
