@@ -25,7 +25,13 @@ type DedupReport struct {
 // 系统版本）会随升级变化，**不属于身份**。旧哈希算法把它们算进去了，于是用户
 // 每次升级 App 或系统就会以「新设备」重新登记一行，旧行变成永久占用名额的
 // 幽灵设备（也与「删除设备 = 踢下线」的判定互相漂移）。
-func stableFingerprintKey(d *models.Device) (string, bool) {
+//
+// relaxed=true 时用于「新算法对齐」：2026-10-30 起设备身份 = 软件+系统+机型+品牌
+// （不含网络段），而 Clash Meta / Mihomo Party 等客户端的 UA 解析不出具体机型
+// （device_model 为空或只是 "Android"/"Desktop" 这类品类名），它们的身份实际上
+// 就是「软件+系统」两项。宽松模式按同样的口径归并这些行，否则存量里
+// 「同一台设备 82 行」的组永远清不掉。
+func stableFingerprintKey(d *models.Device, relaxed bool) (string, bool) {
 	get := func(p *string) string {
 		if p == nil {
 			return ""
@@ -34,14 +40,19 @@ func stableFingerprintKey(d *models.Device) (string, bool) {
 	}
 	sw, os := get(d.SoftwareName), get(d.OSName)
 	model, brand := get(d.DeviceModel), get(d.DeviceBrand)
-	if sw == "" || os == "" || model == "" || brand == "" {
+	if sw == "" || os == "" {
 		return "", false
 	}
 	if strings.EqualFold(sw, "Unknown") || strings.EqualFold(os, "Unknown") {
 		return "", false
 	}
-	if !IsSpecificDeviceModel(model) {
-		return "", false
+	if !relaxed {
+		if model == "" || brand == "" {
+			return "", false
+		}
+		if !IsSpecificDeviceModel(model) {
+			return "", false
+		}
 	}
 	return strings.ToLower(sw) + "|" + strings.ToLower(os) + "|" +
 		strings.ToLower(model) + "|" + strings.ToLower(brand), true
@@ -69,6 +80,23 @@ func MergeDuplicateDevices(db *gorm.DB, apply bool) (DedupReport, error) {
 type DedupFilter struct {
 	UserEmail      string
 	SubscriptionID uint
+	// SameVersion 允许合并「稳定指纹相同、软件版本也相同」的重复行。
+	//
+	// 缺省 false 时只合并"版本不同"的组（升级残留，证据明确）。设为 true 后，
+	// 同一台设备因**换网络段**产生的重复行（版本完全相同、只有 device_hash
+	// 不同）也会被合并 —— 2026-10-30 修复前，网络段参与设备身份，这类重复
+	// 是幽灵设备的主要来源（全站 967 组）。代价：同型号的两台真机同版本时
+	// 会被合并成一台，所以命令默认要求先 dry-run 人工复核。
+	SameVersion bool
+	// Relaxed 用「新身份算法对齐」的口径归并：不要求机型/品牌齐全，只要
+	// 软件+系统一致就视为同一身份（机型为空或只是 "Android"/"Desktop" 这类
+	// 品类名时也一样）。
+	//
+	// 这是清理「Clash Meta / Mihomo Party 等 UA 解析不出机型」残留的最后一档：
+	// 2026-10-30 后设备身份不再含网络段，这类客户端在新算法下本来就只有一行，
+	// 存量里 80 多行的组（订阅 623 实测 82 行）必须按同一口径收拢。
+	// 风险与 SameVersion 相同：同型号两台真机会被合并成一台，务必先 dry-run。
+	Relaxed bool
 }
 
 // MergeDuplicateDevicesFiltered 同 MergeDuplicateDevices，但可按用户/订阅过滤。
@@ -119,7 +147,7 @@ func MergeDuplicateDevicesFiltered(db *gorm.DB, apply bool, filter DedupFilter) 
 
 		groups := map[string][]models.Device{}
 		for _, d := range devices {
-			key, ok := stableFingerprintKey(&d)
+			key, ok := stableFingerprintKey(&d, filter.Relaxed)
 			if !ok {
 				continue
 			}
@@ -130,9 +158,12 @@ func MergeDuplicateDevicesFiltered(db *gorm.DB, apply bool, filter DedupFilter) 
 			if len(group) < 2 {
 				continue
 			}
-			// 额外保险：版本号完全相同却有多行 → 不能证明是"同一台设备升级后残留"，
-			// 可能是同型号的两台真机，宁可不合并（合并错误 = 剥夺用户设备名额）
-			if !hasVersionSpread(group) {
+			// 默认只合并「版本不同」的组（升级残留，证据明确）。
+			// filter.SameVersion=true 时额外合并「版本相同」的组：这类行是
+			// 2026-10-30 之前"网络段并入设备身份"造成的换网重复，
+			// 只有 device_hash 不同、软件版本完全一致。
+			// filter.Relaxed=true 时按新身份口径直接合并（软件+系统即身份）。
+			if !filter.Relaxed && !hasVersionSpread(group) && !filter.SameVersion {
 				continue
 			}
 			sort.SliceStable(group, func(i, j int) bool {

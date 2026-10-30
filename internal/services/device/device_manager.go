@@ -331,10 +331,10 @@ func (dm *DeviceManager) FindExistingDeviceWithHeaders(subscriptionID uint, user
 		return nil, false, err
 	}
 
-	// 存量迁移：新算法把「网络段」并入了身份，老行的 hash 是旧算法（不含网络段）。
-	// 先用旧算法精确认回那一行并改写为新哈希 —— 否则每个存量设备上线后
-	// 首次拉订阅都会多出一行幽灵设备、白占一个名额。
-	if prevHash := dm.GenerateDeviceHashWithoutNetwork(userAgent, headers); prevHash != "" && prevHash != deviceHash {
+	// 存量迁移：2026-10-30 之前写入的 device_hash 含「网络段」特征，新算法不含。
+	// 用当前请求的网络段套旧算法再算一次，精确命中「这台设备 + 这个网络」的历史行
+	// 并改写为新哈希 —— 否则每台存量设备迁移当天都会多出一行幽灵设备、白占名额。
+	if prevHash := dm.GenerateDeviceHashWithNetwork(userAgent, ipAddress, headers); prevHash != "" && prevHash != deviceHash {
 		if err := dm.db.Where("device_hash = ? AND subscription_id = ?", prevHash, subscriptionID).
 			First(&device).Error; err == nil {
 			if updErr := dm.db.Model(&models.Device{}).Where("id = ?", device.ID).
@@ -1920,17 +1920,70 @@ func (dm *DeviceManager) GenerateDeviceHashWithHeaders(userAgent, ipAddress, dev
 		}
 	}
 
-	// 网络段：第三方客户端的 UA 常常完全一致（同型号同版本），
-	// 只看 UA 无法区分「同一用户的第二台设备」，补上网络段作为区分特征。
-	if seg := ipSegmentOf(ipAddress); seg != "" {
-		features = append(features, "net:"+seg)
-	}
-
+	// 注意：**网络段不再并入身份哈希**（2026-10-30 修复）。
+	//
+	//   旧算法把「出口网络段」（IPv4 /24、IPv6 /64）算进 device_hash，本意是区分
+	//   同型号的两台真机，代价却大得多：同一台设备换网络（WiFi↔蜂窝、出差换酒店、
+	//   IPv4↔IPv6、运营商重新分配网段、代理出口变化）就会算出一个**全新的 hash**，
+	//   精确匹配落空 → 多出一行「幽灵设备」，白占名额，甚至把真实设备挤下线。
+	//   线上实测：全站 967 组「同用户+同软件+同版本」重复行，最多的一个用户 82 行。
+	//
+	//   现在的取舍：身份只由「软件+系统+机型+品牌（+客户端上报的稳定设备 ID）」
+	//   决定。同型号两台真机因此会共享一行（少算一台），换来「换网络不会变成
+	//   新设备」——对用户可解释、对后台数据干净，这也符合业界机场普遍按
+	//   「同时在线数」而非「历史登记行数」限流的做法。
+	//   网络段仍然记在 device.network_segments 画像里，只在匹配判定时参考。
 	deviceString := strings.Join(features, "|")
 	if deviceString == "" {
 		deviceString = userAgent
 	}
 
+	hash := sha256.Sum256([]byte(deviceString))
+	return hex.EncodeToString(hash[:])
+}
+
+// GenerateDeviceHashWithNetwork 旧版（含网络段）的哈希算法，仅用于**存量行认领**。
+//
+// 库里 2026-10-30 之前写入的行，device_hash 是用「特征+网络段」算出来的；
+// 用当前请求的网络段再算一次，能精确命中「这台设备、这个网络」的历史行并改写
+// 成新哈希，避免迁移当天每台设备都多出一行幽灵设备。
+// 新代码不要用它写库。
+func (dm *DeviceManager) GenerateDeviceHashWithNetwork(userAgent, ipAddress string, headers map[string]string) string {
+	if headers != nil {
+		if id := strings.TrimSpace(headers["X-MF-Device-Id"]); id != "" {
+			hash := sha256.Sum256([]byte("device_id:" + id))
+			return hex.EncodeToString(hash[:])
+		}
+	}
+	info := dm.ParseUserAgentWithHeaders(userAgent, headers)
+	features := []string{}
+	if info.SoftwareName != "Unknown" {
+		features = append(features, "software:"+info.SoftwareName)
+	}
+	if info.OSName != "Unknown" {
+		features = append(features, "os:"+info.OSName)
+	}
+	if info.DeviceModel != "" {
+		features = append(features, "model:"+info.DeviceModel)
+	}
+	if info.DeviceBrand != "" {
+		features = append(features, "brand:"+info.DeviceBrand)
+	}
+	if headers != nil {
+		if v := headers["X-MF-Device-Model"]; v != "" && info.DeviceModel == "" {
+			features = append(features, "mf_model:"+v)
+		}
+		if v := headers["X-MF-OS"]; v != "" && info.OSName == "Unknown" {
+			features = append(features, "mf_os:"+v)
+		}
+	}
+	if seg := ipSegmentOf(ipAddress); seg != "" {
+		features = append(features, "net:"+seg)
+	}
+	deviceString := strings.Join(features, "|")
+	if deviceString == "" {
+		deviceString = userAgent
+	}
 	hash := sha256.Sum256([]byte(deviceString))
 	return hex.EncodeToString(hash[:])
 }

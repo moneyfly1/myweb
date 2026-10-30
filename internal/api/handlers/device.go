@@ -236,8 +236,24 @@ func RemoveDevice(c *gin.Context) {
 	deviceInfo := getDeviceDisplayName(&device)
 	subscriptionID := device.SubscriptionID
 
+	// 管理员删除 = 软删 + kicked_at，与用户端 DeleteDevice 完全一致。
+	//
+	// 旧实现用 tx.Delete(&device) 做**物理删除**：行一消失，该设备下次拉订阅时
+	// 就再也匹配不到历史行（FindExistingDeviceWithHeaders 找不到记录），于是
+	// 被判为新设备**重新登记一行** —— 管理员在后台「删了设备」，用户那边过几分钟
+	// 又冒出一条同名设备，等于没删（2026-10-30 生产排查：订阅 386 的 4 台设备
+	// 被硬删后，用户重新连接又生成新行）。
+	//
+	// 软删保留了 device_hash 指纹，既能立即释放名额，又能让该设备再次请求时命中
+	// kickGate 走「已移除」判定，而不是静默复活成一条新设备。
+	now := utils.GetBeijingTime()
 	if err := db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Delete(&device).Error; err != nil {
+		if err := tx.Model(&models.Device{}).Where("id = ?", device.ID).
+			Updates(map[string]interface{}{
+				"is_active":   false,
+				"kicked_at":   now,
+				"last_access": now,
+			}).Error; err != nil {
 			return err
 		}
 		count, _ := devicesvc.CountRecentDevices(tx, subscriptionID, devicesvc.DisplayWindow)
@@ -247,9 +263,9 @@ func RemoveDevice(c *gin.Context) {
 		return
 	}
 
-	utils.CreateAuditLogSimple(c, "admin_delete_device", "device", device.ID, fmt.Sprintf("管理员删除设备: %s", deviceInfo))
+	utils.CreateAuditLogSimple(c, "admin_delete_device", "device", device.ID, fmt.Sprintf("管理员删除设备(踢下线): %s", deviceInfo))
 
-	utils.SuccessResponse(c, http.StatusOK, "设备已删除", nil)
+	utils.SuccessResponse(c, http.StatusOK, "设备已删除并下线", nil)
 }
 
 func BatchDeleteDevices(c *gin.Context) {
@@ -285,8 +301,16 @@ func BatchDeleteDevices(c *gin.Context) {
 		subscriptionIDMap[d.SubscriptionID] = true
 	}
 
+	now := utils.GetBeijingTime()
 	if err := db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("id IN ?", req.DeviceIDs).Delete(&models.Device{}).Error; err != nil {
+		// 与单个删除一致：软删 + kicked_at（保留指纹行），不做物理删除。
+		// 物理删除会让这些设备下次拉订阅时匹配不到历史行 → 静默重建为「新设备」。
+		if err := tx.Model(&models.Device{}).Where("id IN ?", req.DeviceIDs).
+			Updates(map[string]interface{}{
+				"is_active":   false,
+				"kicked_at":   now,
+				"last_access": now,
+			}).Error; err != nil {
 			return err
 		}
 		// 一次 GROUP BY 拿到所有受影响订阅的在线设备数，再逐条回写：

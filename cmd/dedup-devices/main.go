@@ -37,6 +37,10 @@ func main() {
 	apply := flag.Bool("apply", false, "真正写库（缺省只预演，不修改任何数据）")
 	user := flag.String("user", "", "只处理该用户（邮箱或用户 ID），留空 = 全部")
 	subID := flag.Uint("sub", 0, "只处理该订阅 ID，留空 = 全部")
+	sameVersion := flag.Bool("same-version", false,
+		"同时合并「版本完全相同」的重复行（换网络段产生的幽灵设备；同型号两台真机可能被合并，建议先预演复核）")
+	relaxed := flag.Bool("relaxed", false,
+		"宽松模式：按「软件+系统」即同一身份归并，不要求 UA 能解析出具体机型（清理 Clash Meta / Mihomo Party 等残留，建议先预演复核）")
 	flag.Parse()
 
 	db, err := dbtool.Open()
@@ -52,6 +56,8 @@ func main() {
 	report, err := devicesvc.MergeDuplicateDevicesFiltered(db, *apply, devicesvc.DedupFilter{
 		UserEmail:      *user,
 		SubscriptionID: *subID,
+		SameVersion:    *sameVersion,
+		Relaxed:        *relaxed,
 	})
 	if err != nil {
 		log.Fatalf("合并失败: %v", err)
