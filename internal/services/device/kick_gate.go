@@ -5,6 +5,9 @@ import (
 	"strings"
 
 	"cboard-go/internal/models"
+	"cboard-go/internal/utils"
+
+	"gorm.io/gorm"
 )
 
 // KickGateResult 是「被删除（踢下线）的设备再次拉取订阅」的处理结论。
@@ -25,6 +28,32 @@ type KickGateResult struct {
 func KickAutoReviveDisabled() bool {
 	v := strings.TrimSpace(strings.ToLower(os.Getenv("DEVICE_KICK_AUTO_REVIVE")))
 	return v == "false" || v == "0" || v == "no" || v == "off"
+}
+
+// kickAutoReviveDisabledInDB 后台开关：system_configs 里 registration 分类的
+// device_kick_auto_revive 设为 false/0/off 时，同样关闭「删除设备后自动复活」。
+//
+// 为什么需要这个开关：环境变量要求改配置并重启服务，非技术管理员无法自助；
+// 而「删了设备过一会自己回来」是用户最常投诉的现象。留空/未配置 = 保持默认
+// （自动恢复），与既有线上行为一致。
+func kickAutoReviveDisabledInDB(db *gorm.DB) bool {
+	if db == nil {
+		return false
+	}
+	v, err := utils.GetCachedSetting(db, "device_kick_auto_revive", "registration")
+	if err != nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "false", "0", "no", "off":
+		return true
+	}
+	return false
+}
+
+// autoReviveDisabled 环境变量与后台开关任一关闭即视为关闭。
+func autoReviveDisabled(db *gorm.DB) bool {
+	return KickAutoReviveDisabled() || kickAutoReviveDisabledInDB(db)
 }
 
 // ResolveKickGate 决定「被删除的设备」再次请求订阅时应当如何处理。
@@ -72,7 +101,7 @@ func (dm *DeviceManager) ResolveKickGate(
 		return res, nil
 	}
 
-	if KickAutoReviveDisabled() {
+	if autoReviveDisabled(dm.db) {
 		res.Blocked = true
 		res.Reason = "auto-revive-disabled"
 		return res, nil

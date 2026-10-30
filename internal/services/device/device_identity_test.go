@@ -184,23 +184,28 @@ func TestKickedStillMatchesAfterVersionUpgrade(t *testing.T) {
 
 func strPtr(s string) *string { return &s }
 
-// 同型号同版本的第三方客户端（Shadowrocket 等）在两台设备上 UA 完全相同，
-// 必须靠「网络段」区分：不同网络 = 不同设备；同网络段 = 同一台（IP 微变仍认回）。
-// 线上用户反馈：两台 iPhone 11 + 同版本 Shadowrocket，面板只显示 1 台。
-func TestSameUADifferentNetworkMeansDifferentDevice(t *testing.T) {
+// 2026-10-30 设计变更：网络段**不再**参与设备身份。
+//
+// 旧行为（已废弃）：同 UA 不同网络段 → 不同哈希，用来区分同型号的两台真机。
+// 实测代价过大：同一台设备换 WiFi/蜂窝、IPv4↔IPv6、运营商换段，都会被算成
+// 一台新设备，全站积压 967 组「同用户+同软件+同版本」幽灵行（单个用户最多 82 行）。
+//
+// 新行为：身份只由「软件+系统+机型+品牌（+客户端稳定设备 ID）」决定，
+// 同一台设备无论从哪个网络来都是同一台；代价是同型号两台真机共享一行。
+func TestSameUAStableAcrossNetworks(t *testing.T) {
 	dm := NewDeviceManager()
 	ua := "Shadowrocket/3445 CFNetwork/3896.100.1.2.1 Darwin/27.0.0 iPhone12,1"
 
 	h1 := dm.GenerateDeviceHash(ua, "27.151.104.171", "")
-	h2 := dm.GenerateDeviceHash(ua, "117.136.52.88", "") // 另一台：完全不同的网络
-	if h1 == h2 {
-		t.Fatal("同 UA 但不同网络段必须得到不同设备哈希（否则两台设备会被合并）")
+	h2 := dm.GenerateDeviceHash(ua, "117.136.52.88", "") // 完全不同的网络
+	if h1 != h2 {
+		t.Fatal("换网络不应改变设备身份（否则同一台设备会不断产生幽灵设备）")
 	}
 
-	// 同一网络段内 IP 微变（DHCP 换址/运营商短暂改址）仍应视为同一台
+	// 同网络段内 IP 微变当然也视为同一台
 	h3 := dm.GenerateDeviceHash(ua, "27.151.104.200", "")
 	if h1 != h3 {
-		t.Fatal("同网络段内 IP 变化不应改变设备身份（否则每次换 IP 都多一台幽灵设备）")
+		t.Fatal("同网络段内 IP 变化不应改变设备身份")
 	}
 
 	// 显式设备 ID 仍然最权威：忽略网络差异
@@ -212,17 +217,23 @@ func TestSameUADifferentNetworkMeansDifferentDevice(t *testing.T) {
 	}
 }
 
-// 存量迁移：老行 hash 是「不含网络段」的算法，新请求必须认回同一行并改写，
-// 不能因为升级算法而给每个用户多出一台幽灵设备。
-func TestHashMigrationFromPreviousAlgorithm(t *testing.T) {
+// 存量迁移：2026-10-30 之前写入的行 hash 含「网络段」特征，
+// 必须能用 GenerateDeviceHashWithNetwork（旧算法 + 当前网络段）认回来并改写，
+// 否则迁移当天每台设备都会多出一台幽灵设备。
+func TestHashMigrationFromNetworkAlgorithm(t *testing.T) {
 	dm := NewDeviceManager()
 	ua := "Shadowrocket/3445 CFNetwork/3896.100.1.2.1 Darwin/27.0.0 iPhone12,1"
 	ip := "27.151.104.171"
 
-	prev := dm.GenerateDeviceHashWithoutNetwork(ua, nil)
+	legacy := dm.GenerateDeviceHashWithNetwork(ua, ip, nil)
 	cur := dm.GenerateDeviceHashWithHeaders(ua, ip, "", nil)
-	if prev == cur {
-		t.Fatal("新算法必须与旧算法不同（否则本测试无意义）")
+	if legacy == cur {
+		t.Fatal("含网络段的旧算法必须与新算法不同（否则迁移认领无意义）")
+	}
+
+	// 旧算法必须在同一网络段内稳定（否则存量行也认不回来）
+	if again := dm.GenerateDeviceHashWithNetwork(ua, "27.151.104.200", nil); again != legacy {
+		t.Fatal("旧算法在同一网络段内应保持稳定")
 	}
 }
 
