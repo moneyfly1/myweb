@@ -629,11 +629,12 @@
               <span class="sub-section-label">设备限制</span>
               <span class="sub-section-value">{{ subscription.online_devices || 0 }} / {{ Number(subscription.device_limit) === 0 ? '0（拒绝）' : subscription.device_limit }}</span>
               <el-input-number
-                v-model="subscription.device_limit"
+                :model-value="Number(subscription.device_limit) || 0"
                 :min="0"
                 :max="999"
                 size="small"
-                @change="updateDeviceLimit(subscription)"
+                :title="`当前上限：${Number(subscription.device_limit) || 0}`"
+                @update:model-value="(val) => onDeviceLimitInput(subscription, val)"
                 class="device-limit-input-inline"
               />
             </div>
@@ -1128,6 +1129,16 @@ export default {
         ElMessage.error(apiErrorMessage(error, '添加时间失败'))
         loadSubscriptions()
       }
+    }
+    // 设备限制输入：显式写回 number，再走保存。
+    // 不用 v-model 是因为 el-input-number 内部值为 null/NaN 时会把输入框清空，
+    // 卡片上就看不到客户当前的上限（用户反馈"原本的数量不显示"）。
+    const onDeviceLimitInput = (subscription, val) => {
+      const num = Number(val)
+      subscription.device_limit = Number.isFinite(num) ? num : 0
+      if (subscription.device_limit < 0) subscription.device_limit = 0
+      if (subscription.device_limit > 999) subscription.device_limit = 999
+      updateDeviceLimit(subscription)
     }
     const updateDeviceLimit = async (subscription) => {
       if (!subscription || !subscription.id) return
@@ -2149,6 +2160,7 @@ export default {
       isExpired,
       isDeviceOverlimit,
       subUserName,
+      onDeviceLimitInput,
       showQRCode,
       downloadQRCode,
       importToShadowrocket,
