@@ -243,6 +243,13 @@
         :selected-rows="selectedSubscriptions"
         @selection-change="handleSelectionChange"
       >
+        <!-- 卡片头部（勾选框右侧）：显示用户名。
+             此前没传 #header，MobileCardList 用 title-field="" 渲染，卡片上全是 "-"。 -->
+        <template #header="{ item }">
+          <div class="card-title sub-card-title" :title="subUserName(item)">
+            {{ subUserName(item) }}
+          </div>
+        </template>
         <template #table>
           <div class="table-wrapper">
             <el-table 
@@ -893,6 +900,15 @@ export default {
     const loadingDevices = ref(false)
     const deletingDevice = ref(null)
     const lineModeSaving = ref({})
+    // 订阅卡片头部的用户名：user 对象 → 顶层字段 → 兜底文案
+    const subUserName = (row) => {
+      const u = row?.user
+      if (u?.username) return u.username
+      if (u?.email) return u.email
+      if (row?.username) return row.username
+      if (row?.email) return row.email
+      return row?.user_id ? `用户 #${row.user_id}` : '未知用户'
+    }
     const mobileSubscriptionFields = computed(() => [
       { key: 'user', label: '用户' },
       { key: 'expire_time', label: '到期时间' },
@@ -2132,6 +2148,7 @@ export default {
       addDeviceLimit,
       isExpired,
       isDeviceOverlimit,
+      subUserName,
       showQRCode,
       downloadQRCode,
       importToShadowrocket,
@@ -2701,7 +2718,16 @@ export default {
       padding: 0;
     }
 
-    .sub-card-header {
+    .sub-card-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--el-text-color-primary, #303133);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sub-card-header {
       display: flex;
       align-items: flex-start;
       gap: 10px;
