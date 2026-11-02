@@ -2131,6 +2131,39 @@ func wsPathAndHost(opts map[string]interface{}) (path, host string) {
 	return path, host
 }
 
+// stripCFEarlyDataParam 去掉 ws path 里的 Cloudflare early-data 参数（ed=…）。
+//
+// 为什么必须去掉：早先 path 写作 `/?ed=2048`，服务端输出 `path: "/?ed=2048"`
+// 本身合法，但客户端会重新序列化 YAML 并丢掉引号，得到 `path: /?ed=2048`——
+// 在 flow mapping 中 `?` 是 key indicator，mihomo 报
+// `did not find expected ',' or '}'` 并整份配置解析失败（2026-11-02 线上事故）。
+// `ed` 仅是早期数据优化参数，去掉后 path 变回 `/`，节点仍可正常握手。
+//
+// 返回 (新 path, 是否发生改动)。只删 ed，其余 query 原样保留，
+// 以免破坏靠 query 自定义路由的节点。
+func stripCFEarlyDataParam(path string) (string, bool) {
+	if !strings.Contains(path, "?") {
+		return "", false
+	}
+	u, err := url.Parse(path)
+	if err != nil || u.RawQuery == "" {
+		return "", false
+	}
+	q := u.Query()
+	if _, ok := q["ed"]; !ok {
+		return "", false
+	}
+	q.Del("ed")
+	u.RawQuery = q.Encode()
+	if u.RawQuery == "" {
+		if u.Path == "" {
+			return "/", true
+		}
+		return u.Path, true
+	}
+	return u.Path + "?" + u.RawQuery, true
+}
+
 func sniFromMap(opts map[string]interface{}, fallback string) string {
 	sni := optVal[string](opts, "sni")
 	if sni == "" {
@@ -2381,6 +2414,33 @@ func (s *ConfigUpdateService) nodeToMap(n *ProxyNode) map[string]interface{} {
 			case "trojan", "hysteria", "hysteria2", "naive":
 				res["sni"] = sn
 				delete(res, "servername")
+			}
+		}
+	}
+
+	// ws-opts.path 里的 Cloudflare early-data 参数：必须去掉。
+	//
+	// 事故（2026-11-02）：mux 订阅导入的 210 个 CDN 节点 path 是 `/?ed=2048`。
+	// 服务端输出 `path: "/?ed=2048"`（引号合法），但客户端（MoneyFly App）拿到
+	// 配置后**重新序列化** YAML 时会丢掉这层引号 → `path: /?ed=2048`。
+	// 在 flow mapping 里 `?` 是 key indicator，mihomo（yaml.v3）解析到该行就报
+	//   Parse config error: yaml: line 489: did not find expected ',' or '}'
+	// 整份配置作废、内核退出 code 1，用户表现为"连接失败"。
+	// 实测：`path: /?ed=2048` 非法，`path: /` 与 `path: /%3Fed=2048` 合法。
+	//
+	// `ed`（early data）只是性能参数，去掉不影响连通性；保留 path 主体与其余
+	// 查询参数，避免误伤依赖 query 自定义路由的节点。
+	if ws, ok := res["ws-opts"].(map[string]interface{}); ok {
+		if p, ok := ws["path"].(string); ok {
+			if np, changed := stripCFEarlyDataParam(p); changed {
+				// 节点 Options 是共享缓存数据，必须浅拷贝后再改，
+				// 否则会把同一节点后续请求的 path 也改掉（污染缓存）。
+				cloned := make(map[string]interface{}, len(ws))
+				for k, v := range ws {
+					cloned[k] = v
+				}
+				cloned["path"] = np
+				res["ws-opts"] = cloned
 			}
 		}
 	}
