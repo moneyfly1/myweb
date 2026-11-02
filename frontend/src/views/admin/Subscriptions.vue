@@ -2833,20 +2833,31 @@ export default {
           margin-left: 6px;
         }
       }
+      /* 设备限制输入框独占下一行、接近全宽：一行内塞「标签+数值+输入框」时
+         输入框只有 126px，手机上看不清数字（用户反馈）。独占一行后输入区
+         宽约 190px，数字醒目、加减按钮也好点。 */
+      .device-limit-row .device-limit-input-inline {
+        flex: 1 0 100%;
+        width: 100%;
+        min-width: 100%;
+        margin: 4px 0 0;
+        :deep(.el-input__inner) {
+          text-align: center;
+          font-size: 15px;
+          font-weight: 600;
+        }
+      }
       .device-limit-input-inline {
-        /* 宽度要算上进/减两个按钮（32px * 2）：132px 时输入区约 68px，4 位数也完整可见 */
-        width: 126px;
-        min-width: 126px;
+        /* 宽度要算上进/减两个按钮（32px * 2）：132px 时输入区约 68px，4 位数完整可见。
+           注意：不要覆盖 el-input__wrapper 的左右 padding —— Element Plus 用它给
+           加减按钮让位，覆盖后输入框文字会落到按钮下面，DOM 有值但人眼看不到（线上实测）。 */
+        width: 132px;
+        min-width: 132px;
         flex-shrink: 0;
         margin-left: auto;
-        :deep(.el-input__wrapper) {
-          padding: 0 6px;
-        }
         :deep(.el-input__inner) {
-          text-align: left;
           font-size: 13px;
           font-weight: 600;
-          padding-left: 2px;
         }
       }
       .sub-btn-row {
