@@ -624,7 +624,7 @@
             </div>
           </div>
           <div class="sub-section" :class="{ 'device-limit-overlimit': isDeviceOverlimit(subscription) }">
-            <div class="sub-section-row">
+            <div class="sub-section-row device-limit-row">
               <span class="sub-section-icon"><el-icon><Monitor /></el-icon></span>
               <span class="sub-section-label">设备限制</span>
               <span class="sub-section-value">{{ subscription.online_devices || 0 }} / {{ Number(subscription.device_limit) === 0 ? '0（拒绝）' : subscription.device_limit }}</span>
@@ -2792,6 +2792,8 @@ export default {
         align-items: center;
         gap: 8px;
         margin-bottom: 10px;
+        /* 设备限制行：图标+标签+数值+输入框，窄屏下允许输入框换行，避免被压成一条缝 */
+        flex-wrap: wrap;
       }
       .sub-section-icon {
         color: #909399;
@@ -2811,17 +2813,28 @@ export default {
         color: #303133;
         flex-shrink: 0;
       }
+      /* 设备限制行：数值紧跟标签，输入框靠右，一行显示；
+         value 的 margin-left:auto 会把输入框挤到第二行，这里单独覆盖。 */
+      .device-limit-row {
+        gap: 6px;
+        .sub-section-value {
+          margin-left: 6px;
+        }
+      }
       .device-limit-input-inline {
-        width: 70px;
+        /* 宽度要算上进/减两个按钮（32px * 2）：132px 时输入区约 68px，4 位数也完整可见 */
+        width: 126px;
+        min-width: 126px;
         flex-shrink: 0;
-        margin-left: 8px;
+        margin-left: auto;
         :deep(.el-input__wrapper) {
-          padding: 0 8px;
+          padding: 0 6px;
         }
         :deep(.el-input__inner) {
-          text-align: center;
+          text-align: left;
           font-size: 13px;
           font-weight: 600;
+          padding-left: 2px;
         }
       }
       .sub-btn-row {
