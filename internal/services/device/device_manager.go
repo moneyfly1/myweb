@@ -452,6 +452,26 @@ var automationSoftwareNames = map[string]bool{
 	"直接抓取订阅": true, "链接预览": true, "协议链接请求": true, "反垃圾检测": true,
 }
 
+// isInternalIP 判断地址是否属于回环 / 私有网段 / 链路本地（即「服务器内部」来源）。
+//
+// 用途：拦截内部请求被登记为「用户设备」。真实用户经 nginx 或 Cloudflare 访问时，
+// GetRealClientIP 会从 X-Forwarded-For / CF-Connecting-IP 取到公网 IP，
+// 因此这里返回 true 的只可能是：本机脚本、运维巡检、健康检查、内网转发。
+func isInternalIP(ip string) bool {
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return false
+	}
+	if host, _, err := net.SplitHostPort(ip); err == nil {
+		ip = host
+	}
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	return parsed.IsLoopback() || parsed.IsPrivate() || parsed.IsLinkLocalUnicast()
+}
+
 // IsAutomationSoftware 该软件名是否属于「自动化/抓取类客户端」。
 // 这类请求**不登记为设备**（但访问日志照常记录，供滥用分析）。
 func IsAutomationSoftware(softwareName string) bool {
@@ -2121,6 +2141,18 @@ func (dm *DeviceManager) updateExistingDeviceAccess(device *models.Device, devic
 // RecordDeviceAccessWithHeaders 记录设备访问（带 X-MF-* 头，MoneyFly 客户端专用）
 func (dm *DeviceManager) RecordDeviceAccessWithHeaders(subscriptionID uint, userID uint, userAgent, ipAddress, subscriptionType string, headers map[string]string) (*models.Device, error) {
 	deviceInfo := dm.ParseUserAgentWithHeaders(userAgent, headers)
+
+	// 回环/内网 IP 说明请求来自**服务器内部**（运维脚本、批量巡检、健康检查、
+	// 本机 curl 127.0.0.1），不是真实用户设备：登记会白占设备名额。
+	//
+	// 线上事故（2026-11-02）：一次全站订阅巡检从 127.0.0.1 用真实客户端 UA
+	// 批量拉取 1654 个订阅，直接把 2452 条「127.0.0.1 设备」写进库里，
+	// 大量用户设备数瞬间被吃掉名额（用户 351922702 的订阅 5 个名额里被占了 2 个）。
+	// 真实用户经 nginx/Cloudflare 进来时 GetRealClientIP 一定拿到公网 IP，
+	// 所以这里拦截不会误伤正常设备。
+	if isInternalIP(ipAddress) {
+		return nil, nil
+	}
 
 	// 自动化/抓取类请求（curl / Go-http-client / python-requests …）不是用户设备：
 	// 不登记、不占设备名额。否则订阅地址一旦泄露被脚本轮询，设备列表会被几十条
