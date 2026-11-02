@@ -327,7 +327,8 @@ watch(() => route.query.client, () => redirectLegacyClientQuery())
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 9px 10px;
+  min-height: 44px;
+  padding: 10px 10px;
   font-size: 13.5px;
   color: #303133;
   text-align: left;

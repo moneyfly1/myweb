@@ -988,16 +988,24 @@ $primary-color: #409eff;
 
 .mobile-save-bar {
   position: fixed;
-  bottom: 0;
+  /* 必须落在底部导航（.mobile-tabbar，高 56px）之上：
+     两者都贴在 bottom:0 时保存按钮会被导航条整条盖住，手机上点不到保存。 */
+  bottom: calc(56px + env(safe-area-inset-bottom));
   left: 0;
   right: 0;
-  padding: 12px 16px;
+  padding: 8px 16px;
   background: #fff;
   border-top: 1px solid var(--el-border-color-lighter);
   z-index: 999;
 
   .mobile-save-btn {
     width: 100%;
+  }
+}
+@media (max-width: 768px) {
+  /* 底部固定保存条 + 底部导航共约 130px，页面内容需要留出对应空间 */
+  .config-update-page {
+    padding-bottom: calc(140px + env(safe-area-inset-bottom));
   }
 }
 </style>

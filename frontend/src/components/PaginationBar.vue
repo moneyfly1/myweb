@@ -218,13 +218,13 @@ const handleCurrentChange = (page) => {
 .pagination-bar--mobile :deep(.el-pager li) {
   flex-shrink: 0;
   box-sizing: border-box;
-  min-width: 36px;
-  width: 36px;
-  height: 36px;
+  min-width: 40px;
+  width: 40px;
+  height: 40px;
   /* 必须显式压掉全局移动端规则里的 min-height:40px，
      否则 prev/next 会比页码高 8px，一行里出现两种高度（看着就是"错乱"）。 */
-  min-height: 36px;
-  line-height: 34px;
+  min-height: 40px;
+  line-height: 38px;
   margin: 0;
   padding: 0;
   font-size: 13px;

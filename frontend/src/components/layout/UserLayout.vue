@@ -391,8 +391,8 @@ onUnmounted(() => {
     }
     .logo-text { color: var(--theme-primary, #409eff); }
     .menu-toggle {
-      width: 34px;
-      height: 34px;
+      width: 44px;
+      height: 44px;
       display: none;
       align-items: center;
       justify-content: center;
@@ -420,7 +420,7 @@ onUnmounted(() => {
     display: flex; align-items: center; gap: 16px;
     .theme-dropdown, .user-dropdown {
       .theme-btn, .user-info {
-        min-height: 34px;
+        min-height: 44px;
         display: inline-flex;
         align-items: center;
         gap: 8px;
@@ -434,7 +434,7 @@ onUnmounted(() => {
         &:hover { background: #f5f7fa; }
       }
       .theme-btn {
-        height: 34px;
+        height: 44px;
         --el-button-bg-color: #fff;
         --el-button-border-color: #dcdfe6;
         --el-button-hover-bg-color: #f5f7fa;
@@ -447,7 +447,7 @@ onUnmounted(() => {
         font-weight: 500;
       }
       .user-info {
-        height: 34px;
+        height: 44px;
         .user-name { margin: 0 8px; }
       }
     }

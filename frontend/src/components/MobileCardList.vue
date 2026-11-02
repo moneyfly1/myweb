@@ -305,6 +305,10 @@ const getFieldTitle = (item, field) => {
   height: auto;
   margin-right: 0;
   font-weight: 500;
+  /* 全选复选框视觉 14px 高，扩大热区到 44px */
+  padding: 15px 8px;
+  margin: -15px -8px;
+  box-sizing: content-box;
 }
 
 .mobile-card-list__selection-count {
@@ -351,9 +355,10 @@ const getFieldTitle = (item, field) => {
     flex: 0 0 auto;
     height: auto;
     margin-right: 0;
-    /* 触控热区：复选框本身太小，撑到 ~40px 便于手机点选 */
-    padding: 8px 2px;
-    margin: -8px 0;
+    /* 触控热区：复选框本身只有 18px 宽，撑到约 44px 便于手机点选（视觉尺寸不变） */
+    padding: 13px 12px;
+    margin: -13px -12px -13px 0;
+    box-sizing: content-box;
   }
 }
 
@@ -435,13 +440,17 @@ const getFieldTitle = (item, field) => {
 }
 
 .field-tag-text {
-  display: inline-block;
+  /* 两行内展示完整信息：长错误日志/长账号名不再被单行裁掉（此前 clientW=154 时 287px 内容只露一半） */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   max-width: 100%;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   vertical-align: top;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .mobile-card-actions {

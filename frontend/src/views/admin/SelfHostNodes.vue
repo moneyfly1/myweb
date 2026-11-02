@@ -92,8 +92,9 @@
         />
 
         <el-empty v-if="!selfHostLoading && selfHostNodes.length === 0" description="暂无自建节点，点击右上角「VPS自动搭建」创建" :image-size="100" />
+        <div v-else class="mobile-table-hint mobile-only">表格列较多，可左右滑动查看完整信息</div>
         <el-table
-          v-else
+          v-if="selfHostNodes.length > 0"
           ref="selfHostTableRef"
           :data="selfHostNodes"
           v-loading="selfHostLoading"
@@ -1097,6 +1098,16 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.mobile-table-hint {
+  margin: 6px 0 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--el-fill-color-light, #f5f7fa);
+  color: var(--el-text-color-secondary, #909399);
+  font-size: 12px;
+  text-align: center;
+}
+
 /* 已保存 VPS 弹窗：顶部提示条 + 桌面表格 / 移动卡片 */
 .saved-vps-dialog-bar {
   display: flex;

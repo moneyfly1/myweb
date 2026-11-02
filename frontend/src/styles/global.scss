@@ -1412,6 +1412,18 @@ $breakpoints: (
   }
 }
 
+/* 移动端步进器（数量/天数等）：默认 24px 宽的加减按钮太窄，手指容易点空 */
+@media (max-width: 768px) {
+  .el-input-number {
+    --el-input-number-controls-width: 32px;
+  }
+  .el-input-number__decrease,
+  .el-input-number__increase {
+    width: 32px !important;
+    font-size: 14px;
+  }
+}
+
 /* 移动端表单控件触控高度：iOS 推荐 44px 最小触控目标 */
 @media (max-width: 768px) {
   .mobile-filter-form .el-input__inner,

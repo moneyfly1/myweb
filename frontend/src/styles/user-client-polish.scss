@@ -50,6 +50,8 @@
 
 .user-layout > .header .logo {
   gap: 8px !important;
+  min-height: 40px !important;
+  padding: 4px 0 !important;
   color: #409eff !important;
   font-size: 18px !important;
   font-weight: 700 !important;
@@ -79,8 +81,8 @@
 
 .user-layout > .header .theme-btn,
 .user-layout > .header .user-info {
-  height: 34px !important;
-  min-height: 34px !important;
+  height: 40px !important;
+  min-height: 40px !important;
   display: inline-flex !important;
   align-items: center !important;
   gap: 8px !important;
@@ -1558,9 +1560,9 @@
 
 @media (max-width: 900px) {
   .user-layout > .header .menu-toggle {
-    width: 34px !important;
-    height: 34px !important;
-    min-width: 34px !important;
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
     display: inline-flex !important;
     padding: 0 !important;
     border: 1px solid #dcdfe6 !important;

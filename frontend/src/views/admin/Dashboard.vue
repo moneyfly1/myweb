@@ -952,11 +952,11 @@ dashboardActivity.value = unwrapList(data).slice(0, 20)
     .user-email,
     .order-amount,
     .abnormal-email {
-      font-size: 0.75rem;
+      font-size: 12px;
     }
     .user-time,
     .order-time {
-      font-size: 0.6875rem;
+      font-size: 11px;
       margin-top: 3px;
     }
   }

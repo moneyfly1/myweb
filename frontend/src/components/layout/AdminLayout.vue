@@ -509,15 +509,16 @@ const getCurrentThemeLabel = () => themes.value.find(t => t.value === currentThe
   @include respond-to(sm) { height: 50px; padding: 0 12px; }
   .header-left {
     display: flex; align-items: center; gap: 16px;
-    .logo { display: flex; align-items: center; gap: 8px; cursor: pointer; text-decoration: none; color: inherit; }
+    .logo { display: flex; align-items: center; gap: 8px; cursor: pointer; text-decoration: none; color: inherit; min-height: 40px; min-width: 40px; padding: 4px 0; }
     .logo-text { font-size: 18px; font-weight: 600; color: var(--theme-primary); }
     .menu-toggle {
       display: none; border: 1px solid var(--theme-border); background: none; padding: 8px 12px; border-radius: 6px;
-      @include respond-to(sm) { display: flex; align-items: center; gap: 6px; }
+      @include respond-to(sm) { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; min-height: 44px; }
     }
   }
   .header-right {
     display: flex; align-items: center; gap: 16px;
+    .admin-info { display: flex; align-items: center; min-height: 40px; }
     .theme-text {
       color: var(--theme-primary, #409eff);
       font-weight: 600;
@@ -688,7 +689,7 @@ const getCurrentThemeLabel = () => themes.value.find(t => t.value === currentThe
   @include respond-to(sm) { margin: 50px 0 0 0 !important; width: 100% !important; height: calc(100vh - 50px); }
   .content-wrapper {
     padding: var(--content-padding);
-    @include respond-to(sm) { padding: 12px; padding-bottom: 72px; }
+    @include respond-to(sm) { padding: 12px; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
   }
 }
 .mobile-nav-bar {
