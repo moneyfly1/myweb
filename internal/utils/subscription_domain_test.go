@@ -127,13 +127,13 @@ func TestSubscriptionBaseURLsKeepsEverySelectableLine(t *testing.T) {
 	setCfg(t, db, "domain_name", "某站点")
 	setCfg(t, db, SubscriptionDomainKey, "https://某站点")
 	setCfg(t, db, SubscriptionBackupDomainsKey,
-		"某站点, 某站点, 某站点, sub.某站点, 某站点")
+		"某站点, 某站点, 某站点, 某站点, 某站点")
 	req := httptest.NewRequest("GET", "https://某站点/x", nil)
 
 	got := SubscriptionBaseURLs(req, db)
 	for _, host := range []string{
 		"某站点", "某站点", "某站点",
-		"某站点", "sub.某站点", "某站点",
+		"某站点", "某站点", "某站点",
 	} {
 		found := false
 		for _, base := range got {
