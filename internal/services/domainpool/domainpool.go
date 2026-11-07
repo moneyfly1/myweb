@@ -421,8 +421,13 @@ func (m *Manager) Renew(ctx context.Context, domains []string, force bool) (Rene
 		return res, steps, err
 	}
 
-	// 收集涉及的证书名（同一张证书可能覆盖多个域名 → 去重，只续一次）
-	nameSet := map[string]bool{}
+	// 收集需要续期的证书（同一张证书覆盖多个域名 → 去重，只续一次）
+	type certTarget struct {
+		name string
+		info CertInfo
+	}
+	targets := make([]certTarget, 0, len(domains))
+	seen := map[string]bool{}
 	for _, d := range domains {
 		d = strings.TrimSpace(d)
 		if d == "" {
@@ -433,37 +438,68 @@ func (m *Manager) Renew(ctx context.Context, domains []string, force bool) (Rene
 			addStep("查找证书 "+d, false, "未找到覆盖该域名的证书，请先点「一键修复」")
 			continue
 		}
-		nameSet[info.Name] = true
+		if !force && info.DaysLeft > 30 {
+			addStep("检查 "+d, true, fmt.Sprintf("证书剩余 %d 天，未进入续期窗口（<=30 天才续期）", info.DaysLeft))
+			continue
+		}
+		if seen[info.Name] {
+			continue
+		}
+		seen[info.Name] = true
+		targets = append(targets, certTarget{name: info.Name, info: info})
 	}
-	if len(nameSet) == 0 {
-		err := fmt.Errorf("没有找到可续期的证书")
-		return res, steps, err
+	if len(targets) == 0 {
+		return res, steps, nil
 	}
-	names := make([]string, 0, len(nameSet))
-	for n := range nameSet {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	addStep("查找证书", true, strings.Join(names, "、"))
 
-	for _, name := range names {
-		args := []string{"renew", "--cert-name", name, "--deploy-hook", bin + " -s reload"}
+	webroot := m.webroot()
+	deployHook := bin + " -s reload"
+	for _, t := range targets {
+		// 优先 certonly：certbot renew 在非交互模式下会给每张证书加 300+ 秒
+		// 「随机延迟」错峰（线上实测 random delay of 336 seconds），前台等待必然
+		// 撞网关 60 秒超时；certonly 直接签发，实测 7 秒完成。
+		usedCertonly := false
+		if webroot != "" && webroot != "/tmp" {
+			if sans := certSAN(t.info.Fullchain); len(sans) > 0 {
+				args := []string{
+					"certonly", "--webroot", "-w", webroot,
+					"--cert-name", t.name, "--non-interactive",
+					"--force-renewal", "--deploy-hook", deployHook,
+				}
+				for _, d := range sans {
+					args = append(args, "-d", d)
+				}
+				out, cerr := runCmd(ctx, 150*time.Second, "certbot", args...)
+				if cerr == nil {
+					res.Renewed = append(res.Renewed, t.name)
+					addStep("续期 "+t.name, true, utils.TruncateRunesEllipsis(strings.TrimSpace(out), 200, "…"))
+					continue
+				}
+				usedCertonly = true
+				addStep("续期 "+t.name+"（certonly）", false,
+					utils.TruncateRunesEllipsis(out, 200, "…")+"；回退 certbot renew")
+			}
+		}
+		_ = usedCertonly
+
+		// 兜底：标准 renew（可能带随机延迟，仅在 certonly 不可用时使用）
+		args := []string{"renew", "--cert-name", t.name, "--deploy-hook", deployHook}
 		if force {
 			args = append(args, "--force-renewal")
 		}
-		out, rerr := runCmd(ctx, 240*time.Second, "certbot", args...)
+		out, rerr := runCmd(ctx, 180*time.Second, "certbot", args...)
 		if rerr != nil {
-			res.Failed = append(res.Failed, name)
-			addStep("续期 "+name, false, utils.TruncateRunesEllipsis(out, 300, "…"))
+			res.Failed = append(res.Failed, t.name)
+			addStep("续期 "+t.name, false, utils.TruncateRunesEllipsis(out, 300, "…"))
 			continue
 		}
 		if !force && (strings.Contains(out, "not yet due") || strings.Contains(out, "not due for renewal")) {
-			res.NotDue = append(res.NotDue, name)
-			addStep("续期 "+name, true, "未到期，跳过（到期前 30 天自动续期）")
+			res.NotDue = append(res.NotDue, t.name)
+			addStep("续期 "+t.name, true, "未到期，跳过（到期前 30 天自动续期）")
 			continue
 		}
-		res.Renewed = append(res.Renewed, name)
-		addStep("续期 "+name, true, utils.TruncateRunesEllipsis(strings.TrimSpace(out), 200, "…"))
+		res.Renewed = append(res.Renewed, t.name)
+		addStep("续期 "+t.name, true, utils.TruncateRunesEllipsis(strings.TrimSpace(out), 200, "…"))
 	}
 
 	// 再重载一次：一是 certbot 未真正续期时也确认 nginx 状态正常，二是确保新证书生效
@@ -478,6 +514,30 @@ func (m *Manager) Renew(ctx context.Context, domains []string, force bool) (Rene
 		return res, steps, fmt.Errorf("%d 张证书续期失败：%s", len(res.Failed), strings.Join(res.Failed, "、"))
 	}
 	return res, steps, nil
+}
+
+// certSAN 读取证书覆盖的域名（certbot certonly 需要 -d 列表）
+func certSAN(fullchain string) []string {
+	if strings.TrimSpace(fullchain) == "" {
+		return nil
+	}
+	out, err := exec.Command("openssl", "x509", "-in", fullchain, "-noout", "-ext", "subjectAltName").Output()
+	if err != nil {
+		return nil
+	}
+	re := regexp.MustCompile(`DNS:([^,\s]+)`)
+	matches := re.FindAllStringSubmatch(string(out), -1)
+	seen := map[string]bool{}
+	sans := make([]string, 0, len(matches))
+	for _, m := range matches {
+		d := strings.TrimSpace(m[1])
+		if d == "" || seen[d] {
+			continue
+		}
+		seen[d] = true
+		sans = append(sans, d)
+	}
+	return sans
 }
 
 // nginxTestAndReload 配置校验 + 重载；校验失败会把错误原文返回（便于定位哪一行写错）

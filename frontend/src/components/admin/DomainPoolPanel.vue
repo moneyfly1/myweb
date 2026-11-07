@@ -214,14 +214,14 @@ const stopRenewPolling = () => {
   }
 }
 // 续期是后台任务（certbot 有随机延迟，同步等待会撞网关超时）：
-// 提交后每 20 秒刷新一次列表，证书到期天数变化就会直接回显出来。
+// 提交后每 20 秒刷新一次列表（最多 10 分钟），证书到期天数变化会直接回显。
 const startRenewPolling = () => {
   stopRenewPolling()
   let n = 0
   renewPollTimer.value = setInterval(async () => {
     n += 1
     await load()
-    if (n >= 15) stopRenewPolling()
+    if (n >= 30) stopRenewPolling()
   }, 20000)
 }
 onUnmounted(stopRenewPolling)
