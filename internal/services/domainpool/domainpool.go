@@ -463,7 +463,9 @@ func (m *Manager) Renew(ctx context.Context, domains []string, force bool) (Rene
 		// /www/wwwroot/cboard，而网站域名的是 /www/wwwroot/dy.moneyfly.top）：
 		// 用错目录会让 HTTP-01 校验 404，所以优先读证书自己的 renewal 配置。
 		certWebroot := renewalWebroot(t.name)
-		if certWebroot == "" {
+		// renewal.conf 里可能是 /tmp（宝塔早期配置）或已删除的目录
+		// （/www/wwwroot/cboard 这类），HTTP-01 校验会 404 → 回退到站点根。
+		if certWebroot == "" || certWebroot == "/tmp" || !dirExists(certWebroot) {
 			certWebroot = webroot
 		}
 		if certWebroot != "" && certWebroot != "/tmp" {
@@ -549,6 +551,15 @@ func renewalWebroot(certName string) string {
 		return strings.TrimSpace(v)
 	}
 	return ""
+}
+
+// dirExists 目录是否存在且可进出（webroot 必须是真实目录，否则 HTTP-01 必然 404）
+func dirExists(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	st, err := os.Stat(path)
+	return err == nil && st.IsDir()
 }
 
 // certSAN 读取证书覆盖的域名（certbot certonly 需要 -d 列表）
