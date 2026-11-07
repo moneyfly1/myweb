@@ -38,6 +38,7 @@
           <div class="settings-general">
             <el-form :model="generalSettings" :rules="generalRules" ref="generalFormRef" label-position="top" class="compact-form">
 
+              <div class="settings-two-col">
               <!-- ① 站点信息 -->
               <section class="settings-block">
                 <div class="settings-block-head">
@@ -106,6 +107,7 @@
                   </div>
                 </div>
               </section>
+              </div>
 
               <!-- 保存栏：跟着分区走，滚到哪都能保存 -->
               <div class="settings-savebar">
@@ -2335,6 +2337,12 @@ export default {
 </script>
 
 <style scoped>
+/* 站点设置：站点信息 / 客服与界面 两列并排（手机端单列） */
+.settings-two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+/* 两列并排后不再需要纵向堆叠的 margin-top，否则右列会比左列低 16px */
+.settings-two-col .settings-block + .settings-block { margin-top: 0; }
+@media (max-width: 768px) { .settings-two-col { grid-template-columns: 1fr; } }
+
 /* 事件矩阵工具行 + 数据清理表格 */
 .matrix-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .matrix-tools { display: flex; align-items: center; gap: 2px; }
