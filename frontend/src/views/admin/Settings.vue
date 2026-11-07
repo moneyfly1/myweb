@@ -120,70 +120,48 @@
         <section v-show="activeTab === 'domains'" class="settings-pane" data-tab="domains">
           <div class="settings-general">
             <el-form :model="generalSettings" label-position="top" class="compact-form">
-              <!-- 域名相关集中在此：站点入口域名 + 客户端订阅域名 + 域名池。
-                   原先这些都塞在「站点设置」里，一页混了站点信息、客服、域名、证书，
-                   管理员找不到重点，故按「域名」独立成一个分类。 -->
+              <!-- 域名集中在一个紧凑区块：说明收进问号 tooltip，界面只留标签与输入框 -->
               <section class="settings-block">
-                  <div class="settings-block-head">
-                    <h3>网站域名</h3>
-                    <p>官网、登录、支付回调与邮件里的官网链接都用它；留空则自动使用请求域名。</p>
-                  </div>
-                  <div class="settings-block-body">
+                <div class="settings-block-head domain-head">
+                  <h3>域名</h3>
+                  <el-tooltip placement="top" raw-content content="网站域名：官网、登录、支付回调与邮件里的官网链接都用它，留空自动使用请求域名。<br/>订阅域名：客户端「更新订阅」时访问的地址；备用域名会随订阅下发给客户端逐个尝试。<br/>换域名不会让已发出的订阅地址失效（同一套后端、token 通用）。">
+                    <el-icon class="domain-help"><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </div>
+                <div class="settings-block-body">
+                  <div class="domain-grid">
                     <el-form-item label="网站域名" prop="domain_name">
-                      <el-input v-model="generalSettings.domain_name" class="input-medium" placeholder="例如: example.com（不要带 http://）" />
-                      <div class="form-tip">用于官网、登录、支付回调与邮件里的官网链接；留空则自动使用请求域名。</div>
+                      <el-input v-model="generalSettings.domain_name" placeholder="example.com（不带 http://）" />
                     </el-form-item>
-                  </div>
-              </section>
-
-                <section class="settings-block">
-                  <div class="settings-block-head">
-                    <h3>订阅域名</h3>
-                    <p>客户端「更新订阅」时访问的地址。主域名用于生成订阅链接，备用域名随订阅接口一起下发，供客户端逐个尝试。</p>
-                  </div>
-                  <div class="settings-block-body">
                     <el-form-item label="订阅域名（主）">
-                      <el-input v-model="generalSettings.subscription_domain" class="input-medium" placeholder="例如: https://某站点（留空则跟随「网站域名」）" />
-                      <div class="form-tip">
-                        与官网分开配置：官网在某些地区被访问不了时，客户仍能用订阅域名更新节点。
-                      </div>
+                      <el-input v-model="generalSettings.subscription_domain" placeholder="留空则跟随网站域名" />
                     </el-form-item>
-                    <el-form-item label="订阅域名（备用）">
-                      <el-input
-                        v-model="generalSettings.subscription_backup_domains"
-                        type="textarea"
-                        :rows="3"
-                        class="input-large"
-                        placeholder="每行一个，或用逗号分隔，例如：&#10;https://某站点&#10;https://某站点"
-                      />
-                      <div class="form-tip">
-                        会随订阅接口下发给客户端（subscribe_urls），客户端按顺序尝试；用户面板也会展示。
-                        建议至少配 1 个与主域名不同线路或不同服务商的域名。
-                      </div>
-                    </el-form-item>
-
-                    <el-alert
-                      type="success"
-                      :closable="false"
-                      show-icon
-                      class="settings-alert"
-                      title="换域名不会让已发出的订阅地址失效"
-                    >
-                      <template #default>
-                        这些都是同一套后端、token 通用，老域名会一直可用；换域名只是给客户端多一个更稳的入口，不必通知客户改订阅。
-                      </template>
-                    </el-alert>
-
-                    <div class="settings-subblock">
-                      <DomainPoolPanel />
-                    </div>
                   </div>
-                </section>
-
+                  <el-form-item label="订阅域名（备用）" class="domain-backup-item">
+                    <el-input
+                      v-model="generalSettings.subscription_backup_domains"
+                      type="textarea"
+                      :rows="2"
+                      resize="none"
+                      placeholder="每行一个，或用逗号分隔（建议至少配 1 个与主域名不同线路的域名）"
+                    />
+                  </el-form-item>
+                  <div class="domain-hint">
+                    <el-icon><InfoFilled /></el-icon>
+                    <span>换域名不影响已发出的订阅地址</span>
+                    <el-tooltip placement="top" content="所有域名共用同一套后端与 token，老域名会一直可用；换域名只是给客户端多一个更稳的入口，不必通知客户改订阅。">
+                      <el-icon class="domain-help"><QuestionFilled /></el-icon>
+                    </el-tooltip>
+                  </div>
+                  <div class="settings-subblock">
+                    <DomainPoolPanel />
+                  </div>
+                </div>
+              </section>
               <div class="settings-savebar">
                 <el-button type="primary" :icon="Check" @click="saveDomainSettings" :class="{ 'full-width': isMobile }">保存域名设置</el-button>
                 <el-button :icon="Refresh" :loading="pageLoading" @click="loadSettings" :class="{ 'full-width': isMobile }">放弃修改并重新加载</el-button>
-                <span class="settings-savebar-tip">网站域名、订阅域名与域名池都在此保存。</span>
+                <span class="settings-savebar-tip">网站域名、订阅域名与域名池都在此保存</span>
               </div>
             </el-form>
           </div>
@@ -1231,7 +1209,8 @@ import { ElMessage, ElMessageBox } from '@/utils/elementPlusServices'
 import {
   Check, Plus, Refresh, Message, Bell,
   // 设置分类导航图标
-  Setting, Link, User, Picture, Connection, Key, Lock, FolderOpened, Location, Delete
+  Setting, Link, User, Picture, Connection, Key, Lock, FolderOpened, Location, Delete,
+  QuestionFilled, InfoFilled
 } from '@element-plus/icons-vue'
 import { useApi, adminAPI, secureStorage } from '@/utils/api'
 import { apiCache } from '@/utils/apiCache'
@@ -2279,6 +2258,16 @@ export default {
 </script>
 
 <style scoped>
+/* 域名与订阅：紧凑布局 + 说明收进 tooltip */
+.domain-head { display: flex; align-items: center; gap: 6px; }
+.domain-head h3 { margin: 0; }
+.domain-help { color: var(--el-text-color-secondary); cursor: help; font-size: 14px; }
+.domain-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.domain-backup-item .el-form-item__content { width: 100%; }
+.domain-hint { display: flex; align-items: center; gap: 6px; color: var(--el-text-color-secondary); font-size: 12px; margin: -2px 0 10px; }
+.domain-hint .el-icon { font-size: 13px; }
+@media (max-width: 768px) { .domain-grid { grid-template-columns: 1fr; } }
+
 /* ========== 全局布局与色彩规划 ========== */
 .admin-settings {
   padding: 16px;
