@@ -459,10 +459,17 @@ func (m *Manager) Renew(ctx context.Context, domains []string, force bool) (Rene
 		// 「随机延迟」错峰（线上实测 random delay of 336 seconds），前台等待必然
 		// 撞网关 60 秒超时；certonly 直接签发，实测 7 秒完成。
 		usedCertonly := false
-		if webroot != "" && webroot != "/tmp" {
+		// 每张证书的 ACME webroot 可能不同（例如 sub.fastora.top 的 webroot 是
+		// /www/wwwroot/cboard，而网站域名的是 /www/wwwroot/dy.moneyfly.top）：
+		// 用错目录会让 HTTP-01 校验 404，所以优先读证书自己的 renewal 配置。
+		certWebroot := renewalWebroot(t.name)
+		if certWebroot == "" {
+			certWebroot = webroot
+		}
+		if certWebroot != "" && certWebroot != "/tmp" {
 			if sans := certSAN(t.info.Fullchain); len(sans) > 0 {
 				args := []string{
-					"certonly", "--webroot", "-w", webroot,
+					"certonly", "--webroot", "-w", certWebroot,
 					"--cert-name", t.name, "--non-interactive",
 					"--force-renewal", "--deploy-hook", deployHook,
 				}
@@ -514,6 +521,34 @@ func (m *Manager) Renew(ctx context.Context, domains []string, force bool) (Rene
 		return res, steps, fmt.Errorf("%d 张证书续期失败：%s", len(res.Failed), strings.Join(res.Failed, "、"))
 	}
 	return res, steps, nil
+}
+
+// renewalWebroot 读取该证书的 ACME webroot（/etc/letsencrypt/renewal/<name>.conf）。
+// 证书的校验目录不一定等于面板工作目录，必须按证书自己的配置走。
+func renewalWebroot(certName string) string {
+	name := strings.TrimSpace(certName)
+	if name == "" {
+		return ""
+	}
+	confPath := filepath.Join(filepath.Dir(letsencryptLiveDir()), "renewal", name+".conf")
+	data, err := os.ReadFile(confPath)
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "webroot_path") {
+			continue
+		}
+		i := strings.Index(line, "=")
+		if i < 0 {
+			continue
+		}
+		v := strings.TrimSpace(line[i+1:])
+		v = strings.TrimSuffix(v, ",")
+		return strings.TrimSpace(v)
+	}
+	return ""
 }
 
 // certSAN 读取证书覆盖的域名（certbot certonly 需要 -d 列表）
