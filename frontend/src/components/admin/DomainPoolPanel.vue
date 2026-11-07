@@ -174,7 +174,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminAPI } from '@/utils/api'
 import ResponsiveDataView from '@/components/ResponsiveDataView.vue'
@@ -206,6 +206,26 @@ const rowClass = ({ row }) => (row.https_ok && row.dns_resolved ? '' : 'dp-row-b
 // force=true 才会强制重签，而 Let's Encrypt 对同一组域名重复签发有每周次数限制，
 // 所以强制续期走二次确认，并说明代价。
 const renewing = ref(false)
+const renewPollTimer = ref(null)
+const stopRenewPolling = () => {
+  if (renewPollTimer.value) {
+    clearInterval(renewPollTimer.value)
+    renewPollTimer.value = null
+  }
+}
+// 续期是后台任务（certbot 有随机延迟，同步等待会撞网关超时）：
+// 提交后每 20 秒刷新一次列表，证书到期天数变化就会直接回显出来。
+const startRenewPolling = () => {
+  stopRenewPolling()
+  let n = 0
+  renewPollTimer.value = setInterval(async () => {
+    n += 1
+    await load()
+    if (n >= 15) stopRenewPolling()
+  }, 20000)
+}
+onUnmounted(stopRenewPolling)
+
 const renewCerts = async (force) => {
   if (force) {
     try {
@@ -220,14 +240,13 @@ const renewCerts = async (force) => {
   try {
     const res = await adminAPI.renewDomainPool({ force })
     const d = res.data?.data || {}
-    steps.value = d.steps || []
-    ElMessage.success(res.data?.message || '续期完成')
+    ElMessage.success(res.data?.message || (d.started ? '续期任务已提交，后台执行中' : '无需续期'))
+    if (d.started) startRenewPolling()
     await load()
   } catch (e) {
-    const d = e.response?.data?.data || {}
-    if (Array.isArray(d.steps) && d.steps.length) steps.value = d.steps
-    const failed = d.result?.failed?.length ? `（失败：${d.result.failed.join('、')}）` : ''
-    ElMessage.error(apiErrorMessage(e, '续期失败') + failed)
+    const msg = apiErrorMessage(e, '续期失败')
+    if (e.response?.status === 409) ElMessage.warning(msg)
+    else ElMessage.error(msg)
     await load()
   } finally {
     renewing.value = false

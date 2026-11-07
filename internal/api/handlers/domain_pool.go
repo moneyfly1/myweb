@@ -2,14 +2,18 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"cboard-go/internal/core/database"
 	"cboard-go/internal/core/paths"
+	"cboard-go/internal/models"
 	"cboard-go/internal/services/domainpool"
 	"cboard-go/internal/utils"
 
@@ -242,6 +246,11 @@ func RemoveDomainFromPool(c *gin.Context) {
 // 这个接口用于两种情况：① 证书临近到期想立刻确认能续；② 自动续期失败需要手动补一次。
 // force=true 表示未到期也重签 —— Let's Encrypt 对同一组域名重复签发有每周次数限制，
 // 界面上只在「证书异常」时才引导使用。
+var (
+	renewMu      sync.Mutex
+	renewRunning bool
+)
+
 func RenewDomainPool(c *gin.Context) {
 	var req struct {
 		Force bool `json:"force"`
@@ -261,27 +270,71 @@ func RenewDomainPool(c *gin.Context) {
 	}
 	domains := domainpool.DomainsForInspect(primary, backups, siteDomain)
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 300*time.Second)
-	defer cancel()
-	res, steps, rerr := m.Renew(ctx, domains, req.Force)
-	if rerr != nil {
-		// 失败也要把「已经走了哪几步、哪些证书成功/跳过/失败」带回前端，
-		// 否则管理员只看到一句错误，不知道该点修复还是手工处理
-		utils.ErrorResponseWithData(c, http.StatusInternalServerError,
-			"partial_failure", "续期未全部成功："+rerr.Error(),
-			gin.H{"steps": steps, "result": res})
+	// 先看本地证书剩余天数：只有进入续期窗口（<=30 天）或强制续期才真正跑
+	// certbot。certbot renew 在非交互模式会加「随机延迟」错峰（实测 298 秒），
+	// 同步等它必然撞上网关 60 秒超时（线上表现为点击续期后 504、没有任何提示）。
+	need := make([]string, 0, len(domains))
+	for _, d := range domains {
+		info, ok := domainpool.FindCertCovering(d)
+		if !ok {
+			continue
+		}
+		if req.Force || info.DaysLeft <= 30 {
+			need = append(need, d)
+		}
+	}
+	if len(need) == 0 {
+		utils.SuccessResponse(c, http.StatusOK,
+			"所有证书均未进入续期窗口（到期前 30 天自动续期），无需手动续期",
+			gin.H{"skipped": true})
 		return
 	}
 
-	msg := "证书均未到期，无需续期（到期前 30 天起由 certbot 自动续期）"
-	if len(res.Renewed) > 0 {
-		msg = fmt.Sprintf("已续期 %d 张证书，nginx 已重载", len(res.Renewed))
-		if req.Force {
-			msg += "（强制续期）"
-		}
+	renewMu.Lock()
+	if renewRunning {
+		renewMu.Unlock()
+		utils.ErrorResponse(c, http.StatusConflict, "已有续期任务在进行中，请稍候刷新查看结果", nil)
+		return
 	}
-	utils.CreateAuditLogSimple(c, "domain_pool_renew", "system", 0,
-		fmt.Sprintf("管理员操作: 订阅域名证书续期 renewed=%v not_due=%v force=%v",
-			res.Renewed, res.NotDue, req.Force))
-	utils.SuccessResponse(c, http.StatusOK, msg, gin.H{"steps": steps, "result": res})
+	renewRunning = true
+	renewMu.Unlock()
+
+	// 后台执行：certbot 的随机延迟可能长达数分钟，不能阻塞 HTTP 请求
+	go func() {
+		defer func() {
+			renewMu.Lock()
+			renewRunning = false
+			renewMu.Unlock()
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+		defer cancel()
+		res, steps, err := m.Renew(ctx, domains, req.Force)
+		status := map[string]interface{}{
+			"time":     time.Now().Format("2006-01-02 15:04:05"),
+			"force":    req.Force,
+			"renewed":  res.Renewed,
+			"not_due":  res.NotDue,
+			"failed":   res.Failed,
+			"steps":    len(steps),
+			"reloaded": res.Reloaded,
+		}
+		if err != nil {
+			status["error"] = err.Error()
+		}
+		raw, _ := json.Marshal(status)
+		log.Printf("[domain_pool] 证书续期完成: %s", string(raw))
+		// 记录到系统配置，便于管理员/命令行排查上次续期结果
+		if db := database.GetDB(); db != nil {
+			cfg := models.SystemConfig{
+				Key: "domain_pool_renew_last", Category: "domain", Type: "text",
+				DisplayName: "域名证书上次续期结果",
+			}
+			db.Where("key = ? AND category = ?", cfg.Key, cfg.Category).
+				Assign(models.SystemConfig{Value: string(raw)}).FirstOrCreate(&cfg)
+		}
+	}()
+
+	utils.SuccessResponse(c, http.StatusAccepted,
+		"续期任务已提交，正在后台执行（certbot 可能需 1-5 分钟），列表会自动刷新，完成后再看证书到期时间",
+		gin.H{"started": true, "targets": need})
 }
