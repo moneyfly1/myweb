@@ -168,7 +168,8 @@
         </section>
 
         <section v-show="activeTab === 'registration'" class="settings-pane" data-tab="registration">
-          <div class="notification-layout">
+          <div class="notification-layout registration-layout">
+            <div class="settings-column">
             <div class="notification-panel">
               <div class="panel-header">
                 <h3>注册策略</h3>
@@ -214,7 +215,9 @@
                 </div>
               </el-form>
             </div>
+            </div>
 
+            <div class="settings-column">
             <div class="notification-panel">
               <div class="panel-header">
                 <h3>设备管理</h3>
@@ -238,9 +241,7 @@
                 </el-form-item>
               </el-form>
             </div>
-          </div>
 
-          <div class="single-panel-wrapper">
             <div class="notification-panel">
               <div class="panel-header">
                 <h3>邀请奖励配置</h3>
@@ -273,6 +274,7 @@
                 </div>
               </el-form>
             </div>
+            </div>
           </div>
         </section>
         <section v-show="activeTab === 'notification'" class="settings-pane" data-tab="notification">
@@ -294,10 +296,20 @@
                   <el-switch v-model="notificationSettings.email_notifications" />
                 </div>
 
-                <div class="settings-section-title text-sm">客户事件通知矩阵</div>
+                <div class="settings-section-title text-sm matrix-title">
+                  <span>客户事件通知矩阵</span>
+                  <div class="matrix-tools">
+                    <el-input v-model="customerEventFilter" size="small" placeholder="搜索事件" clearable style="width: 130px" />
+                    <el-button size="small" text @click="toggleAllCustomerEvents(true)">全选</el-button>
+                    <el-button size="small" text @click="toggleAllCustomerEvents(false)">全不选</el-button>
+                    <el-button size="small" text @click="customerEventsCollapsed = !customerEventsCollapsed">{{ customerEventsCollapsed ? '展开' : '收起' }}</el-button>
+                  </div>
+                </div>
+                <el-collapse-transition>
+                <div v-show="!customerEventsCollapsed">
                 <ResponsiveDataView
                   class="settings-responsive-list event-switch-list"
-                  :data="customerEventSwitches"
+                  :data="filteredCustomerEvents"
                   :fields="customerEventMobileFields"
                   id-field="base"
                   title-field="label"
@@ -323,6 +335,8 @@
                     <span class="mobile-card-caption">邮件通知</span>
                   </template>
                 </ResponsiveDataView>
+                </div>
+                </el-collapse-transition>
 
                 <div class="settings-section-title text-sm">到期提醒规则</div>
                 <div class="switch-card mb-3">
@@ -464,11 +478,21 @@
                   <el-switch v-model="adminNotificationSettings.admin_abnormal_login_alert_enabled" />
                 </div>
 
-                <div class="settings-section-title text-sm">管理员事件矩阵</div>
+                <div class="settings-section-title text-sm matrix-title">
+                  <span>管理员事件矩阵</span>
+                  <div class="matrix-tools">
+                    <el-input v-model="adminEventsFilter" size="small" placeholder="搜索事件" clearable style="width: 130px" />
+                    <el-button size="small" text @click="toggleAllAdminEvents(true)">全选</el-button>
+                    <el-button size="small" text @click="toggleAllAdminEvents(false)">全不选</el-button>
+                    <el-button size="small" text @click="adminEventsCollapsed = !adminEventsCollapsed">{{ adminEventsCollapsed ? '展开' : '收起' }}</el-button>
+                  </div>
+                </div>
+                <el-collapse-transition>
+                <div v-show="!adminEventsCollapsed">
                 <!-- 优雅的多渠道矩阵 -->
                 <ResponsiveDataView
                   class="settings-responsive-list event-switch-list"
-                  :data="adminNotificationEvents"
+                  :data="filteredAdminEvents"
                   :fields="adminEventMobileFields"
                   id-field="key"
                   title-field="label"
@@ -510,6 +534,8 @@
                     </div>
                   </template>
                 </ResponsiveDataView>
+                </div>
+                </el-collapse-transition>
 
                 <div class="mt-4">
                   <el-button type="primary" @click="saveAdminNotificationSettings" :class="{ 'full-width': isMobile }">保存告警设置</el-button>
@@ -1149,13 +1175,24 @@
                 <h3>自动清理（每日执行）</h3>
                 <el-tag type="info" size="small" effect="plain">定时任务</el-tag>
               </div>
-              <p class="cleanup-desc">设置各类日志/历史数据的保留天数，系统每天自动清理更早的数据，减小数据库压力。0 或留空 = 使用默认值。</p>
+              <p class="cleanup-desc">设置各类数据的保留天数，系统每天自动清理更早的数据。0 = 使用默认值。</p>
+              <div class="cleanup-batch">
+                <span>批量设置</span>
+                <el-input-number v-model="cleanupBatchDays" :min="0" :max="3650" size="small" controls-position="right" style="width: 110px" />
+                <span>天</span>
+                <el-button size="small" @click="applyCleanupBatch">应用到全部</el-button>
+              </div>
               <el-form :model="cleanupSettings" label-position="top" class="compact-form">
-                <div class="cleanup-grid">
-                  <el-form-item v-for="item in cleanupFields" :key="item.key" :label="item.label">
-                    <el-input-number v-model="cleanupSettings[item.key]" :min="0" :max="3650" size="small" class="input-full" />
-                  </el-form-item>
-                </div>
+                <!-- 14 项保留天数原来是一格格输入框平铺（手机端近 4000px），
+                     改成两列表格后一屏能看全，并在顶部提供批量设置 -->
+                <el-table :data="cleanupFields" size="small" border class="cleanup-table">
+                  <el-table-column prop="label" label="数据类型" min-width="120" />
+                  <el-table-column label="保留天数" width="160" align="center">
+                    <template #default="{ row }">
+                      <el-input-number v-model="cleanupSettings[row.key]" :min="0" :max="3650" size="small" controls-position="right" style="width: 110px" />
+                    </template>
+                  </el-table-column>
+                </el-table>
                 <div class="mt-3">
                   <el-button type="primary" :loading="savingCleanup" @click="saveCleanupSettings">保存保留天数</el-button>
                 </div>
@@ -1167,8 +1204,12 @@
                 <h3>手动清理</h3>
                 <el-tag type="warning" size="small" effect="plain">谨慎操作</el-tag>
               </div>
-              <p class="cleanup-desc">按类型立即清理数据。清理前请确认，删除后不可恢复。审计日志清理会保留登录/注册/签到等安全关键记录。</p>
-              <div class="cleanup-manual-list">
+              <p class="cleanup-desc">按类型立即清理数据，删除后不可恢复。审计日志清理会保留登录/注册/签到等安全关键记录。</p>
+              <el-button size="small" :type="manualCleanupExpanded ? 'warning' : 'default'" plain @click="manualCleanupExpanded = !manualCleanupExpanded" class="cleanup-toggle">
+                {{ manualCleanupExpanded ? '收起清理列表' : `展开清理列表（${manualCleanupList.length} 项）` }}
+              </el-button>
+              <el-collapse-transition>
+              <div v-show="manualCleanupExpanded" class="cleanup-manual-list">
                 <div v-for="item in manualCleanupList" :key="item.type" class="cleanup-manual-item">
                   <div class="cleanup-manual-info">
                     <span class="cleanup-manual-name">{{ item.label }}</span>
@@ -1179,6 +1220,7 @@
                   </el-button>
                 </div>
               </div>
+              </el-collapse-transition>
             </div>
           </div>
 
@@ -1477,21 +1519,47 @@ export default {
     const repoSyncLoading = reactive({ test: false, run: false, status: false })
 
     // ========== 数据清理 ==========
+    // 事件矩阵工具：搜索、全选/全不选、收起（手机端很长，默认展开但可一键收起）
+    const customerEventFilter = ref('')
+    const customerEventsCollapsed = ref(true)
+    const filteredCustomerEvents = computed(() => {
+      const q = customerEventFilter.value.trim().toLowerCase()
+      if (!q) return customerEventSwitches
+      return customerEventSwitches.filter(e => e.label.toLowerCase().includes(q) || e.base.includes(q))
+    })
+    const toggleAllCustomerEvents = (on) => {
+      filteredCustomerEvents.value.forEach(e => { notificationSettings[e.channels.email] = on })
+    }
+    const adminEventsFilter = ref('')
+    const adminEventsCollapsed = ref(true)
+    const filteredAdminEvents = computed(() => {
+      const q = adminEventsFilter.value.trim().toLowerCase()
+      if (!q) return adminNotificationEvents
+      return adminNotificationEvents.filter(e => e.label.toLowerCase().includes(q) || e.key.includes(q))
+    })
+    const toggleAllAdminEvents = (on) => {
+      filteredAdminEvents.value.forEach(e => {
+        if (e.channels) {
+          Object.values(e.channels).forEach(k => { adminNotificationSettings[k] = on })
+        }
+      })
+    }
+
     const cleanupFields = [
-      { key: 'audit_logs_retention_days', label: '操作审计日志(天)' },
-      { key: 'registration_logs_retention_days', label: '注册日志(天)' },
-      { key: 'subscription_logs_retention_days', label: '订阅日志(天)' },
-      { key: 'balance_logs_retention_days', label: '余额日志(天)' },
-      { key: 'commission_logs_retention_days', label: '佣金日志(天)' },
-      { key: 'subscription_reset_logs_retention_days', label: '订阅重置日志(天)' },
-      { key: 'email_queue_retention_days', label: '邮件队列(天)' },
-      { key: 'login_history_retention_days', label: '登录历史(天)' },
-      { key: 'user_activities_retention_days', label: '用户活动(天)' },
-      { key: 'notifications_retention_days', label: '站内通知(天)' },
-      { key: 'login_attempts_retention_days', label: '登录失败记录(天)' },
-      { key: 'verification_codes_retention_days', label: '验证码记录(天)' },
-      { key: 'checkin_logs_retention_days', label: '签到记录(天)' },
-      { key: 'payment_callbacks_retention_days', label: '支付回调记录(天)' },
+      { key: 'audit_logs_retention_days', label: '操作审计日志' },
+      { key: 'registration_logs_retention_days', label: '注册日志' },
+      { key: 'subscription_logs_retention_days', label: '订阅日志' },
+      { key: 'balance_logs_retention_days', label: '余额日志' },
+      { key: 'commission_logs_retention_days', label: '佣金日志' },
+      { key: 'subscription_reset_logs_retention_days', label: '订阅重置日志' },
+      { key: 'email_queue_retention_days', label: '邮件队列' },
+      { key: 'login_history_retention_days', label: '登录历史' },
+      { key: 'user_activities_retention_days', label: '用户活动' },
+      { key: 'notifications_retention_days', label: '站内通知' },
+      { key: 'login_attempts_retention_days', label: '登录失败记录' },
+      { key: 'verification_codes_retention_days', label: '验证码记录' },
+      { key: 'checkin_logs_retention_days', label: '签到记录' },
+      { key: 'payment_callbacks_retention_days', label: '支付回调记录' },
     ]
     const cleanupSettings = reactive({
       audit_logs_retention_days: 90, email_queue_retention_days: 30,
@@ -1503,6 +1571,12 @@ export default {
       subscription_reset_logs_retention_days: 180, checkin_logs_retention_days: 180,
       payment_callbacks_retention_days: 365,
     })
+    const manualCleanupExpanded = ref(false)
+    const cleanupBatchDays = ref(30)
+    const applyCleanupBatch = () => {
+      cleanupFields.forEach(f => { cleanupSettings[f.key] = cleanupBatchDays.value })
+    }
+
     const manualCleanupList = [
       { type: 'audit_logs', label: '操作审计日志', desc: '保留登录/注册/签到记录' },
       { type: 'email_queue', label: '邮件队列', desc: '含已发送与待发送邮件' },
@@ -2251,6 +2325,9 @@ export default {
       repoSyncSettings, repoSyncStatus, repoSyncLoading, repoSyncBaseUrl, repoSyncFileUrl, repoSyncStatusType, repoSyncStatusLabel,
       saveRepoSyncSettings, testRepoSyncConnection, runRepoSyncNow, loadRepoSyncStatus, copyText,
       cleanupSettings, cleanupFields, manualCleanupList, savingCleanup, cleaningType, saveCleanupSettings, manualCleanup,
+      cleanupBatchDays, applyCleanupBatch, manualCleanupExpanded,
+      customerEventFilter, customerEventsCollapsed, filteredCustomerEvents, toggleAllCustomerEvents,
+      adminEventsFilter, adminEventsCollapsed, filteredAdminEvents, toggleAllAdminEvents,
       testNotification, testGiteeConnection, testGitHubConnection, createManualBackup, updateGeoIPDatabase, switchDatabase, flushCache, handleLogoSuccess, handleLogoUpload, beforeLogoUpload, formatFileSize
     }
   }
@@ -2258,6 +2335,13 @@ export default {
 </script>
 
 <style scoped>
+/* 事件矩阵工具行 + 数据清理表格 */
+.matrix-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.matrix-tools { display: flex; align-items: center; gap: 2px; }
+.cleanup-batch { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; color: var(--el-text-color-secondary); }
+.cleanup-table { width: 100%; }
+.cleanup-toggle { margin-bottom: 10px; }
+
 /* 域名与订阅：紧凑布局 + 说明收进 tooltip */
 .domain-head { display: flex; align-items: center; gap: 6px; }
 .domain-head h3 { margin: 0; }
@@ -2530,8 +2614,6 @@ export default {
 /* ========== 单面板布局 (公告、主题等) ========== */
 /* 单面板 tab 与双列 tab 保持同一内容区宽度，避免切换时宽度在
    "整宽"与"720px"之间跳动导致页边距不一致；表单列宽单独控制 */
-.single-panel-wrapper { width: 100%; }
-.single-panel-wrapper .compact-form { max-width: 780px; }
 .theme-top-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -2549,7 +2631,9 @@ export default {
 }
 .inline-fields-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* 邀请奖励配置并进 2 列网格后卡片只有一半宽度：字段按可用宽度自适应，
+     窄屏自动换行，避免三个输入框挤成一团 */
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
 }
 .inline-fields-row :deep(.el-form-item) { margin-bottom: 0; }
@@ -2582,6 +2666,16 @@ export default {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+}
+/* 用户与注册：两列各自纵向堆叠卡片（瀑布流思路）。
+   之前 4 张卡直接进 grid 时，第 1 行两张高度差 200px、第 2 行差 160px，
+   行高被最高卡撑开 → 每张矮卡下面都是大片空白。按列分组后两列总高
+   （582 / 587）基本相等，视觉上对称且没有空白。 */
+.registration-layout .settings-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
 }
 .notification-panel {
   background: var(--el-fill-color-light);
