@@ -250,6 +250,30 @@
             {{ subUserName(item) }}
           </div>
         </template>
+        <!-- 手机端备注：与桌面同样自动保存（输入防抖 1 秒 + 失焦立即保存） -->
+        <template #field-notes="{ item }">
+          <div class="notes-input-wrapper-mobile">
+            <el-input
+              v-model="item.user_notes"
+              type="textarea"
+              :rows="2"
+              :maxlength="500"
+              show-word-limit
+              placeholder="点击输入备注，自动保存"
+              class="notes-input-mobile"
+              @blur="saveSubNotes(item)"
+              @input="debounceSaveSubNotes(item)"
+            />
+            <div v-if="item.savingNotes" class="saving-indicator-mobile">
+              <el-icon class="is-loading"><Loading /></el-icon>
+              <span>保存中...</span>
+            </div>
+            <div v-else-if="item.notesSaved" class="saved-indicator-mobile">
+              <el-icon><CircleCheckFilled /></el-icon>
+              <span>已保存</span>
+            </div>
+          </div>
+        </template>
         <template #table>
           <div class="table-wrapper">
             <el-table 
@@ -649,6 +673,26 @@
               <el-button size="small" plain @click="addDeviceLimit(subscription, 20)">+20</el-button>
             </div>
           </div>
+          <!-- 备注：手机端之前没有入口，这里补上（输入防抖自动保存，与桌面一致） -->
+          <div class="sub-section">
+            <div class="sub-section-row">
+              <span class="sub-section-icon"><el-icon><EditPen /></el-icon></span>
+              <span class="sub-section-label">备注</span>
+            </div>
+            <el-input
+              v-model="subscription.user_notes"
+              type="textarea"
+              :rows="2"
+              :maxlength="500"
+              show-word-limit
+              placeholder="点击输入备注，自动保存"
+              class="notes-input-mobile"
+              @blur="saveSubNotes(subscription)"
+              @input="debounceSaveSubNotes(subscription)"
+            />
+            <div v-if="subscription.savingNotes" class="saving-indicator-mobile">保存中...</div>
+            <div v-else-if="subscription.notesSaved" class="saved-indicator-mobile">已保存</div>
+          </div>
           <div class="sub-action-grid">
             <button type="button" class="sub-action-item" @click="copyToClipboard(subscription.universal_url)">
               <div class="sub-action-icon sub-action-copy"><el-icon><DocumentCopy /></el-icon></div>
@@ -804,7 +848,7 @@ import { unwrapList, apiErrorMessage } from '@/utils/format'
 import {
   Download, Delete, Setting, Apple, Monitor, ArrowDown, View, Refresh, HomeFilled,
   Search, Filter, Clock, Sort, Operation, Link, DocumentCopy, User, Message, Switch, Connection,
-  Check, Close, Loading, CircleCheckFilled, InfoFilled
+  Check, Close, Loading, CircleCheckFilled, InfoFilled, EditPen
 } from '@element-plus/icons-vue'
 import { adminAPI } from '@/utils/api'
 import { secureStorage } from '@/utils/api'
@@ -914,6 +958,8 @@ export default {
       { key: 'user', label: '用户' },
       { key: 'expire_time', label: '到期时间' },
       { key: 'device_limit', label: '设备限制' },
+      // 手机端也要能写备注：之前只在桌面表格里有备注列，手机上完全没有入口
+      { key: 'notes', label: '备注', fullWidth: true },
       { key: 'actions', label: '操作' }
     ])
     const currentSortText = computed(() => {
@@ -1471,6 +1517,25 @@ export default {
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>正在打开用户后台</title>
   <style>
+/* 手机端备注输入框（与用户列表保持同一套样式） */
+.notes-input-wrapper-mobile { position: relative; width: 100%; margin-top: 8px; }
+.notes-input-mobile { width: 100%; }
+.notes-input-mobile :deep(.el-textarea__inner) {
+  border: 1px solid #e4e7ed; border-radius: 6px; padding: 6px 8px;
+  font-size: 12px; line-height: 1.5; min-height: 44px; background-color: #fff;
+  transition: border-color 0.2s, background-color 0.2s; touch-action: manipulation;
+}
+.notes-input-mobile :deep(.el-textarea__inner:hover) { border-color: #c0c4cc; background: #fbfdff; }
+.notes-input-mobile :deep(.el-textarea__inner:focus) { border-color: #409eff; background: #fff; outline: none; }
+.notes-input-mobile :deep(.el-input__count) { background: transparent; color: #909399; font-size: 12px; }
+.saving-indicator-mobile, .saved-indicator-mobile {
+  position: absolute; right: 12px; top: 10px; display: flex; align-items: center; gap: 4px;
+  font-size: 12px; color: #909399; pointer-events: none; z-index: 10;
+  background: rgba(255,255,255,0.9); padding: 2px 6px; border-radius: 4px;
+}
+.saving-indicator-mobile { color: #409eff; }
+.saved-indicator-mobile { color: #67c23a; }
+
     body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #303133; background: #f6f8fb; }
     main { text-align: center; line-height: 1.8; }
   </style>
