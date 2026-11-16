@@ -107,9 +107,20 @@ func detectClientVersion(ua string) (string, clientVersion, bool) {
 		return "clash-legacy", parseVersionFromUA(ua), true
 	}
 
-	// Shadowrocket（版本号是构建号，如 Shadowrocket/1744）
+	// Shadowrocket：UA 版本号有两种口径 ——
+	//   1) 构建号：Shadowrocket/1744（旧版长期这样传）
+	//   2) 商店版本：Shadowrocket/2.2.19（新版 App Store 版本号）
+	// 能力表里的阈值（reality>=1744、hysteria2/tuic>=1600、anytls>=1800）是按
+	// 构建号定的；把商店版本 2.2 直接拿去比较会判成"极旧客户端"，导致 reality/
+	// hysteria2/tuic/anytls 节点整批被剔除（用户反馈：小火箭订阅拉不到专线节点）。
+	// 商店 2.x 是很新的版本（对应构建号 1900+），这里映射为"足够新"；
+	// 1.x 仍按旧版处理（保留阈值过滤）。
 	if strings.Contains(uaLower, "shadowrocket") {
-		return "shadowrocket", parseVersionFromUA(ua), true
+		v := parseVersionFromUA(ua)
+		if v.major >= 2 && v.major < 1000 {
+			v = clientVersion{major: 99999}
+		}
+		return "shadowrocket", v, true
 	}
 
 	// sing-box 系列：内核版本可从 UA 直接读到（sing-box/1.12.2 → 1.12），
@@ -237,10 +248,15 @@ func getClientCapabilities(clientType string) *clientCapabilities {
 			unsupportedBefore: map[string]clientVersion{"anytls": {major: 1, minor: 12}},
 		}
 	case "shadowrocket":
-		// Shadowrocket 构建号 >= 1744 支持 Reality；更老的版本不支持部分新协议
+		// Shadowrocket 构建号 >= 1744 支持 Reality；更老的版本不支持部分新协议。
+		// anytls 是**所有版本都不支持**（小火箭从未内置 anytls 出站），不能用版本阈值——
+		// 否则 UA 版本号较高的请求会把 anytls 节点下发下去，客户端拿到的是无法解析的
+		// 节点（表现为"订阅拉取到了但一个都连不上"）。线上实例：专线节点全部更新为
+		// anytls 后，小火箭订阅只剩 4 个占位节点。
 		return &clientCapabilities{
+			unsupportedProtocols: map[string]bool{"anytls": true},
 			unsupportedBefore: map[string]clientVersion{
-				"reality": {major: 1744}, "hysteria2": {major: 1600}, "tuic": {major: 1600}, "anytls": {major: 1800},
+				"reality": {major: 1744}, "hysteria2": {major: 1600}, "tuic": {major: 1600},
 			},
 		}
 	case "surge":
