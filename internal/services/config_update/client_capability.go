@@ -133,10 +133,13 @@ func detectClientVersion(ua string) (string, clientVersion, bool) {
 		}
 		if v.major > 0 && v.major < 1000 {
 			switch {
-			case v.major >= 2 && (v.minor > 2 || (v.minor == 2 && v.patch >= 64)):
-				v = clientVersion{major: 1900} // 2.2.64+：支持 AnyTLS
+			// 按站长要求：商店版本 2.2.19 及以后一律放行 AnyTLS（含 2.2.19~2.2.63）。
+			// 官方更新日志里 AnyTLS 是 2.2.64 才「添加」，2.2.19 客户端能否解析
+			// 取决于该版本的内核实现；站长要求覆盖到 2.2.19，这里按 2.2.19 作为边界。
+			case v.major >= 2 && (v.minor > 2 || (v.minor == 2 && v.patch >= 19)):
+				v = clientVersion{major: 1900} // 2.2.19+：放行 AnyTLS
 			case v.major >= 2:
-				v = clientVersion{major: 1750} // 2.0 ~ 2.2.63
+				v = clientVersion{major: 1750} // 2.0 ~ 2.2.18
 			default:
 				v = clientVersion{major: 1500} // 1.x
 			}
