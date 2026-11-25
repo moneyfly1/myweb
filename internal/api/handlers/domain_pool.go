@@ -126,11 +126,18 @@ func ConfigureDomainPool(c *gin.Context) {
 		return
 	}
 
-	primary, backups := currentPool()
+	oldPrimary, backups := currentPool()
+	primary := oldPrimary
 	if req.MakePrimary || primary == "" {
 		primary = domain
 	}
 	backups = append(backups, domain)
+	// 旧主域名必须保留为备用：WritePool 会主动把「当前主域名」从备用列表剔除，
+	// 若这里不补回旧主域名，切换后它会既不是主域名也不在备用列表里 → 直接从面板消失。
+	// （线上现象：每设一次主域名就少一个域名，越切越少。）
+	if oldPrimary != "" && !strings.EqualFold(oldPrimary, domain) {
+		backups = append(backups, oldPrimary)
+	}
 	if err := writePool(primary, backups); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "站点已配好，但写入面板配置失败："+err.Error(), err)
 		return
@@ -161,8 +168,13 @@ func SetDomainPoolPrimary(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
-	_, backups := currentPool()
+	oldPrimary, backups := currentPool()
 	backups = append(backups, domain)
+	// 旧主域名补回备用：WritePool 会剔除当前主域名，若不补回，旧主域名切换后
+	// 既不是主域名也不在备用列表 → 从面板上消失（越切越少的根因）。
+	if oldPrimary != "" && !strings.EqualFold(oldPrimary, domain) {
+		backups = append(backups, oldPrimary)
+	}
 	if err := writePool(domain, backups); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, "写入失败："+err.Error(), err)
 		return
