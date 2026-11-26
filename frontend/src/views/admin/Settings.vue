@@ -1055,6 +1055,43 @@
             </section>
           </div>
         </section>
+        <section v-show="activeTab === 'smsService'" class="settings-pane" data-tab="smsService">
+          <div class="settings-block">
+            <div class="settings-block-head">
+              <h3>验证码服务</h3>
+              <p>对接 HeroSMS 兼容平台，用户端「验证码服务」售卖一次性短信验证码。售价 = 官方美元价 × 倍率 × 汇率。</p>
+            </div>
+            <div class="settings-block-body">
+              <el-form label-position="top" class="compact-form">
+                <el-form-item label="启用验证码服务">
+                  <el-switch v-model="smsService.enabled" />
+                  <span class="tip-inline">关闭后用户端菜单入口不显示服务</span>
+                </el-form-item>
+                <el-form-item label="API 地址">
+                  <el-input v-model="smsService.base_url" placeholder="https://hero-sms.com" />
+                </el-form-item>
+                <el-form-item label="API Key">
+                  <el-input v-model="smsService.api_key" placeholder="平台生成的 API 密钥（保存后仅显示掩码）" show-password />
+                </el-form-item>
+                <el-form-item label="价格倍率">
+                  <el-input-number v-model="smsService.multiplier" :min="0.1" :max="100" :step="0.1" :precision="2" />
+                  <span class="tip-inline">官方美元价 × 倍率（默认 2）</span>
+                </el-form-item>
+                <el-form-item label="美元 → 人民币汇率">
+                  <el-input-number v-model="smsService.exchange_rate" :min="0.1" :max="100" :step="0.1" :precision="4" />
+                  <span class="tip-inline">手工填写，例如 7.2</span>
+                </el-form-item>
+                <el-form-item label="最低售价（元）">
+                  <el-input-number v-model="smsService.min_price" :min="0" :max="9999" :step="0.1" :precision="2" />
+                  <span class="tip-inline">换算后低于该价时按此价收费</span>
+                </el-form-item>
+                <el-form-item>
+                  <el-button type="primary" :loading="smsServiceSaving" @click="saveSmsService">保存验证码服务配置</el-button>
+                </el-form-item>
+              </el-form>
+            </div>
+          </div>
+        </section>
         <section v-show="activeTab === 'repo-sync'" class="settings-pane" data-tab="repo-sync">
           <div class="notification-layout">
             <!-- 左列：GitHub 仓库配置 -->
@@ -1254,8 +1291,7 @@ import {
   Check, Plus, Refresh, Message, Bell,
   // 设置分类导航图标
   Setting, Link, User, Picture, Connection, Key, Lock, FolderOpened, Location, Delete,
-  QuestionFilled, InfoFilled
-} from '@element-plus/icons-vue'
+  QuestionFilled, InfoFilled, Iphone } from '@element-plus/icons-vue'
 import { useApi, adminAPI, secureStorage } from '@/utils/api'
 import { apiCache } from '@/utils/apiCache'
 import { formatFileSize as formatFileSizeUtil, apiErrorMessage } from '@/utils/format'
@@ -1386,10 +1422,55 @@ export default {
       { name: 'backup', label: '备份与恢复', icon: FolderOpened },
       { name: 'geoip', label: 'GeoIP 数据库', icon: Location },
       { name: 'repo-sync', label: '仓库文件同步', icon: Refresh },
-      { name: 'cleanup', label: '数据清理', icon: Delete }
+      { name: 'cleanup', label: '数据清理', icon: Delete },
+      { name: 'smsService', label: '验证码服务', icon: Iphone }
     ]
     const themeStore = useThemeStore()
     const activeTab = ref('general')
+
+    // 验证码服务配置（category=sms_service）
+    const smsService = reactive({
+      enabled: false,
+      base_url: 'https://hero-sms.com',
+      api_key: '',
+      multiplier: 2,
+      exchange_rate: 7.2,
+      min_price: 1
+    })
+    const smsServiceSaving = ref(false)
+    const loadSmsService = async () => {
+      try {
+        const res = await api.get('/admin/services/config')
+        const d = res.data?.data || res.data || {}
+        Object.assign(smsService, {
+          enabled: !!d.enabled,
+          base_url: d.base_url || 'https://hero-sms.com',
+          api_key: d.api_key || '',
+          multiplier: Number(d.multiplier) || 2,
+          exchange_rate: Number(d.exchange_rate) || 7.2,
+          min_price: Number(d.min_price) || 1
+        })
+      } catch (e) { /* 忽略：配置未初始化 */ }
+    }
+    const saveSmsService = async () => {
+      smsServiceSaving.value = true
+      try {
+        await api.put('/admin/services/config', {
+          enabled: !!smsService.enabled,
+          base_url: smsService.base_url,
+          api_key: smsService.api_key,
+          multiplier: Number(smsService.multiplier) || 2,
+          exchange_rate: Number(smsService.exchange_rate) || 7.2,
+          min_price: Number(smsService.min_price) || 0
+        })
+        ElMessage.success('验证码服务配置已保存')
+        await loadSmsService()
+      } catch (e) {
+        ElMessage.error(e?.response?.data?.message || '保存失败')
+      } finally {
+        smsServiceSaving.value = false
+      }
+    }
     // 订阅访问控制（原在「配置管理 → 订阅访问控制」，2026-09-23 并入系统设置：
     // 它和「节点与协议」一样，管的是「客户端能拿到什么」，不属于软件下载配置）
     const subscriptionAccessLoading = ref(false)
@@ -2293,6 +2374,7 @@ export default {
     }
 
     onMounted(() => {
+      loadSmsService()
       // 自检：导航项必须都有对应分区，否则会出现「点了没反应 / 空白页」
       if (process.env.NODE_ENV === 'development') {
         const navNames = settingsNav.map((i) => i.name)
@@ -2324,6 +2406,7 @@ export default {
       saveGeneralSettings, saveRegistrationSettings, saveInviteSettings, saveNotificationSettings, saveSecuritySettings, saveThemeSettings, saveAnnouncementSettings,
       saveNodeHealthSettings, saveAdminNotificationSettings, saveBackupSettings, saveProtocolFilterSettings, saveCurrentTab, refreshSettings, protocolFilterSettings, allProtocols: ALL_PROTOCOLS,
       disablingTimeout, disableAllTimeoutNodes,
+      smsService, smsServiceSaving, saveSmsService,
       repoSyncSettings, repoSyncStatus, repoSyncLoading, repoSyncBaseUrl, repoSyncFileUrl, repoSyncStatusType, repoSyncStatusLabel,
       saveRepoSyncSettings, testRepoSyncConnection, runRepoSyncNow, loadRepoSyncStatus, copyText,
       cleanupSettings, cleanupFields, manualCleanupList, savingCleanup, cleaningType, saveCleanupSettings, manualCleanup,

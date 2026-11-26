@@ -45,6 +45,7 @@ const routes = [
       { path: 'devices', name: 'Devices', component: () => import('@/views/Devices.vue'), meta: { title: '设备管理', breadcrumb: [{ title: '首页', path: '/dashboard' }, { title: '设备管理', path: '/devices' }] } },
       { path: 'packages', name: 'Packages', component: () => import('@/views/Packages.vue'), meta: { title: '套餐购买', breadcrumb: [{ title: '首页', path: '/dashboard' }, { title: '套餐购买', path: '/packages' }] } },
       { path: 'orders', name: 'Orders', component: () => import('@/views/Orders.vue'), meta: { title: '订单记录', breadcrumb: [{ title: '首页', path: '/dashboard' }, { title: '订单记录', path: '/orders' }] } },
+      { path: 'services', name: 'Services', component: () => import('@/views/Services.vue'), meta: { title: '验证码服务', breadcrumb: [{ title: '首页', path: '/dashboard' }, { title: '验证码服务', path: '/services' }] } },
       { path: 'nodes', name: 'Nodes', component: () => import('@/views/Nodes.vue'), meta: { title: '节点列表', breadcrumb: [{ title: '首页', path: '/dashboard' }, { title: '节点列表', path: '/nodes' }] } },
       { path: 'help', name: 'Help', component: () => import('@/views/Help.vue'), meta: { title: '帮助中心', breadcrumb: [{ title: '首页', path: '/dashboard' }, { title: '帮助中心', path: '/help' }] } },
       { path: 'profile', name: 'Profile', component: () => import('@/views/Profile.vue'), meta: { title: '个人资料', breadcrumb: [{ title: '首页', path: '/dashboard' }, { title: '个人资料', path: '/profile' }] } },

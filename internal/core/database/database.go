@@ -311,6 +311,7 @@ func AutoMigrate() error {
 		&models.Coupon{},
 		&models.CouponUsage{},
 		&models.RechargeRecord{},
+		&models.ServiceOrder{},
 		&models.LoginAttempt{},
 		&models.VerificationAttempt{},
 		&models.VerificationCode{},

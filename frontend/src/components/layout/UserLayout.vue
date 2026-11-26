@@ -175,8 +175,7 @@ import {
   ShoppingCart,
   SwitchButton,
   Tickets,
-  User
-} from '@element-plus/icons-vue'
+  User, Iphone } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
 import { ElMessage } from '@/utils/elementPlusServices'
@@ -216,6 +215,7 @@ const iconMap = {
   tutorials: Reading,
   profile: User,
   loginHistory: Document,
+  services: Iphone,
   settings: Setting,
   back: Back
 }
@@ -240,6 +240,7 @@ const menuSections = computed(() => {
       title: '订单服务', 
       items: [
         { path: '/packages', title: '套餐购买', icon: 'packages' },
+        { path: '/services', title: '验证码服务', icon: 'services' },
         { path: '/orders', title: '订单记录', icon: 'orders' }
       ] 
     },

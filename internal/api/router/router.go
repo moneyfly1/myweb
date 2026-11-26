@@ -163,6 +163,16 @@ func SetupRouter() *gin.Engine {
 			subscribePublic.GET("/client/subscribe", handlers.GetClientSubscribeXBoardCompat)
 		}
 
+		services := api.Group("/services")
+		services.Use(middleware.AuthMiddleware())
+		{
+			services.GET("/catalog", handlers.GetServiceCatalog)
+			services.POST("/orders", handlers.CreateServiceOrder)
+			services.GET("/orders", handlers.GetMyServiceOrders)
+			services.GET("/orders/:orderNo", handlers.GetServiceOrderDetail)
+			services.POST("/orders/:orderNo/finish", handlers.FinishServiceOrder)
+			services.POST("/orders/:orderNo/cancel", handlers.CancelServiceOrder)
+		}
 		orders := api.Group("/orders")
 		orders.Use(middleware.AuthMiddleware())
 		{
@@ -469,6 +479,8 @@ func SetupRouter() *gin.Engine {
 			admin.POST("/custom-nodes/enable-all", handlers.EnableAllCustomNodes)
 			admin.POST("/custom-nodes/selfhost/deploy", handlers.DeploySelfHostVPS)
 			// 订阅域名池（系统设置 → 订阅域名池）：一键建站点 + 签证书 + 重载 nginx + 写配置
+			admin.GET("/services/config", handlers.AdminGetServiceConfig)
+			admin.PUT("/services/config", handlers.AdminUpdateServiceConfig)
 			admin.GET("/domains/pool", handlers.GetDomainPool)
 			admin.POST("/domains/pool/configure", handlers.ConfigureDomainPool)
 			admin.POST("/domains/pool/primary", handlers.SetDomainPoolPrimary)

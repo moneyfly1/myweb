@@ -1004,6 +1004,13 @@ func PaymentNotify(c *gin.Context) {
 		return
 	}
 
+	// 验证码服务订单（独立表 service_orders）：按订单号命中则走服务订单履约
+	var svcOrder models.ServiceOrder
+	if err := db.Where("order_no = ?", orderNo).First(&svcOrder).Error; err == nil {
+		applyServiceOrderPayment(c, db, &svcOrder, paymentType, orderNo, externalTransactionID, paymentConfig.ID, params)
+		return
+	}
+
 	// 定位订单或充值记录
 	order, isRecharge, orderOK := resolveNotifyOrder(c, db, paymentType, orderNo, externalTransactionID)
 	if !orderOK {
