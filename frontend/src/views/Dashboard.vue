@@ -1037,11 +1037,11 @@ const createRecharge = async () => {
         return
       }
       pendingPaymentStorage.save(rechargeOrderNo, 'recharge')
+      // 只有易支付（页面跳转）直接导航；码支付返回的是 qr.alipay.com 二维码链接，
+      // 必须走二维码展示，不能 safeNavigate 跳到支付宝官网。
       const isYipay = rechargePaymentMethod.value && (
-        rechargePaymentMethod.value.includes('yipay') || 
-        rechargePaymentMethod.value.includes('易支付') ||
-        rechargePaymentMethod.value.includes('codepay') ||
-        rechargePaymentMethod.value.includes('码支付')
+        rechargePaymentMethod.value.includes('yipay') ||
+        rechargePaymentMethod.value.includes('易支付')
       )
       if (isYipay) {
         if (paymentUrl) {

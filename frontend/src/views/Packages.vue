@@ -1279,11 +1279,10 @@ export default {
             order.payment_method = paymentMethod.value
           }
           const paymentMethodName = order.payment_method || paymentMethod.value
+          // 只有易支付页面跳转；码支付是二维码，交给 showPaymentQRCode。
           const isYipay = paymentMethodName && (
             paymentMethodName.includes('yipay') ||
-            paymentMethodName.includes('易支付') ||
-            paymentMethodName.includes('codepay') ||
-            paymentMethodName.includes('码支付')
+            paymentMethodName.includes('易支付')
           )
           if (isYipay) {
             const paymentUrl = order.payment_url || order.payment_qr_code
@@ -1470,6 +1469,7 @@ export default {
 
         // 检查是否是支付宝页面支付URL（需要跳转而不是生成二维码）
         const isAlipayPagePay = urlString.includes('alipay.com') &&
+                                !urlString.includes('qr.alipay.com') &&
                                 (urlString.includes('?') || urlString.includes('&'))
 
         // 检查是否是易支付页面
