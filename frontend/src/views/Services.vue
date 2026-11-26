@@ -108,21 +108,42 @@
       </div>
     </div>
 
-    <el-dialog v-model="buyVisible" title="购买验证码" width="440px" class="buy-dialog">
-      <div class="buy-summary">
-        <div class="buy-row"><span>服务</span><b>{{ buyTarget?.service_name }}</b></div>
-        <div class="buy-row"><span>国家</span><b>{{ buyTarget?.country_name }}</b></div>
-        <div class="buy-row"><span>售价</span><b class="buy-price">¥{{ formatPrice(buyTarget?.price_cny) }}</b></div>
-        <div class="buy-row buy-methods-label"><span>支付方式</span></div>
-        <el-radio-group v-model="selectedPayment" class="pay-methods">
-          <el-radio v-for="m in paymentMethods" :key="m.key" :label="m.key" border class="pay-method">
-            {{ m.name || m.key }}
-          </el-radio>
-        </el-radio-group>
+    <el-dialog v-model="buyVisible" title="购买验证码" width="460px" class="buy-dialog" align-center>
+      <div class="buy-card">
+        <div class="buy-hero">
+          <div class="buy-service">{{ buyTarget?.service_name }}</div>
+          <div class="buy-country">{{ buyTarget?.country_name }}</div>
+          <div class="buy-amount"><span class="cur">¥</span>{{ formatPrice(buyTarget?.price_cny) }}</div>
+          <div class="buy-amount-note">含服务费 · 购买后自动分配号码</div>
+        </div>
+
+        <div class="buy-section-title">支付方式</div>
+        <div class="pay-grid">
+          <div
+            v-for="m in paymentMethods"
+            :key="m.key"
+            class="pay-card"
+            :class="{ active: selectedPayment === m.key }"
+            @click="selectedPayment = m.key"
+          >
+            <div class="pay-card-icon" :class="payIconClass(m.key)">
+              <el-icon><Wallet /></el-icon>
+            </div>
+            <div class="pay-card-name">{{ m.name || m.key }}</div>
+            <div class="pay-card-check" v-if="selectedPayment === m.key">
+              <el-icon><Check /></el-icon>
+            </div>
+          </div>
+        </div>
+        <div v-if="!paymentMethods.length" class="pay-empty">暂无可用支付方式</div>
       </div>
       <template #footer>
-        <el-button @click="buyVisible = false">取消</el-button>
-        <el-button type="primary" :loading="creating" @click="confirmBuy">确认支付 ¥{{ formatPrice(buyTarget?.price_cny) }}</el-button>
+        <div class="buy-footer">
+          <el-button @click="buyVisible = false">取消</el-button>
+          <el-button type="primary" :loading="creating" @click="confirmBuy">
+            确认支付 ¥{{ formatPrice(buyTarget?.price_cny) }}
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -146,7 +167,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Search } from '@element-plus/icons-vue'
+import { Refresh, Search, Wallet, Check } from '@element-plus/icons-vue'
 import api from '@/utils/api'
 import { createPaymentQRCode } from '@/utils/payment'
 
@@ -191,6 +212,14 @@ const filteredCountries = computed(() => {
 })
 
 const formatPrice = v => Number(v || 0).toFixed(2)
+// 支付方式图标配色：支付宝蓝、微信绿、码支付橙、其他主题色
+const payIconClass = (key) => {
+  const k = String(key || '').toLowerCase()
+  if (k.includes('wx') || k.includes('wechat') || k.includes('weixin')) return 'icon-wechat'
+  if (k.includes('codepay') || k.includes('码支付')) return 'icon-codepay'
+  if (k.includes('alipay') || k.includes('支付宝')) return 'icon-alipay'
+  return 'icon-default'
+}
 const formatCount = n => Number(n || 0).toLocaleString()
 const statusText = s => ({ pending: '待支付', active: '已激活', completed: '已验证', cancelled: '已取消', failed: '已退款' }[s] || s)
 const statusType = s => ({ pending: 'info', active: 'warning', completed: 'success', cancelled: 'info', failed: 'danger' }[s] || 'info')
@@ -421,12 +450,28 @@ onUnmounted(stopPolling)
 .otp-code { font-family: ui-monospace, Menlo, monospace; color: #67c23a; font-weight: 700; letter-spacing: 1px; }
 .otp-waiting { color: #e6a23c; }
 .muted { color: #c0c4cc; }
-.buy-summary { display: flex; flex-direction: column; gap: 10px; }
-.buy-row { display: flex; justify-content: space-between; color: #606266; }
-.buy-price { color: #f56c6c; font-size: 20px; }
-.buy-methods-label { margin-top: 4px; }
-.pay-methods { display: flex; flex-direction: column; gap: 8px; }
-.pay-method { margin-right: 0 !important; }
+.buy-card { padding: 0 4px; }
+.buy-hero { text-align: center; padding: 8px 0 18px; border-bottom: 1px dashed #ebeef5; }
+.buy-service { font-size: 18px; font-weight: 600; color: #303133; }
+.buy-country { font-size: 13px; color: #909399; margin-top: 4px; }
+.buy-amount { margin-top: 14px; color: #f56c6c; font-weight: 700; font-size: 34px; line-height: 1; }
+.buy-amount .cur { font-size: 20px; margin-right: 2px; }
+.buy-amount-note { font-size: 12px; color: #c0c4cc; margin-top: 8px; }
+.buy-section-title { font-size: 13px; color: #606266; font-weight: 600; margin: 16px 0 10px; }
+.pay-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.pay-card { position: relative; display: flex; align-items: center; gap: 10px; border: 1px solid #e4e7ed; border-radius: 10px; padding: 12px; cursor: pointer; transition: all .15s; background: #fff; }
+.pay-card:hover { border-color: #c6e2ff; background: #fafcff; }
+.pay-card.active { border-color: #409eff; background: #ecf5ff; box-shadow: 0 0 0 2px rgba(64,158,255,.12); }
+.pay-card-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 17px; color: #fff; flex-shrink: 0; background: #409eff; }
+.pay-card-icon.icon-alipay { background: #1677ff; }
+.pay-card-icon.icon-wechat { background: #07c160; }
+.pay-card-icon.icon-codepay { background: #ff7a00; }
+.pay-card-icon.icon-default { background: #909399; }
+.pay-card-name { font-size: 13px; color: #303133; line-height: 1.3; }
+.pay-card.active .pay-card-name { color: #409eff; font-weight: 600; }
+.pay-card-check { position: absolute; right: 8px; top: 8px; color: #409eff; font-size: 14px; }
+.pay-empty { color: #909399; font-size: 13px; padding: 10px 0; }
+.buy-footer { display: flex; justify-content: flex-end; gap: 10px; }
 .pay-box { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .qr-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .qr-img { width: 220px; height: 220px; border: 1px solid #ebeef5; border-radius: 8px; }
