@@ -5,10 +5,43 @@
         <h2 class="page-title">验证码服务</h2>
         <p class="page-subtitle">一次性短信验证码 · 购买后自动分配号码，短信验证码会自动显示在订单里</p>
       </div>
-      <el-button :icon="Refresh" :loading="loading" @click="refreshAll">刷新</el-button>
+      <div class="header-actions">
+        <el-button :icon="Tickets" @click="scrollToOrders">我的订单</el-button>
+        <el-button :icon="Refresh" :loading="loading" @click="refreshAll">刷新</el-button>
+      </div>
     </div>
 
     <el-alert v-if="notice" :title="notice" type="warning" :closable="false" show-icon class="notice" />
+
+    <div class="intro-card">
+      <div class="intro-head">
+        <div class="intro-title">
+          <el-icon><Iphone /></el-icon>
+          验证码服务是什么？
+        </div>
+        <el-button link type="primary" @click="introCollapsed = !introCollapsed">
+          {{ introCollapsed ? '展开说明' : '收起说明' }}
+        </el-button>
+      </div>
+      <div v-show="!introCollapsed" class="intro-body">
+        <p class="intro-desc">
+          用真实手机号帮你接收海外平台（WhatsApp / Telegram / Google / OpenAI 等）的<strong>短信验证码</strong>，
+          适用于注册账号、登录验证等场景。号码由平台即时分配，一次性使用。
+        </p>
+        <div class="intro-steps">
+          <div class="intro-step"><span class="step-no">1</span><div><b>选服务</b><p>左侧选择你要注册/登录的平台</p></div></div>
+          <div class="intro-step"><span class="step-no">2</span><div><b>选国家</b><p>右侧选择国家（价格/库存不同）</p></div></div>
+          <div class="intro-step"><span class="step-no">3</span><div><b>支付</b><p>支持码支付/支付宝，支付后自动分配号码</p></div></div>
+          <div class="intro-step"><span class="step-no">4</span><div><b>收验证码</b><p>用该号码去目标平台注册 → 验证码自动显示在「我的订单」</p></div></div>
+        </div>
+        <div class="intro-tips">
+          <span>💡 号码为一次性验证码用途，请勿用于违规场景；</span>
+          <span>💡 购买后 10 分钟内未收到短信可取消；</span>
+          <span>💡 平台无号/失败会自动退款到余额；</span>
+          <span>💡 验证码收到后请点「完成」释放号码。</span>
+        </div>
+      </div>
+    </div>
 
     <div class="layout">
       <aside class="panel service-panel">
@@ -67,14 +100,14 @@
       </section>
     </div>
 
-    <div class="orders-section">
+    <div class="orders-section" id="my-orders">
       <div class="orders-head">
         <h3>我的订单</h3>
         <el-button size="small" :icon="Refresh" :loading="ordersLoading" @click="loadOrders">刷新</el-button>
       </div>
       <div v-loading="ordersLoading" class="orders-wrap">
         <el-empty v-if="!ordersLoading && !orders.length" description="暂无验证码订单" :image-size="70" />
-        <el-table v-else :data="orders" class="orders-table" stripe>
+        <el-table v-else-if="!isMobile" :data="orders" class="orders-table" stripe>
           <el-table-column prop="service_name" label="服务" min-width="120" />
           <el-table-column prop="country_name" label="国家" min-width="100" />
           <el-table-column label="号码" min-width="150">
@@ -105,6 +138,33 @@
             </template>
           </el-table-column>
         </el-table>
+
+        <!-- 手机端：订单卡片（表格在手机上会挤成横条，看不到验证码） -->
+        <div v-if="isMobile && orders.length" class="mob-orders">
+          <div v-for="row in orders" :key="row.order_no" class="mob-order">
+            <div class="mob-order-head">
+              <div class="mob-order-title">{{ row.service_name }} <span class="muted">· {{ row.country_name }}</span></div>
+              <el-tag size="small" :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
+            </div>
+            <div class="mob-order-line"><span class="k">号码</span><span class="mono">{{ row.phone_number || '—' }}</span></div>
+            <div class="mob-order-line">
+              <span class="k">验证码</span>
+              <span v-if="row.otp" class="otp-code">{{ row.otp }}</span>
+              <span v-else-if="row.status === 'active'" class="otp-waiting">— 等待短信</span>
+              <span v-else class="muted">—</span>
+            </div>
+            <div class="mob-order-foot">
+              <span class="mob-order-amount">¥{{ formatPrice(row.price_cny) }}</span>
+              <span class="mob-order-time">{{ row.created_at }}</span>
+            </div>
+            <div class="mob-order-actions">
+              <el-button v-if="row.otp" size="small" type="primary" plain @click="copy(row.otp)">复制验证码</el-button>
+              <el-button v-else-if="row.phone_number" size="small" @click="copy(row.phone_number)">复制号码</el-button>
+              <el-button v-if="row.status === 'active'" size="small" @click="finishOrder(row)">完成</el-button>
+              <el-button v-if="row.status === 'active'" size="small" type="danger" plain @click="cancelOrder(row)">取消</el-button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -167,12 +227,18 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Search, Wallet, Check } from '@element-plus/icons-vue'
+import { Refresh, Search, Wallet, Check, Tickets, Iphone } from '@element-plus/icons-vue'
 import api from '@/utils/api'
 import { createPaymentQRCode } from '@/utils/payment'
 
 const loading = ref(false)
 const notice = ref('')
+const introCollapsed = ref(typeof window !== 'undefined' && window.innerWidth <= 768)
+const isMobile = ref(typeof window !== 'undefined' && window.innerWidth <= 768)
+const scrollToOrders = () => {
+  const el = document.getElementById('my-orders')
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 const services = ref([])
 const serviceKeyword = ref('')
 const selectedService = ref(null)
@@ -418,6 +484,18 @@ onUnmounted(stopPolling)
 .page-title { font-size: 22px; margin: 0; color: #303133; }
 .page-subtitle { margin: 6px 0 0; color: #909399; font-size: 13px; }
 .notice { margin-bottom: 14px; }
+.intro-card { background: linear-gradient(135deg, #f0f7ff 0%, #fafcff 100%); border: 1px solid #d9ecff; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+.intro-head { display: flex; align-items: center; justify-content: space-between; }
+.intro-title { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; color: #303133; }
+.intro-body { margin-top: 10px; }
+.intro-desc { font-size: 13px; color: #606266; line-height: 1.7; margin: 0 0 12px; }
+.intro-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.intro-step { display: flex; gap: 8px; background: #fff; border: 1px solid #ebeef5; border-radius: 8px; padding: 10px 12px; }
+.step-no { width: 22px; height: 22px; border-radius: 50%; background: #409eff; color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.intro-step b { font-size: 13px; color: #303133; }
+.intro-step p { margin: 3px 0 0; font-size: 12px; color: #909399; line-height: 1.5; }
+.intro-tips { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px; font-size: 12px; color: #909399; }
+.header-actions { display: flex; gap: 8px; }
 .layout { display: grid; grid-template-columns: 280px 1fr; gap: 14px; }
 .panel { background: #fff; border: 1px solid #ebeef5; border-radius: 10px; display: flex; flex-direction: column; height: 620px; overflow: hidden; }
 .panel-head { padding: 12px; border-bottom: 1px solid #ebeef5; }
@@ -481,14 +559,57 @@ onUnmounted(stopPolling)
 .pay-status { color: #909399; font-size: 13px; text-align: center; }
 .pay-order { color: #c0c4cc; font-size: 12px; }
 @media (max-width: 768px) {
-  .services-page { padding: 12px 10px 30px; }
-  .page-header { flex-direction: column; }
-  .layout { grid-template-columns: 1fr; }
-  .panel { height: auto; }
-  .service-panel { height: 320px; }
-  .country-panel { height: 60vh; }
-  .country-search { width: 120px; }
-  .country-row { grid-template-columns: 1fr 70px 80px 70px; font-size: 13px; }
+  .services-page { padding: 10px 10px 24px; }
+  .page-header { flex-direction: column; gap: 10px; }
+  .page-title { font-size: 19px; }
+  .page-subtitle { font-size: 12px; }
+  .header-actions { width: 100%; }
+  .header-actions .el-button { flex: 1; }
+  .intro-card { padding: 12px; }
+  .intro-desc { font-size: 12px; }
+  .intro-steps { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .intro-step { padding: 8px 10px; }
+  .intro-step b { font-size: 12px; }
+  .intro-step p { font-size: 11px; }
+  .intro-tips { gap: 6px; font-size: 11px; }
+
+  .layout { display: block; }
+  .panel { height: auto; border-radius: 12px; }
+  .service-panel { margin-bottom: 12px; }
+  .service-list { display: flex; overflow-x: auto; overflow-y: hidden; gap: 8px; padding: 10px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .service-list::-webkit-scrollbar { display: none; }
+  .service-item { flex: 0 0 140px; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 12px; margin: 0; border: 1px solid #ebeef5; border-radius: 10px; background: #fff; }
+  .service-item.active { border-color: #409eff; background: #ecf5ff; }
+  .service-name { font-size: 13px; max-width: 116px; }
+  .service-meta { font-size: 11px; }
+  .service-price { font-size: 11px; margin-left: 0; }
+  .country-panel { height: 62vh; }
+  .country-head { flex-wrap: wrap; }
+  .country-title { font-size: 15px; }
+  .country-search { width: 100%; margin-top: 6px; }
+  .country-list { padding: 0 8px 10px; }
+  .country-row { grid-template-columns: 1fr 62px 66px 58px; padding: 10px 6px; font-size: 13px; }
+  .country-row.head { font-size: 11px; }
+  .c-count { font-size: 11px; }
+  .c-op :deep(.el-button) { padding: 5px 8px; font-size: 12px; }
+
+  .orders-section { margin-top: 16px; }
   .orders-table { font-size: 12px; }
+  .orders-wrap { overflow-x: auto; }
+  .mob-orders { display: flex; flex-direction: column; gap: 10px; padding: 8px; }
+  .mob-order { border: 1px solid #ebeef5; border-radius: 10px; padding: 12px; background: #fff; }
+  .mob-order-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .mob-order-title { font-size: 14px; font-weight: 600; color: #303133; }
+  .mob-order-line { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #606266; padding: 3px 0; }
+  .mob-order-line .k { color: #909399; font-size: 12px; width: 48px; flex-shrink: 0; }
+  .mob-order-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; font-size: 12px; color: #909399; }
+  .mob-order-amount { color: #f56c6c; font-weight: 700; font-size: 14px; }
+  .mob-order-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .mob-order-actions .el-button { margin-left: 0; }
+
+  .buy-dialog :deep(.el-dialog) { width: 92% !important; margin: 0 auto; }
+  .pay-grid { grid-template-columns: 1fr; }
+  .pay-dialog :deep(.el-dialog) { width: 92% !important; }
+  .qr-img { width: 190px; height: 190px; }
 }
 </style>
