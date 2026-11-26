@@ -325,3 +325,66 @@ func (c *Client) Prolong(activationID string, durationHours int) (string, error)
 	}
 	return "", err
 }
+
+// RentNumberResult 租号结果（平台 getRentNumber 返回 JSON）。
+type RentNumberResult struct {
+	ActivationID  string  `json:"activationId"`
+	PhoneNumber   string  `json:"phoneNumber"`
+	ActivationCost float64 `json:"activationCost"`
+	EndTime       string  `json:"activationEndTime"`
+}
+
+// GetRentNumber 购买租号号码（durationHours：24/72/168/336/720/1440/2160/4320）。
+func (c *Client) GetRentNumber(service, country string, durationHours int) (*RentNumberResult, error) {
+	text, err := c.call("getRentNumber", map[string]string{
+		"service":  service,
+		"country":  country,
+		"duration": strconv.Itoa(durationHours),
+	})
+	if err != nil {
+		return nil, err
+	}
+	var res RentNumberResult
+	if err := json.Unmarshal([]byte(text), &res); err != nil {
+		return nil, fmt.Errorf("租号返回格式异常：%s", text)
+	}
+	if res.ActivationID == "" || res.PhoneNumber == "" {
+		return nil, fmt.Errorf("租号失败：%s", text)
+	}
+	return &res, nil
+}
+
+// RentCountryPrice 租号国家报价（duration → {count, price}）。
+type RentCountryPrice struct {
+	CountryID int
+	Duration  int
+	Count     int
+	CostUSD   float64
+}
+
+// GetRentPrices 获取某服务在各国的租号报价（来自 serviceCountRent）。
+func (c *Client) GetRentPrices(service string) ([]RentCountryPrice, error) {
+	text, err := c.call("serviceCountRent", map[string]string{"service": service})
+	if err != nil {
+		return nil, err
+	}
+	var raw map[string]map[string]struct {
+		Count int     `json:"count"`
+		Price float64 `json:"price"`
+	}
+	if err := json.Unmarshal([]byte(text), &raw); err != nil {
+		return nil, fmt.Errorf("租号价格解析失败：%w", err)
+	}
+	out := make([]RentCountryPrice, 0, 64)
+	for cid, durations := range raw {
+		countryID, _ := strconv.Atoi(cid)
+		for dur, p := range durations {
+			d, _ := strconv.Atoi(dur)
+			if d <= 0 || p.Count <= 0 {
+				continue
+			}
+			out = append(out, RentCountryPrice{CountryID: countryID, Duration: d, Count: p.Count, CostUSD: p.Price})
+		}
+	}
+	return out, nil
+}

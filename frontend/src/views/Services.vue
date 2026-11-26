@@ -6,6 +6,10 @@
         <p class="page-subtitle">一次性短信验证码 · 购买后自动分配号码，短信验证码会自动显示在订单里</p>
       </div>
       <div class="header-actions">
+        <el-radio-group v-model="mode" size="small" class="mode-switch" @change="onModeChange">
+          <el-radio-button label="once">一次性验证码</el-radio-button>
+          <el-radio-button label="rent">租号</el-radio-button>
+        </el-radio-group>
         <el-button :icon="Tickets" @click="scrollToOrders">我的订单</el-button>
         <el-button :icon="Refresh" :loading="loading" @click="refreshAll">刷新</el-button>
       </div>
@@ -85,7 +89,7 @@
         <div v-loading="countriesLoading" class="country-list">
           <el-empty v-if="!selectedService" description="从左侧选择一个服务" :image-size="70" />
           <el-empty v-else-if="!countriesLoading && !filteredCountries.length" description="该服务暂无可用国家" :image-size="70" />
-          <div v-else class="country-table">
+          <div v-else-if="mode === 'once'" class="country-table">
             <div class="country-row head">
               <span>国家</span>
               <span class="c-count sortable" @click="toggleSort('count')">库存 <span class="sort-arrow">{{ sortArrow('count') }}</span></span>
@@ -97,6 +101,29 @@
               <span class="c-count">{{ formatCount(c.count) }}</span>
               <span class="c-price">¥{{ formatPrice(c.price_cny) }}</span>
               <span class="c-op"><el-button type="primary" size="small" @click="openBuy(c)">购买</el-button></span>
+            </div>
+          </div>
+          <div v-else class="country-table rent-table">
+            <div class="country-row head rent-row">
+              <span>国家</span>
+              <span class="c-duration">租期</span>
+              <span class="c-price">售价</span>
+              <span class="c-op"></span>
+            </div>
+            <div v-for="c in filteredRentCountries" :key="c.country_id" class="country-row rent-row">
+              <span class="c-name">{{ c.country_name }}</span>
+              <span class="c-duration">
+                <el-select v-model="rentSelection[c.country_id]" size="small" class="rent-select" @change="(v) => onRentDurationChange(c, v)">
+                  <el-option
+                    v-for="o in c.options"
+                    :key="o.duration_hours"
+                    :label="formatDuration(o.duration_hours) + ' · ¥' + formatPrice(o.price_cny)"
+                    :value="o.duration_hours"
+                  />
+                </el-select>
+              </span>
+              <span class="c-price">¥{{ formatPrice(rentPrice(c)) }}</span>
+              <span class="c-op"><el-button type="primary" size="small" @click="openRentBuy(c)">购买</el-button></span>
             </div>
           </div>
         </div>
@@ -189,6 +216,7 @@
         <div class="buy-hero">
           <div class="buy-service">{{ buyTarget?.service_name }}</div>
           <div class="buy-country">{{ buyTarget?.country_name }}</div>
+          <div class="buy-country" v-if="buyTarget?.order_type === 'rent'">租期：{{ formatDuration(buyTarget?.duration_hours) }}</div>
           <div class="buy-amount"><span class="cur">¥</span>{{ formatPrice(buyTarget?.price_cny) }}</div>
           <div class="buy-amount-note">含服务费 · 购买后自动分配号码</div>
         </div>
@@ -277,6 +305,10 @@ const scrollToOrders = () => {
 const services = ref([])
 const serviceKeyword = ref('')
 const selectedService = ref(null)
+const mode = ref('once')
+const rentCountries = ref([])
+const rentSelection = ref({})
+const rentLoading = ref(false)
 const countries = ref([])
 const countriesLoading = ref(false)
 const countryKeyword = ref('')
@@ -369,6 +401,19 @@ const filteredServices = computed(() => {
   )
 })
 
+const filteredRentCountries = computed(() => {
+  const kw = countryKeyword.value.trim().toLowerCase()
+  const list = rentCountries.value || []
+  if (!kw) return list
+  return list.filter(c => String(c.country_name || '').toLowerCase().includes(kw))
+})
+
+const rentPrice = (c) => {
+  const dur = rentSelection.value[c.country_id]
+  const opt = (c.options || []).find(o => o.duration_hours === dur)
+  return opt ? opt.price_cny : 0
+}
+
 const filteredCountries = computed(() => {
   const kw = countryKeyword.value.trim().toLowerCase()
   if (!kw) return countries.value
@@ -411,6 +456,10 @@ const selectService = async (svc) => {
   selectedService.value = svc
   countryKeyword.value = ''
   countries.value = []
+  if (mode.value === 'rent') {
+    await loadRentCountries(svc)
+    return
+  }
   countriesLoading.value = true
   try {
     const res = await api.get('/services/countries', { params: { service: svc.service_code, sort: countrySort.value, _t: Date.now() } })
@@ -421,6 +470,62 @@ const selectService = async (svc) => {
   } finally {
     countriesLoading.value = false
   }
+}
+
+const onModeChange = async () => {
+  countryKeyword.value = ''
+  if (!selectedService.value) {
+    if (services.value.length) selectService(services.value[0])
+    return
+  }
+  if (mode.value === 'rent') {
+    await loadRentCountries(selectedService.value)
+  } else {
+    await selectService(selectedService.value)
+  }
+  if (!paymentMethods.value.length) loadPaymentMethods()
+}
+
+const loadRentCountries = async (svc) => {
+  rentLoading.value = true
+  try {
+    const params = { service: svc.service_code, _t: Date.now() }
+    if (countrySort.value.startsWith('price')) params.sort = countrySort.value
+    const res = await api.get('/services/rent/countries', { params })
+    const data = res.data?.data || res.data || {}
+    rentCountries.value = data.items || []
+    const sel = {}
+    for (const c of rentCountries.value) {
+      if (c.options && c.options.length) sel[c.country_id] = c.options[0].duration_hours
+    }
+    rentSelection.value = sel
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || '加载租号列表失败')
+  } finally {
+    rentLoading.value = false
+  }
+}
+
+const onRentDurationChange = () => { /* 价格由 rentPrice 计算 */ }
+
+const openRentBuy = (c) => {
+  const dur = rentSelection.value[c.country_id]
+  const opt = (c.options || []).find(o => o.duration_hours === dur)
+  if (!opt) {
+    ElMessage.warning('请选择租期')
+    return
+  }
+  buyTarget.value = {
+    service_code: selectedService.value?.service_code,
+    service_name: selectedService.value?.service_name,
+    country_id: c.country_id,
+    country_name: c.country_name,
+    price_cny: opt.price_cny,
+    duration_hours: dur,
+    order_type: 'rent'
+  }
+  buyVisible.value = true
+  if (!paymentMethods.value.length) loadPaymentMethods()
 }
 
 const loadOrders = async () => {
@@ -467,7 +572,13 @@ const confirmBuy = async () => {
   }
   creating.value = true
   try {
-    const res = await api.post('/services/orders', {
+    const isRent = buyTarget.value?.order_type === 'rent'
+    const res = await api.post(isRent ? '/services/rent/orders' : '/services/orders', isRent ? {
+      service_code: buyTarget.value.service_code,
+      country_id: buyTarget.value.country_id,
+      duration_hours: buyTarget.value.duration_hours,
+      payment_method: selectedPayment.value
+    } : {
       service_code: buyTarget.value.service_code,
       country_id: buyTarget.value.country_id,
       payment_method: selectedPayment.value
@@ -647,6 +758,16 @@ onUnmounted(() => {
 .sortable:hover { color: #409eff; }
 .sort-arrow { color: #409eff; font-size: 11px; }
 .orders-pager { display: flex; justify-content: center; padding: 10px 0 4px; }
+.mode-switch { margin-right: 4px; }
+.rent-row { grid-template-columns: 1fr 210px 90px 76px; }
+.c-duration { display: flex; align-items: center; }
+.rent-select { width: 100%; }
+@media (max-width: 768px) {
+  .mode-switch { width: 100%; display: flex; }
+  .mode-switch :deep(.el-radio-button) { flex: 1; }
+  .mode-switch :deep(.el-radio-button__inner) { width: 100%; }
+  .rent-row { grid-template-columns: 1fr 130px 70px 60px; }
+}
 .orders-section { margin-top: 22px; }
 .orders-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .orders-head h3 { margin: 0; font-size: 16px; color: #303133; }

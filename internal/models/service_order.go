@@ -13,6 +13,10 @@ type ServiceOrder struct {
 	UserID           uint           `gorm:"index;index:idx_service_orders_user_status,priority:1;not null" json:"user_id"`
 	ServiceCode      string         `gorm:"type:varchar(50);not null" json:"service_code"`
 	ServiceName      string         `gorm:"type:varchar(100)" json:"service_name"`
+	// once=一次性验证码；rent=租号（长期号码，可续期）
+	OrderType        string         `gorm:"type:varchar(10);default:once;index" json:"order_type"`
+	RentDurationHours int           `gorm:"default:0" json:"rent_duration_hours"`
+	RentEndTime      sql.NullTime   `json:"rent_end_time,omitempty"`
 	CountryID        int            `gorm:"not null" json:"country_id"`
 	CountryName      string         `gorm:"type:varchar(100)" json:"country_name"`
 	OfficialPriceUSD float64        `gorm:"type:decimal(10,4);not null" json:"official_price_usd"`

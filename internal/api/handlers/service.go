@@ -711,7 +711,21 @@ func applyServiceOrderPayment(c *gin.Context, db *gorm.DB, order *models.Service
 
 	cfg := smservice.LoadConfig(db)
 	client := smservice.NewClient(cfg)
-	activationID, phone, err := client.GetNumber(order.ServiceCode, strconv.Itoa(order.CountryID))
+	var activationID, phone string
+	var err error
+	rentEnd := ""
+	if order.OrderType == "rent" {
+		// 租号：调 getRentNumber（返回 JSON：activationId/phoneNumber/activationEndTime）
+		res, rentErr := client.GetRentNumber(order.ServiceCode, strconv.Itoa(order.CountryID), order.RentDurationHours)
+		if rentErr != nil {
+			err = rentErr
+		} else {
+			activationID, phone = res.ActivationID, res.PhoneNumber
+			rentEnd = res.EndTime
+		}
+	} else {
+		activationID, phone, err = client.GetNumber(order.ServiceCode, strconv.Itoa(order.CountryID))
+	}
 	if err != nil {
 		utils.LogError("ServiceOrderPay: 购买号码失败", err, map[string]interface{}{
 			"order_no": orderNo, "service": order.ServiceCode, "country": order.CountryID,
@@ -728,7 +742,12 @@ func applyServiceOrderPayment(c *gin.Context, db *gorm.DB, order *models.Service
 	order.Status = "active"
 	order.PaidAt = sql.NullTime{Time: now, Valid: true}
 	order.PaymentMethod = sql.NullString{String: paymentType, Valid: true}
-	order.APIResponse = sql.NullString{String: fmt.Sprintf(`{"activation_id":%q,"phone":%q}`, activationID, phone), Valid: true}
+	order.APIResponse = sql.NullString{String: fmt.Sprintf(`{"activation_id":%q,"phone":%q,"rent_end":%q}`, activationID, phone, rentEnd), Valid: true}
+	if rentEnd != "" {
+		if t, perr := time.Parse("2006-01-02 15:04:05", rentEnd); perr == nil {
+			order.RentEndTime = sql.NullTime{Time: t, Valid: true}
+		}
+	}
 	if err := db.Save(order).Error; err != nil {
 		utils.LogError("ServiceOrderPay: 保存激活信息失败", err, map[string]interface{}{"order_no": orderNo})
 	}
@@ -967,5 +986,215 @@ func ProlongServiceOrder(c *gin.Context) {
 	utils.SuccessResponse(c, 200, fmt.Sprintf("续期成功：+%d 小时", req.DurationHours), gin.H{
 		"price_cny":      priceCNY,
 		"duration_hours": req.DurationHours,
+	})
+}
+
+// GetServiceRentServices GET /api/v1/services/rent/services
+// 租号：服务列表直接复用一次性服务的清单（价格/库存以各国租号报价为准）。
+func GetServiceRentServices(c *gin.Context) {
+	GetServiceServices(c)
+}
+
+// GetServiceRentCountries GET /api/v1/services/rent/countries?service=wa&sort=price_asc
+// 租号：某服务在各国、各时长下的报价与库存。
+func GetServiceRentCountries(c *gin.Context) {
+	c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+	db := database.GetDB()
+	cfg := smservice.LoadConfig(db)
+	if !cfg.Enabled {
+		utils.SuccessResponse(c, 200, "服务未开启", gin.H{"enabled": false, "items": []gin.H{}})
+		return
+	}
+	service := strings.TrimSpace(c.Query("service"))
+	if service == "" {
+		utils.ErrorResponse(c, 400, "缺少 service 参数", nil)
+		return
+	}
+	client := smservice.NewClient(cfg)
+	rentPrices, err := client.GetRentPrices(service)
+	if err != nil {
+		utils.ErrorResponse(c, 400, "获取租号价格失败："+err.Error(), nil)
+		return
+	}
+	countries, _ := client.GetCountries()
+	countryName := func(id int) string {
+		cid := strconv.Itoa(id)
+		row, ok := countries[cid]
+		if !ok {
+			return "国家 " + cid
+		}
+		for _, key := range []string{"chn", "eng", "name"} {
+			if v, ok := row[key].(string); ok && strings.TrimSpace(v) != "" {
+				return v
+			}
+		}
+		return "国家 " + cid
+	}
+	// 按国家聚合：{country_id, country_name, options:[{duration_hours, price_cny, count}]}
+	type countryAgg struct {
+		CountryID   int
+		CountryName string
+		Options     []gin.H
+	}
+	aggMap := make(map[int]*countryAgg)
+	for _, rp := range rentPrices {
+		a, ok := aggMap[rp.CountryID]
+		if !ok {
+			a = &countryAgg{CountryID: rp.CountryID, CountryName: countryName(rp.CountryID)}
+			aggMap[rp.CountryID] = a
+		}
+		a.Options = append(a.Options, gin.H{
+			"duration_hours": rp.Duration,
+			"price_cny":      cfg.PriceCNY(rp.CostUSD),
+			"count":          rp.Count,
+		})
+	}
+	out := make([]gin.H, 0, len(aggMap))
+	for _, a := range aggMap {
+		sort.Slice(a.Options, func(i, j int) bool {
+			return a.Options[i]["duration_hours"].(int) < a.Options[j]["duration_hours"].(int)
+		})
+		// 该国家最低价（用于排序/展示）
+		minPrice := 0.0
+		for _, o := range a.Options {
+			p := o["price_cny"].(float64)
+			if minPrice == 0 || p < minPrice {
+				minPrice = p
+			}
+		}
+		out = append(out, gin.H{
+			"country_id":   a.CountryID,
+			"country_name": a.CountryName,
+			"min_price_cny": minPrice,
+			"options":      a.Options,
+		})
+	}
+	sortBy := strings.TrimSpace(c.DefaultQuery("sort", "count_desc"))
+	sort.Slice(out, func(i, j int) bool {
+		if sortBy == "price_asc" {
+			return out[i]["min_price_cny"].(float64) < out[j]["min_price_cny"].(float64)
+		}
+		if sortBy == "price_desc" {
+			return out[i]["min_price_cny"].(float64) > out[j]["min_price_cny"].(float64)
+		}
+		return out[i]["country_name"].(string) < out[j]["country_name"].(string)
+	})
+	utils.SuccessResponse(c, 200, "", gin.H{
+		"enabled":      true,
+		"service_code": service,
+		"items":        out,
+	})
+}
+
+// CreateServiceRentOrder POST /api/v1/services/rent/orders
+// 购买租号：创建订单 → 支付回调后调 getRentNumber 分配号码。
+func CreateServiceRentOrder(c *gin.Context) {
+	user, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		utils.ErrorResponse(c, 401, "未登录", nil)
+		return
+	}
+	var req struct {
+		ServiceCode   string `json:"service_code" binding:"required"`
+		CountryID     int    `json:"country_id" binding:"required"`
+		DurationHours int    `json:"duration_hours" binding:"required"`
+		PaymentMethod string `json:"payment_method" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ErrorResponse(c, 400, "参数错误", err)
+		return
+	}
+	db := database.GetDB()
+	cfg := smservice.LoadConfig(db)
+	if !cfg.Enabled {
+		utils.ErrorResponse(c, 403, "验证码服务未开启", nil)
+		return
+	}
+	client := smservice.NewClient(cfg)
+	rentPrices, err := client.GetRentPrices(req.ServiceCode)
+	if err != nil {
+		utils.ErrorResponse(c, 400, "获取租号价格失败："+err.Error(), nil)
+		return
+	}
+	var costUSD float64
+	found := false
+	for _, rp := range rentPrices {
+		if rp.CountryID == req.CountryID && rp.Duration == req.DurationHours && rp.Count > 0 {
+			costUSD = rp.CostUSD
+			found = true
+			break
+		}
+	}
+	if !found {
+		utils.ErrorResponse(c, 400, "该国家/时长暂无租号库存", nil)
+		return
+	}
+	_, methodName, ok := resolveServicePaymentMethod(db, req.PaymentMethod)
+	if !ok {
+		utils.ErrorResponse(c, 400, "支付方式不可用", nil)
+		return
+	}
+	priceCNY := cfg.PriceCNY(costUSD)
+	orderNo := fmt.Sprintf("SVR%d%04d%04d", time.Now().Unix(), time.Now().Nanosecond()/1e4, user.ID%10000)
+	if len(orderNo) > 50 {
+		orderNo = orderNo[:50]
+	}
+	serviceName, countryName := req.ServiceCode, strconv.Itoa(req.CountryID)
+	if items, _, err := getServiceItems(db); err == nil {
+		for _, it := range items {
+			if it.ServiceCode == req.ServiceCode && it.CountryID == req.CountryID {
+				serviceName, countryName = it.ServiceName, it.CountryName
+				break
+			}
+		}
+	}
+	order := models.ServiceOrder{
+		OrderNo:           orderNo,
+		UserID:            user.ID,
+		ServiceCode:       req.ServiceCode,
+		ServiceName:       serviceName,
+		OrderType:         "rent",
+		RentDurationHours: req.DurationHours,
+		CountryID:         req.CountryID,
+		CountryName:       countryName,
+		OfficialPriceUSD:  costUSD,
+		Multiplier:        cfg.Multiplier,
+		ExchangeRate:      cfg.ExchangeRate,
+		PriceCNY:          priceCNY,
+		PaymentMethod:     sql.NullString{String: methodName, Valid: methodName != ""},
+		PaymentStatus:     "pending",
+		Status:            "pending",
+	}
+	if err := db.Create(&order).Error; err != nil {
+		utils.ErrorResponse(c, 500, "创建订单失败", err)
+		return
+	}
+	paymentCfg, err := utils.FindEnabledPaymentConfig(db, req.PaymentMethod)
+	if err != nil {
+		_ = db.Model(&order).Update("status", "failed").Error
+		utils.ErrorResponse(c, 400, "支付方式未启用", nil)
+		return
+	}
+	tempOrder := &models.Order{
+		OrderNo:         orderNo,
+		UserID:          user.ID,
+		PackageID:       0,
+		Amount:          priceCNY,
+		AmountDueOnline: sql.NullFloat64{Float64: priceCNY, Valid: true},
+	}
+	tempOrder.PaymentMethodName = sql.NullString{String: methodName, Valid: methodName != ""}
+	paymentURL, err := generatePaymentURL(db, tempOrder, &paymentCfg, req.PaymentMethod, priceCNY)
+	if err != nil {
+		_ = db.Model(&order).Update("status", "failed").Error
+		utils.ErrorResponse(c, 500, "生成支付链接失败："+err.Error(), nil)
+		return
+	}
+	utils.SuccessResponse(c, 200, "订单创建成功", gin.H{
+		"order_no":       orderNo,
+		"price_cny":      priceCNY,
+		"official_usd":   costUSD,
+		"duration_hours": req.DurationHours,
+		"payment_method": methodName,
+		"payment_url":    paymentURL,
 	})
 }
