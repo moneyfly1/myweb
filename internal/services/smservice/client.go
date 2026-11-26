@@ -160,11 +160,14 @@ func (c *Client) GetServicesList() ([]map[string]interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	var out []map[string]interface{}
+	var out struct {
+		Status   string                   `json:"status"`
+		Services []map[string]interface{} `json:"services"`
+	}
 	if err := json.Unmarshal([]byte(text), &out); err != nil {
 		return nil, fmt.Errorf("服务列表解析失败：%w", err)
 	}
-	return out, nil
+	return out.Services, nil
 }
 
 // GetPrices 价格表：countryID → service → {cost, count}。

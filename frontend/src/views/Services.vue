@@ -127,7 +127,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Iphone, Refresh, Search } from '@element-plus/icons-vue'
 import api from '@/utils/api'
@@ -156,6 +156,13 @@ const payOrderNo = ref('')
 const payStatusText = ref('等待支付中…')
 let pollTimer = null
 
+let filterTimer = null
+const scheduleReload = () => {
+  if (filterTimer) clearTimeout(filterTimer)
+  filterTimer = setTimeout(() => { loadCatalog() }, 400)
+}
+watch([filterKeyword, filterCountry], scheduleReload)
+
 const countryOptions = computed(() => {
   const map = new Map()
   for (const it of catalog.value.items || []) {
@@ -164,14 +171,8 @@ const countryOptions = computed(() => {
   return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'zh'))
 })
 
-const filteredItems = computed(() => {
-  const kw = filterKeyword.value.trim().toLowerCase()
-  return (catalog.value.items || []).filter(it => {
-    if (filterCountry.value && it.country_id !== filterCountry.value) return false
-    if (kw && !String(it.service_name || '').toLowerCase().includes(kw) && !String(it.service_code || '').toLowerCase().includes(kw)) return false
-    return true
-  })
-})
+// 搜索/国家筛选交给后端（服务数量可能上万，前端只渲染后端返回的前 300 项）
+const filteredItems = computed(() => catalog.value.items || [])
 
 const formatPrice = v => Number(v || 0).toFixed(2)
 
@@ -181,7 +182,10 @@ const statusType = s => ({ pending: 'info', active: 'success', completed: 'succe
 const loadCatalog = async () => {
   loading.value = true
   try {
-    const res = await api.get('/services/catalog')
+    const params = { limit: 300 }
+    if (filterCountry.value) params.country = filterCountry.value
+    if (filterKeyword.value.trim()) params.q = filterKeyword.value.trim()
+    const res = await api.get('/services/catalog', { params })
     const data = res.data?.data || res.data || {}
     catalog.value = {
       enabled: !!data.enabled,

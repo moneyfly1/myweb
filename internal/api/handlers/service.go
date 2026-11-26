@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"sync"
 	"strings"
 	"time"
 
@@ -29,6 +30,17 @@ type ServiceCatalogItem struct {
 	Count            int     `json:"count"`
 }
 
+// serviceCatalogCache 缓存平台原始商品，避免每次请求都拉 1MB+ 的 getPrices（约 3 秒）。
+var serviceCatalogCache struct {
+	mu         sync.Mutex
+	at         time.Time
+	items      []ServiceCatalogItem
+	multiplier float64
+	rate       float64
+}
+
+const serviceCatalogCacheTTL = 5 * time.Minute
+
 // GetServiceCatalog GET /api/v1/services/catalog
 // 返回验证码服务商品列表（实时价格换算）。
 func GetServiceCatalog(c *gin.Context) {
@@ -42,6 +54,16 @@ func GetServiceCatalog(c *gin.Context) {
 		utils.SuccessResponse(c, 200, "未配置 API 密钥", gin.H{"enabled": true, "items": []ServiceCatalogItem{}, "notice": "管理员尚未配置 API 密钥"})
 		return
 	}
+
+	serviceCatalogCache.mu.Lock()
+	if time.Since(serviceCatalogCache.at) < serviceCatalogCacheTTL && len(serviceCatalogCache.items) > 0 &&
+		serviceCatalogCache.multiplier == cfg.Multiplier && serviceCatalogCache.rate == cfg.ExchangeRate {
+		cached := serviceCatalogCache.items
+		serviceCatalogCache.mu.Unlock()
+		respondServiceCatalog(c, cfg, cached)
+		return
+	}
+	serviceCatalogCache.mu.Unlock()
 
 	client := smservice.NewClient(cfg)
 	prices, err := client.GetPrices()
@@ -108,17 +130,59 @@ func GetServiceCatalog(c *gin.Context) {
 			})
 		}
 	}
+	serviceCatalogCache.mu.Lock()
+	serviceCatalogCache.at = time.Now()
+	serviceCatalogCache.items = items
+	serviceCatalogCache.multiplier = cfg.Multiplier
+	serviceCatalogCache.rate = cfg.ExchangeRate
+	serviceCatalogCache.mu.Unlock()
+
+	respondServiceCatalog(c, cfg, items)
+}
+
+// respondServiceCatalog 对商品做筛选/排序/截断后返回（缓存命中与未命中都走这里）。
+func respondServiceCatalog(c *gin.Context, cfg *smservice.Config, items []ServiceCatalogItem) {
+	q := strings.ToLower(strings.TrimSpace(c.Query("q")))
+	serviceFilter := strings.TrimSpace(c.Query("service"))
+	countryFilter := strings.TrimSpace(c.Query("country"))
+	if q != "" || serviceFilter != "" || countryFilter != "" {
+		filtered := make([]ServiceCatalogItem, 0, len(items))
+		for _, it := range items {
+			if serviceFilter != "" && it.ServiceCode != serviceFilter {
+				continue
+			}
+			if countryFilter != "" && strconv.Itoa(it.CountryID) != countryFilter {
+				continue
+			}
+			if q != "" && !strings.Contains(strings.ToLower(it.ServiceName), q) && !strings.Contains(strings.ToLower(it.ServiceCode), q) {
+				continue
+			}
+			filtered = append(filtered, it)
+		}
+		items = filtered
+	}
 	sort.Slice(items, func(i, j int) bool {
+		if items[i].Count != items[j].Count {
+			return items[i].Count > items[j].Count
+		}
 		if items[i].PriceCNY == items[j].PriceCNY {
 			return items[i].ServiceName < items[j].ServiceName
 		}
 		return items[i].PriceCNY < items[j].PriceCNY
 	})
-
+	total := len(items)
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "300"))
+	if limit <= 0 || limit > 1000 {
+		limit = 300
+	}
+	if len(items) > limit {
+		items = items[:limit]
+	}
 	utils.SuccessResponse(c, 200, "", gin.H{
 		"enabled":       true,
 		"multiplier":    cfg.Multiplier,
 		"exchange_rate": cfg.ExchangeRate,
+		"total":         total,
 		"items":         items,
 	})
 }
