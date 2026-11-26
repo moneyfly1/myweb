@@ -86,9 +86,10 @@
             :prefix-icon="Search"
           />
         </div>
-        <div v-loading="countriesLoading" class="country-list">
+        <div v-loading="mode === 'rent' ? rentLoading : countriesLoading" class="country-list">
           <el-empty v-if="!selectedService" description="从左侧选择一个服务" :image-size="70" />
-          <el-empty v-else-if="!countriesLoading && !filteredCountries.length" description="该服务暂无可用国家" :image-size="70" />
+          <el-empty v-else-if="mode === 'once' && !countriesLoading && !filteredCountries.length" description="该服务暂无可用国家" :image-size="70" />
+          <el-empty v-else-if="mode === 'rent' && !rentLoading && !filteredRentCountries.length" description="该服务暂无租号库存" :image-size="70" />
           <div v-else-if="mode === 'once'" class="country-table">
             <div class="country-row head">
               <span>国家</span>
