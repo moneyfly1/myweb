@@ -167,6 +167,8 @@ func SetupRouter() *gin.Engine {
 		services.Use(middleware.AuthMiddleware())
 		{
 			services.GET("/catalog", handlers.GetServiceCatalog)
+			services.GET("/services", handlers.GetServiceServices)
+			services.GET("/countries", handlers.GetServiceCountries)
 			services.POST("/orders", handlers.CreateServiceOrder)
 			services.GET("/orders", handlers.GetMyServiceOrders)
 			services.GET("/orders/:orderNo", handlers.GetServiceOrderDetail)

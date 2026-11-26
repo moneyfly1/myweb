@@ -41,6 +41,194 @@ var serviceCatalogCache struct {
 
 const serviceCatalogCacheTTL = 5 * time.Minute
 
+// getServiceItems 读取平台商品（带 5 分钟缓存），供 catalog / 服务列表 / 国家列表共用。
+func getServiceItems(db *gorm.DB) ([]ServiceCatalogItem, *smservice.Config, error) {
+	cfg := smservice.LoadConfig(db)
+	if !cfg.Enabled || strings.TrimSpace(cfg.APIKey) == "" {
+		return nil, cfg, nil
+	}
+	serviceCatalogCache.mu.Lock()
+	if time.Since(serviceCatalogCache.at) < serviceCatalogCacheTTL && len(serviceCatalogCache.items) > 0 &&
+		serviceCatalogCache.multiplier == cfg.Multiplier && serviceCatalogCache.rate == cfg.ExchangeRate {
+		cached := serviceCatalogCache.items
+		serviceCatalogCache.mu.Unlock()
+		return cached, cfg, nil
+	}
+	serviceCatalogCache.mu.Unlock()
+
+	client := smservice.NewClient(cfg)
+	prices, err := client.GetPrices()
+	if err != nil {
+		return nil, cfg, fmt.Errorf("获取价格失败：%w", err)
+	}
+	countries, err := client.GetCountries()
+	if err != nil {
+		return nil, cfg, fmt.Errorf("获取国家列表失败：%w", err)
+	}
+	services, err := client.GetServicesList()
+	if err != nil {
+		return nil, cfg, fmt.Errorf("获取服务列表失败：%w", err)
+	}
+	svcNames := make(map[string]string, len(services))
+	for _, sv := range services {
+		code, _ := sv["code"].(string)
+		name, _ := sv["name"].(string)
+		if code == "" {
+			continue
+		}
+		if name == "" {
+			name = code
+		}
+		svcNames[code] = name
+	}
+	countryName := func(id string) string {
+		row, ok := countries[id]
+		if !ok {
+			return "国家 " + id
+		}
+		for _, key := range []string{"chn", "eng", "name"} {
+			if v, ok := row[key].(string); ok && strings.TrimSpace(v) != "" {
+				return v
+			}
+		}
+		return "国家 " + id
+	}
+	items := make([]ServiceCatalogItem, 0, 1024)
+	for cid, svcMap := range prices {
+		countryID, _ := strconv.Atoi(cid)
+		for serviceCode, pr := range svcMap {
+			if pr.Cost <= 0 || pr.Count <= 0 {
+				continue
+			}
+			name := svcNames[serviceCode]
+			if name == "" {
+				name = serviceCode
+			}
+			items = append(items, ServiceCatalogItem{
+				ServiceCode:      serviceCode,
+				ServiceName:      name,
+				CountryID:        countryID,
+				CountryName:      countryName(cid),
+				OfficialPriceUSD: pr.Cost,
+				PriceCNY:         cfg.PriceCNY(pr.Cost),
+				Count:            pr.Count,
+			})
+		}
+	}
+	serviceCatalogCache.mu.Lock()
+	serviceCatalogCache.at = time.Now()
+	serviceCatalogCache.items = items
+	serviceCatalogCache.multiplier = cfg.Multiplier
+	serviceCatalogCache.rate = cfg.ExchangeRate
+	serviceCatalogCache.mu.Unlock()
+	return items, cfg, nil
+}
+
+// GetServiceServices GET /api/v1/services/services
+// 左侧「服务列表」：按服务聚合（国家数/最低价/总库存），只返回几十~几百个服务。
+func GetServiceServices(c *gin.Context) {
+	c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+	db := database.GetDB()
+	items, cfg, err := getServiceItems(db)
+	if err != nil {
+		utils.ErrorResponse(c, 400, err.Error(), nil)
+		return
+	}
+	if !cfg.Enabled {
+		utils.SuccessResponse(c, 200, "服务未开启", gin.H{"enabled": false, "items": []gin.H{}})
+		return
+	}
+	type agg struct {
+		ServiceCode  string
+		ServiceName  string
+		CountryCount int
+		MinPrice     float64
+		Count        int
+	}
+	m := make(map[string]*agg, 256)
+	for _, it := range items {
+		a, ok := m[it.ServiceCode]
+		if !ok {
+			a = &agg{ServiceCode: it.ServiceCode, ServiceName: it.ServiceName, MinPrice: it.PriceCNY}
+			m[it.ServiceCode] = a
+		}
+		a.CountryCount++
+		a.Count += it.Count
+		if it.PriceCNY < a.MinPrice {
+			a.MinPrice = it.PriceCNY
+		}
+	}
+	q := strings.ToLower(strings.TrimSpace(c.Query("q")))
+	out := make([]gin.H, 0, len(m))
+	for _, a := range m {
+		if q != "" && !strings.Contains(strings.ToLower(a.ServiceName), q) && !strings.Contains(strings.ToLower(a.ServiceCode), q) {
+			continue
+		}
+		out = append(out, gin.H{
+			"service_code":  a.ServiceCode,
+			"service_name":  a.ServiceName,
+			"country_count": a.CountryCount,
+			"min_price_cny": a.MinPrice,
+			"count":         a.Count,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i]["count"].(int) > out[j]["count"].(int)
+	})
+	utils.SuccessResponse(c, 200, "", gin.H{
+		"enabled": true,
+		"items":   out,
+	})
+}
+
+// GetServiceCountries GET /api/v1/services/countries?service=wa
+// 右侧「国家列表」：某个服务在各国的报价与库存。
+func GetServiceCountries(c *gin.Context) {
+	c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+	db := database.GetDB()
+	service := strings.TrimSpace(c.Query("service"))
+	if service == "" {
+		utils.ErrorResponse(c, 400, "缺少 service 参数", nil)
+		return
+	}
+	items, cfg, err := getServiceItems(db)
+	if err != nil {
+		utils.ErrorResponse(c, 400, err.Error(), nil)
+		return
+	}
+	if !cfg.Enabled {
+		utils.SuccessResponse(c, 200, "服务未开启", gin.H{"enabled": false, "items": []gin.H{}})
+		return
+	}
+	q := strings.ToLower(strings.TrimSpace(c.Query("q")))
+	out := make([]gin.H, 0, 64)
+	serviceName := ""
+	for _, it := range items {
+		if it.ServiceCode != service {
+			continue
+		}
+		if q != "" && !strings.Contains(strings.ToLower(it.CountryName), q) {
+			continue
+		}
+		serviceName = it.ServiceName
+		out = append(out, gin.H{
+			"country_id":   it.CountryID,
+			"country_name": it.CountryName,
+			"price_cny":    it.PriceCNY,
+			"count":        it.Count,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i]["count"].(int) > out[j]["count"].(int)
+	})
+	utils.SuccessResponse(c, 200, "", gin.H{
+		"enabled":      true,
+		"service_code": service,
+		"service_name": serviceName,
+		"items":        out,
+	})
+}
+
 // GetServiceCatalog GET /api/v1/services/catalog
 // 返回验证码服务商品列表（实时价格换算）。
 func GetServiceCatalog(c *gin.Context) {
@@ -250,13 +438,23 @@ func CreateServiceOrder(c *gin.Context) {
 		orderNo = orderNo[:50]
 	}
 
+	// 从商品缓存里取真实的服务名/国家名（订单列表展示用）
+	serviceName, countryName := req.ServiceCode, strconv.Itoa(req.CountryID)
+	if cached, _, err := getServiceItems(db); err == nil {
+		for _, it := range cached {
+			if it.ServiceCode == req.ServiceCode && it.CountryID == req.CountryID {
+				serviceName, countryName = it.ServiceName, it.CountryName
+				break
+			}
+		}
+	}
 	order := models.ServiceOrder{
 		OrderNo:          orderNo,
 		UserID:           user.ID,
 		ServiceCode:      req.ServiceCode,
-		ServiceName:      req.ServiceCode,
+		ServiceName:      serviceName,
 		CountryID:        req.CountryID,
-		CountryName:      strconv.Itoa(req.CountryID),
+		CountryName:      countryName,
 		OfficialPriceUSD: p.Cost,
 		Multiplier:       cfg.Multiplier,
 		ExchangeRate:     cfg.ExchangeRate,
