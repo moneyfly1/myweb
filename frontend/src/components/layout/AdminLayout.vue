@@ -74,6 +74,7 @@
             role="button"
             :aria-expanded="!collapsedSections[section.title]"
           >
+            <el-icon class="section-icon" v-if="section.icon"><component :is="getIcon(section.icon)" /></el-icon>
             <span>{{ section.title }}</span>
             <el-icon v-if="section.collapsible" class="section-arrow"><ArrowDown /></el-icon>
           </div>
@@ -303,9 +304,10 @@ const menuSections = computed(() => {
   // 说明：系统设置（/admin/settings）此前没有菜单入口，只能靠地址栏进 —— 这里补上，
   // 并与配置管理、支付配置、邮件队列放在同一组（都是「改系统怎么跑」的配置类入口）。
   const baseSections = [
-    { title: '概览', collapsible: false, items: [{ path: '/admin/dashboard', title: '仪表盘', icon: 'dashboard' }] },
+    { title: '概览', icon: 'dashboard', collapsible: false, items: [{ path: '/admin/dashboard', title: '仪表盘', icon: 'dashboard' }] },
     {
       title: '用户运营',
+      icon: 'users',
       collapsible: true,
       items: [
         { path: '/admin/users', title: '用户列表', icon: 'users' },
@@ -316,6 +318,7 @@ const menuSections = computed(() => {
     },
     {
       title: '交易与营销',
+      icon: 'orders',
       collapsible: true,
       items: [
         { path: '/admin/subscriptions', title: '订阅管理', icon: 'subscriptions' },
@@ -327,6 +330,7 @@ const menuSections = computed(() => {
     },
     {
       title: '客服与内容',
+      icon: 'tickets',
       collapsible: true,
       items: [
         {
@@ -340,6 +344,7 @@ const menuSections = computed(() => {
     },
     {
       title: '节点管理',
+      icon: 'nodes',
       collapsible: true,
       items: [
         { path: '/admin/nodes', title: '节点列表', icon: 'nodes' },
@@ -350,6 +355,7 @@ const menuSections = computed(() => {
     },
     {
       title: '系统与配置',
+      icon: 'settings',
       collapsible: true,
       items: [
         { path: '/admin/settings', title: '系统设置', icon: 'settings' },
@@ -360,6 +366,7 @@ const menuSections = computed(() => {
     },
     {
       title: '数据与日志',
+      icon: 'statistics',
       collapsible: true,
       items: [
         { path: '/admin/statistics', title: '数据统计', icon: 'statistics' },
@@ -574,6 +581,11 @@ const getCurrentThemeLabel = () => themes.value.find(t => t.value === currentThe
       font-weight: 600;
       color: #909399;
       user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      .section-icon { font-size: 14px; flex-shrink: 0; }
+      .section-arrow { margin-left: auto; }
       &.collapsible {
         cursor: pointer;
         display: flex;
