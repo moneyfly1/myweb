@@ -182,7 +182,7 @@ const statusType = s => ({ pending: 'info', active: 'success', completed: 'succe
 const loadCatalog = async () => {
   loading.value = true
   try {
-    const params = { limit: 300 }
+    const params = { limit: 300, _t: Date.now() }
     if (filterCountry.value) params.country = filterCountry.value
     if (filterKeyword.value.trim()) params.q = filterKeyword.value.trim()
     const res = await api.get('/services/catalog', { params })

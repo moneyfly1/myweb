@@ -44,6 +44,9 @@ const serviceCatalogCacheTTL = 5 * time.Minute
 // GetServiceCatalog GET /api/v1/services/catalog
 // 返回验证码服务商品列表（实时价格换算）。
 func GetServiceCatalog(c *gin.Context) {
+	// 禁止客户端/代理缓存：价格与商品会变化，缓存旧响应会导致页面显示过期数据
+	c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+	c.Header("Pragma", "no-cache")
 	db := database.GetDB()
 	cfg := smservice.LoadConfig(db)
 	if !cfg.Enabled {
