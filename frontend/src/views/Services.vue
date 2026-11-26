@@ -159,12 +159,16 @@
               <el-tag size="small" :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
             </template>
           </el-table-column>
+          <el-table-column label="到期" min-width="120">
+            <template #default="{ row }">
+              <span :class="{ 'text-danger': formatRemaining(row.expire_time) === '已到期' }">{{ formatRemaining(row.expire_time) }}</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="created_at" label="时间" min-width="150" />
           <el-table-column label="操作" width="260" fixed="right">
             <template #default="{ row }">
               <el-button v-if="row.otp" size="small" @click="copy(row.otp)">复制验证码</el-button>
               <el-button v-else-if="row.phone_number" size="small" @click="copy(row.phone_number)">复制号码</el-button>
-              <el-button v-if="row.activation_id" size="small" @click="openProlong(row)">续期</el-button>
               <el-button v-if="row.activation_id" size="small" @click="openProlong(row)">续期</el-button>
               <el-button v-if="row.status === 'active'" size="small" @click="finishOrder(row)">完成</el-button>
               <el-button v-if="row.status === 'active'" size="small" type="danger" plain @click="cancelOrder(row)">取消</el-button>
@@ -196,6 +200,10 @@
               <span v-if="row.otp" class="otp-code">{{ row.otp }}</span>
               <span v-else-if="row.status === 'active'" class="otp-waiting">— 等待短信</span>
               <span v-else class="muted">—</span>
+            </div>
+            <div class="mob-order-line" v-if="row.expire_time">
+              <span class="k">到期</span>
+              <span :class="{ 'text-danger': formatRemaining(row.expire_time) === '已到期' }">{{ formatRemaining(row.expire_time) }}（到期自动释放，不退款）</span>
             </div>
             <div class="mob-order-foot">
               <span class="mob-order-amount">¥{{ formatPrice(row.price_cny) }}</span>
@@ -431,8 +439,20 @@ const payIconClass = (key) => {
   return 'icon-default'
 }
 const formatCount = n => Number(n || 0).toLocaleString()
-const statusText = s => ({ pending: '待支付', active: '已激活', completed: '已验证', cancelled: '已取消', failed: '已退款' }[s] || s)
-const statusType = s => ({ pending: 'info', active: 'warning', completed: 'success', cancelled: 'info', failed: 'danger' }[s] || 'info')
+// 距离号码到期剩余时间（自动释放，不退款）
+const formatRemaining = (expire) => {
+  if (!expire) return '—'
+  const t = new Date(String(expire).replace(' ', 'T')).getTime()
+  if (!Number.isFinite(t)) return '—'
+  const diff = t - Date.now()
+  if (diff <= 0) return '已到期'
+  const mins = Math.ceil(diff / 60000)
+  if (mins >= 1440) return `剩 ${Math.floor(mins / 1440)} 天 ${Math.floor((mins % 1440) / 60)} 小时`
+  if (mins >= 60) return `剩 ${Math.floor(mins / 60)} 小时 ${mins % 60} 分`
+  return `剩 ${mins} 分钟`
+}
+const statusText = s => ({ pending: '待支付', active: '等待短信', completed: '已验证', cancelled: '已取消', failed: '已退款', expired: '到期释放' }[s] || s)
+const statusType = s => ({ pending: 'info', active: 'warning', completed: 'success', cancelled: 'info', failed: 'danger', expired: 'info' }[s] || 'info')
 
 const loadServices = async () => {
   loading.value = true
@@ -759,6 +779,7 @@ onUnmounted(() => {
 .sortable:hover { color: #409eff; }
 .sort-arrow { color: #409eff; font-size: 11px; }
 .orders-pager { display: flex; justify-content: center; padding: 10px 0 4px; }
+.text-danger { color: #f56c6c; }
 .mode-switch { margin-right: 4px; }
 .rent-row { grid-template-columns: 1fr 210px 90px 76px; }
 .c-duration { display: flex; align-items: center; }

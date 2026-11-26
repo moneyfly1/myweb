@@ -17,6 +17,8 @@ type ServiceOrder struct {
 	OrderType        string         `gorm:"type:varchar(10);default:once;index" json:"order_type"`
 	RentDurationHours int           `gorm:"default:0" json:"rent_duration_hours"`
 	RentEndTime      sql.NullTime   `json:"rent_end_time,omitempty"`
+	// 号码到期时间：到期后自动释放（不退款）。一次性=激活+16分钟；租号=租期结束
+	ExpireTime       sql.NullTime   `gorm:"index" json:"expire_time,omitempty"`
 	CountryID        int            `gorm:"not null" json:"country_id"`
 	CountryName      string         `gorm:"type:varchar(100)" json:"country_name"`
 	OfficialPriceUSD float64        `gorm:"type:decimal(10,4);not null" json:"official_price_usd"`

@@ -590,6 +590,10 @@ func serviceOrderView(o *models.ServiceOrder) gin.H {
 		"otp":              o.OTP.String,
 		"activation_id":    o.ActivationID.String,
 		"refunded":         o.Refunded,
+		"order_type":       o.OrderType,
+		"rent_duration_hours": o.RentDurationHours,
+		"rent_end_time":    utils.FormatNullTimeBeijing(o.RentEndTime),
+		"expire_time":      utils.FormatNullTimeBeijing(o.ExpireTime),
 		"created_at":       utils.FormatBeijingTime(o.CreatedAt),
 	}
 }
@@ -743,6 +747,14 @@ func applyServiceOrderPayment(c *gin.Context, db *gorm.DB, order *models.Service
 	order.PaidAt = sql.NullTime{Time: now, Valid: true}
 	order.PaymentMethod = sql.NullString{String: paymentType, Valid: true}
 	order.APIResponse = sql.NullString{String: fmt.Sprintf(`{"activation_id":%q,"phone":%q,"rent_end":%q}`, activationID, phone, rentEnd), Valid: true}
+	// 号码到期时间：租号用平台返回的结束时间；一次性号码按 16 分钟有效期计算
+	expireAt := now.Add(16 * time.Minute)
+	if rentEnd != "" {
+		if t, perr := time.Parse("2006-01-02 15:04:05", rentEnd); perr == nil {
+			expireAt = t
+		}
+	}
+	order.ExpireTime = sql.NullTime{Time: expireAt, Valid: true}
 	if rentEnd != "" {
 		if t, perr := time.Parse("2006-01-02 15:04:05", rentEnd); perr == nil {
 			order.RentEndTime = sql.NullTime{Time: t, Valid: true}

@@ -21,6 +21,7 @@ import (
 	"cboard-go/internal/services/notification"
 	"cboard-go/internal/services/repo_sync"
 	"cboard-go/internal/services/selfhost"
+	"cboard-go/internal/services/smservice"
 	"cboard-go/internal/services/software_sync"
 	"cboard-go/internal/utils"
 
@@ -65,6 +66,7 @@ func (s *Scheduler) Start() {
 	go s.autoBackup()
 	go s.syncRepoFiles()
 	go s.syncSoftwareLibrary()
+	go s.releaseExpiredServiceOrders()
 }
 
 func (s *Scheduler) processEmailQueue() {
@@ -982,6 +984,51 @@ func (s *Scheduler) maybeRunSoftwareSync() {
 		if !software_sync.IsRunning() {
 			log.Println("定时任务: 开始 GitHub→阿里云盘 软件库同步")
 			software_sync.TriggerAsync()
+		}
+	}
+}
+
+// releaseExpiredServiceOrders 每分钟扫描验证码服务订单：号码到期后调用平台取消/释放，
+// 并标记为 expired（到期释放，不退款）。后台真正释放号码，避免一直占用平台库存。
+func (s *Scheduler) releaseExpiredServiceOrders() {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		db := database.GetDB()
+		if db == nil {
+			continue
+		}
+		now := time.Now()
+		var orders []models.ServiceOrder
+		if err := db.Where("status = ? AND expire_time IS NOT NULL AND expire_time < ?", "active", now).
+			Limit(100).Find(&orders).Error; err != nil {
+			log.Printf("releaseExpiredServiceOrders: query failed: %v", err)
+			continue
+		}
+		if len(orders) == 0 {
+			continue
+		}
+		cfg := smservice.LoadConfig(db)
+		client := smservice.NewClient(cfg)
+		for i := range orders {
+			o := &orders[i]
+			if o.ActivationID.Valid {
+				// 真正释放：调平台取消激活（失败也继续标记，平台会自然到期）
+				if err := client.Cancel(o.ActivationID.String); err != nil {
+					log.Printf("releaseExpiredServiceOrders: cancel %s failed: %v", o.ActivationID.String, err)
+				}
+			}
+			if err := db.Model(o).Updates(map[string]interface{}{
+				"status":      "expired",
+				"refunded":    false,
+			}).Error; err != nil {
+				log.Printf("releaseExpiredServiceOrders: update %s failed: %v", o.OrderNo, err)
+			}
+		}
+		if err := utils.CreateSchedulerLog("service_orders_expiry", "released", fmt.Sprintf("释放到期验证码号码 %d 个", len(orders)), map[string]interface{}{
+			"count": len(orders),
+		}); err != nil {
+			log.Printf("failed to create scheduler log: %v", err)
 		}
 	}
 }
