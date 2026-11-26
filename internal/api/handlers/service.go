@@ -1198,3 +1198,103 @@ func CreateServiceRentOrder(c *gin.Context) {
 		"payment_url":    paymentURL,
 	})
 }
+
+// AdminGetServiceOrders GET /api/v1/admin/services/orders
+// 管理员查看客户的验证码服务订单（一次性 / 租号），支持筛选与分页。
+func AdminGetServiceOrders(c *gin.Context) {
+	db := database.GetDB()
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || size > 200 {
+		size = 20
+	}
+	q := strings.TrimSpace(c.Query("q"))
+	status := strings.TrimSpace(c.Query("status"))
+	payStatus := strings.TrimSpace(c.Query("payment_status"))
+	orderType := strings.TrimSpace(c.Query("order_type"))
+	startDate := strings.TrimSpace(c.Query("start_date"))
+	endDate := strings.TrimSpace(c.Query("end_date"))
+
+	query := db.Model(&models.ServiceOrder{}).
+		Joins("LEFT JOIN users ON users.id = service_orders.user_id")
+	if q != "" {
+		like := "%" + q + "%"
+		query = query.Where("service_orders.order_no LIKE ? OR users.email LIKE ? OR users.username LIKE ? OR service_orders.phone_number LIKE ? OR service_orders.service_name LIKE ?", like, like, like, like, like)
+	}
+	if status != "" {
+		query = query.Where("service_orders.status = ?", status)
+	}
+	if payStatus != "" {
+		query = query.Where("service_orders.payment_status = ?", payStatus)
+	}
+	if orderType != "" {
+		query = query.Where("service_orders.order_type = ?", orderType)
+	}
+	if startDate != "" {
+		query = query.Where("service_orders.created_at >= ?", startDate+" 00:00:00")
+	}
+	if endDate != "" {
+		query = query.Where("service_orders.created_at <= ?", endDate+" 23:59:59")
+	}
+	var total int64
+	query.Count(&total)
+
+	type row struct {
+		models.ServiceOrder
+		UserEmail    string
+		UserName     string
+	}
+	var rows []row
+	if err := query.Select("service_orders.*, users.email AS user_email, users.username AS user_name").
+		Order("service_orders.id DESC").
+		Limit(size).Offset((page - 1) * size).Find(&rows).Error; err != nil {
+		utils.ErrorResponse(c, 500, "查询失败", err)
+		return
+	}
+	items := make([]gin.H, 0, len(rows))
+	for _, r := range rows {
+		items = append(items, gin.H{
+			"id":                r.ID,
+			"order_no":          r.OrderNo,
+			"user_email":        r.UserEmail,
+			"user_name":         r.UserName,
+			"order_type":        r.OrderType,
+			"service_code":      r.ServiceCode,
+			"service_name":      r.ServiceName,
+			"country_id":        r.CountryID,
+			"country_name":      r.CountryName,
+			"rent_duration_hours": r.RentDurationHours,
+			"price_cny":         r.PriceCNY,
+			"official_usd":      r.OfficialPriceUSD,
+			"payment_method":    r.PaymentMethod.String,
+			"payment_status":    r.PaymentStatus,
+			"status":            r.Status,
+			"phone_number":      r.PhoneNumber.String,
+			"otp":               r.OTP.String,
+			"activation_id":     r.ActivationID.String,
+			"refunded":          r.Refunded,
+			"refund_reason":     r.RefundReason.String,
+			"error_msg":         r.ErrorMsg.String,
+			"rent_end_time":     utils.FormatNullTimeBeijing(r.RentEndTime),
+			"created_at":        utils.FormatBeijingTime(r.CreatedAt),
+		})
+	}
+	utils.SuccessResponse(c, 200, "", gin.H{"total": total, "page": page, "size": size, "items": items})
+}
+
+// AdminServiceOrderStats GET /api/v1/admin/services/orders/stats
+func AdminServiceOrderStats(c *gin.Context) {
+	db := database.GetDB()
+	var total, active, completed, failed, refunded int64
+	db.Model(&models.ServiceOrder{}).Count(&total)
+	db.Model(&models.ServiceOrder{}).Where("status = ?", "active").Count(&active)
+	db.Model(&models.ServiceOrder{}).Where("status = ?", "completed").Count(&completed)
+	db.Model(&models.ServiceOrder{}).Where("status = ?", "failed").Count(&failed)
+	db.Model(&models.ServiceOrder{}).Where("payment_status = ?", "refunded").Count(&refunded)
+	utils.SuccessResponse(c, 200, "", gin.H{
+		"total": total, "active": active, "completed": completed, "failed": failed, "refunded": refunded,
+	})
+}

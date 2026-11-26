@@ -488,6 +488,8 @@ func SetupRouter() *gin.Engine {
 			// 订阅域名池（系统设置 → 订阅域名池）：一键建站点 + 签证书 + 重载 nginx + 写配置
 			admin.GET("/services/config", handlers.AdminGetServiceConfig)
 			admin.PUT("/services/config", handlers.AdminUpdateServiceConfig)
+			admin.GET("/services/orders", handlers.AdminGetServiceOrders)
+			admin.GET("/services/orders/stats", handlers.AdminServiceOrderStats)
 			admin.GET("/domains/pool", handlers.GetDomainPool)
 			admin.POST("/domains/pool/configure", handlers.ConfigureDomainPool)
 			admin.POST("/domains/pool/primary", handlers.SetDomainPoolPrimary)

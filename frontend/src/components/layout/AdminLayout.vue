@@ -224,8 +224,7 @@ import {
   User,
   UserFilled,
   Wallet,
-  Warning
-} from '@element-plus/icons-vue'
+  Warning, Iphone } from '@element-plus/icons-vue'
 import { ElMessage } from '@/utils/elementPlusServices'
 import { useAuthStore } from '@/store/auth'
 import { useThemeStore } from '@/store/theme'
@@ -252,6 +251,7 @@ const iconMap = {
   invites: UserFilled,
   tickets: Tickets,
   orders: ShoppingCart,
+  services: Iphone,
   packages: Goods,
   coupons: Ticket,
   promotions: Present,
@@ -323,6 +323,7 @@ const menuSections = computed(() => {
       items: [
         { path: '/admin/subscriptions', title: '订阅管理', icon: 'subscriptions' },
         { path: '/admin/orders', title: '订单列表', icon: 'orders' },
+        { path: '/admin/service-orders', title: '验证码订单', icon: 'services' },
         { path: '/admin/packages', title: '套餐管理', icon: 'packages' },
         { path: '/admin/coupons', title: '优惠券管理', icon: 'coupons' },
         { path: '/admin/promotions', title: '营销活动', icon: 'promotions' }
