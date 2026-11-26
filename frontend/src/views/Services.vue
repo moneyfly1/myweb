@@ -549,17 +549,17 @@ const openRentBuy = (c) => {
   if (!paymentMethods.value.length) loadPaymentMethods()
 }
 
-const loadOrders = async () => {
-  ordersLoading.value = true
+const loadOrders = async (silent = false) => {
+  if (!silent) ordersLoading.value = true
   try {
     const res = await api.get('/services/orders', { params: { page: orderPage.value, size: orderPageSize.value } })
     const data = res.data?.data || res.data || {}
     orders.value = data.items || []
     orderTotal.value = data.total || 0
   } catch (e) {
-    ElMessage.error(e?.response?.data?.message || '加载订单失败')
+    if (!silent) ElMessage.error(e?.response?.data?.message || '加载订单失败')
   } finally {
-    ordersLoading.value = false
+    if (!silent) ordersLoading.value = false
   }
 }
 
@@ -707,7 +707,7 @@ const startOrdersAutoRefresh = () => {
     if (ordersLoading.value) return
     const waiting = orders.value.some(o => o.status === 'active' && !o.otp)
     if (!waiting && Math.floor(Date.now() / 1000) % 10 !== 0) return
-    await loadOrders()
+    await loadOrders(true)
   }, 3000)
 }
 const stopOrdersAutoRefresh = () => {
