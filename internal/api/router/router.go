@@ -174,6 +174,8 @@ func SetupRouter() *gin.Engine {
 			services.GET("/orders/:orderNo", handlers.GetServiceOrderDetail)
 			services.POST("/orders/:orderNo/finish", handlers.FinishServiceOrder)
 			services.POST("/orders/:orderNo/cancel", handlers.CancelServiceOrder)
+			services.GET("/orders/:orderNo/prolong-options", handlers.GetServiceProlongOptions)
+			services.POST("/orders/:orderNo/prolong", handlers.ProlongServiceOrder)
 		}
 		orders := api.Group("/orders")
 		orders.Use(middleware.AuthMiddleware())

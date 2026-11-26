@@ -218,13 +218,36 @@ func GetServiceCountries(c *gin.Context) {
 			"count":        it.Count,
 		})
 	}
+	// 排序：count_desc（库存多优先，默认）/ price_asc（售价低→高）/ price_desc / name_asc
+	sortBy := strings.TrimSpace(c.DefaultQuery("sort", "count_desc"))
 	sort.Slice(out, func(i, j int) bool {
-		return out[i]["count"].(int) > out[j]["count"].(int)
+		pi, pj := out[i]["price_cny"].(float64), out[j]["price_cny"].(float64)
+		ci, cj := out[i]["count"].(int), out[j]["count"].(int)
+		switch sortBy {
+		case "price_asc":
+			if pi != pj {
+				return pi < pj
+			}
+			return ci > cj
+		case "price_desc":
+			if pi != pj {
+				return pi > pj
+			}
+			return ci > cj
+		case "name_asc":
+			return out[i]["country_name"].(string) < out[j]["country_name"].(string)
+		default:
+			if ci != cj {
+				return ci > cj
+			}
+			return pi < pj
+		}
 	})
 	utils.SuccessResponse(c, 200, "", gin.H{
 		"enabled":      true,
 		"service_code": service,
 		"service_name": serviceName,
+		"sort":         sortBy,
 		"items":        out,
 	})
 }
@@ -801,4 +824,148 @@ func AdminUpdateServiceConfig(c *gin.Context) {
 	set("sms_service_min_price", strconv.FormatFloat(req.MinPrice, 'f', 2, 64))
 
 	utils.SuccessResponse(c, 200, "保存成功", gin.H{"enabled": req.Enabled})
+}
+
+// GetServiceProlongOptions GET /api/v1/services/orders/:orderNo/prolong-options
+// 号码续期选项（时长 + 换算后的人民币价格 + 用户余额）。
+func GetServiceProlongOptions(c *gin.Context) {
+	user, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		utils.ErrorResponse(c, 401, "未登录", nil)
+		return
+	}
+	db := database.GetDB()
+	var order models.ServiceOrder
+	if err := db.Where("order_no = ? AND user_id = ?", c.Param("orderNo"), user.ID).First(&order).Error; err != nil {
+		utils.ErrorResponse(c, 404, "订单不存在", nil)
+		return
+	}
+	if !order.ActivationID.Valid {
+		utils.ErrorResponse(c, 400, "该订单尚未激活号码，无法续期", nil)
+		return
+	}
+	cfg := smservice.LoadConfig(db)
+	client := smservice.NewClient(cfg)
+	opts, err := client.GetProlongOptions(order.ActivationID.String)
+	if err != nil {
+		utils.ErrorResponse(c, 400, "获取续期选项失败："+err.Error(), nil)
+		return
+	}
+	items := make([]gin.H, 0, len(opts))
+	for _, o := range opts {
+		items = append(items, gin.H{
+			"duration_hours": o.DurationHours,
+			"price_cny":      cfg.PriceCNY(o.PriceUSD),
+			"price_known":    o.PriceUSD > 0,
+		})
+	}
+	utils.SuccessResponse(c, 200, "", gin.H{
+		"balance":        user.Balance,
+		"phone_number":   order.PhoneNumber.String,
+		"activation_id":  order.ActivationID.String,
+		"items":          items,
+	})
+}
+
+// ProlongServiceOrder POST /api/v1/services/orders/:orderNo/prolong
+// 续期号码（余额支付：校验余额 → 扣款 → 调平台 prolong → 失败自动退款）。
+func ProlongServiceOrder(c *gin.Context) {
+	user, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		utils.ErrorResponse(c, 401, "未登录", nil)
+		return
+	}
+	var req struct {
+		DurationHours int `json:"duration_hours" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.DurationHours <= 0 {
+		utils.ErrorResponse(c, 400, "参数错误", nil)
+		return
+	}
+	db := database.GetDB()
+	var order models.ServiceOrder
+	if err := db.Where("order_no = ? AND user_id = ?", c.Param("orderNo"), user.ID).First(&order).Error; err != nil {
+		utils.ErrorResponse(c, 404, "订单不存在", nil)
+		return
+	}
+	if !order.ActivationID.Valid {
+		utils.ErrorResponse(c, 400, "该订单尚未激活号码，无法续期", nil)
+		return
+	}
+	cfg := smservice.LoadConfig(db)
+	client := smservice.NewClient(cfg)
+
+	opts, err := client.GetProlongOptions(order.ActivationID.String)
+	if err != nil {
+		utils.ErrorResponse(c, 400, "获取续期价格失败："+err.Error(), nil)
+		return
+	}
+	priceUSD := 0.0
+	found := false
+	for _, o := range opts {
+		if o.DurationHours == req.DurationHours {
+			priceUSD = o.PriceUSD
+			found = true
+			break
+		}
+	}
+	if !found {
+		utils.ErrorResponse(c, 400, "不支持的续期时长", nil)
+		return
+	}
+	if priceUSD <= 0 {
+		utils.ErrorResponse(c, 400, "平台未返回该时长的价格，暂不可续期", nil)
+		return
+	}
+	priceCNY := cfg.PriceCNY(priceUSD)
+	if user.Balance < priceCNY {
+		utils.ErrorResponse(c, 400, fmt.Sprintf("余额不足（需 ¥%.2f，当前 ¥%.2f）", priceCNY, user.Balance), nil)
+		return
+	}
+
+	// 扣余额（事务）
+	var newBalance float64
+	err = db.Transaction(func(tx *gorm.DB) error {
+		var u models.User
+		if err := tx.First(&u, user.ID).Error; err != nil {
+			return err
+		}
+		if u.Balance < priceCNY {
+			return fmt.Errorf("余额不足")
+		}
+		newBalance = u.Balance - priceCNY
+		if err := tx.Model(&models.User{}).Where("id = ?", u.ID).Update("balance", gorm.Expr("balance - ?", priceCNY)).Error; err != nil {
+			return err
+		}
+		orderID := order.ID
+		return utils.CreateBalanceLogWithDB(tx, u.ID, "consume", priceCNY, u.Balance, newBalance, &orderID, nil,
+			fmt.Sprintf("验证码服务续期 %d 小时", req.DurationHours), "system", nil, "")
+	})
+	if err != nil {
+		utils.ErrorResponse(c, 400, "扣款失败："+err.Error(), nil)
+		return
+	}
+
+	if _, err := client.Prolong(order.ActivationID.String, req.DurationHours); err != nil {
+		// 退款
+		_ = db.Transaction(func(tx *gorm.DB) error {
+			var u models.User
+			if err := tx.First(&u, user.ID).Error; err != nil {
+				return err
+			}
+			refunded := u.Balance + priceCNY
+			if err := tx.Model(&models.User{}).Where("id = ?", u.ID).Update("balance", gorm.Expr("balance + ?", priceCNY)).Error; err != nil {
+				return err
+			}
+			orderID := order.ID
+			return utils.CreateBalanceLogWithDB(tx, u.ID, "refund", priceCNY, u.Balance, refunded, &orderID, nil,
+				"验证码服务续期失败自动退款", "system", nil, "")
+		})
+		utils.ErrorResponse(c, 400, "续期失败："+err.Error()+"（已退款到余额）", nil)
+		return
+	}
+	utils.SuccessResponse(c, 200, fmt.Sprintf("续期成功：+%d 小时", req.DurationHours), gin.H{
+		"price_cny":      priceCNY,
+		"duration_hours": req.DurationHours,
+	})
 }

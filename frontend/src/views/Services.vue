@@ -87,7 +87,10 @@
           <el-empty v-else-if="!countriesLoading && !filteredCountries.length" description="该服务暂无可用国家" :image-size="70" />
           <div v-else class="country-table">
             <div class="country-row head">
-              <span>国家</span><span class="c-count">库存</span><span class="c-price">售价</span><span class="c-op"></span>
+              <span>国家</span>
+              <span class="c-count sortable" @click="toggleSort('count')">库存 <span class="sort-arrow">{{ sortArrow('count') }}</span></span>
+              <span class="c-price sortable" @click="toggleSort('price')">售价 <span class="sort-arrow">{{ sortArrow('price') }}</span></span>
+              <span class="c-op"></span>
             </div>
             <div v-for="c in filteredCountries" :key="c.country_id" class="country-row">
               <span class="c-name">{{ c.country_name }}</span>
@@ -129,10 +132,12 @@
             </template>
           </el-table-column>
           <el-table-column prop="created_at" label="时间" min-width="150" />
-          <el-table-column label="操作" width="190" fixed="right">
+          <el-table-column label="操作" width="260" fixed="right">
             <template #default="{ row }">
               <el-button v-if="row.otp" size="small" @click="copy(row.otp)">复制验证码</el-button>
               <el-button v-else-if="row.phone_number" size="small" @click="copy(row.phone_number)">复制号码</el-button>
+              <el-button v-if="row.activation_id" size="small" @click="openProlong(row)">续期</el-button>
+              <el-button v-if="row.activation_id" size="small" @click="openProlong(row)">续期</el-button>
               <el-button v-if="row.status === 'active'" size="small" @click="finishOrder(row)">完成</el-button>
               <el-button v-if="row.status === 'active'" size="small" type="danger" plain @click="cancelOrder(row)">取消</el-button>
             </template>
@@ -140,6 +145,17 @@
         </el-table>
 
         <!-- 手机端：订单卡片（表格在手机上会挤成横条，看不到验证码） -->
+        <div v-if="orders.length" class="orders-pager">
+          <el-pagination
+            v-model:current-page="orderPage"
+            :page-size="orderPageSize"
+            :total="orderTotal"
+            layout="prev, pager, next, total"
+            small
+            @current-change="loadOrders"
+          />
+        </div>
+
         <div v-if="isMobile && orders.length" class="mob-orders">
           <div v-for="row in orders" :key="row.order_no" class="mob-order">
             <div class="mob-order-head">
@@ -207,6 +223,25 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="prolongVisible" title="号码续期" width="440px" class="prolong-dialog">
+      <div class="prolong-box">
+        <div class="prolong-row"><span>号码</span><b class="mono">{{ prolongTarget?.phone_number || '—' }}</b></div>
+        <div class="prolong-row"><span>当前余额</span><b>¥{{ formatPrice(prolongBalance) }}</b></div>
+        <div class="prolong-tip">续期使用余额支付，续期成功后号码可继续接收短信。</div>
+        <div v-if="prolongLoading" class="prolong-loading">加载续期价格…</div>
+        <div v-else class="prolong-options">
+          <div v-for="o in prolongOptions" :key="o.duration_hours" class="prolong-option">
+            <div class="po-left">
+              <div class="po-duration">+{{ formatDuration(o.duration_hours) }}</div>
+              <div class="po-price" v-if="o.price_known">¥{{ formatPrice(o.price_cny) }}</div>
+              <div class="po-price muted" v-else>价格以平台为准</div>
+            </div>
+            <el-button type="primary" size="small" :disabled="!o.price_known" :loading="prolongSubmitting" @click="doProlong(o)">续期</el-button>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
+
     <el-dialog v-model="payVisible" title="扫码支付" width="400px" class="pay-dialog" @close="stopPolling">
       <div class="pay-box">
         <div v-if="qrCodeData" class="qr-wrap">
@@ -245,9 +280,27 @@ const selectedService = ref(null)
 const countries = ref([])
 const countriesLoading = ref(false)
 const countryKeyword = ref('')
+const countrySort = ref('count_desc')
+const sortArrow = (field) => {
+  if (field === 'count') return countrySort.value === 'count_desc' ? '↓' : ''
+  if (field === 'price') return countrySort.value === 'price_asc' ? '↑' : countrySort.value === 'price_desc' ? '↓' : ''
+  return ''
+}
+const toggleSort = (field) => {
+  if (field === 'count') {
+    countrySort.value = 'count_desc'
+  } else if (field === 'price') {
+    countrySort.value = countrySort.value === 'price_asc' ? 'price_desc' : 'price_asc'
+  }
+  // 重新拉当前服务（带新排序）
+  if (selectedService.value) selectService(selectedService.value)
+}
 
 const orders = ref([])
 const ordersLoading = ref(false)
+const orderPage = ref(1)
+const orderPageSize = ref(20)
+const orderTotal = ref(0)
 const paymentMethods = ref([])
 const buyVisible = ref(false)
 const creating = ref(false)
@@ -260,6 +313,51 @@ const qrCodeData = ref('')
 const payAmount = ref(0)
 const payOrderNo = ref('')
 const payStatusText = ref('等待支付中…')
+
+// 号码续期
+const prolongVisible = ref(false)
+const prolongTarget = ref(null)
+const prolongOptions = ref([])
+const prolongBalance = ref(0)
+const prolongLoading = ref(false)
+const prolongSubmitting = ref(false)
+const formatDuration = (h) => {
+  const n = Number(h || 0)
+  if (n >= 1440) return Math.round(n / 1440) + ' 天'
+  if (n >= 24) return Math.round(n / 24) + ' 天'
+  return n + ' 小时'
+}
+const openProlong = async (row) => {
+  prolongTarget.value = row
+  prolongVisible.value = true
+  prolongOptions.value = []
+  prolongBalance.value = 0
+  prolongLoading.value = true
+  try {
+    const res = await api.get(`/services/orders/${row.order_no}/prolong-options`)
+    const data = res.data?.data || res.data || {}
+    prolongOptions.value = data.items || []
+    prolongBalance.value = data.balance || 0
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || '获取续期价格失败')
+  } finally {
+    prolongLoading.value = false
+  }
+}
+const doProlong = async (opt) => {
+  if (prolongSubmitting.value) return
+  prolongSubmitting.value = true
+  try {
+    const res = await api.post(`/services/orders/${prolongTarget.value.order_no}/prolong`, { duration_hours: opt.duration_hours })
+    ElMessage.success(res.data?.message || '续期成功')
+    prolongVisible.value = false
+    loadOrders()
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.message || '续期失败')
+  } finally {
+    prolongSubmitting.value = false
+  }
+}
 let pollTimer = null
 
 const filteredServices = computed(() => {
@@ -315,7 +413,7 @@ const selectService = async (svc) => {
   countries.value = []
   countriesLoading.value = true
   try {
-    const res = await api.get('/services/countries', { params: { service: svc.service_code, _t: Date.now() } })
+    const res = await api.get('/services/countries', { params: { service: svc.service_code, sort: countrySort.value, _t: Date.now() } })
     const data = res.data?.data || res.data || {}
     countries.value = data.items || []
   } catch (e) {
@@ -328,9 +426,10 @@ const selectService = async (svc) => {
 const loadOrders = async () => {
   ordersLoading.value = true
   try {
-    const res = await api.get('/services/orders', { params: { page: 1, size: 50 } })
+    const res = await api.get('/services/orders', { params: { page: orderPage.value, size: orderPageSize.value } })
     const data = res.data?.data || res.data || {}
     orders.value = data.items || []
+    orderTotal.value = data.total || 0
   } catch (e) {
     ElMessage.error(e?.response?.data?.message || '加载订单失败')
   } finally {
@@ -466,6 +565,26 @@ const refreshAll = async () => {
   await Promise.all([loadServices(), loadOrders()])
 }
 
+// 订单列表自动刷新：有「已激活等短信」的订单时 3 秒刷一次，否则 10 秒一次；
+// 页面切到后台（不可见）时跳过，避免无意义请求。
+let ordersTimer = null
+const startOrdersAutoRefresh = () => {
+  stopOrdersAutoRefresh()
+  ordersTimer = setInterval(async () => {
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+    if (ordersLoading.value) return
+    const waiting = orders.value.some(o => o.status === 'active' && !o.otp)
+    if (!waiting && Math.floor(Date.now() / 1000) % 10 !== 0) return
+    await loadOrders()
+  }, 3000)
+}
+const stopOrdersAutoRefresh = () => {
+  if (ordersTimer) {
+    clearInterval(ordersTimer)
+    ordersTimer = null
+  }
+}
+
 let serviceTimer = null
 watch(serviceKeyword, () => {
   if (serviceTimer) clearTimeout(serviceTimer)
@@ -474,8 +593,12 @@ watch(serviceKeyword, () => {
 
 onMounted(async () => {
   await Promise.all([loadServices(), loadOrders(), loadPaymentMethods()])
+  startOrdersAutoRefresh()
 })
-onUnmounted(stopPolling)
+onUnmounted(() => {
+  stopPolling()
+  stopOrdersAutoRefresh()
+})
 </script>
 
 <style scoped>
@@ -520,6 +643,10 @@ onUnmounted(stopPolling)
 .c-count { color: #909399; font-size: 12px; }
 .c-price { color: #f56c6c; font-weight: 700; }
 .c-op { text-align: right; }
+.sortable { cursor: pointer; user-select: none; }
+.sortable:hover { color: #409eff; }
+.sort-arrow { color: #409eff; font-size: 11px; }
+.orders-pager { display: flex; justify-content: center; padding: 10px 0 4px; }
 .orders-section { margin-top: 22px; }
 .orders-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .orders-head h3 { margin: 0; font-size: 16px; color: #303133; }
@@ -558,6 +685,15 @@ onUnmounted(stopPolling)
 .pay-amount b { color: #f56c6c; font-size: 20px; }
 .pay-status { color: #909399; font-size: 13px; text-align: center; }
 .pay-order { color: #c0c4cc; font-size: 12px; }
+.prolong-box { display: flex; flex-direction: column; gap: 10px; }
+.prolong-row { display: flex; justify-content: space-between; color: #606266; font-size: 14px; }
+.prolong-tip { font-size: 12px; color: #909399; padding: 8px 0; border-bottom: 1px dashed #ebeef5; }
+.prolong-loading { text-align: center; color: #909399; padding: 16px; }
+.prolong-options { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+.prolong-option { display: flex; align-items: center; justify-content: space-between; border: 1px solid #ebeef5; border-radius: 8px; padding: 10px 12px; }
+.po-duration { font-size: 14px; color: #303133; font-weight: 600; }
+.po-price { font-size: 12px; color: #f56c6c; margin-top: 2px; }
+.po-price.muted { color: #c0c4cc; }
 @media (max-width: 768px) {
   .services-page { padding: 10px 10px 24px; }
   .page-header { flex-direction: column; gap: 10px; }

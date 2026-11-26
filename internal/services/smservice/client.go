@@ -234,3 +234,94 @@ func (c *Client) Cancel(activationID string) error {
 	_, err := c.call("cancelActivation", map[string]string{"id": activationID})
 	return err
 }
+
+// ProlongOption 续期选项（时长单位：小时）。
+type ProlongOption struct {
+	DurationHours int     `json:"duration_hours"`
+	PriceUSD      float64 `json:"price_usd"`
+}
+
+// GetProlongOptions 获取某激活可用的续租选项（平台返回格式不稳定，做多形态解析）。
+func (c *Client) GetProlongOptions(activationID string) ([]ProlongOption, error) {
+	text, err := c.call("prolongOptions", map[string]string{"id": activationID})
+	if err != nil {
+		return nil, err
+	}
+	// 一次性验证码号码不支持 prolong：平台返回 ACTION_NOT_AVAILABLE / BAD_STATUS
+	// （JSON 错误体，不会变成 Go error），此时回退 reactivateOptions（恢复费用）。
+	if strings.Contains(text, "ACTION_NOT_AVAILABLE") || strings.Contains(text, "not available") || strings.Contains(text, "BAD_STATUS") {
+		if txt2, e2 := c.call("reactivateOptions", map[string]string{"id": activationID}); e2 == nil {
+			if !strings.Contains(txt2, "BAD_STATUS") && !strings.Contains(txt2, "NOT_AVAILABLE") && !strings.Contains(txt2, "NOT_FOUND") {
+				return parseProlongOptions(txt2), nil
+			}
+		}
+		return nil, fmt.Errorf("当前号码状态暂不支持续期（需号码完成验证或过期后才能恢复）")
+	}
+	return parseProlongOptions(text), nil
+}
+
+// parseProlongOptions 解析平台返回的续期选项（多形态兼容）。
+func parseProlongOptions(text string) []ProlongOption {
+	// 平台可能返回:
+	//   {"<duration>": <price>, ...}
+	//   [{"duration":24,"price":0.1}, ...]
+	//   {"options":[...]}
+	var asMap map[string]float64
+	if err := json.Unmarshal([]byte(text), &asMap); err == nil && len(asMap) > 0 {
+		out := make([]ProlongOption, 0, len(asMap))
+		for k, v := range asMap {
+			d, e := strconv.Atoi(k)
+			if e != nil {
+				continue
+			}
+			out = append(out, ProlongOption{DurationHours: d, PriceUSD: v})
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	var asObjs []map[string]interface{}
+	if err := json.Unmarshal([]byte(text), &asObjs); err == nil {
+		out := make([]ProlongOption, 0, len(asObjs))
+		for _, o := range asObjs {
+			d := 0
+			if v, ok := o["duration"].(float64); ok {
+				d = int(v)
+			} else if v, ok := o["hours"].(float64); ok {
+				d = int(v)
+			}
+			price := 0.0
+			if v, ok := o["price"].(float64); ok {
+				price = v
+			} else if v, ok := o["cost"].(float64); ok {
+				price = v
+			}
+			if d > 0 {
+				out = append(out, ProlongOption{DurationHours: d, PriceUSD: price})
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	// 兜底：固定时长（价格由平台 prolong 时扣，页面显示"以实际扣费为准"）
+	defaults := []int{24, 72, 168, 336, 720, 1440, 2160, 4320}
+	out := make([]ProlongOption, 0, len(defaults))
+	for _, d := range defaults {
+		out = append(out, ProlongOption{DurationHours: d, PriceUSD: 0})
+	}
+	return out
+}
+
+// Prolong 延长号码租期（durationHours 必须是平台支持的时长）。
+// 一次性验证码不支持 prolong 时，回退到 reactivate（恢复使用）。
+func (c *Client) Prolong(activationID string, durationHours int) (string, error) {
+	text, err := c.call("prolong", map[string]string{"id": activationID, "option": strconv.Itoa(durationHours)})
+	if err == nil {
+		return text, nil
+	}
+	if strings.Contains(err.Error(), "ACTION_NOT_AVAILABLE") || strings.Contains(err.Error(), "not available") {
+		return c.call("reactivate", map[string]string{"id": activationID})
+	}
+	return "", err
+}
