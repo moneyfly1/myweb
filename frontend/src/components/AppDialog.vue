@@ -138,6 +138,9 @@ const handleBeforeClose = (done) => {
 
   :deep(.app-dialog .el-dialog__body) {
     padding: 14px 16px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
 
   :deep(.app-dialog .el-dialog__footer) {
