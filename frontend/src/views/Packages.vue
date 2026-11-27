@@ -3104,6 +3104,19 @@ export default {
 
 .payment-actions-container {
   margin-top: 18px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+.payment-actions-container .payment-btn {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 200px;
+  margin: 0 auto;
+  text-align: center;
 }
 
 .alipay-btn {
