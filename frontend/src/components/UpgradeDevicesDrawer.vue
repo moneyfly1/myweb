@@ -256,7 +256,7 @@
       <div class="qr-panel">
         <div class="qr-panel-header">
           <h4 v-if="isPaymentPageUrl">请在页面中完成支付</h4>
-          <h4 v-else>请使用支付宝扫码</h4>
+          <h4 v-else>{{ payScanTitle }}</h4>
           <p>支付完成后会自动刷新升级结果</p>
         </div>
         <div class="qr-code-wrapper" :class="{ 'iframe-mode': isPaymentPageUrl }">
@@ -272,7 +272,7 @@
             <img
               :src="qrDisplaySrc(paymentQRCode)"
               alt="支付二维码"
-              title="支付宝二维码"
+              :title="payScanTitle"
               @error="onImageError"
               @load="onImageLoad"
             />
@@ -283,10 +283,11 @@
           </div>
         </div>
         <div class="payment-tips" v-if="!isPaymentPageUrl">
-          <p class="tip-text"><el-icon><InfoFilled /></el-icon><span>请使用支付宝扫码支付</span></p>
+          <p class="tip-text"><el-icon><InfoFilled /></el-icon><span>{{ payScanTitle }}支付</span></p>
         </div>
         <div class="payment-actions-container" v-if="isMobile && paymentUrl">
           <el-button
+            v-if="isAlipayScan"
             type="success"
             size="large"
             class="payment-btn alipay-btn"
@@ -294,6 +295,16 @@
           >
             <el-icon class="btn-icon"><Wallet /></el-icon>
             跳转支付宝App支付
+          </el-button>
+          <el-button
+            v-else
+            type="success"
+            size="large"
+            class="payment-btn wechat-btn"
+            @click="openWechatTip"
+          >
+            <el-icon class="btn-icon"><ChatDotRound /></el-icon>
+            打开微信扫一扫
           </el-button>
         </div>
       </div>
@@ -304,7 +315,7 @@
 <script setup>
 import { computed, onUnmounted, ref } from 'vue'
 import { ElMessage } from '@/utils/elementPlusServices'
-import { Loading, Wallet, InfoFilled, Plus, Minus, Right, Timer } from '@element-plus/icons-vue'
+import { Loading, Wallet, InfoFilled, Plus, Minus, Right, Timer, ChatDotRound } from '@element-plus/icons-vue'
 import { orderAPI, parsePaymentMethods, useApi, userAPI, userLevelAPI, cachedAPI, pendingPaymentStorage } from '@/utils/api'
 import { formatDateTimeSafe, getRemainingDays as getRemainingDaysUtil } from '@/utils/date'
 import { safeNavigate } from '@/utils/safeOpen'
@@ -346,6 +357,20 @@ const upgradeCost = ref(0)
 const levelDiscount = ref(0)
 const finalAmount = ref(0)
 const paymentMethod = ref('alipay')
+
+
+// 支付方式提示（码支付微信 → 微信扫码；支付宝 → 支付宝扫码）
+const scanPayName = computed(() => {
+  const v = String(paymentMethod.value || upgradeOrder.value?.payment_method || '').toLowerCase()
+  return v
+})
+const isWechatScan = computed(() => {
+  const n = scanPayName.value
+  return n.includes('wx') || n.includes('wechat') || n.includes('weixin') || n.includes('微信')
+})
+const isAlipayScan = computed(() => !isWechatScan.value)
+const payScanTitle = computed(() => (isWechatScan.value ? '请使用微信扫码' : '请使用支付宝扫码'))
+const openWechatTip = () => ElMessage.info('请打开微信「扫一扫」，扫描上方二维码完成支付')
 const availableUpgradePaymentMethods = ref([])
 const upgradeOrder = ref(null)
 const paymentQRVisible = ref(false)
@@ -646,7 +671,7 @@ const openAlipayApp = () => {
   }
   document.addEventListener('visibilitychange', paymentManualVisibilityHandler)
   safeNavigate(alipayAppUrl, { allowAppProtocols: true })
-  setTimeout(() => ElMessage.info('如果未跳转到支付宝，请使用支付宝扫描上方二维码完成支付'), 3000)
+  setTimeout(() => ElMessage.info(isWechatScan.value ? '请打开微信扫一扫扫描上方二维码完成支付' : '如果未跳转到支付宝，请使用支付宝扫描上方二维码完成支付'), 3000)
 }
 
 const onImageError = () => ElMessage.error('二维码加载失败')
