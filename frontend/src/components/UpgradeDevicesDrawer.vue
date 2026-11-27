@@ -595,11 +595,10 @@ const confirmUpgrade = async () => {
           return
         }
         const paymentMethodName = data.payment_method || paymentMethod.value
+        // 只有易支付（页面跳转）直接导航；码支付返回的是收款码链接，必须走二维码展示
         const isYipay = paymentMethodName && (
           paymentMethodName.includes('yipay') ||
-          paymentMethodName.includes('易支付') ||
-          paymentMethodName.includes('codepay') ||
-          paymentMethodName.includes('码支付')
+          paymentMethodName.includes('易支付')
         )
         if (isYipay) {
           upgradeOrder.value = {
