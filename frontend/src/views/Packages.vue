@@ -435,7 +435,7 @@
         <div class="qr-panel">
           <div class="qr-panel-header">
             <h4 v-if="isPaymentPageUrl && paymentUrl">请在页面中完成支付</h4>
-            <h4 v-else>请使用{{ getPaymentMethodDisplayName(currentOrder?.payment_method || paymentMethod) }}扫码</h4>
+            <h4 v-else class="qr-scan-title"><PayMethodIcon :method="currentOrder?.payment_method || paymentMethod" />请使用{{ getPaymentMethodDisplayName(currentOrder?.payment_method || paymentMethod) }}扫码</h4>
             <p>支付完成后会自动刷新购买结果</p>
           </div>
           <div class="qr-code-wrapper" :class="{ 'iframe-mode': isPaymentPageUrl && paymentUrl }">
@@ -464,7 +464,7 @@
             </div>
           </div>
           <div class="payment-tips" v-if="!isPaymentPageUrl">
-            <p class="tip-text"><el-icon><InfoFilled /></el-icon><span>请使用{{ getPaymentMethodDisplayName(currentOrder?.payment_method || paymentMethod) }}扫码支付</span></p>
+            <p class="tip-text"><PayMethodIcon :method="currentOrder?.payment_method || paymentMethod" /><span>请使用{{ getPaymentMethodDisplayName(currentOrder?.payment_method || paymentMethod) }}扫码支付</span></p>
           </div>
           <div class="payment-actions-container" v-if="isMobile && paymentUrl && (currentOrder?.payment_method === 'alipay' || paymentUrl.includes('alipay'))">
             <el-button
@@ -641,6 +641,7 @@
   </div>
 </template>
 <script>
+import PayMethodIcon from '@/components/PayMethodIcon.vue'
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from '@/utils/elementPlusServices'
@@ -3101,6 +3102,14 @@ export default {
 .tip-text :deep(svg) {
   color: #2563eb;
 }
+
+.qr-scan-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.qr-scan-title :deep(.pay-method-icon) { margin-right: 0; }
 
 .payment-actions-container {
   margin-top: 18px;
