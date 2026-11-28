@@ -691,7 +691,13 @@ export default {
     const currentOrder = ref(null)
     const paymentQRCode = ref('')
     const paymentUrl = ref('')
+    const isCodepay = computed(() => {
+      const n = String(currentOrder.value?.payment_method || paymentMethod.value || '').toLowerCase()
+      return n.includes('codepay') || n.includes('码支付')
+    })
     const isPaymentPageUrl = computed(() => {
+      // 码支付（支付宝/微信）一律显示二维码，不做页面支付 iframe
+      if (isCodepay.value) return false
       return isPaymentPageUrlUtil(paymentUrl.value)
     })
     const isCheckingPayment = ref(false)

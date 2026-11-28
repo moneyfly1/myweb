@@ -397,7 +397,13 @@ const notEligibleReason = computed(() => {
 const targetDeviceLimit = computed(() => currentDeviceLimit.value + (upgradeForm.value.additionalDevices || 0))
 const remainingDays = computed(() => getRemainingDays(props.subscription))
 const additionalMonths = computed(() => Math.round((upgradeForm.value.additionalDays || 0) / 30))
+const isCodepay = computed(() => {
+  const n = String(upgradeOrder.value?.payment_method || paymentMethod.value || '').toLowerCase()
+  return n.includes('codepay') || n.includes('码支付')
+})
 const isPaymentPageUrl = computed(() => {
+  // 码支付（支付宝/微信）一律显示二维码，不做页面支付 iframe
+  if (isCodepay.value) return false
   return isPaymentPageUrlUtil(paymentUrl.value)
 })
 
